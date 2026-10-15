@@ -1,37 +1,153 @@
 #pragma once
 /** @file support/log.hpp
- *  The one logging seam: an asynchronous spdlog, reached through one function name.
+ *  The one logging seam: a line writer with no dependencies beyond libc.
  *
- *  Why this exists: the race window has no log of its own, so a diagnosis had to be
- *  reconstructed from scattered printfs after the fact. A line before a step starts is worth
- *  more than any amount of post-hoc reading, so every major step announces itself here before
- *  it runs.
+ *  Why it is this small (user ruling 2026-10-14): the previous implementation pulled in spdlog, an
+ *  asynchronous logger with a thread pool, formatters and sinks. The tree uses exactly one of its
+ *  features -- "one line, with the numbers in it" -- and pays for the rest in build time, binary
+ *  size, and a dependency whose failure mode on the device was a lost last line. What is left here
+ *  is a FILE pointer, a level, a clock and one mutex; the whole thing is a header a reader can
+ *  finish.
  *
- *  One name, overloaded. A caller writes log(level, what) and adds numbers as it has them;
- *  there is no vocabulary of different log_* verbs to pick from, because picking is where the
- *  numbers get left out. Lifecycle is not a line, so it lives in the logging namespace: open()
- *  once, close() once.
+ *  What did NOT change: the call surface. log(level, what) and its five overloads keep their exact
+ *  signatures, so no call site moved, and the line format is still
+ *  HH:MM:SS.mmm [L] message -- the shape the device logs and the greps around them were built on.
  *
- *  Asynchronous on purpose: the race window is a timing window, and a logger that blocks on a
- *  file write inside it would change what is being measured. (Nothing calls this from inside PI:
- *  pi_window.hpp:12-21 forbids logging and stdio there, and the readings PI produces are carried
- *  out in shared_ fields and printed here once the last actor has stopped.)
+ *  What is different, stated plainly: writes are synchronous. The old logger owned a worker thread
+ *  because a blocking write inside the race window would have changed what was being measured; that
+ *  window still forbids logging (pi_window.hpp), so the thread bought nothing where it was thought
+ *  to matter, and cost the last line on every exit path that did not reach close().
  *
- *  Levels and the sink come from the profile, not from here: no value is hard-coded.
+ *  Levels come from the profile through logging::open(), never from here: this file defines no
+ *  policy, no path and no level of its own.
  */
+#include <cstddef>
 #include <cstdint>
-#include <memory>
-#include <string>
+#include <cstdio>
+#include <cstring>
+#include <ctime>
+#include <mutex>
 #include <string_view>
 
-#include <spdlog/async.h>
-#include <spdlog/sinks/basic_file_sink.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
-#include <spdlog/spdlog.h>
-
 namespace ghostlock::support {
-    /** The logger's registered name: what log() looks up. */
-    inline constexpr const char* kLogName = "ghostlock";
+    /** The levels a line can carry. Printed as one letter each, as the old format did. */
+    enum class Level : std::uint8_t {
+        Trace = 0,
+        Debug = 1,
+        Info = 2,
+        Warn = 3,
+        Error = 4,
+        Critical = 5,
+        Off = 6,
+    };
+
+    /** The one spelling of a level's letter; the letter is what appears in the line. */
+    [[nodiscard]] constexpr char level_letter(Level level) noexcept {
+        switch (level) {
+            case Level::Trace: return 'T';
+            case Level::Debug: return 'D';
+            case Level::Info: return 'I';
+            case Level::Warn: return 'W';
+            case Level::Error: return 'E';
+            case Level::Critical: return 'C';
+            case Level::Off: return '-';
+        }
+        return '?';
+    }
+
+    /** A level from its name, as the profile spells it: trace/debug/info/warn/error/critical/off.
+     *  An unknown name is Off, which is a named answer rather than a guess. */
+    [[nodiscard]] inline Level level_of(std::string_view name) noexcept {
+        if (name == "trace") {
+            return Level::Trace;
+        }
+        if (name == "debug") {
+            return Level::Debug;
+        }
+        if (name == "info") {
+            return Level::Info;
+        }
+        if (name == "warn" || name == "warning") {
+            return Level::Warn;
+        }
+        if (name == "error") {
+            return Level::Error;
+        }
+        if (name == "critical") {
+            return Level::Critical;
+        }
+        return Level::Off;
+    }
+
+    namespace logging_detail {
+        /** One line's room. A line longer than this is cut, not refused: losing a tail is better
+         *  than losing the line. */
+        inline constexpr std::size_t kLineBytes = 1024U;
+        /** The message's room inside a line (after the timestamp and the level letter). */
+        inline constexpr std::size_t kBodyBytes = kLineBytes - 32U;
+
+        /** The seam's whole state: opened or not, where to, and what to keep. */
+        struct State final {
+            std::mutex mutex{};
+            std::FILE *sink = nullptr;
+            Level minimum = Level::Info;
+        };
+
+        /** The one instance. A function-local static, so it is built on first use and no other
+         *  translation unit can name it. */
+        [[nodiscard]] inline State &state() noexcept {
+            static State instance;
+            return instance;
+        }
+
+        /** Write one already-formatted body as a line, under the seam's mutex.
+         *  @note The timestamp is taken here rather than by the caller: a line's time is when it
+         *        was written, not when its message was built. */
+        inline void write_line(Level level, const char *body) noexcept {
+            State &s = state();
+            std::lock_guard<std::mutex> guard(s.mutex);
+            if (s.sink == nullptr ||
+                static_cast<unsigned>(level) < static_cast<unsigned>(s.minimum)) {
+                return;
+            }
+            std::timespec now{};
+            (void)::clock_gettime(CLOCK_REALTIME, &now);
+            std::tm broken{};
+            const std::time_t seconds = static_cast<std::time_t>(now.tv_sec);
+            (void)::localtime_r(&seconds, &broken);
+            char line[kLineBytes];
+            const int head = std::snprintf(line, sizeof(line), "%02d:%02d:%02d.%03ld [%c] ",
+                                           broken.tm_hour, broken.tm_min, broken.tm_sec,
+                                           static_cast<long>(now.tv_nsec / 1000000L),
+                                           level_letter(level));
+            std::size_t at = head > 0 ? static_cast<std::size_t>(head) : 0U;
+            for (const char *cursor = body; *cursor != '\0' && at + 2U < sizeof(line); ++cursor) {
+                line[at++] = *cursor;
+            }
+            line[at++] = '\n';
+            (void)std::fwrite(line, 1U, at, s.sink);
+            if (static_cast<unsigned>(level) >= static_cast<unsigned>(Level::Warn)) {
+                /* Warnings and worse are flushed as they are written: they are the lines a run
+                 *  that dies without reaching close() must still leave behind. */
+                (void)std::fflush(s.sink);
+            }
+        }
+
+        /** Format a body with snprintf into a stack buffer, then write it. */
+        template <class... Args>
+        inline void write_formatted(Level level, const char *format, Args... args) noexcept {
+            char body[kBodyBytes];
+            (void)std::snprintf(body, sizeof(body), format, args...);
+            write_line(level, body);
+        }
+
+        /** Copy a view into a NUL-terminated stack buffer, cutting rather than overflowing. */
+        inline void copy_cstr(const std::string_view text, char *out, const std::size_t room) noexcept {
+            const std::size_t bytes = text.size() < room - 1U ? text.size() : room - 1U;
+            std::memcpy(out, text.data(), bytes);
+            out[bytes] = '\0';
+        }
+    }  // namespace logging_detail
 
     /** A number that is an address, or any word read as hex. */
     struct Hex final {
@@ -39,67 +155,72 @@ namespace ghostlock::support {
     };
 
     /** A string that is data, not a level or a label: a policy name, a domain, a refusal word.
-     *  Wrapped rather than passed as a bare string_view on purpose -- a bare one would be
-     *  ambiguous against the numeric overloads, and an ambiguous call is one a caller stops
-     *  making. The wrapper keeps the call site explicit. */
+     *  Wrapped rather than passed as a bare string_view on purpose -- a bare one would be ambiguous
+     *  against the numeric overloads, and an ambiguous call is one a caller stops making. */
     struct Text final {
         std::string_view value;
     };
 
     /** Start and stop the logger. Not lines, so not log(). */
     namespace logging {
-        /** Start the asynchronous logger. Idempotent: the first call wins, later ones are no-ops.
-         *  @param level_name One of spdlog's level names, from the profile.
-         *  @param file_path The log file; empty means stderr only.
-         *  @return true when a logger is available afterwards; false is a named refusal. */
+        /**
+         *  Start logging.
+         *
+         *  @param level_name trace/debug/info/warn/error/critical/off, from the profile.
+         *  @param file_path  where lines go; empty means stderr.
+         *  @return true when lines will be written; false is a named refusal (an unopenable file).
+         *  @note Idempotent: the first call wins, later ones are no-ops that answer true.
+         */
         [[nodiscard]] inline bool open(std::string_view level_name,
                                        std::string_view file_path) noexcept {
-            if (spdlog::get(kLogName) != nullptr) {
+            logging_detail::State &s = logging_detail::state();
+            std::lock_guard<std::mutex> guard(s.mutex);
+            if (s.sink != nullptr) {
                 return true;
             }
-            try {
-                spdlog::init_thread_pool(8192U, 1U);
-                std::shared_ptr<spdlog::logger> logger =
-                        file_path.empty()
-                                ? spdlog::stderr_color_mt<spdlog::async_factory>(kLogName)
-                                : spdlog::basic_logger_mt<spdlog::async_factory>(
-                                          kLogName, std::string(file_path));
-                logger->set_level(spdlog::level::from_str(std::string(level_name)));
-                logger->set_pattern("%Y-%m-%d %H:%M:%S.%e [%t] [%l] %v");
-                logger->flush_on(spdlog::level::warn);
-                spdlog::set_default_logger(logger);
+            s.minimum = level_of(level_name);
+            if (file_path.empty()) {
+                s.sink = stderr;
                 return true;
-            } catch (const std::exception&) {
+            }
+            char path[512];
+            logging_detail::copy_cstr(file_path, path, sizeof(path));
+            std::FILE *file = std::fopen(path, "ab");
+            if (file == nullptr) {
                 return false;
             }
+            s.sink = file;
+            return true;
         }
 
-        /** Flush the queue and stop the logger. Call once, after the last line, before exiting:
-         *  an asynchronous logger writes on its own thread, so without this the last lines -- the
-         *  verdict, the exit code, the first failure -- can still be in the queue at exit.
-         *  @return true when a logger was flushed; false when none was started, which is not an
-         *          error. Idempotent.
-         *  @note The convention for that last line: `exit-code` carries the PROCESS exit code
-         *        (0, 4, 7, 9, ...) -- the value the caller returns -- NOT a Lua verdict and not a
-         *        step outcome. The caller's finish() helper writes it immediately before this
-         *        call, so `tail -1` and the process status agree by construction. */
+        /**
+         *  Flush and stop. Call once, after the last line, before exiting.
+         *
+         *  @return true when a sink was closed; false when none was open, which is not an error.
+         *  @note The convention for the last line is unchanged: exit-code carries the PROCESS exit
+         *        code, written by the caller's finish() helper immediately before this call, so the
+         *        last line of the file and the process status agree by construction.
+         */
         [[nodiscard]] inline bool close() noexcept {
-            const std::shared_ptr<spdlog::logger> logger = spdlog::get(kLogName);
-            if (logger == nullptr) {
+            logging_detail::State &s = logging_detail::state();
+            std::lock_guard<std::mutex> guard(s.mutex);
+            if (s.sink == nullptr) {
                 return false;
             }
-            try {
-                /* Drain the queue BEFORE the shutdown: shutdown() stops the worker and drops
-                 * whatever it had not consumed, and flush_on(warn) never fires for the info
-                 * lines that matter here -- which is exactly how the last line (exit-code) went
-                 * missing on the device while every earlier line landed. The comment above this
-                 * function promised the flush; now the code does it. */
-                logger->flush();
-                spdlog::shutdown();
-                return true;
-            } catch (const std::exception&) {
-                return false;
+            (void)std::fflush(s.sink);
+            if (s.sink != stderr) {
+                (void)std::fclose(s.sink);
             }
+            s.sink = nullptr;
+            return true;
+        }
+
+        /** @return true when lines at this level would be written. */
+        [[nodiscard]] inline bool enabled(Level level) noexcept {
+            logging_detail::State &s = logging_detail::state();
+            std::lock_guard<std::mutex> guard(s.mutex);
+            return s.sink != nullptr &&
+                   static_cast<unsigned>(level) >= static_cast<unsigned>(s.minimum);
         }
     }  // namespace logging
 
@@ -107,58 +228,81 @@ namespace ghostlock::support {
      *  @param level_name debug / info / warn / error, chosen by the caller.
      *  @param what What is about to happen or has happened, in the caller's own words. */
     inline void log(std::string_view level_name, std::string_view what) noexcept {
-        if (spdlog::get(kLogName) == nullptr) {
+        const Level level = level_of(level_name);
+        if (!logging::enabled(level)) {
             return;
         }
-        spdlog::log(spdlog::level::from_str(std::string(level_name)), "{}", what);
+        char body[logging_detail::kBodyBytes];
+        logging_detail::copy_cstr(what, body, sizeof(body));
+        logging_detail::write_line(level, body);
     }
 
     /** One line with one number: a return code, an errno, a count. */
     inline void log(std::string_view level_name, std::string_view what,
                     std::int64_t value) noexcept {
-        if (spdlog::get(kLogName) == nullptr) {
+        const Level level = level_of(level_name);
+        if (!logging::enabled(level)) {
             return;
         }
-        spdlog::log(spdlog::level::from_str(std::string(level_name)), "{} value={}", what, value);
+        char head[logging_detail::kBodyBytes];
+        logging_detail::copy_cstr(what, head, sizeof(head));
+        logging_detail::write_formatted(level, "%s value=%lld", head, static_cast<long long>(value));
     }
 
     /** One line with two numbers: a judgement pair such as (ret, errno). */
     inline void log(std::string_view level_name, std::string_view what, std::int64_t first,
                     std::int64_t second) noexcept {
-        if (spdlog::get(kLogName) == nullptr) {
+        const Level level = level_of(level_name);
+        if (!logging::enabled(level)) {
             return;
         }
-        spdlog::log(spdlog::level::from_str(std::string(level_name)), "{} a={} b={}", what, first,
-                    second);
+        char head[logging_detail::kBodyBytes];
+        logging_detail::copy_cstr(what, head, sizeof(head));
+        logging_detail::write_formatted(level, "%s a=%lld b=%lld", head,
+                                        static_cast<long long>(first),
+                                        static_cast<long long>(second));
     }
 
-    /** One line with four numbers: a stage's reading set, still one line so it stays one
-     *  grep entry. More values are added as overloads -- never as a second function name,
-     *  because a caller that has to pick a name is a caller that leaves numbers out. */
+    /** One line with four numbers: a stage's reading set, still one line so it stays one grep
+     *  entry. More values are added as overloads -- never as a second function name, because a
+     *  caller that has to pick a name is a caller that leaves numbers out. */
     inline void log(std::string_view level_name, std::string_view what, std::int64_t first,
                     std::int64_t second, std::int64_t third, std::int64_t fourth) noexcept {
-        if (spdlog::get(kLogName) == nullptr) {
+        const Level level = level_of(level_name);
+        if (!logging::enabled(level)) {
             return;
         }
-        spdlog::log(spdlog::level::from_str(std::string(level_name)), "{} a={} b={} c={} d={}",
-                    what, first, second, third, fourth);
+        char head[logging_detail::kBodyBytes];
+        logging_detail::copy_cstr(what, head, sizeof(head));
+        logging_detail::write_formatted(level, "%s a=%lld b=%lld c=%lld d=%lld", head,
+                                        static_cast<long long>(first),
+                                        static_cast<long long>(second),
+                                        static_cast<long long>(third),
+                                        static_cast<long long>(fourth));
     }
 
     /** One line with a string attached: a name, a policy, a refusal word. */
     inline void log(std::string_view level_name, std::string_view what, Text text) noexcept {
-        if (spdlog::get(kLogName) == nullptr) {
+        const Level level = level_of(level_name);
+        if (!logging::enabled(level)) {
             return;
         }
-        spdlog::log(spdlog::level::from_str(std::string(level_name)), "{} {}", what,
-                    text.value);
+        char head[logging_detail::kBodyBytes];
+        logging_detail::copy_cstr(what, head, sizeof(head));
+        char tail[logging_detail::kBodyBytes];
+        logging_detail::copy_cstr(text.value, tail, sizeof(tail));
+        logging_detail::write_formatted(level, "%s %s", head, tail);
     }
 
     /** One line with an address, printed as hex. */
     inline void log(std::string_view level_name, std::string_view what, Hex hex) noexcept {
-        if (spdlog::get(kLogName) == nullptr) {
+        const Level level = level_of(level_name);
+        if (!logging::enabled(level)) {
             return;
         }
-        spdlog::log(spdlog::level::from_str(std::string(level_name)), "{} 0x{:016x}", what,
-                    hex.value);
+        char head[logging_detail::kBodyBytes];
+        logging_detail::copy_cstr(what, head, sizeof(head));
+        logging_detail::write_formatted(level, "%s 0x%016llx", head,
+                                        static_cast<unsigned long long>(hex.value));
     }
 }  // namespace ghostlock::support

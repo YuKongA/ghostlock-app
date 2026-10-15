@@ -41,7 +41,8 @@ option(GL_JNI "构建 JNI 边界库" ON)
 
 set(GL_WARNINGS -Wall -Wextra -Wconversion -Wsign-conversion)
 set(GL_MPACK_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lib/mpack)
-set(GL_SPDLOG_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lib/spdlog)
+# spdlog 不再参与构建（用户裁定 2026-10-14：native 侧改用自己写的 printf 日志，见 src/support/log.hpp）。
+# 目录留在 lib/ 里只是不再被引用；删库另开批次（可能还有别的引用）。
 set(GL_NLOHMANN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lib/nlohmann)
 set(GL_LUA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lib/lua/src)
 
@@ -170,8 +171,7 @@ target_include_directories(ghostlock_core PUBLIC
   ${GL_LUA_DIR}
   ${GL_MPACK_DIR}
 )
-target_include_directories(ghostlock_core SYSTEM PUBLIC ${GL_SPDLOG_DIR}/include ${GL_NLOHMANN_DIR})
-target_compile_definitions(ghostlock_core PUBLIC SPDLOG_USE_STD_FORMAT)
+target_include_directories(ghostlock_core SYSTEM PUBLIC ${GL_NLOHMANN_DIR})
 target_compile_options(ghostlock_core PRIVATE ${GL_WARNINGS})
 target_link_libraries(ghostlock_core PUBLIC gl-mpack gl-lua)
 
@@ -265,6 +265,7 @@ set(GL_TEST_NAMES
   heap_geometry_test
   hmac_sha256_test
   jni_protocol_test
+  log_test
   jni_session_lifecycle_test
   jni_ops_43499_test
   jni_ops_43284_test

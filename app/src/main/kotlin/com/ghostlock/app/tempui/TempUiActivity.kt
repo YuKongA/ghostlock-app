@@ -21,11 +21,16 @@ import com.ghostlock.app.core.AccessDomain
 import com.ghostlock.app.core.AccessFailure
 import com.ghostlock.app.core.SessionPhase
 import com.ghostlock.app.jni.Native
+import com.ghostlock.app.log.GhostLog
+import com.ghostlock.app.log.LogLevel
 import com.ghostlock.app.ui.kit.AndroidUiKitStore
 import com.ghostlock.app.ui.kit.UiKit
 import com.ghostlock.app.ui.kit.UiKitController
 import com.ghostlock.app.ui.kit.kitOf
 import com.ghostlock.app.ui.theme.GhostlockTheme
+
+/** 临时界面的 logcat 标签（类与顶层 composable 共用一份）。 */
+private const val TAG_UI = "GhostlockUi"
 
 /**
  * 最小临时 UI：只做诊断，不做业务。
@@ -40,6 +45,7 @@ import com.ghostlock.app.ui.theme.GhostlockTheme
  * 它不宣称任何攻击能力、不发起任何攻击步骤：那些要等设备 seam（J3b/J4b）与 Kotlin 步骤引擎（J6）。
  */
 class TempUiActivity : ComponentActivity() {
+
     private val controller: UiKitController by lazy { UiKitController(AndroidUiKitStore(this)) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,7 +79,10 @@ class TempUiActivity : ComponentActivity() {
         "core: 能力接口=KernelMemoryAccess / PageCacheAccess（描述符由 native 发布）",
     )
 
-    private fun runDeviceGate(): List<String> = probeNative() + DeviceGate.run()
+    private fun runDeviceGate(): List<String> {
+        GhostLog.i(TAG_UI, "tempui: run the device gate")
+        return probeNative() + DeviceGate.run()
+    }
 }
 
 /** 界面的形状与套件无关；控件从 kitOf 取。 */
@@ -89,6 +98,8 @@ private fun TempUiScreen(
     val components = kitOf(kit)
 
     LaunchedEffect(Unit) {
+        GhostLog.configure(LogLevel.Info)
+        GhostLog.i(TAG_UI, "tempui: 临时界面已启动")
         lines += "tempui: 临时界面已启动（旧 UI 已废弃）"
         lines += onProbe()
         lines += onGate()

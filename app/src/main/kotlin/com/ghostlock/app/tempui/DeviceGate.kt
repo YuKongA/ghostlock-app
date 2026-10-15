@@ -1,6 +1,6 @@
 package com.ghostlock.app.tempui
 
-import android.util.Log
+import com.ghostlock.app.log.GhostLog
 import com.ghostlock.app.core.AccessResult
 import com.ghostlock.app.core.AccessSessionFactory
 import com.ghostlock.app.core.AccessSessionRequest
@@ -28,7 +28,7 @@ object DeviceGate {
         val lines = mutableListOf<String>()
         fun step(line: String) {
             lines += line
-            Log.i(TAG, line)
+            GhostLog.i(TAG, line)
         }
 
         step("gate: begin (boundary only; no exploit step is attempted)")

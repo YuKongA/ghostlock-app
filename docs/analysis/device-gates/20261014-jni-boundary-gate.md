@@ -93,3 +93,19 @@ adb logcat -d -s GhostlockGate:I
    image 三行全静默暴露了它）。现已声明 `core/src/**` + `core/CMakeLists.txt`，并把 .so 也列为输出。
 2. 门禁里 `EmbeddedImage`/`HookWords` 只打尺寸不打状态 ⇒ 拒绝/旧库看起来像"空数据"。现在每次回答都带
    `status=` 与（非 Ok 时）`refusal=`。
+
+---
+
+## 第三次门禁：换成自写日志系统之后（2026-10-14 20:21）
+
+native 侧去掉了 spdlog（用户裁定），改成 support/log.hpp 里的 printf 实现；Kotlin 侧新增
+GhostLog（级别 + logcat + 定长环 + 错误带栈）。门禁本身没有变，只是它的行现在经由这两套日志：
+
+```text
+10-14 20:21:56.194 I GhostlockGate: gate: image splice_helper op=embedded_image status=ok size=1440 sha256=4b4649cd…a53c
+10-14 20:21:56.199 I GhostlockGate: gate: hook_words op=hook_words status=ok branch=0x14012d83 displaced=0xf9400028 site=733356 landing=1041960 payload=480
+10-14 20:21:56.176 I GhostlockUi: tempui: 临时界面已启动
+```
+
+三行一起证明：native 的新日志不改变任何判据值；Kotlin 的日志按**调用方标签**落到 logcat（门禁查
+GhostlockGate、界面查 GhostlockUi 各取各的），且 logcat 里不再出现 `I/<tag>: I/<tag>:` 这种双重前缀。
