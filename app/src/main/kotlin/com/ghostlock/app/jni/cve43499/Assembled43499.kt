@@ -56,6 +56,62 @@ class Assembled43499(private val handle: Long) {
         return code == 0
     }
 
+    /** 分步：初始化访问对象（路由与位置由调用方给）。 */
+    fun initializeAccess(route: Int, offset: Long, offsetSet: Boolean): Boolean {
+        if (accessId == 0L) {
+            lastCode = -1
+            lastRefusal = "init:no-handle"
+            return false
+        }
+        val refusal = refusalSlot()
+        val code = Native43499.initialize43499(handle, accessId, route, offset, offsetSet, refusal)
+        record(code, refusal)
+        return code == 0
+    }
+
+    /** 分步：写一块（通道 PiWindow）。 */
+    fun writeBlock(route: Int, offset: Long, address: Long, block: ByteArray): Boolean {
+        if (accessId == 0L) {
+            lastCode = -1
+            lastRefusal = "write:no-handle"
+            return false
+        }
+        val refusal = refusalSlot()
+        val code = Native43499.write43499(handle, accessId, route, offset, address, block, refusal)
+        record(code, refusal)
+        return code == 0
+    }
+
+    /** 分步：读一块；成功返回读到的字节（长度可能短于请求），失败返回 null（lastRefusal 有因）。 */
+    fun readBlock(route: Int, offset: Long, address: Long, bytes: Int): ByteArray? {
+        if (accessId == 0L) {
+            lastCode = -1
+            lastRefusal = "read:no-handle"
+            return null
+        }
+        val refusal = refusalSlot()
+        val out = ByteArray(bytes.toInt().coerceAtLeast(0))
+        val outLen = LongArray(1)
+        val code = Native43499.read43499(handle, accessId, route, offset, address, bytes, out, outLen, refusal)
+        record(code, refusal)
+        if (code != 0) {
+            return null
+        }
+        val count = outLen[0].toInt().coerceIn(0, out.size)
+        return out.copyOf(count)
+    }
+
+    /** 分步：关掉访问对象（收尾第一步，先 shutdown 再 closeAccess）。 */
+    fun shutdownAccess(): Boolean {
+        if (accessId == 0L) {
+            return true
+        }
+        val refusal = refusalSlot()
+        val code = Native43499.shutdown43499(handle, accessId, refusal)
+        record(code, refusal)
+        return code == 0
+    }
+
     /** 收尾：先拆访问对象，再关会话。 */
     fun close(): Boolean {
         val accessClosed = closeAccess()
