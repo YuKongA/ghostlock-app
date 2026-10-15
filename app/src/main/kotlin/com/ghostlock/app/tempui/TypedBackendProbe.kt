@@ -5,6 +5,7 @@ import com.ghostlock.app.core.generated.FinishVictim43499
 import com.ghostlock.app.core.generated.HookPlanRequest43284
 import com.ghostlock.app.core.generated.Init43284
 import com.ghostlock.app.core.generated.ModuleCheck43284
+import com.ghostlock.app.core.generated.Wait43284
 
 import com.ghostlock.app.core.generated.Init43499
 import com.ghostlock.app.core.generated.KernelLayout43499
@@ -135,6 +136,23 @@ object TypedBackendProbe {
         )
         code = Native43284.moduleCheck(handle, moduleCheck, refusal)
         step("typed: 43284 moduleCheck code=" + code + " refusal=" + refusal[0])
+
+        /* 等终态：已经**接线**（marker 轮询）。给一个不存在的路径 ⇒ 预算内一直是 inflight。 */
+        val terminal = LongArray(1)
+        val wait = Wait43284(
+            budgetMs = 40L,
+            pollMs = 10L,
+            successMarker = "ghostlock-ok".toByteArray(),
+            failureMarker = "ghostlock-failed".toByteArray(),
+            inFlightMarker = "ghostlock-running".toByteArray(),
+            moduleMarker = "ghostlock".toByteArray(),
+            moduleName = "/data/local/tmp/ghostlock-wait-probe".toByteArray(),
+        )
+        code = Native43284.waitTerminal(handle, wait, terminal, refusal)
+        step(
+            "typed: 43284 waitTerminal code=" + code + " state=" + terminal[0] +
+                " refusal=" + refusal[0],
+        )
 
         /* 真正的设备工作（门/块读写/模块校验/触发/等待）还没接线 ⇒ 具名拒绝。 */
         val ticket = LongArray(1)

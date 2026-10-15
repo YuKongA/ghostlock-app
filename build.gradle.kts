@@ -543,6 +543,8 @@ tasks.register("deviceGate") {
         rows["image splice_helper"]?.let { digest -> expected += "sha256=" + digest }
         expected += "typed: 43284 hookPlan code=0"
         expected += "typed: 43284 moduleCheck code=-4 refusal=module-check-refused"
+        /* 等终态接的是真轮询：不存在的路径在预算内必须答 inflight（既非成功也非失败）。 */
+        expected += "typed: 43284 waitTerminal code=-8 state=2 refusal=wait_terminal:inflight"
         expected += "typed: 43284 trigger code=-3 refusal=op-not-wired:trigger"
 
         val missing = expected.filterNot { log.contains(it) }

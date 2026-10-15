@@ -10,6 +10,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <fcntl.h>
+#include <unistd.h>
 #include <string>
 
 #include "backend/cve_2026_43284/embed/libcxx_blob.hpp"
@@ -92,12 +94,59 @@ namespace ghostlock::jni {
         return lkm::vermagic_matches_kernel(facts.vermagic, kernel.c_str(), facts.has_crcs);
     }
 
+    /**
+     *  等终态：在 <moduleName> 指向的文件里找三种 marker 之一，预算内按 pollMs 轮询。
+     *
+     *  三态都是**真实答案**，不是猜的：找到 successMarker ⇒ success；找到 failureMarker ⇒ failure；
+     *  文件不在、或只有 inFlightMarker、或预算用尽 ⇒ inflight。上层据此给 Ok / Failed / InFlight。
+     */
+    bool device_wait_terminal(const Init43284Values &, const Wait43284Values &request,
+                              TerminalState &terminal, void *) noexcept {
+        using ghostlock::jni::TerminalState;
+        const std::string path(reinterpret_cast<const char *>(request.moduleName.data()),
+                               request.moduleName.size());
+        const std::string success(reinterpret_cast<const char *>(request.successMarker.data()),
+                                  request.successMarker.size());
+        const std::string failure(reinterpret_cast<const char *>(request.failureMarker.data()),
+                                  request.failureMarker.size());
+        std::uint64_t waited = 0U;
+        const std::uint64_t budget = static_cast<std::uint64_t>(request.budgetMs);
+        const std::uint64_t poll = static_cast<std::uint64_t>(request.pollMs > 0 ? request.pollMs : 10);
+        for (;;) {
+            char buffer[4096] = {};
+            const int fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
+            if (fd >= 0) {
+                const ssize_t got = ::read(fd, buffer, sizeof(buffer) - 1U);
+                static_cast<void>(::close(fd));
+                if (got > 0) {
+                    const std::string text(buffer, static_cast<std::size_t>(got));
+                    if (!success.empty() && text.find(success) != std::string::npos) {
+                        terminal = TerminalState::Success;
+                        return true;
+                    }
+                    if (!failure.empty() && text.find(failure) != std::string::npos) {
+                        terminal = TerminalState::Failure;
+                        return true;
+                    }
+                }
+            }
+            if (waited >= budget) {
+                /* 预算用尽仍是进行中：既不是失败也不是成功。 */
+                terminal = TerminalState::InFlight;
+                return true;
+            }
+            ::usleep(static_cast<useconds_t>(poll * 1000U));
+            waited += poll;
+        }
+    }
+
     /** 本构建能提供的 43284 缝（其余留空 ⇒ 那些函数以 op-not-wired 具名拒绝）。 */
     DeviceOps43284 device_ops_43284() noexcept {
         DeviceOps43284 ops{};
         ops.embedded_image = &device_embedded_image;
         ops.hook_plan = &device_hook_plan;
         ops.module_check = &device_module_check;
+        ops.wait_terminal = &device_wait_terminal;
         return ops;
     }
 }  // namespace ghostlock::jni
