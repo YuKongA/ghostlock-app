@@ -9,6 +9,8 @@
  *  2. **答案成对**：调用码与具名拒绝来自同一次加锁调用，一起写回 refusalOut；
  *  3. **布局只有一份**：结果数组的名字表来自 marshal_43499.hpp（同表驱动的名字，无字面下标）。
  */
+#include <string>
+#include "contract/kernel_access.hpp"
 #include "jni/api_43499_device.hpp"
 #include <cstddef>
 #include <cstdint>
@@ -290,6 +292,36 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43499_Native43499_destroyAc
     const bool done = ghostlock::jni::device_destroy_access_43499(static_cast<std::uint64_t>(accessId));
     return answer(env, done ? ghostlock::jni::CallCode::Ok : ghostlock::jni::CallCode::StaleTarget,
                   done ? "" : "stale-target", refusal_out);
+}
+
+
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43499_Native43499_initialize43499(
+        JNIEnv *env, jclass, jlong, jlong accessId, jint route, jlong offset, jboolean offsetSet,
+        jobjectArray refusal_out) {
+    const int status = ghostlock::jni::device_initialize_43499(
+        static_cast<std::uint64_t>(accessId), static_cast<std::uint64_t>(route),
+        static_cast<std::uint64_t>(offset), offsetSet != JNI_FALSE);
+    if (status == 0) {
+        return answer(env, ghostlock::jni::CallCode::Ok, "", refusal_out);
+    }
+    const std::string named = status < 0
+        ? (status == -1 ? "init:no-handle" : "init:stale-handle")
+        : (std::string("init:") + ghostlock::contract::KernelAccess::status_name(
+               static_cast<ghostlock::contract::KernelAccess::Status>(status)));
+    return answer(env, ghostlock::jni::CallCode::Failed, named.c_str(), refusal_out);
+}
+
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43499_Native43499_shutdown43499(
+        JNIEnv *env, jclass, jlong, jlong accessId, jobjectArray refusal_out) {
+    const int status = ghostlock::jni::device_shutdown_43499(static_cast<std::uint64_t>(accessId));
+    if (status == 0) {
+        return answer(env, ghostlock::jni::CallCode::Ok, "", refusal_out);
+    }
+    const std::string named = status < 0
+        ? (status == -1 ? "shutdown:no-handle" : "shutdown:stale-handle")
+        : (std::string("shutdown:") + ghostlock::contract::KernelAccess::status_name(
+               static_cast<ghostlock::contract::KernelAccess::Status>(status)));
+    return answer(env, ghostlock::jni::CallCode::Failed, named.c_str(), refusal_out);
 }
 
 }  // extern "C"
