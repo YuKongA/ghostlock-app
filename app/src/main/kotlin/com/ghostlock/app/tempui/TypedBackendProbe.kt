@@ -514,7 +514,7 @@ object TypedBackendProbe {
         )
         /* 分步拼装（拼装顺序写在 Kotlin 里）：开门 → socket → 拼接面 → 落地 → 拉起 → 收尾。 */
         val stepwiseHandle = Native43284.create()
-        val stepwise = Assembled43284(stepwiseHandle) { init43284() }
+        val stepwise = Assembled43284(stepwiseHandle) { saInit() }
         stepwise.initialize(init43284())
         val stepTarget = stepwise.openTargetStepwise(doorPath)
         step("typed: stepwise 43284 open target=" + stepTarget + " refusal=" + stepwise.lastRefusal)
@@ -577,7 +577,7 @@ object TypedBackendProbe {
         val accessInit = stepwise.initializeAccessAndRemember(accessParams, init43284())
         step("typed: stepwise 43284 accessInit=" + accessInit + " refusal=" + stepwise.lastRefusal)
         val helperForImage = stepwise.image(Assembled43284.ROLE_IMAGE_SPLICE_HELPER)
-        val patch1Wrote = if (helperForImage != null) stepwise.writeImage(helperForImage, 0L, 16L, init43284()) else false
+        val patch1Wrote = if (helperForImage != null) stepwise.writeImage(helperForImage, 0L, 16L, saInit()) else false
         step("typed: stepwise 43284 patch1 wrote=" + patch1Wrote + " refusal=" + stepwise.lastRefusal)
         step("typed: stepwise 43284 accessDestroy=" + stepwise.destroyAccessNow())
 
@@ -643,6 +643,18 @@ object TypedBackendProbe {
             step("typed: xfrm-stat=" + stat)
         }.onFailure { problem ->
             step("typed: xfrm-stat refused " + problem.javaClass.simpleName)
+        }
+
+        /* 谁该在 encap 端口上监听？把 SA 的端口、我们持有的套接字的状态一起打出来
+         * （ECONNREFUSED 说明那个端口上没有接收方 ⇒ 要么套接字没了，要么内核没登记）。 */
+        runCatching {
+            step(
+                "typed: encap state port=" + (encapSocket?.getPort() ?: -1) +
+                    " saEncapPort=" + saEncapPort +
+                    " held=" + (encapSocket != null),
+            )
+        }.onFailure { problem ->
+            step("typed: encap state refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
         }
         step("typed: patch1 wrote=" + patchWrote + " refusal=" + patcher.lastRefusal +
             " helperBytes=" + (helperForPatch?.size ?: -1))
