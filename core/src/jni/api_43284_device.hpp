@@ -5,6 +5,9 @@
 #include "jni/api_43284.hpp"
 
 #include "backend/cve_2026_43284/access_params.hpp"
+#include "backend/cve_2026_43284/landing/pagecache_doors.hpp"
+
+#include <memory>
 
 namespace ghostlock::jni {
     /**
@@ -13,6 +16,10 @@ namespace ghostlock::jni {
      *  密钥长度不对就没有材料（set = false）—— 零密钥不是凭据，门的开启会据此拒绝，
      *  而不是拿一段零去连。
      */
+    /** @return 设备侧的门实现（ESP socket 那一半）；递进来的 fd 由调用方拥有。 */
+    [[nodiscard]] std::unique_ptr<ghostlock::backend::cve_2026_43284::landing::DoorOps>
+    make_esp_door_ops(int handed_in_fd) noexcept;
+
     [[nodiscard]] ghostlock::backend::cve_2026_43284::SaMaterial sa_material_of(
         const Init43284Values &params) noexcept;
 
