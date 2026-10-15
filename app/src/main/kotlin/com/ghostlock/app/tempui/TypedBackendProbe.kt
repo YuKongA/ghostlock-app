@@ -367,6 +367,34 @@ object TypedBackendProbe {
         /* 驱动器里 patch#1 的完整序列：建 Access → 初始化 → 写 helper 镜像（image=helper/offset=0/width=16）。 */
         val stepAccess = stepwise.buildAccess()
         step("typed: stepwise 43284 access=" + stepAccess + " refusal=" + stepwise.lastRefusal)
+
+        /*
+         *  只读取证（纯 Kotlin，不需要任何 native 改动）：在我们 app **自己的 uid** 下，
+         *  这些目标能不能只读打开 —— 这是「从 app uid 起链」的第一批事实。
+         *
+         *  判读：exists 假 ⇒ 连看都看不到；exists 真而 canRead 假 ⇒ 被 SELinux 拒读，
+         *  那一步就得换开发载体，或改由 LKM 阶段承担。
+         */
+        for (path in listOf(
+            "/system/lib64/libc++.so",
+            "/apex/com.android.runtime/bin/crash_dump64",
+            "/vendor/lib64/libbinderdebug.so",
+            "/data/local/tmp/ghostlock-carrier",
+        )) {
+            val file = java.io.File(path)
+            val exists = file.exists()
+            val canRead = file.canRead()
+            val osAccess = runCatching { android.system.Os.access(path, android.system.OsConstants.R_OK) }
+            val opened = runCatching {
+                java.io.FileInputStream(file).use { stream -> stream.read() }
+                "open=ok"
+            }.getOrElse { problem -> "open=" + problem.javaClass.simpleName + ":" + (problem.message ?: "") }
+            step(
+                "typed: readable " + path + " exists=" + exists + " canRead=" + canRead +
+                    " osAccess=" + osAccess.getOrElse { "throw" } + " " + opened +
+                    " size=" + (if (exists) file.length() else -1L),
+            )
+        }
         val accessParams = com.ghostlock.app.core.generated.AccessParams43284(
             accessCarrierPath = doorPath.toByteArray(),
             accessDevCarrierPath = ByteArray(0),
