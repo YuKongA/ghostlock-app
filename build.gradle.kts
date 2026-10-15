@@ -791,7 +791,8 @@ tasks.register<MarkdownlintCli2Task>("markdownlintFix") {
  *  KDIR 的解析照本文件既有的 NDK 风格：环境变量优先，其次 local.properties（此处先只支持环境变量，
  *  等有 DDK 的机器上再加本地文件键）。产物基准：退役树那次是 12304 字节。
  */
-val glLkmBuild by tasks.registering {
+/** 任务名与变量名一致：Gradle 用变量名作任务名，所以这里就叫 lkmBuild。 */
+val lkmBuild by tasks.registering {
     group = "build"
     description = "Builds tools/lkm/ghostlock via kbuild (needs GL_KDIR pointing at a kernel tree)"
 
