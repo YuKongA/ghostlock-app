@@ -538,7 +538,11 @@ tasks.register("deviceGate") {
         /* 43284 的数据 op：**新**函数面上尚未接线（旧帧路径仍提供两张图，上面已经按 manifest
          * 对拍过摘要），所以这里如实断言 op-not-wired —— 等 43284 的 D2 装配落地后再改成
          * 断言 ok + size=1440。 */
-        expected += "typed: 43284 embeddedImage code=null size=-1 refusal=op-not-wired:embedded_image"
+        /* 43284 的数据 op 现在**已接线**（D2 装配）：镜像与钩子计划必须成功，摘要与 manifest 一致。 */
+        expected += "typed: 43284 embeddedImage code=ok size=1440"
+        rows["image splice_helper"]?.let { digest -> expected += "sha256=" + digest }
+        expected += "typed: 43284 hookPlan code=0"
+        expected += "typed: 43284 trigger code=-3 refusal=op-not-wired:trigger"
 
         val missing = expected.filterNot { log.contains(it) }
         if (missing.isNotEmpty()) {

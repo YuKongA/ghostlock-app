@@ -2,6 +2,9 @@ package com.ghostlock.app.tempui
 
 import com.ghostlock.app.core.generated.CredentialLayout43499
 import com.ghostlock.app.core.generated.FinishVictim43499
+import com.ghostlock.app.core.generated.HookPlanRequest43284
+import com.ghostlock.app.core.generated.Init43284
+
 import com.ghostlock.app.core.generated.Init43499
 import com.ghostlock.app.core.generated.KernelLayout43499
 import com.ghostlock.app.core.generated.Prepare43499
@@ -99,38 +102,61 @@ object TypedBackendProbe {
         }
         step("typed: 43284 create ok")
 
-        /* 参数顺序由 native 的 initializeFields() 导出：先记下来，再用同一顺序给值。 */
-        val fields = Native43284.initializeFields()
-        step("typed: 43284 initializeFields=" + fields.joinToString(","))
-        val params = LongArray(fields.size)
-        params[0] = 150L
-        params[1] = 800L
-        params[2] = 10L
-        var code = Native43284.initialize(handle, params, refusal)
+        var code = Native43284.initialize(handle, init43284(), refusal)
         step("typed: 43284 initialize code=" + code + " refusal=" + refusal[0])
 
-        val snapshot = LongArray(Native43284.snapshotFields().size)
+        val snapshot = LongArray(6)
         code = Native43284.snapshot(handle, snapshot, refusal)
-        step("typed: 43284 snapshot code=" + code + " values=" + snapshot.joinToString(","))
+        step(
+            "typed: 43284 snapshot code=" + code +
+                " " + Native43284.snapshotFields().indices.joinToString(",") { index ->
+                    Native43284.snapshotFields()[index] + "=" + snapshot[index]
+                },
+        )
 
+        /* 本构建自带的两张图与钩子计划：数据性的那部分，D2 已经接线，所以这里必须是 ok。 */
         val image = Native43284.embeddedImage(handle, 0, refusal)
         step(
             "typed: 43284 embeddedImage code=" + (if (image == null) "null" else "ok") +
                 " size=" + (image?.size ?: -1) + " refusal=" + refusal[0],
         )
-        val hook = LongArray(Native43284.hookFields().size)
-        code = Native43284.hookWords(handle, hook, refusal)
-        step("typed: 43284 hookWords code=" + code + " values=" + hook.joinToString(",") + " refusal=" + refusal[0])
+        val hook = LongArray(4)
+        val hookRequest = HookPlanRequest43284(
+            ByteArray(16) { 0x11 }, "splice".toByteArray(), 0,
+        )
+        code = Native43284.hookPlan(handle, hookRequest, hook, refusal)
+        step("typed: 43284 hookPlan code=" + code + " words=" + hook.joinToString(",") + " refusal=" + refusal[0])
 
+        /* 真正的设备工作（门/块读写/模块校验/触发/等待）还没接线 ⇒ 具名拒绝。 */
         val ticket = LongArray(1)
-        code = Native43284.resolveTarget(handle, 1, "/system/lib64/libc++.so".toByteArray(), ticket, refusal)
+        code = Native43284.resolveTarget(handle, resolve43284(), ticket, refusal)
         step("typed: 43284 resolveTarget code=" + code + " refusal=" + refusal[0])
+        code = Native43284.trigger(handle, com.ghostlock.app.core.generated.Trigger43284(150L), refusal)
+        step("typed: 43284 trigger code=" + code + " refusal=" + refusal[0])
 
         code = Native43284.shutdown(handle, refusal)
         step("typed: 43284 shutdown code=" + code + " refusal=" + refusal[0])
         code = Native43284.destroy(handle, refusal)
         step("typed: 43284 destroy code=" + code + " refusal=" + refusal[0])
     }
+
+    /** 43284 的哨兵参数（顺序与字段名由 D1 单表定；真实 profile 仍待设计）。 */
+    private fun init43284() = Init43284(
+        spi = 0x1234,
+        encapPort = 4500,
+        senderPort = 4501,
+        icvLength = 16,
+        aesKey = ByteArray(32) { 0xA5.toByte() },
+        hmacKey = ByteArray(32) { 0x5A.toByte() },
+        initialSequence = 1,
+        sequencePresent = true,
+    )
+
+    private fun resolve43284() = com.ghostlock.app.core.generated.ResolveTarget43284(
+        role = 1,
+        path = "/system/lib64/libc++.so".toByteArray(),
+        accessMode = 0,
+    )
 
     /* ---- 43499 的哨兵参数（顺序＝D1 单表的顺序；只求值能走到该到的地方） ---- */
 

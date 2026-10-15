@@ -1,10 +1,21 @@
 package com.ghostlock.app.jni.cve43284
 
+import com.ghostlock.app.core.generated.HookPlanRequest43284
+import com.ghostlock.app.core.generated.Init43284
+import com.ghostlock.app.core.generated.ModuleCheck43284
+import com.ghostlock.app.core.generated.ReadBlock43284
+import com.ghostlock.app.core.generated.ResolveTarget43284
+import com.ghostlock.app.core.generated.Trigger43284
+import com.ghostlock.app.core.generated.VerifyTarget43284
+import com.ghostlock.app.core.generated.Wait43284
+import com.ghostlock.app.core.generated.WriteBlock43284
+
 /**
- * libghostlock43284.so 的函数面（D2 装配为 43499 已完成；43284 仍是数组参数版，等它的同构装配）。
+ * libghostlock43284.so 的函数面（D2 装配，2026-10-15）。
  *
- * 这里如实反映**当前**的 native 签名：参数用 long[]/byte[]，失败原因由 refusal(handle) 取。
- * 43284 的 DTO 化（Init43284 + 九个请求组）落地后，本文件会跟着换成 DTO 参数。
+ * 参数是 D1 生成的 DTO（单表权威），返回值是调用码；具名拒绝与调用码一次写回 refusalOut[0]。
+ * 调用码与 native 的 CallCode 一一对应：0 ok、-1 not-ready、-2 bad-parameters、-3 unsupported、
+ * -4 failed、-5 stale-handle、-6 busy、-7 stale-target、-8 inflight、-9 closed。
  */
 object Native43284 {
     /** 这个 backend 的库名（CMake 目标 ghostlock43284）。 */
@@ -12,7 +23,7 @@ object Native43284 {
 
     private var loaded = false
 
-    /** @return 库能不能加载；失败时 false。 */
+    /** @return 库能不能加载；失败时 false（调用方据此给具名拒绝，而不是抛异常）。 */
     fun ensureLoaded(): Boolean {
         if (loaded) {
             return true
@@ -28,42 +39,49 @@ object Native43284 {
 
     external fun create(): Long
 
-    external fun initialize(handle: Long, params: LongArray, refusalOut: Array<String>): Int
+    /** 初始化：只建立安全关联（SA/peer/socket），门由 resolveTarget 创建。 */
+    external fun initialize(handle: Long, params: Init43284, refusalOut: Array<String>): Int
 
     external fun snapshot(handle: Long, out: LongArray, refusalOut: Array<String>): Int
 
     /** 绑定一个角色到一条路径。@param out 一个 long：票据。 */
     external fun resolveTarget(
         handle: Long,
-        role: Int,
-        path: ByteArray,
+        request: ResolveTarget43284,
         out: LongArray,
         refusalOut: Array<String>,
     ): Int
 
-    external fun writeBlock(
-        handle: Long,
-        ticket: Long,
-        offset: Long,
-        block: ByteArray,
-        refusalOut: Array<String>,
-    ): Int
+    /** 校验目标内容（摘要 + 大小）⇒ Verified。 */
+    external fun verifyTarget(handle: Long, request: VerifyTarget43284, refusalOut: Array<String>): Int
 
+    /** 写一个十六字节块 ⇒ Dispatched（不是改过了）。 */
+    external fun writeBlock(handle: Long, request: WriteBlock43284, refusalOut: Array<String>): Int
+
+    /** 读回一个十六字节块；一致时该 slot 推到 Applied。 */
     external fun readBlock(
         handle: Long,
-        ticket: Long,
-        offset: Long,
+        request: ReadBlock43284,
         out: ByteArray,
         refusalOut: Array<String>,
     ): Int
 
-    external fun trigger(handle: Long, delayMs: Long, refusalOut: Array<String>): Int
+    external fun moduleCheck(handle: Long, request: ModuleCheck43284, refusalOut: Array<String>): Int
 
+    /** 动态钩子计划。@param out 四个 long：branch、displaced、site、landing。 */
+    external fun hookPlan(
+        handle: Long,
+        request: HookPlanRequest43284,
+        out: LongArray,
+        refusalOut: Array<String>,
+    ): Int
+
+    external fun trigger(handle: Long, request: Trigger43284, refusalOut: Array<String>): Int
+
+    /** 等终态。@param out 一个 long：0 failure / 1 success / 2 inflight。 */
     external fun waitTerminal(
         handle: Long,
-        budgetMs: Long,
-        pollMs: Long,
-        moduleName: ByteArray,
+        request: Wait43284,
         out: LongArray,
         refusalOut: Array<String>,
     ): Int
@@ -71,17 +89,13 @@ object Native43284 {
     /** @return 本构建自带的字节；失败时 null（名字在 refusalOut[0]）。 */
     external fun embeddedImage(handle: Long, role: Int, refusalOut: Array<String>): ByteArray?
 
+    /** @return 钩子要写的载荷；失败时 null。 */
     external fun hookPayload(handle: Long, refusalOut: Array<String>): ByteArray?
-
-    external fun hookWords(handle: Long, out: LongArray, refusalOut: Array<String>): Int
 
     external fun shutdown(handle: Long, refusalOut: Array<String>): Int
 
     external fun destroy(handle: Long, refusalOut: Array<String>): Int
 
+    /** @return snapshot 结果数组每一位的名字（由 native 导出）。 */
     external fun snapshotFields(): Array<String>
-
-    external fun initializeFields(): Array<String>
-
-    external fun hookFields(): Array<String>
 }
