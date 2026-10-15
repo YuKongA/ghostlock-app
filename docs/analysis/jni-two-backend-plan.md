@@ -871,6 +871,38 @@ fields_valid()（模型 103-124）：① 字段的组必须在表里；② 名�
 
 **因此批① 后半新增 8 个薄原语时不需要手改任何计数**（我此前提到的「13/16 要同步」作废）：
 只要在源码里按命名约定声明/定义，verifyJniLibs 会自动把新函数算进期望。
+
+### §11.26 makeSurface / makeLanding 的确切形状（2026-10-15 定稿）
+
+窗口要的是一个 DoorOps（同时提供 file_fd 与 socket_fd），不是两个裸 fd；参考装配里 PageCacheWrite window(door, io) 的 door
+就是 PageCacheDoorLinux（自己开 fd、自己建 socket）。在我们的分步世界里 fd 与 socket 已分别由 resolve 与 connectEsp 建好，
+所以需要一个持有两者的薄 DoorOps：
+
+    class PairedDoor final : public landing::DoorOps {   // 薄：只交出两个已建好的 fd
+      public:
+        PairedDoor(int file_fd, int socket_fd) noexcept;
+        int  open_target() noexcept override { return file_fd_; }
+        int  connect_esp(const SaMaterial &) noexcept override { return socket_fd_; }  // 已经连好，不再建
+        void close_fd(int) noexcept override {}                                        // 谁建谁关：都由调用方管
+        bool target_is_remote() const noexcept override { return false; }
+    };
+
+于是：
+
+    makeSurface(targetId, socketId) → 查表拿 fd 与 socket → 建 Surface{PairedDoor(fd, socket), RealSpliceIo(real_splice_io(), fd)}
+                                       → 存进 surface 表 → 返回 surfaceId
+    makeLanding(surfaceId) → new PageCacheLanding(surface 的 io) → 存表 → 返回 landingId
+    bringUp(landingId, params) → landing->bring_up_with(sa_material_of(params))
+
+要点：
+
+1. 三张表（门 / socket / surface·landing）都以不透明 id 对外，谁建谁拆（closeTarget / closeSocket / destroySurface / destroyLanding）；
+2. PairedDoor 不拥有 fd —— 这是「谁建谁关」的必要条件，否则会 double close；
+3. connectEsp 的结果要**存表并返回 id**（上一批只返回调用码，下一批补）；
+4. surface/landing 都不可拷贝，表里放 unique_ptr，销毁时按 id 析构。
+
+下一批顺序：①connectEsp 存表返 id ②PairedDoor + makeSurface/destroySurface ③makeLanding/destroyLanding
+④adoptSequence/nextSequence/bringUp ⑤删掉 Landing43284/g_session 与写目标拼装 ⑥Assembled43284 分步化并让探针走它。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
