@@ -572,7 +572,8 @@ object TypedBackendProbe {
          *  判读：wrote=true ⇒ 我们自己的字节真的写进了系统文件；否则看 refusal（具名）。
          */
         val patchTarget = "/apex/com.android.runtime/bin/crash_dump64"
-        val patcher = Assembled43284(Native43284.create()) { init43284() }
+        /* patch#1 的实例用**SA 的材料**（落地对象在 resolve 那一刻就把它焊死，写调用处换材料没用 —— 2026-10-15 读代码确认）。 */
+        val patcher = Assembled43284(Native43284.create()) { saInit() }
         val patchDoor = patcher.openTargetStepwise(patchTarget)
         step("typed: patch1 door=" + patchDoor + " refusal=" + patcher.lastRefusal)
         patcher.openEspSocket()
