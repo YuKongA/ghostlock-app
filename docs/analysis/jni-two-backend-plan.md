@@ -1221,6 +1221,32 @@ destroyDocument：release()/reset() + 清 storage；
 makeAccess43499(route, documentId)：把 entry->doc.get() 作为 Access43499Parameters.document 交给访问对象。
 
 下一轮照此落码即可（无未知项）。
+
+### §11.40 用户裁定：43284 必须从我们 app 自己的 uid 起链（2026-10-15）
+
+退役树那次 PASS（6f7ded87 / B5-9h）的入口是 DevCve43284Activity 加 Shizuku（uid=2000）起的 staged runner：
+--run-cve-2026-43284 /data/local/tmp/ghostlock.ko /vendor/lib64/libbinderdebug.so --stage=…
+用户裁定：不经 Shizuku，必须从 app 自己的 uid 起链 ⇒ 凡依赖 shell 特权的动作要换成应用可用原语，或改由 LKM 阶段承担。
+
+特权面勘察（对退役树只读 grep）：
+
+1. stage_runner.cpp 对三类目标全是只读打开：载体（第 980 行）、patch1 目标（第 1028 行）、hook 目标（第 1062 行），
+   都是 O_RDONLY 加 O_CLOEXEC；写全靠页缓存原语（经 splice，不直接写目标）—— 这与「app uid 也许可行」一致；
+2. real_ops.cpp 第 75 行的注释已说明：system 文件直读会被拒，而 vendor 载体走另一条读取路径；
+3. RealChainContext 有一个 allow_dev_carrier_path 开关 ⇒ 那次 PASS 很可能用的是开发载体路径
+   （就是我已经在用的 /data/local/tmp 那个一次性载体），而不是 /vendor 下的生产目标。
+
+因此 app-uid 移植的第一步是取证，不是改码：查清在我们的 app 域里这三类目标哪些能只读打开：
+
+- /system/lib64/libc++.so（每个 app 都加载它，大概率可读）；
+- /apex/com.android.runtime/bin/crash_dump64（patch1 的目标，待测）；
+- /vendor/lib64/libbinderdebug.so（早先探过：连 shell 都读不了，app 更不可能，需开发载体或 LKM 阶段替代）。
+
+做法：加一个只读探针原语（Kotlin 决定查哪几个路径，native 只做 open 与 close 并把结果回传），
+真机上把三个路径的可读性一次问清（不需要写权限、不改攻击路径）⇒ 拿到真值后再写移植设计（L 级设计先行，按 AGENTS 第 2 节）。
+
+接链形态（用户裁定不变）：Kotlin 编 stage（write / trigger / wait 的顺序与参数），native 只留薄原语；
+生产目标与开发载体的选择、以及哪一步交给 LKM 承担，都由 Kotlin 决定并在日志里具名。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
