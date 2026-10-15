@@ -757,6 +757,23 @@ D1 单表风格：GL_ATTACK_FIELD(GroupName, fieldName, TYPE)；已有先例是 
 3. 宿主测试补新组的字段断言（生成的那份测试若断言组数/字段数，同步更新）；checkAll 绿；
 4. native 里加四个薄原语（按 id 查表 + 调一个既有原语 + 回来），**同时删掉 Landing43284 与 g_session**（§11.18 标定的违规点）；
 5. Kotlin 探针改成分步调用（这就是「拼装只在 Kotlin」的落地）；deviceGate 绿 + 归档。
+
+### §11.20 契约面加组是安全的（批① 的最后一个不确定项已排除，2026-10-15）
+
+读过生成的那份 Kotlin 测试（app/src/test/kotlin/com/ghostlock/app/core/AttackContractGeneratedTest.kt）与 codegen：
+
+- 它**没有任何硬编码的组数/字段数**：manifest 的行数与导出布局逐组比对（rows.size vs fields.size），
+  字段名/种类/哨兵值也都按行比；
+- 只有一处常量断言是「manifest 的列数 = 8」（列数固定，不随组/字段增加），其余全部来自 manifest 与 AttackContractLayouts；
+- codegen 只把 groups=/fields= 打印出来（信息性），不参与判定。
+
+**因此批① 的契约步骤是自洽的**：往 attack_contract_fields.def 加九个字段 + 三个收尾组后，跑
+./gradlew exportJniAttackContract 会重新生成 Kotlin DTO、native Values、读取器与 manifest（两处拷贝由任务同步），
+生成的那份测试会**自动跟着新 manifest 走**，不会因为多了几行而红。
+
+仍要留意的两处（不是阻塞，是收尾动作）：
+1. verifyJniLibs 里记着两个库的期望导出符号数（43499 13 / 43284 16）—— 批① 若增删 JNI 函数，这个数要同步；
+2. 结构检查会比对 manifest 的两份拷贝（build 产物 vs app/与 profile-core/ 下的资源），exportJniAttackContract 必须同批更新它们。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
