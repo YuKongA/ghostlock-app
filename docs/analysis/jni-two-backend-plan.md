@@ -499,6 +499,32 @@ wait_for_module 的实现（steps/pagecache_steps.cpp），把具名原因与三
 后续新增一律先问一句：这是设备工作还是逻辑？是逻辑就写 Kotlin。
 
 **归属**：这条裁定应当并入 AGENTS §4 的代码约定；但 AGENTS.md 现在有用户未提交的改动，本文件暂不作改动，等用户那批改动落定后再由本人（或用户）合并。
+
+### §11.11 write_block 的可套用片段（2026-10-15 定稿，下一轮直接照抄）
+
+读到确切的构造签名（上面 §11.7/§11.8 的链条据此补全）：
+
+- PageCacheWrite(DoorOps &doors, SpliceOps &splice, int handed_in_fd = -1) noexcept
+- PageCacheDoors(DoorOps &ops, int handed_in_fd = -1) noexcept : ops_(ops), handed_in_(handed_in_fd) {}
+- RealSpliceIo(SpliceIoOps io, int file_fd, int pipe_flags = 0, OldPageSource old_page = {}, HelperWriteSource helper = {});
+- PageCacheLanding(PageCacheWindow &window);  // 借窗口
+
+按会话的生命周期（RealSpliceIo/PageCacheWrite 都不可拷贝，必须挂堆上）：
+
+    struct Session {
+        PageCacheDoorLinux door;          // 载体路径来自 Kotlin 的 resolve 请求
+        PageCacheDoors doors;
+        RealSpliceIo io;
+        PageCacheWrite window;
+        PageCacheLanding landing;
+    };
+    std::unique_ptr<Session> g_session;   // 与门表同生命周期；会话结束/替换时销毁
+
+    // resolve：开载体（Kotlin 给路径）→ 建 door → doors → io → window → landing → bring_up_with(sa_material_of(params))
+    // write_block：landing.land_block(position, block) 成功 ⇒ Dispatched；随后 adopt_sequence(next)
+    // read_block（已接线）：比较一致才 Applied —— 写完读回相等，状态机才会往前一步
+
+Kotlin 侧负责的部分（不在 native 猜）：载体路径、偏移、块内容、序号策略、预算；native 只做开门/拼接/落地。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
