@@ -841,6 +841,28 @@ fields_valid()（模型 103-124）：① 字段的组必须在表里；② 名�
 
 下一轮步骤：① 重新加回 8 组 15 字段（§11.19 与 11.22 的写法）；② cmake --build ... --clean-first；
 ③ 若真过则跑 exportJniAttackContract 与 ctest；若仍报同一断言，则把断言那一行的**完整编译器诊断**（含 note）取全再判断（我此前只看了一行）。
+
+### §11.24 新契约组与既有 JNI 函数的对照（批① 后半的最小改造面，2026-10-15）
+
+| 新契约组 | 谁能服务 | 结论 |
+|---|---|---|
+| OpenTarget43284 | device_resolve（native_43284 的 resolveTarget：O_RDWR 开门 + 给票据） | **已有等价能力**：Kotlin 调 resolveTarget 就是 openTarget；新组只用于让语义名在契约里显式（native 侧可选加一个同名 JNI 转发） |
+| CloseTarget43284 | 目前没有 | 需新增：按 id 关掉门表里那扇 fd（几行） |
+| ConnectEsp43284 | 门的 connect_esp 在 3a 的装配里被调用过（PageCacheDoorLinux::connect_esp） | 需新增：把 socket fd 作为独立句柄返回（薄） |
+| CloseSocket43284 | 无 | 需新增：close(fd)（几行） |
+| MakeSurface43284 | 3a 里的 RealSpliceIo 构造（违规地写在 Landing43284 里） | 需新增：按 (targetId, socketId) 建 surface 句柄；**它就是把 Landing43284 里的拼装搬到 Kotlin 的那一步** |
+| DestroySurface43284 | 无 | 需新增：析构 surface（几行） |
+| MakeLanding43284 | 3a 里的 PageCacheLanding 构造 | 需新增：按 surfaceId 建 landing 句柄 |
+| DestroyLanding43284 | 无 | 需新增：析构 landing（几行） |
+
+**两类补充（不在新契约组里，但同样是"接口能力不足"）**：
+
+1. adoptSequence / nextSequence：序号现在藏在窗口里（PageCacheWrite::next_seq_），而**策略（用哪个序号）应由 Kotlin 决定**。
+   现在 writeBlock 一把做完「落块 + 推序号」，要拆成：落块（返回落块后的序号）+ Kotlin 决定是否 adopt；
+2. bringUp：落地对象的 bring_up_with(sa) 现在被 Landing43284 构造函数顺手调用（违规的拼装）；应作为独立原语由 Kotlin 显式调用。
+
+**所以批① 后半的 native 净新增是 8 个薄原语**（CloseTarget/ConnectEsp/CloseSocket/MakeSurface/MakeSurfaceClose/MakeLanding/DestroyLanding + adoptSequence/nextSequence/bringUp 中的一部分），
+每个都是「按 id 查表 + 调一个既有原语 + 回来」；**拼装（谁先谁后、要不要带 bridge、序号取哪个）全部由 Kotlin 决定** —— 这正是裁定要的形状。
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
