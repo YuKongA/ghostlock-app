@@ -14,6 +14,7 @@
  *  routes, so the route id in the parameters is not consulted; what the parameters carry is the key
  *  material and a position.
  */
+#include "jni/gl_log.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -74,6 +75,8 @@ namespace ghostlock::backend::cve_2026_43284 {
             }
             /* After bring-up, never before: opening the doors starts a fresh sequence, and a session
              *  that has already written (patch #1, or another window) must continue its own. */
+            GL_LOGI("initialize: adopt seq=%u present=%d window=%p", params->sequence,
+                    params->has_sequence() ? 1 : 0, static_cast<const void *>(ops_));
             if (params->has_sequence()) {
                 ops_->adopt_sequence(params->sequence);
             }

