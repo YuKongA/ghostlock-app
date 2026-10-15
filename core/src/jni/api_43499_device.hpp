@@ -15,6 +15,8 @@ namespace ghostlock::jni {
      */
     [[nodiscard]] std::uint64_t device_make_access_43499(int route) noexcept;
 
+    /** @return 0 成功；否则 Access 状态码（收尾第一步，先 shutdown 再 destroy）。 */
+    [[nodiscard]] int device_shutdown_43499(std::uint64_t accessId) noexcept;
     /** @return 拆掉一个 43499 的内核访问对象。 */
     [[nodiscard]] bool device_destroy_access_43499(std::uint64_t accessId) noexcept;
 }  // namespace ghostlock::jni

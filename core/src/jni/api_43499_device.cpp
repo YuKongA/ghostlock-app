@@ -43,4 +43,21 @@ namespace ghostlock::jni {
         g_accesses_43499[slot].reset();
         return true;
     }
+    /**
+     *  关掉一个 43499 的内核访问对象（会话收尾的第一步；退役树里 shutdown 先于 destroy）。
+     *
+     *  @return 0 成功；否则是 Access 的状态码（上层翻成具名）。
+     */
+    int device_shutdown_43499(const std::uint64_t accessId) noexcept {
+        if (accessId == 0U) {
+            return -1;  /* 没有句柄 */
+        }
+        const std::size_t slot = static_cast<std::size_t>(accessId) - 1U;
+        if (slot >= kMaxAccesses43499 || g_accesses_43499[slot] == nullptr) {
+            return -2;  /* 句柄失效 */
+        }
+        const auto down = g_accesses_43499[slot]->shutdown();
+        return down.ok() ? 0 : static_cast<int>(down.status);
+    }
+
 }  // namespace ghostlock::jni
