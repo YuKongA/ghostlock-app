@@ -542,6 +542,7 @@ tasks.register("deviceGate") {
         expected += "typed: 43284 embeddedImage code=ok size=1440"
         rows["image splice_helper"]?.let { digest -> expected += "sha256=" + digest }
         expected += "typed: 43284 hookPlan code=0"
+        expected += "typed: 43284 moduleCheck code=-4 refusal=module-check-refused"
         expected += "typed: 43284 trigger code=-3 refusal=op-not-wired:trigger"
 
         val missing = expected.filterNot { log.contains(it) }

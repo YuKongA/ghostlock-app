@@ -10,10 +10,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string>
 
 #include "backend/cve_2026_43284/embed/libcxx_blob.hpp"
 #include "backend/cve_2026_43284/embed/splicehelper_blob.hpp"
 #include "backend/cve_2026_43284/hook/sentry_hook.hpp"
+#include "backend/cve_2026_43284/lkm/module_facts.hpp"
 #include "jni/api_43284.hpp"
 
 namespace ghostlock::jni {
@@ -72,11 +74,30 @@ namespace ghostlock::jni {
         }
     }  // namespace
 
+    /**
+     *  模块校验：从镜像字节里读出事实，再按内核自己的规则比对 vermagic。纯计算，不需要设备权限，
+     *  这正是它能先接线的原因；失败由上层给具名拒绝（module-check-refused）。
+     */
+    bool device_module_check(const Init43284Values &, const ModuleCheck43284Values &request,
+                             void *) noexcept {
+        using namespace ghostlock::backend::cve_2026_43284;
+        const lkm::ModuleFacts facts =
+            lkm::read_module_facts(request.moduleImage.data(), request.moduleImage.size());
+        if (!facts.elf_valid || !facts.has_vermagic || facts.vermagic[0] == '\0') {
+            /* 不是内核能接受的模块（错 ELF / 没 .modinfo / 没 vermagic）：具名交给上层。 */
+            return false;
+        }
+        const std::string kernel(reinterpret_cast<const char *>(request.kernelVermagic.data()),
+                                 request.kernelVermagic.size());
+        return lkm::vermagic_matches_kernel(facts.vermagic, kernel.c_str(), facts.has_crcs);
+    }
+
     /** 本构建能提供的 43284 缝（其余留空 ⇒ 那些函数以 op-not-wired 具名拒绝）。 */
     DeviceOps43284 device_ops_43284() noexcept {
         DeviceOps43284 ops{};
         ops.embedded_image = &device_embedded_image;
         ops.hook_plan = &device_hook_plan;
+        ops.module_check = &device_module_check;
         return ops;
     }
 }  // namespace ghostlock::jni

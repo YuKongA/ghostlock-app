@@ -4,6 +4,7 @@ import com.ghostlock.app.core.generated.CredentialLayout43499
 import com.ghostlock.app.core.generated.FinishVictim43499
 import com.ghostlock.app.core.generated.HookPlanRequest43284
 import com.ghostlock.app.core.generated.Init43284
+import com.ghostlock.app.core.generated.ModuleCheck43284
 
 import com.ghostlock.app.core.generated.Init43499
 import com.ghostlock.app.core.generated.KernelLayout43499
@@ -126,6 +127,14 @@ object TypedBackendProbe {
         )
         code = Native43284.hookPlan(handle, hookRequest, hook, refusal)
         step("typed: 43284 hookPlan code=" + code + " words=" + hook.joinToString(",") + " refusal=" + refusal[0])
+
+        /* 模块校验：已经**接线**（纯计算）。用一段假字节 ⇒ 必须具名拒绝，不冒充成功。 */
+        val moduleCheck = ModuleCheck43284(
+            moduleImage = ByteArray(64) { 0x7F },
+            kernelVermagic = "5.15.189-android13".toByteArray(),
+        )
+        code = Native43284.moduleCheck(handle, moduleCheck, refusal)
+        step("typed: 43284 moduleCheck code=" + code + " refusal=" + refusal[0])
 
         /* 真正的设备工作（门/块读写/模块校验/触发/等待）还没接线 ⇒ 具名拒绝。 */
         val ticket = LongArray(1)
