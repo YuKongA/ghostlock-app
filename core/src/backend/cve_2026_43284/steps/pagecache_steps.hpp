@@ -55,6 +55,12 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         std::size_t width = 16U;
         /** The channel the write goes through. */
         contract::AccessChannel channel = contract::AccessChannel::PageCache;
+
+        /**
+         *  耐心：写是派发式的（成功只到 Dispatched），落盘要等内核处理；
+         *  验证段据它做**有界重试**（0 = 不重试，与旧行为一致）。由调用方给 —— 等多久是上层的事。
+         */
+        std::uint64_t budget_ms = 0U;
     };
 
     /** One hook request: where the site and the payload live (the plan), and the block math. */
