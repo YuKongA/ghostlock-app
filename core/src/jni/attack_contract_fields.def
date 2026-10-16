@@ -51,6 +51,10 @@ GL_ATTACK_FIELD(Init43499, spraySize, LONG)
 GL_ATTACK_FIELD(Init43499, sprayCount, LONG)
 GL_ATTACK_FIELD(Init43499, pumpIters, LONG)
 GL_ATTACK_FIELD(Init43499, routeSelected, LONG)
+
+/* 装配完整性（access_params.hpp 的 assembly_complete）还需要这两个：接口此前没有它们。 */
+GL_ATTACK_FIELD(Init43499, fakeTask, LONG)
+GL_ATTACK_FIELD(Init43499, fakeLock, LONG)
 GL_ATTACK_END_GROUP(Init43499)
 
 GL_ATTACK_GROUP(KernelLayout43499)

@@ -899,6 +899,8 @@ object TypedBackendProbe {
         4096L, 256L,              /* spraySize / sprayCount */
         500000L,                  /* pumpIters（退役值） */
         1L,                       /* routeSelected = Select */
+        /* 装配完整性（assembly_complete）还差的最后两项：fake task / fake lock。 */
+        0x1000L, 0x2000L,
     )
 
     private fun layout43499() = KernelLayout43499(
