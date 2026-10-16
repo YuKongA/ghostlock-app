@@ -241,6 +241,15 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             std::size_t tries = 0U;
             for (;;) {
                 tries += 1U;
+                if (tries > 1U) {
+                    /* 发送会偶发失败（真机见 splice NOT sent err=-111）⇒ 重试回合里**重发**一次；
+                     * 窗口每次都重读旧块并重算 IV，所以重复发送在语义上是安全的（防重放会丢弃多余副本）。 */
+                    request.params->offset = request.offset + at;
+                    request.params->offset_set = true;
+                    const auto again = request.access->write(0U, std::span<const std::byte>(in, request.width),
+                                                             request.channel, *request.params);
+                    GL_LOGI("block[%zu] try=%zu resent=%zu/%zu", at, tries, again.value, request.width);
+                }
             const auto back = request.access->read(0U, request.width, request.channel, *request.params);
                 if (back.ok() && back.value.size() == request.width &&
                     std::memcmp(back.value.data(), in, request.width) == 0) {
