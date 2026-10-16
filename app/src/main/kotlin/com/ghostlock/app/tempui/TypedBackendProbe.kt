@@ -889,6 +889,12 @@ if (hookPlanWords != null && hookPlanWords.size >= 4) {
         }
     }.onFailure { problem -> step("typed: hook site image refused " + problem.javaClass.simpleName) }
 }
+            /*
+             * 同一 SA 上必须**延续序号**（参考 real_ops.cpp:306-307：hook 与 carrier 共享 SA/socket ⇒
+             * 后者的块写要接着前者的序号；重置会被防重放窗口丢弃）。真机上两条链各自从 seq=1 起，
+             * 其中一条整条不落地。位置放在**第一次写之前**，并打进持久日志以便复核。
+             */
+            step("typed: hook adopt=" + hook.adoptSequence(stepwise.nextSequence()) + " carrier_next_after=" + stepwise.nextSequence())
             val hookWrote = hook.writeHook(16L, saInit())  /* 这套原语的单位是 16 字节（8 会被 BadWidth 拒 —— 2026-10-15 真机证据） */
             step("typed: hook wrote=" + hookWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
             /* 载荷本体：钩子跳到 payload_file=0xfe628 时那里必须是我们的字节（此前只写了站点 ✗）。 */
