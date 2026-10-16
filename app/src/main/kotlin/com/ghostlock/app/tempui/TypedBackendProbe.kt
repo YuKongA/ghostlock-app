@@ -817,6 +817,8 @@ object TypedBackendProbe {
             runCatching {
                 /* app 读不了 /proc/modules（EACCES，Android 限制）⇒ 用能看到的三件事报 ksud 状态。 */
                 val moduleDir = java.io.File("/sys/module/kernelsu").exists()
+                val lkmOk = java.io.File("/data/local/tmp/.ghostlock_lkm_ok").exists()
+                val lkmFail = java.io.File("/data/local/tmp/.ghostlock_lkm_fail").exists()
                 val ksudPaths = listOf("/data/adb/ksu", "/data/adb/ksud", "/data/adb/ksu/bin/su")
                     .joinToString(",") { path -> path.substringAfterLast("/") + "=" + (if (java.io.File(path).exists()) "1" else "0") }
                 val markers = listOf("/dev/df", "/dev/dfm0", "/dev/df0", "/dev/df1")
@@ -830,7 +832,7 @@ object TypedBackendProbe {
                 } else {
                     "(missing)"
                 }
-                step("typed: ksud status sysfsModule=" + (if (moduleDir) "1" else "0") + " userspace={" + ksudPaths + "}")
+                step("typed: ksud status sysfsModule=" + (if (moduleDir) "1" else "0") + " lkmOk=" + (if (lkmOk) "1" else "0") + " lkmFail=" + (if (lkmFail) "1" else "0") + " userspace={" + ksudPaths + "}")
                 step("typed: ksud status markers=" + markers)
                 step("typed: ksud status rootlog=" + logTail)
             }.onFailure { problem ->
