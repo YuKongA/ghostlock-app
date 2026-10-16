@@ -581,7 +581,8 @@ class Assembled43284(
                 accessKernelModversions = false,
                 accessKernelModuleForceUnload = false,
                 accessHookPlanSet = false,
-                accessTriggerDelayMs = 0L,
+                /* 参考 execution_binding.cpp:170 的默认值就是 500：孙进程要先睡一下，init 的收割路径才来得及走到被钩的 sentry。 */
+                accessTriggerDelayMs = 500L,
                 accessWaitMs = 0L,
                 accessSuccessMarkerPath = (markerDir + "/ghostlock-success").toByteArray(),
                 accessFailureMarkerPath = (markerDir + "/ghostlock-failure").toByteArray(),

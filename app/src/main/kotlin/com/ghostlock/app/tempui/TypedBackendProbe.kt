@@ -974,8 +974,9 @@ val payloadWrote = if (payload != null) hook.writeImage(payload, hookLanding, 16
                 step("typed: module refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
             }
             /* 非 0 延迟：触发要等 helper/hook 的效应铺开（设计里的 accessTriggerDelayMs 目前是 0）。 */
-            val triggerCode = hook.trigger(if (hookParams.accessTriggerDelayMs > 0L) hookParams.accessTriggerDelayMs else 2000L)
-            step("typed: hook trigger code=" + triggerCode + " delayMs=" + hookParams.accessTriggerDelayMs + " refusal=" + hook.lastRefusal)
+            val triggerDelay = if (hookParams.accessTriggerDelayMs > 0L) hookParams.accessTriggerDelayMs else 2000L
+            val triggerCode = hook.trigger(triggerDelay)
+            step("typed: hook trigger code=" + triggerCode + " delayMs=" + hookParams.accessTriggerDelayMs + " used=" + triggerDelay + " refusal=" + hook.lastRefusal)
             val terminal = hook.waitTerminal(
                 budgetMs = 15000L,
                 pollMs = 100L,
