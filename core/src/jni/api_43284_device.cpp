@@ -995,6 +995,11 @@ namespace ghostlock::jni {
         request.width = static_cast<std::uint64_t>(values.hookWidth);
         const char *refusal = nullptr;
         const bool hook_wrote = backend::cve_2026_43284::steps::write_hook(request, &refusal);
+        GL_LOGI("hook: map hook_vaddr=0x%llx hook_file=0x%llx payload_vaddr=0x%llx payload_file=0x%llx",
+                static_cast<unsigned long long>(plan.hook_vaddr),
+                static_cast<unsigned long long>(plan.hook_file_offset),
+                static_cast<unsigned long long>(plan.payload_vaddr),
+                static_cast<unsigned long long>(plan.payload_file_offset));
         GL_LOGI("hook: plan site_file=0x%llx site_vaddr=0x%llx guard=0x%08x displaced=0x%08x payload_file=0x%llx max=%llu",
                 static_cast<unsigned long long>(plan.hook_file_offset),
                 static_cast<unsigned long long>(plan.hook_vaddr),
