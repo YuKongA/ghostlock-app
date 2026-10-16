@@ -25,6 +25,7 @@
 
 #include "backend/cve_2026_43284/access_params.hpp"
 #include "backend/cve_2026_43499/kernel_access.hpp"
+#include "jni/gl_log.hpp"
 
 namespace ghostlock::backend::cve_2026_43284::landing {
     /** How wide this backend's write is. Sixteen bytes, because that is the page cache block the
@@ -90,9 +91,11 @@ namespace ghostlock::backend::cve_2026_43284::landing {
          *  parameter set exists. */
         [[nodiscard]] bool bring_up_with(const SaMaterial &sa) noexcept {
             if (up_ || !sa.set) {
+                GL_LOGI("landing: bring_up refused already_up=%d sa_set=%d", up_ ? 1 : 0, sa.set ? 1 : 0);
                 return false;
             }
             if (!window_.open_doors(sa)) {
+                GL_LOGI("landing: bring_up refused at open_doors");
                 return false;
             }
             sa_ = sa;
