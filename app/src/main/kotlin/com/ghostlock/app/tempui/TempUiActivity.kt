@@ -169,7 +169,7 @@ private fun TempUiScreen(
         GhostLog.configure(LogLevel.Info)
         GhostLog.i(TAG_UI, "tempui: 临时界面已启动")
         lines += "tempui: 临时界面已启动（旧 UI 已废弃）"
-        runHeavy("启动自检") { onProbe() + onGate() + onPlan() }
+        /* 用户裁定（2026-10-16）：**启动即执行**一律取消 —— 整条链只由按钮触发（否则一开 app 就跑攻击）。 */
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
