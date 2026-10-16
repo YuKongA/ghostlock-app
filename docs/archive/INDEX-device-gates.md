@@ -82,5 +82,3 @@
 | docs/analysis/s4-r1-implementation.md | docs/archive/20261006-1809-s4-r1-implementation.md | 已实行（① ② 不适用；③ 产物核验通过） | 2026-10-06 |
 | docs/analysis/s4-r3-implementation.md | docs/archive/20261006-1809-s4-r3-implementation.md | 同上 | 2026-10-06 |
 | docs/analysis/s4-r4-implementation.md | docs/archive/20261006-1809-s4-r4-implementation.md | 同上 | 2026-10-06 |
-
-

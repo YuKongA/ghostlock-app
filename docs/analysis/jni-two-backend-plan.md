@@ -95,6 +95,7 @@ entry:         key u16 | kind u8 (0=u64, 1=bytes) | reserved u8 | length u32 | p
 1. op 只是「一笔 native 事务」的入口，不是步骤调度器：**Kotlin 决定调哪个 op、什么顺序、重试几次**。
 2. 43499 的 route、offset、几何、调优、耐心、consumer 策略全部由 Kotlin 从 profile 取值后随帧传入；native 用既有的 `usable_for_initialize()`/`usable_for_access()`/`assembly_complete()`/`consistent()` 校验，缺项 ⇒ `init-bad-params`，**绝不填默认**。
 3. `offset == 0` 合法 ⇒ 必须用 `offset_set` 独立表达（既有约定，`access_params.hpp:39-42`）。
+
 4. `WriteWord` 的 `form` 是**闭集**（见 §4.1），native 映射到 ` (mode, leaf) ` 并在描述符里公布可用集合；未知组合 ⇒ `write-refused:form`。
 5. 写效果不可确认 ⇒ 状态 `indeterminate`（**不是成功**）；Kotlin 映射 `AccessFailure.INDETERMINATE` 并冻结引擎。
 
@@ -175,6 +176,7 @@ app/src/main/kotlin/com/ghostlock/app/data/nativeaccess/     # 新增：JNI 适�
 1. 顺序 = 输入声明的顺序，经 `PlanCatalog` 校验（未知步名 ⇒ `step-unknown`，不得静默跳过）。
 2. 缺前置 ⇒ 该步 `Refused("precondition:<which>")`，**不进入 native**。
 3. 任一步 `Refused` ⇒ 立即停止。
+
 4. 写效果 `INDETERMINATE` ⇒ 引擎进入 `Frozen`：除 `snapshot`/`shutdown` 外不再发出任何调用，**不得重试**。
 5. 重试次数/间隔**只**来自输入值；0 ⇒ 不重试，不填默认。
 6. 每步产出 `StepResult{step, outcome, reasonToken, receipts[]}`；日志一行/步（拒绝走 `warn`）。
@@ -307,11 +309,11 @@ J3 在执行时拆成两半，理由是**可验证性**：
 1. JNI 层不得出现：profile 解析（超出既有 wire 文档路径）、步骤选择、重试策略、日志文本渲染、地址算术。
 2. 不得把 43499 的读报成可用（`can_read()==false` ⇒ 描述符 `read = null`）。
 3. Kotlin 不得绕过 token 自行打开目标载体（自身 payload .ko 与 helper 字节除外）。
+
 4. 跨端 op/key/status 列表不得手抄，只经 manifest 对拍。
 5. 不得用 git 写回命令恢复被删文件；J0 的 Makefile 是**新写**。
 6. 无设备证据不得宣称写效果或 root；不得以 host 测试代替真机判据。
 7. 攻击关键路径的每批只允许**一条写入流**；共享 `build/**` 的门禁串行跑。
-
 
 ## §10 取代：函数面（用户裁定 2026-10-14）
 
@@ -349,7 +351,9 @@ stale-handle / busy / stale-target / inflight。名字由 call_code_name 拼一�
 1. 未接线的设备工作继续以 op-not-wired:<函数名> 具名拒绝（不许沉默、不许假装成功）。
 2. 前置不成立继续以 not-ready:<缺什么> 指名（例如 not-ready:prepare / not-ready:resolve-target）。
 3. 效果不确定继续有独立答案（43284 的 inflight 是 InFlight 码，不是失败也不是成功）。
+
 4. 跨端常量（镜像摘要、钩子四个数）继续由 native 导出、两端对拍，不手抄。
+
 ## §11 J7.5：分别用两个 backend 取到 root（2026-10-15 目标）
 
 **目标原文**：执行至 J7.5 —— 成功分别用两个 backend 获取 root，可以先内置临时逻辑，真实 profile 还需进一步设计。
@@ -384,8 +388,8 @@ stale-handle / busy / stale-target / inflight。名字由 call_code_name 拼一�
 
 | 批次 | 范围 | 旧 → 新 |
 |---|---|---|
-| R1（已做，见 git log） | JNI 边界层（我引入的那部分） | Ops43499Seams / Ops43284Seams → DeviceOps43499 / DeviceOps43284；device_landings_* → device_ops_*；成员 ops_ → device_ops_；会话模板 → 工厂 set_factory（秘密不可拷贝） |
-| R2 | 43499 的落地原语 | WordLanding → WordLanding；MulticastLanding → MulticastLanding；race/futex_ops_linux → race/futex_linux（LinuxFutexOps → LinuxFutex）；perf_ops* → perf_ops*；leak/snitch_ops* → leak/snitch_ops*（SnitchOps → SnitchOps）；memory/heap_ops* → memory/heap_ops*（HeapOps → HeapOps） |
+| R1（已做，见 git log） | JNI 边界层（我引入的那部分） | Ops43499Seams / Ops43284Seams → DeviceOps43499 / DeviceOps43284；device_landings_*→ device_ops_*；成员 ops_→ device_ops_；会话模板 → 工厂 set_factory（秘密不可拷贝） |
+| R2 | 43499 的落地原语 | WordLanding → WordLanding；MulticastLanding → MulticastLanding；race/futex_ops_linux → race/futex_linux（LinuxFutexOps → LinuxFutex）；perf_ops*→ perf_ops*；leak/snitch_ops*→ leak/snitch_ops*（SnitchOps → SnitchOps）；memory/heap_ops*→ memory/heap_ops*（HeapOps → HeapOps） |
 | R3 | 43284 的落地原语与目录 | landing/ 目录 → landing/；PageCacheLanding → PageCacheLanding；其余 landing/ 下的文件按同规则改名 |
 | R4 | 测试与文档 | FakeOps / RecordingOps → FakeOps / RecordingOps；OpsResult → OpsResult；文档里的「缝」统一改成「设备工作 / 落地原语」 |
 
@@ -422,7 +426,6 @@ stale-handle / busy / stale-target / inflight。名字由 call_code_name 拼一�
 
 因此 3a 的写码顺序是：①设备侧 DoorOps 实现（open_target=用递进来的 fd、connect_esp=按 sa 建 UDP socket）；
 ②窗口 + 落地对象按会话建立（lazy，随 ticket）；③write_block/read_block 走 land_block/read_block + adopt_sequence。
-
 
 ### §11.7 重要勘察结果：43284 的设备侧整链驱动器已经在树里（2026-10-15）
 
@@ -671,7 +674,6 @@ J7.5-4 的顺序因此是：
         CrashDumpBridge bridge;
         OldPageSource old_page{};
 
-
 ### §11.17 用户裁定（2026-10-15）：拼装/写目标/收尾只在 Kotlin，native 只留 JNI 接口
 
 **裁定原文要点**：不要用以前的 C++ 高级逻辑往 C 代码里加；拼装和具体写目标/收尾只在 Kotlin 做；native 只留 JNI 接口；
@@ -695,6 +697,7 @@ Kotlin 要能自己完成拼装/写/收尾，接口至少需要这些**句柄式
 1. 门与拼接：openTarget(path) → targetId；closeTarget(targetId)；connectEsp(targetId, sa) → socketId；closeSocket(socketId)；
 2. 拼接面：makeSurface(targetId, socketId, oldPage?, helper?) → surfaceId；destroySurface(surfaceId)；
 3. 窗口与落地：makeLanding(surfaceId) → landingId；destroyLanding(landingId)；
+
 4. 落地读写：landBlock(landingId, offset, block)；readBlock(landingId, offset) → bytes；adoptSequence(landingId, next)；nextSequence(landingId) → int；bringUp(landingId, sa) → bool；
 5. Access 那条线：makeAccess(landingId) → accessId；accessInitialize(accessId, params) → status；writeImageVerified(accessId, params, imageRole|bytes, offset, width) → outcome；writeHook(accessId, params, plan) → outcome；
 6. 收尾：destroyAccess(accessId)；以及统一的 destroy(handle) 语义（谁建谁拆，跨窗口序号由 Kotlin 用 nextSequence 取后再 adoptSequence 接续）。
@@ -726,6 +729,7 @@ Kotlin 要能自己完成拼装/写/收尾，接口至少需要这些**句柄式
 1. 批①：删掉 Landing43284（拼装）与 g_session（收尾），换成 openTarget/connectEsp/makeSurface/makeLanding 四个句柄原语；
 2. 批②：把 device_write_block 拆成 landBlock/adoptSequence/nextSequence 三个原语，readBlock 保留；
 3. 批③：新增 Access 线（makeAccess/accessInitialize/writeImageVerified/writeHook）；
+
 4. 批④：Kotlin 侧编排（先探针、后正式链）替换现在 native 里的装配与写目标；之后 device_resolve 只留 openTarget/closeTarget 语义。
 
 ### §11.19 批①要加的契约行（照抄用；2026-10-15 定稿）
@@ -755,6 +759,7 @@ D1 单表风格：GL_ATTACK_FIELD(GroupName, fieldName, TYPE)；已有先例是 
 1. 往 core/src/jni/attack_contract_fields.def 加上面九行；
 2. ./gradlew exportJniAttackContract（生成 Kotlin DTO、native Values、读取器、manifest）；
 3. 宿主测试补新组的字段断言（生成的那份测试若断言组数/字段数，同步更新）；checkAll 绿；
+
 4. native 里加四个薄原语（按 id 查表 + 调一个既有原语 + 回来），**同时删掉 Landing43284 与 g_session**（§11.18 标定的违规点）；
 5. Kotlin 探针改成分步调用（这就是「拼装只在 Kotlin」的落地）；deviceGate 绿 + 归档。
 
@@ -899,6 +904,7 @@ fields_valid()（模型 103-124）：① 字段的组必须在表里；② 名�
 1. 三张表（门 / socket / surface·landing）都以不透明 id 对外，谁建谁拆（closeTarget / closeSocket / destroySurface / destroyLanding）；
 2. PairedDoor 不拥有 fd —— 这是「谁建谁关」的必要条件，否则会 double close；
 3. connectEsp 的结果要**存表并返回 id**（上一批只返回调用码，下一批补）；
+
 4. surface/landing 都不可拷贝，表里放 unique_ptr，销毁时按 id 析构。
 
 下一批顺序：①connectEsp 存表返 id ②PairedDoor + makeSurface/destroySurface ③makeLanding/destroyLanding
@@ -973,6 +979,7 @@ steps/pagecache_step_runner.cpp:55-61 的注释写明：
    这也解释了为什么「让内核挑临时端口」那条路不可能让写落上；
 3. 若系统把该 SPI 判为非法/冲突、或算法不被允许，会抛具名异常（IllegalArgumentException / ResourceUnavailableException 等）——
    探针要把异常类型与 message 原样打出来（不许吞），这就是「具名拒绝」在 Kotlin 侧的对应做法；
+
 4. 建好之后，native 侧不需要任何改动：写路径已经通了（landed=1 但内容不落），SA 一到位内核就会处理那些报文。
 
 **判据（真机）**：探针把 SA 建起来 → 经落地对象写 helper 镜像 → 期望写满 90 块且回读等于 helper 头部；
@@ -1103,6 +1110,7 @@ B. Kotlin 每次调用都把 fd 传进来（makeSurface(targetId, socketFd)）�
    - 全部「按 id 查表 + 调一个既有原语 + 回来」，拼装/顺序/收尾仍归 Kotlin；
 2. core/CMakeLists.txt：把新文件**同时**加进 GL_JNI_43499_SRCS（第 212 行那条显式列表）与宿主的便携源列表；
 3. native_43499.cpp：新函数逐个导出（照 43284 的那批写法：出参 jlongArray、失败具名、读取器用 contract:: 限定）；
+
 4. Kotlin：Native43499 补齐 external 声明；新建 **Assembled43499**（与 Assembled43284 同型的包装类）；
 5. 真机：跑一条最小序列（route 从 catalog 取一个值），判据与 43284 同型（initialize/write 通、回读取决于该 route）。
 
@@ -1165,6 +1173,7 @@ B. Kotlin 每次调用都把 fd 传进来（makeSurface(targetId, socketFd)）�
 1. native：加 documentFromText / destroyDocument 两个原语（内部用 glkv3_document 的既有解析；失败具名）；
 2. 契约：给 43499 的访问参数加 documentId 字段（或在 makeAccess43499 里加一个入参 —— 后者更小）；
 3. Kotlin：Assembled43499 侧接收一份文档文本（先用设备上现成的 profile 资产），交给 native 取 id；
+
 4. 真机最小序列：建文档 → 取访问对象(route, documentId) → initialize/write/read → 看是否落盘。
    这一步会回答「43499 是否需要同一套 SA」这个分水岭问题。
 
@@ -1252,6 +1261,7 @@ makeAccess43499(route, documentId)：把 entry->doc.get() 作为 Access43499Para
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
 2. 攻击关键路径改动按 AGENTS §8：真机门禁与 device-gates/ 归档，缺一不可；
 3. 每条链**各自**过真机（分别取到 root），不合并成一次；
+
 4. 改核心攻击代码时按 AGENTS §5 做所有权与 UAF 复查，逐条核对资源准备/存活/回收。
 
 ## §9 执行记录（执行者逐批追加；不得回填未发生的通过）

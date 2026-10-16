@@ -264,4 +264,3 @@ const glk_cm_module *glk_cm_entry(uint32_t host_abi_version);
    避免把某个 backend 的内部步骤写死进全局 ABI。
 5. **能力缺失的可观测性**：每个未注册/被跳过的库必须在诊断里出现（name/version/缺哪个能力/原因），
    便于现场定位"为什么某个厂商对策没生效"。
-
