@@ -96,6 +96,14 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             return false;
         }
         for (std::size_t i = 0U; i < request.width; ++i) { block[i] = before.value[i]; }
+        /* Print the site as it really is: idempotency (our branch already there) and a plan that does not
+         * match this image look identical from the refusal alone. */
+        char site_hex[64] = {};
+        for (std::size_t i = 0U; i < request.width && i < 16U; ++i) {
+            (void) std::snprintf(site_hex + (i * 3U), 4U, "%02x ",
+                            static_cast<unsigned>(std::to_integer<std::uint8_t>(block[i])));
+        }
+        GL_LOGI("hook: site bytes %s", site_hex);
         const auto word_at = [&](std::size_t at) noexcept {
             return static_cast<std::uint32_t>(std::to_integer<std::uint8_t>(block[at])) |
                    (static_cast<std::uint32_t>(std::to_integer<std::uint8_t>(block[at + 1U])) << 8U) |
