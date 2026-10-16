@@ -628,11 +628,12 @@ namespace ghostlock::jni {
         if (slot >= kMaxSurfaces || g_landings[slot] == nullptr) {
             return false;
         }
-        return g_landings[slot]->bring_up_with(sa_material_of(params));
-        const bool landing_up = g_landings[slot]->bring_up_with(sa_material_of(params));
-        GL_LOGI("landing: bring_up slot=%zu up=%d spi=0x%08x encap=%u sender=%u icv=%u",
-                slot, landing_up ? 1 : 0, params.spi, static_cast<unsigned>(params.encapPort),
-                static_cast<unsigned>(params.senderPort), static_cast<unsigned>(params.icvLength));
+        const backend::cve_2026_43284::SaMaterial material = sa_material_of(params);
+        const bool landing_up = g_landings[slot]->bring_up_with(material);
+        GL_LOGI("landing: bring_up slot=%zu up=%d sa_set=%d spi=0x%08x encap=%u sender=%u icv=%u",
+                slot, landing_up ? 1 : 0, material.set ? 1 : 0, material.spi,
+                static_cast<unsigned>(material.encap_port), static_cast<unsigned>(material.sender_port),
+                static_cast<unsigned>(material.icv_len));
         return landing_up;
     }
 
