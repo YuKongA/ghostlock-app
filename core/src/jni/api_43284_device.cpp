@@ -485,6 +485,9 @@ namespace ghostlock::jni {
         bool target_remote = false;
         /* The door this surface serves: a write can then find the landing that is actually up. */
         std::size_t door_slot = 0U;
+
+        /** 建面时那扇门的**完整票据**：查表先按它精确匹配，避免多个面同槽值时的误配。 */
+        std::uint64_t door_token = 0U;
     };
     constexpr std::size_t kMaxSurfaces = 4U;
     std::unique_ptr<Surface> g_surfaces[kMaxSurfaces];
@@ -559,6 +562,7 @@ namespace ghostlock::jni {
             if (g_surfaces[index] == nullptr) {
                 auto surface = std::make_unique<Surface>();
                 surface->door_slot = target_slot;
+                surface->door_token = targetId;
                 surface->door = std::make_unique<PairedDoor>(g_doors[target_slot].fd, g_sockets[socket_slot]);
                 /* 面与门的配对是这条链的关键事实：哪个 fd、哪扇门，落地的读写就落在那里。 */
                 GL_LOGI("make_surface index=%zu targetId=0x%llx target_slot=%zu fd=%d path=%s socket=%d",
@@ -647,13 +651,35 @@ namespace ghostlock::jni {
             return nullptr;
         }
         const std::size_t want = static_cast<std::size_t>(handle) - 1U;
+        /*
+         * 先按**完整票据**精确匹配（建面时记下的那个值）；只有它落空时才退回按槽值匹配，
+         * 且要求**恰好命中一个** —— 多个面同槽值时选错面，正是载体镜像被送进 libc++ 落地的原因。
+         */
+        std::size_t hit = kMaxSurfaces;
+        std::size_t hit_count = 0U;
         for (std::size_t i = 0U; i < kMaxSurfaces; ++i) {
-            if (g_surfaces[i] != nullptr && g_surfaces[i]->door_slot == want && g_landings[i] != nullptr) {
-                GL_LOGI("landing_of_door hit token=0x%llx want=%zu surf=%zu door_path=%s",
-                        static_cast<unsigned long long>(door_token), want, i,
-                        (want < kMaxDoors && !g_doors[want].path.empty()) ? g_doors[want].path.c_str() : "(unknown)");
-                return g_landings[i].get();
+            if (g_surfaces[i] == nullptr || g_landings[i] == nullptr) {
+                continue;
             }
+            if (g_surfaces[i]->door_token == door_token) {
+                hit = i;
+                hit_count = 1U;
+                break;
+            }
+            if (g_surfaces[i]->door_slot == want) {
+                hit = (hit_count == 0U) ? i : hit;
+                hit_count += 1U;
+            }
+        }
+        if (hit_count == 1U && hit < kMaxSurfaces) {
+            GL_LOGI("landing_of_door hit token=0x%llx surf=%zu door_path=%s",
+                    static_cast<unsigned long long>(door_token), hit,
+                    (want < kMaxDoors && !g_doors[want].path.empty()) ? g_doors[want].path.c_str() : "(unknown)");
+            return g_landings[hit].get();
+        }
+        if (hit_count > 1U) {
+            GL_LOGI("landing_of_door ambiguous token=0x%llx want=%zu n=%zu",
+                    static_cast<unsigned long long>(door_token), want, hit_count);
         }
         GL_LOGI("landing_of_door miss token=0x%llx want=%zu surfaces=%zu",
                 static_cast<unsigned long long>(door_token), want, kMaxSurfaces);
