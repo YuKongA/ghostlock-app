@@ -618,7 +618,15 @@ namespace ghostlock::jni {
         if (door_token == 0U) {
             return nullptr;
         }
-        const std::size_t want = static_cast<std::size_t>(door_token) - 1U;
+        /*
+         * door_token 是**打包票据**（(门句柄 << 32) | 代），不是下标：门句柄 = slot + 1，
+         * 与 device_make_surface 里同一条解码保持一致（那里也是 >> 32 再减一）。
+         * 早先直接减一会拿票据去比纯下标，命中的总是第一个面 —— 于是读写落到载体的落地。
+         */
+        if ((door_token >> 32U) == 0U) {
+            return nullptr;
+        }
+        const std::size_t want = static_cast<std::size_t>(door_token >> 32U) - 1U;
         for (std::size_t i = 0U; i < kMaxSurfaces; ++i) {
             if (g_surfaces[i] != nullptr && g_surfaces[i]->door_slot == want && g_landings[i] != nullptr) {
                 return g_landings[i].get();
