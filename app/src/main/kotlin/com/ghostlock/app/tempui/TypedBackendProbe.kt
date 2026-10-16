@@ -928,11 +928,12 @@ val payloadWrote = if (payload != null) hook.writeImage(payload, hookLanding, 16
                                  * 原值来自本会话对原厂盘面的读数：1f 00 00 39 01 04 00 f9 08 81 5e f8 28 00 08 8b。
                                  */
                                 val restore = java.io.File("/data/local/tmp/.gl_restore").exists()
+                                /* 撤销：写回**站点块**(0xB30A0 = 733344)的原厂 16 字节，钩子即消失（1 个字之差）。 */
                                 val restoreBytes = byteArrayOf(
-                                    0x1F, 0x00, 0x00, 0x39, 0x01, 0x04, 0x00, 0xF9.toByte(),
-                                    0x08, 0x81.toByte(), 0x5E, 0xF8.toByte(), 0x28, 0x00, 0x08, 0x8B.toByte(),
+                                    0xBF.toByte(), 0x23, 0x03, 0xD5.toByte(), 0xC0.toByte(), 0x03, 0x5F, 0xD6.toByte(),
+                                    0x5F, 0x24, 0x03, 0xD5.toByte(), 0x28, 0x00, 0x40, 0xF9.toByte(),
                                 )
-                                val target2 = if (restore) 733360L else blk02
+                                val target2 = if (restore) 733344L else blk02
                                 val toWrite = if (restore) restoreBytes else before
                                 val siteWrote = hook.writeImage(toWrite, target2, 16L, saInit(hook.nextSequence()))
                                 val after = hook.readBlock(hookDoor, target2)
