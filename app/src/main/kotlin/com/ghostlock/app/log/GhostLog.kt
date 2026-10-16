@@ -40,7 +40,7 @@ object GhostLog {
     private val ring = ArrayDeque<String>()
     private var capacity = DEFAULT_CAPACITY
     private var minimum: LogLevel = LogLevel.Info
-    private var sinks: List<LogSink> = listOf(LogcatSink)
+    private var sinks: List<LogSink> = listOf(LogcatSink, FileSink)
 
     /** 设定最低级别与环容量；已记录的环内容保留。 */
     fun configure(minLevel: LogLevel = LogLevel.Info, ringCapacity: Int = DEFAULT_CAPACITY) {
@@ -56,7 +56,7 @@ object GhostLog {
     /** 换掉去处（单测用假去处；诊断页可以再加一个文件去处）。 */
     fun install(vararg replacement: LogSink) {
         synchronized(lock) {
-            sinks = if (replacement.isEmpty()) listOf(LogcatSink) else replacement.toList()
+            sinks = if (replacement.isEmpty()) listOf(LogcatSink, FileSink) else replacement.toList()
         }
     }
 
@@ -117,6 +117,28 @@ object GhostLog {
  * 用调用方的标签而不是统一一个：门禁按 GhostlockGate 抓、临时界面按 GhostlockUi 抓，各自
  * adb logcat -s <tag>:V 就能取到自己的那一段，不必事后在混合输出里再筛一遍。
  */
+/**
+ * 第二个去处：把同一行**追加到设备文件**里，让日志扛得住重启（logcat 缓冲会随重启清空，屏幕上的环也随进程消失）。
+ *
+ * 路径固定 /data/local/tmp/ghostlock-run.log，临时界面与门禁共用一份，便于事后取证。
+ * 超过 @see MAX_BYTES 就从零重来；写失败只当没写成 —— 日志不该把主流程拖下水。
+ */
+object FileSink : LogSink {
+    private const val PATH = "/data/local/tmp/ghostlock-run.log"
+    private const val MAX_BYTES = 2L * 1024L * 1024L
+
+    override fun write(level: LogLevel, tag: String, message: String, line: String) {
+        try {
+            val file = java.io.File(PATH)
+            if (file.length() > MAX_BYTES) {
+                file.writeText("")
+            }
+            file.appendText(System.currentTimeMillis().toString() + " " + line + "\n")
+        } catch (_: Throwable) {
+            /* 没权限或磁盘问题：只当这条文件日志不存在。 */
+        }
+    }
+}
 object LogcatSink : LogSink {
     override fun write(level: LogLevel, tag: String, message: String, line: String) {
         when (level) {
