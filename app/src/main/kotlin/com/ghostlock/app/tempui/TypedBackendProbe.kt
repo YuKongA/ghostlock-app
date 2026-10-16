@@ -808,7 +808,12 @@ object TypedBackendProbe {
                 val payload = hook.image(Assembled43284.ROLE_IMAGE_LANDING_PAYLOAD)
                 step("typed: hook payload bytes=" + (payload?.size ?: -1))
                 if (payload != null && payload.isNotEmpty()) {
-                    val payloadWrote = hook.writeImage(payload, 0xFE628L, 16L, saInit(hook.nextSequence()))
+                    /* The branch was written for the landing the plan carries; a Kotlin constant disagreed with it on
+ * the device (the branch aimed 0x98 past 0xFE628), so take the offset from the plan itself. */
+val hookPlanWords = hook.hookPlan("splice")
+val hookLanding = if (hookPlanWords != null && hookPlanWords.size >= 4) hookPlanWords[3] else 0xFE628L
+step("typed: hook landing=" + hookLanding)
+val payloadWrote = if (payload != null) hook.writeImage(payload, hookLanding, 16L, saInit(hook.nextSequence())) else false
                     step("typed: hook payload wrote=" + payloadWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
                 }
             }.onFailure { problem ->
