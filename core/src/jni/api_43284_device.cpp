@@ -566,6 +566,17 @@ namespace ghostlock::jni {
                         g_doors[target_slot].fd,
                         g_doors[target_slot].path.empty() ? "(none)" : g_doors[target_slot].path.c_str(),
                         g_sockets[socket_slot]);
+                /*
+                 * fd 与 path 是不是同一个文件？从 /proc/self/fd 读一次链接即可；脱钩时读写就会落在
+                 * 另一个文件上（本会话真机：读 libc++ 的偏移却读出载体里的字符串）。
+                 */
+                if (g_doors[target_slot].fd >= 0) {
+                    char link[256] = {};
+                    const std::string fd_path = "/proc/self/fd/" + std::to_string(g_doors[target_slot].fd);
+                    const ssize_t got = ::readlink(fd_path.c_str(), link, sizeof(link) - 1U);
+                    GL_LOGI("make_surface fd=%d points at %s", g_doors[target_slot].fd,
+                            got > 0 ? link : "(readlink failed)");
+                }
                 const bool remote = g_doors[target_slot].fd < 0;
                 if (remote) {
                     /* 载体是本进程打不开的 vendor 文件：读与写都经 patch #1 写下的 helper（桥）。 */
