@@ -157,7 +157,7 @@ flowchart LR
 | 43284 数据函数接线（两张图 + 钩子计划） | 273a6069 / 270fb96b | 真机：1440B + 摘要与 manifest 一致、钩子四数 |
 | 43284 module_check（真规则） | 563babc9 | 真机：module-check-refused |
 | 43284 wait_terminal（真轮询三态） | 2266022c | 真机：wait_terminal:inflight |
-| 43284 resolve（真开门 + 票据） | 7ecb906f | 真机：票据 (1<<32)|1、door-refused |
+| 43284 resolve（真开门 + 票据） | 7ecb906f | 真机：票据 (1<<32)\|1、door-refused |
 | 会话参数 → 门材料（零密钥不是凭据） | 0712c906 | 宿主逐字段测试 |
 | 更名 R1 / R2 / R4（不用 seam 这种临时名） | fb7cf17b / dfbb942a / 5d40d9a0 | ctest 132/132 + checkAll |
 
