@@ -805,6 +805,12 @@ object TypedBackendProbe {
             val hook = Assembled43284(Native43284.create()) { saInit() }
             val hookDoor = hook.openTargetStepwise(Assembled43284.HOOK_TARGET)
             hook.reuseSocketFrom(stepwise)
+/*
+ * 同一 SA 上必须**延续序号**（参考 real_ops.cpp:306-307：hook target 共享 carrier 的 SA/socket，
+ * 它的块写要继续 carrier 的序号；重置就会被防重放窗口丢弃）。真机见过两条链各自从 seq=1 起，
+ * 其中一条因此整条不落地 —— 载体那条就是这么丢的。
+ */
+step("typed: hook adopt sequence " + hook.adoptSequence(stepwise.nextSequence()))
             hook.buildSurface()
             hook.buildLanding()
             hook.buildAccess()
