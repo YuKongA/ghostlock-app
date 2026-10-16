@@ -11,6 +11,7 @@
 
 #include "backend/cve_2026_43499/access_factory_43499.hpp"
 #include "jni/api_43499_device.hpp"
+#include "jni/gl_log.hpp"
 
 namespace ghostlock::jni {
     namespace {
@@ -31,6 +32,7 @@ namespace ghostlock::jni {
     }  // namespace
 
     std::uint64_t device_make_access_43499(const int route) noexcept {
+        GL_LOGI("43499: make_access route=%d", route);
         const auto named = static_cast<profile::RouteId>(route);
         std::unique_ptr<contract::KernelAccess> access =
             backend::cve_2026_43499::create_kernel_access_43499(named);
@@ -90,6 +92,7 @@ namespace ghostlock::jni {
     /** @return 0 成功；否则 Access 状态码（上层翻具名）。 */
     int device_initialize_43499(const std::uint64_t accessId, const std::uint64_t route,
                                 const std::uint64_t offset, const bool offset_set) noexcept {
+                                    GL_LOGI("43499: initialize access=%llu route=%llu", static_cast<unsigned long long>(accessId), static_cast<unsigned long long>(route));
         if (accessId == 0U) {
             return -1;
         }
@@ -107,6 +110,7 @@ namespace ghostlock::jni {
     bool device_write_43499(const std::uint64_t accessId, const std::uint64_t route,
                            const std::uint64_t offset, const std::uint64_t address,
                            const std::vector<std::uint8_t> &block, const char **why) noexcept {
+                               GL_LOGI("43499: write access=%llu route=%llu bytes=%zu", static_cast<unsigned long long>(accessId), static_cast<unsigned long long>(route), block.size());
         if (why != nullptr) {
             *why = nullptr;
         }
@@ -142,6 +146,7 @@ namespace ghostlock::jni {
                            const std::uint64_t offset, const std::uint64_t address,
                            const std::size_t bytes, std::vector<std::uint8_t> &out,
                            const char **why) noexcept {
+                               GL_LOGI("43499: read access=%llu route=%llu bytes=%zu", static_cast<unsigned long long>(accessId), static_cast<unsigned long long>(route), bytes);
         if (why != nullptr) {
             *why = nullptr;
         }
