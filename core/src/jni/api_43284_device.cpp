@@ -388,6 +388,16 @@ namespace ghostlock::jni {
         peer.sin_family = AF_INET;
         peer.sin_port = htons(sa.encap_port);
         peer.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        /* Which local port did the bind actually take? The SA only matches packets that arrive on
+         * the port it registered, so this is the field to compare with encapPort. */
+        {
+            sockaddr_in bound{};
+            socklen_t bound_len = sizeof(bound);
+            if (::getsockname(fd, reinterpret_cast<sockaddr *>(&bound), &bound_len) == 0) {
+                GL_LOGI("esp: socket local_port=%u (the port the SA must be told)",
+                        static_cast<unsigned>(ntohs(bound.sin_port)));
+            }
+        }
         GL_LOGI("esp: bind(local) ok, connecting to peer port=%u",
                 static_cast<unsigned>(sa.encap_port));
         if (connect(fd, reinterpret_cast<sockaddr *>(&peer), sizeof(peer)) != 0) {
