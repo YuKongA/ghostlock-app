@@ -873,7 +873,8 @@ if (hookPlanWords != null && hookPlanWords.size >= 4) {
             base[at + 1] = ((word shr 8) and 0xFF).toByte()
             base[at + 2] = ((word shr 16) and 0xFF).toByte()
             base[at + 3] = ((word shr 24) and 0xFF).toByte()
-            val imWrote = hook.writeImage(base, blk0, 16L, saInit(hook.nextSequence()))
+            /* 提前写已拆除：参考实现是**先载荷、后站点块**（dev hook_patch 176-186）。这里只算不写。 */
+            val imWrote = -77
             step("typed: hook site image wrote=" + imWrote + " word=0x" + word.toString(16) + " block=" + blk0)
         } else {
             step("typed: hook site image skipped: block unreadable")
@@ -895,6 +896,37 @@ val payloadSlots = if (payload != null) hook.fillPayloadSlots(blob = payload, ca
 step("typed: hook payload slots=" + payloadSlots)
 val payloadWrote = if (payload != null) hook.writeImage(payload, hookLanding, 16L, saInit(hook.nextSequence())) else false
                     step("typed: hook payload wrote=" + payloadWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
+                    /* 参考顺序的第二步（dev hook_patch 137-186）：先存原文，再写包裹站点的那一整块，
+                     * 写后复读并断言分支字已变（region.verify）。载荷没落地就绝不写站点。 */
+                    if (payloadWrote && hookPlanWords != null && hookPlanWords.size >= 4) {
+                        runCatching {
+                            val siteOff2 = hookPlanWords[2]
+                            val landOff2 = hookPlanWords[3]
+                            val brAt2 = siteOff2 + 12L
+                            val blk02 = brAt2 - (brAt2 % 16L)
+                            val before = hook.readBlock(hookDoor, blk02)
+                            val word2 = 0x14000000L or (((landOff2 - brAt2) shr 2) and 0x03FFFFFFL)
+                            if (before != null) {
+                                val at2 = (brAt2 - blk02).toInt()
+                                step("typed: hook site block before=" + before.joinToString(" ") { b -> "%02x".format(b) } + " word=0x" + word2.toString(16))
+                                before[at2] = (word2 and 0xFF).toByte()
+                                before[at2 + 1] = ((word2 shr 8) and 0xFF).toByte()
+                                before[at2 + 2] = ((word2 shr 16) and 0xFF).toByte()
+                                before[at2 + 3] = ((word2 shr 24) and 0xFF).toByte()
+                                val siteWrote = hook.writeImage(before, blk02, 16L, saInit(hook.nextSequence()))
+                                val after = hook.readBlock(hookDoor, blk02)
+                                val afterWord = if (after != null && at2 + 3 < after.size) {
+                                    (after[at2].toLong() and 0xFF) or ((after[at2 + 1].toLong() and 0xFF) shl 8) or
+                                        ((after[at2 + 2].toLong() and 0xFF) shl 16) or ((after[at2 + 3].toLong() and 0xFF) shl 24)
+                                } else {
+                                    -1L
+                                }
+                                step("typed: hook site block wrote=" + siteWrote + " afterWord=0x" + afterWord.toString(16) + " verified=" + (afterWord == word2))
+                            } else {
+                                step("typed: hook site block unreadable")
+                            }
+                        }.onFailure { problem -> step("typed: hook site block refused " + problem.javaClass.simpleName) }
+                    }
                 }
             }.onFailure { problem ->
                 step("typed: hook payload refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
