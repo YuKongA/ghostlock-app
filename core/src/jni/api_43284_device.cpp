@@ -264,8 +264,16 @@ namespace ghostlock::jni {
         if (landing == nullptr) {
             return false;
         }
-        return landing->read_block(static_cast<std::uint64_t>(request.offset),
-                                     reinterpret_cast<std::uint8_t *>(out.data()));
+        const bool ok = landing->read_block(static_cast<std::uint64_t>(request.offset),
+                                           reinterpret_cast<std::uint8_t *>(out.data()));
+        /* 经落地（远端则经桥）读到的头四字节：与同次写的 want 对照，即可判明哪一侧是陈旧的。 */
+        GL_LOGI("read via landing: offset=%llu ok=%d head=%02x%02x%02x%02x",
+                static_cast<unsigned long long>(request.offset), ok ? 1 : 0,
+                out.size() > 0U ? static_cast<unsigned>(std::to_integer<std::uint8_t>(out[0])) : 0U,
+                out.size() > 1U ? static_cast<unsigned>(std::to_integer<std::uint8_t>(out[1])) : 0U,
+                out.size() > 2U ? static_cast<unsigned>(std::to_integer<std::uint8_t>(out[2])) : 0U,
+                out.size() > 3U ? static_cast<unsigned>(std::to_integer<std::uint8_t>(out[3])) : 0U);
+        return ok;
     }
 
     backend::cve_2026_43284::SaMaterial sa_material_of(const Init43284Values &params) noexcept {
