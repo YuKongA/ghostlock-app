@@ -458,9 +458,9 @@ steps/pagecache_steps.hpp 已经把链上的动作做成了函数，设备函数
 
 | 设备函数 | 复用的函数（landing/ 与 steps/ 里的现成实现） | 说明 |
 |---|---|---|
-| trigger | const char *trigger_orphan(std::uint32_t delay_ms) | 双 fork 触发；返回值就是**具名失败原因**（成功返回 nullptr）—— 与 Trigger43284.delayMs 一一对应，几乎零适配 |
+| trigger | `const char *trigger_orphan(std::uint32_t delay_ms)` | 双 fork 触发；返回值就是**具名失败原因**（成功返回 nullptr）—— 与 Trigger43284.delayMs 一一对应，几乎零适配 |
 | wait_terminal | const char *wait_for_module(const WaitRequest &) | WaitRequest 带 exists/sleep_ms 两个函数指针（宿主可注入假实现），返回具名结果；三态（success/failure/inflight）按返回值映射 |
-| write_block（钩子/镜像两类写） | bool write_hook(HookRequest &, const char **refusal)、bool write_image_verified(WriteRequest &, const char **refusal) | 写成功即 Dispatched；read_block 回来比较一致才 Applied |
+| write_block（钩子/镜像两类写） | `bool write_hook(HookRequest &, const char **refusal)`、`bool write_image_verified(WriteRequest &, const char **refusal)` | 写成功即 Dispatched；read_block 回来比较一致才 Applied |
 | （统一入口） | StepOutcome run_pagecache_step(PagecacheStep, StepContext &, ...) | 若要走「同一实现、两种调用」（script 侧与设备侧），用这个 |
 
 装配仍按 §11.7 的参考：PageCacheDoorLinux → RealSpliceIo(real_splice_io(), target_fd) → PageCacheWrite → PageCacheLanding → bring_up_with(sa)。
@@ -726,6 +726,7 @@ Kotlin 要能自己完成拼装/写/收尾，接口至少需要这些**句柄式
 | 311 | 接线：写（要拆） | ops.write_block = &device_write_block; |
 
 改造批次的落点（据此直接改）：
+
 1. 批①：删掉 Landing43284（拼装）与 g_session（收尾），换成 openTarget/connectEsp/makeSurface/makeLanding 四个句柄原语；
 2. 批②：把 device_write_block 拆成 landBlock/adoptSequence/nextSequence 三个原语，readBlock 保留；
 3. 批③：新增 Access 线（makeAccess/accessInitialize/writeImageVerified/writeHook）；
@@ -777,6 +778,7 @@ D1 单表风格：GL_ATTACK_FIELD(GroupName, fieldName, TYPE)；已有先例是 
 生成的那份测试会**自动跟着新 manifest 走**，不会因为多了几行而红。
 
 仍要留意的两处（不是阻塞，是收尾动作）：
+
 1. verifyJniLibs 里记着两个库的期望导出符号数（43499 13 / 43284 16）—— 批① 若增删 JNI 函数，这个数要同步；
 2. 结构检查会比对 manifest 的两份拷贝（build 产物 vs app/与 profile-core/ 下的资源），exportJniAttackContract 必须同批更新它们。
 
@@ -1154,8 +1156,7 @@ B. Kotlin 每次调用都把 fd 传进来（makeSurface(targetId, socketFd)）�
 
 | 半边 | 文件 | 能力 |
 |---|---|---|
-| Kotlin 侧解析 | app/src/main/kotlin/com/ghostlock/app/data/profile/{Hocon.kt,DeviceProfile.kt,AndroidAssets.kt} | 已能读资产里的 HOCON：
-  route(backend) / imageOffset(...) / structOffset(...) / declaredStepNames(...) 等取值都现成 |
+| Kotlin 侧解析 | app/src/main/kotlin/com/ghostlock/app/data/profile/{Hocon.kt,DeviceProfile.kt,AndroidAssets.kt} | 已能读资产里的 HOCON： route(backend) / imageOffset(...) / structOffset(...) / declaredStepNames(...) 等取值都现成 /  |
 | native 侧文档类型 | core/src/profile/glkv3_document.{hpp,cpp}、document_pairs.*、key_catalog.* | 已有 GLK v3 文档的解析与键目录 |
 
 因此 43499 的 Access43499Parameters.document 不需要「从头设计」，需要的是**一个交接原语**：
@@ -1256,6 +1257,7 @@ makeAccess43499(route, documentId)：把 entry->doc.get() 作为 Access43499Para
 
 接链形态（用户裁定不变）：Kotlin 编 stage（write / trigger / wait 的顺序与参数），native 只留薄原语；
 生产目标与开发载体的选择、以及哪一步交给 LKM 承担，都由 Kotlin 决定并在日志里具名。
+
 ### §11.4 纪律（不因为这是临时逻辑而放松）
 
 1. 每个缝的失败一律具名（§10.4 的四条继续适用）；不许沉默、不许把未验证当成功；
