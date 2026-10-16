@@ -782,6 +782,29 @@ object TypedBackendProbe {
                 moduleName = "kernelsu",
             )
             step("typed: hook wait terminal=" + terminal + " refusal=" + hook.lastRefusal)
+            /* ksud 状态（新目标：冷机下能看到 ksud 的状态）：纯只读，逐项如实报。 */
+            runCatching {
+                /* app 读不了 /proc/modules（EACCES，Android 限制）⇒ 用能看到的三件事报 ksud 状态。 */
+                val moduleDir = java.io.File("/sys/module/kernelsu").exists()
+                val ksudPaths = listOf("/data/adb/ksu", "/data/adb/ksud", "/data/adb/ksu/bin/su")
+                    .joinToString(",") { path -> path.substringAfterLast("/") + "=" + (if (java.io.File(path).exists()) "1" else "0") }
+                val markers = listOf("/dev/df", "/dev/dfm0", "/dev/df0", "/dev/df1")
+                    .joinToString(",") { path ->
+                        val exists = java.io.File(path).exists()
+                        path.substringAfterLast("/") + "=" + (if (exists) "1" else "0")
+                    }
+                val ksuLog = java.io.File("/data/local/tmp/ghostlock-ksu.log")
+                val logTail = if (ksuLog.isFile) {
+                    ksuLog.readLines().takeLast(3).joinToString(" | ")
+                } else {
+                    "(missing)"
+                }
+                step("typed: ksud status sysfsModule=" + (if (moduleDir) "1" else "0") + " userspace={" + ksudPaths + "}")
+                step("typed: ksud status markers=" + markers)
+                step("typed: ksud status rootlog=" + logTail)
+            }.onFailure { problem ->
+                step("typed: ksud status refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+            }
         }.onFailure { problem ->
             step("typed: hook refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
         }
