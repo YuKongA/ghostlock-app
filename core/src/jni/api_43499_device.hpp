@@ -39,4 +39,7 @@ namespace ghostlock::jni {
 /** Device action table for 43499 (forward declared; defined in api_43499_ops.cpp). */
     [[nodiscard]] struct DeviceOps43499 device_ops_43499(Ops43499Context *context) noexcept;
 
+    /** @return 设备动作表的上下文（与 access 表并排；make_access 时盖戳）。 */
+    [[nodiscard]] Ops43499Context *current_ops_ctx_43499() noexcept;
+
 }  // namespace ghostlock::jni

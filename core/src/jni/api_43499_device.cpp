@@ -17,6 +17,17 @@ namespace ghostlock::jni {
         /** 43499 的内核访问表：按不透明 id 持有（不可拷贝，放 unique_ptr）。 */
         constexpr std::size_t kMaxAccesses43499 = 4U;
         std::unique_ptr<contract::KernelAccess> g_accesses_43499[kMaxAccesses43499];
+
+
+        /** 设备动作表的上下文（与 access 表并排）：表里的 land/read 要知道对哪个 access、哪条 route。 */
+        Ops43499Context g_ops_ctx_43499{};
+    }  // namespace
+
+    Ops43499Context *current_ops_ctx_43499() noexcept {
+        return &g_ops_ctx_43499;
+    }
+
+    namespace {
     }  // namespace
 
     std::uint64_t device_make_access_43499(const int route) noexcept {
@@ -29,6 +40,9 @@ namespace ghostlock::jni {
         for (std::size_t index = 0U; index < kMaxAccesses43499; ++index) {
             if (g_accesses_43499[index] == nullptr) {
                 g_accesses_43499[index] = std::move(access);
+                /* 盖戳：之后表里的 land/read 就知道对哪个 access、哪条 route（值来自调用方 ✓）。 */
+                g_ops_ctx_43499.access_id = static_cast<std::uint64_t>(index) + 1U;
+                g_ops_ctx_43499.route = static_cast<std::uint64_t>(route);
                 return static_cast<std::uint64_t>(index) + 1U;
             }
         }
