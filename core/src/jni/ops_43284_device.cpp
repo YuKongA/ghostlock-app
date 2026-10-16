@@ -89,8 +89,8 @@ namespace ghostlock::jni {
     }  // namespace
 
     /** The ops this build can serve today (see the header for what is deliberately absent). */
-    Ops43284Seams device_landings_43284() noexcept {
-        Ops43284Seams ops{};
+    Ops43284Bindings device_landings_43284() noexcept {
+        Ops43284Bindings ops{};
         ops.embedded_image = &landing_embedded_image;
         ops.hook_words = &landing_hook_words;
         return ops;

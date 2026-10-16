@@ -36,7 +36,7 @@ namespace {
     using ghostlock::jni::kFactVictim;
     using ghostlock::jni::map_write_form;
     using ghostlock::jni::Ops43499;
-    using ghostlock::jni::Ops43499Seams;
+    using ghostlock::jni::Ops43499Bindings;
     using ghostlock::jni::Session;
     using ghostlock::jni::WriteForm;
     using ghostlock::jni::write_form_name;
@@ -191,8 +191,8 @@ namespace {
         return ops->read_ok;
     }
 
-    Ops43499Seams full_ops(OpsState &state) {
-        Ops43499Seams ops{};
+    Ops43499Bindings full_ops(OpsState &state) {
+        Ops43499Bindings ops{};
         ops.prepare = &landing_prepare;
         ops.discover = &landing_discover;
         ops.spawn_victim = &landing_spawn;
@@ -224,7 +224,7 @@ namespace {
     }
 
     void an_op_without_its_landing_is_unwired_by_name() {
-        Ops43499 ops{Ops43499Seams{}};
+        Ops43499 ops{Ops43499Bindings{}};
         Request request;
         for (const FrameOp op : {FrameOp::Prepare, FrameOp::Discover, FrameOp::SpawnVictim,
                                  FrameOp::VictimProbe, FrameOp::WriteWord, FrameOp::ReadWord}) {
@@ -432,13 +432,13 @@ namespace {
     }
 
     BackendOps create_ops_43499(std::uint64_t, void *context) noexcept {
-        return ghostlock::jni::make_ops_43499(*static_cast<Ops43499Seams *>(context));
+        return ghostlock::jni::make_ops_43499(*static_cast<Ops43499Bindings *>(context));
     }
 
     /** The session must hand the request to the backend ops, not answer for them. */
     void the_session_routes_its_backend_ops() {
         OpsState state;
-        Ops43499Seams ops = full_ops(state);
+        Ops43499Bindings ops = full_ops(state);
         Session session;
         const BackendFactory landing{&create_quiet, &ops, &create_ops_43499};
         /* ops 的接管发生在 open；把它交给 landing 之前先记下来，会话负责 delete（释放经 ops_）。 */

@@ -26,7 +26,7 @@ namespace {
     using ghostlock::jni::FrameWriter;
     using ghostlock::jni::kBlockWidth;
     using ghostlock::jni::Ops43284;
-    using ghostlock::jni::Ops43284Seams;
+    using ghostlock::jni::Ops43284Bindings;
     using ghostlock::jni::TerminalState;
     using ghostlock::jni::terminal_state_name;
 
@@ -252,8 +252,8 @@ namespace {
         return true;
     }
 
-    Ops43284Seams full_ops(OpsState &state) {
-        Ops43284Seams ops{};
+    Ops43284Bindings full_ops(OpsState &state) {
+        Ops43284Bindings ops{};
         ops.resolve = &landing_resolve;
         ops.write_block = &landing_write;
         ops.read_block = &landing_read;
@@ -266,7 +266,7 @@ namespace {
     }
 
     void an_op_without_its_landing_is_unwired_by_name() {
-        Ops43284 ops{Ops43284Seams{}};
+        Ops43284 ops{Ops43284Bindings{}};
         Builder request;
         Answer answer;
         for (const FrameOp op : {FrameOp::ResolveTarget, FrameOp::WriteBlock, FrameOp::ReadBlock,
@@ -487,7 +487,7 @@ namespace {
         return std::make_unique<QuietAccess>();
     }
     BackendOps create_ops(std::uint64_t, void *context) noexcept {
-        return ghostlock::jni::make_ops_43284(*static_cast<Ops43284Seams *>(context));
+        return ghostlock::jni::make_ops_43284(*static_cast<Ops43284Bindings *>(context));
     }
 
     void the_session_routes_this_backends_ops() {
@@ -495,7 +495,7 @@ namespace {
         const std::byte payload[2] = {std::byte{9}, std::byte{9}};
         state.payload = payload;
         state.payload_size = sizeof(payload);
-        Ops43284Seams ops = full_ops(state);
+        Ops43284Bindings ops = full_ops(state);
         ghostlock::jni::Session session;
         const ghostlock::jni::BackendFactory backend{&create_quiet, &ops, &create_ops};
         expect(session.open(43284U, backend, 1U), "the session opens on the quiet backend");

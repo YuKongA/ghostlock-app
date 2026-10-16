@@ -114,13 +114,13 @@ namespace {
     };
 
     /** The landing the fake backend is handed out through. */
-    struct SeamState final {
+    struct BindingState final {
         FakeAccess *fake = nullptr;
         bool hand_out_nothing = false;
     };
 
     std::unique_ptr<KernelAccess> make_backend(std::uint64_t, void *context) noexcept {
-        auto *state = static_cast<SeamState *>(context);
+        auto *state = static_cast<BindingState *>(context);
         if (state == nullptr || state->hand_out_nothing || state->fake == nullptr) {
             return nullptr;
         }
@@ -198,7 +198,7 @@ namespace {
 
     void a_missing_backend_is_named() {
         Session session;
-        SeamState state;
+        BindingState state;
         state.hand_out_nothing = true;
         const BackendFactory landing{&make_backend, &state};
         expect(!session.open(43499U, landing, 1U), "a backend this build lacks is refused");
@@ -216,7 +216,7 @@ namespace {
 
     void phases_move_only_where_they_should() {
         FakeAccess *const fake = new FakeAccess();
-        SeamState state;
+        BindingState state;
         state.fake = fake;
         const BackendFactory landing{&make_backend, &state};
         Session session;
@@ -266,7 +266,7 @@ namespace {
 
     void an_op_that_is_not_wired_says_so() {
         FakeAccess *const fake = new FakeAccess();
-        SeamState state;
+        BindingState state;
         state.fake = fake;
         const BackendFactory landing{&make_backend, &state};
         Session session;
@@ -291,7 +291,7 @@ namespace {
 
     void a_running_op_makes_the_next_one_busy() {
         FakeAccess *const fake = new FakeAccess();
-        SeamState state;
+        BindingState state;
         state.fake = fake;
         const BackendFactory landing{&make_backend, &state};
         Session session;
@@ -312,7 +312,7 @@ namespace {
 
     void shutdown_is_idempotent_and_never_a_lie() {
         FakeAccess *const fake = new FakeAccess();
-        SeamState state;
+        BindingState state;
         state.fake = fake;
         const BackendFactory landing{&make_backend, &state};
         Session session;
@@ -324,7 +324,7 @@ namespace {
 
         FakeAccess *const failing = new FakeAccess();
         failing->shutdown_ok = false;
-        SeamState failing_state;
+        BindingState failing_state;
         failing_state.fake = failing;
         const BackendFactory failing_landing{&make_backend, &failing_state};
         Session second;
@@ -350,7 +350,7 @@ namespace {
     void a_session_never_shut_down_still_gives_its_backend_back() {
         int shutdowns = 0;
         FakeAccess *const fake = new FakeAccess();
-        SeamState state;
+        BindingState state;
         state.fake = fake;
         fake->shutdown_sink = &shutdowns;
         const BackendFactory landing{&make_backend, &state};

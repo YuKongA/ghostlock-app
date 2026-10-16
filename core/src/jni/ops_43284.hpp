@@ -86,7 +86,7 @@ namespace ghostlock::jni {
     inline constexpr std::uint64_t kFactResolved = 1U << 19U;
 
     /** The device work, as function pointers. A null landing makes its op "not wired" by name. */
-    struct Ops43284Seams final {
+    struct Ops43284Bindings final {
         /** Bind one door to one role's path and answer a token. */
         bool (*resolve)(std::uint64_t role, std::string_view path, std::uint64_t &token,
                         void *context) noexcept = nullptr;
@@ -115,7 +115,7 @@ namespace ghostlock::jni {
     class Ops43284 final {
       public:
         Ops43284() noexcept = default;
-        explicit Ops43284(Ops43284Seams ops) noexcept : ops_(ops) {}
+        explicit Ops43284(Ops43284Bindings ops) noexcept : ops_(ops) {}
 
         [[nodiscard]] FrameStatus handle(FrameOp op, const FrameReader &request,
                                          FrameWriter &reply) noexcept;
@@ -131,7 +131,7 @@ namespace ghostlock::jni {
         [[nodiscard]] FrameStatus on_embedded_image(const FrameReader &request, FrameWriter &reply) noexcept;
         [[nodiscard]] FrameStatus on_hook_words(const FrameReader &request, FrameWriter &reply) noexcept;
 
-        Ops43284Seams ops_{};
+        Ops43284Bindings ops_{};
         Facts43284 facts_{};
     };
 
@@ -140,12 +140,12 @@ namespace ghostlock::jni {
      *
      *  @param ops the device work; an empty landing makes its op answer "op-not-wired".
      */
-    [[nodiscard]] BackendOps make_ops_43284(Ops43284Seams ops) noexcept;
+    [[nodiscard]] BackendOps make_ops_43284(Ops43284Bindings ops) noexcept;
 
     /**
      *  The ops this build serves without a device: the bytes it carries and the hook plan it
      *  was built for. Everything else (door, splice, ESP, fork, wait) stays null and answers
      *  op-not-wired until J4b implements it against a device.
      */
-    [[nodiscard]] Ops43284Seams device_landings_43284() noexcept;
+    [[nodiscard]] Ops43284Bindings device_landings_43284() noexcept;
 }  // namespace ghostlock::jni

@@ -211,7 +211,7 @@ namespace ghostlock::jni {
         void bundle_destroy(void *self) noexcept { delete static_cast<Ops43499 *>(self); }
     }  // namespace
 
-    BackendOps make_ops_43499(Ops43499Seams device_ops) noexcept {
+    BackendOps make_ops_43499(Ops43499Bindings device_ops) noexcept {
         auto *const ops = new Ops43499(device_ops);
         return BackendOps{&bundle_handle, &bundle_destroy, ops};
     }

@@ -104,7 +104,7 @@ namespace ghostlock::jni {
     inline constexpr std::uint64_t kFactVictim = 1U << 18U;
 
     /** The device work, as function pointers. A null landing makes its op "not wired" by name. */
-    struct Ops43499Seams final {
+    struct Ops43499Bindings final {
         /** Run the preparation and fill the facts it produced. */
         bool (*prepare)(Facts43499 &facts, void *context) noexcept = nullptr;
         /** Run the search and fill what it found. */
@@ -125,7 +125,7 @@ namespace ghostlock::jni {
     class Ops43499 final {
       public:
         Ops43499() noexcept = default;
-        explicit Ops43499(Ops43499Seams ops) noexcept : ops_(ops) {}
+        explicit Ops43499(Ops43499Bindings ops) noexcept : ops_(ops) {}
 
         [[nodiscard]] FrameStatus handle(FrameOp op, const FrameReader &request,
                                          FrameWriter &reply) noexcept;
@@ -142,7 +142,7 @@ namespace ghostlock::jni {
 
         void publish_facts(FrameWriter &reply) noexcept;
 
-        Ops43499Seams ops_{};
+        Ops43499Bindings ops_{};
         Facts43499 facts_{};
     };
 
@@ -152,5 +152,5 @@ namespace ghostlock::jni {
      *
      *  @param ops the device work; an empty landing makes its op answer "op-not-wired".
      */
-    [[nodiscard]] BackendOps make_ops_43499(Ops43499Seams ops) noexcept;
+    [[nodiscard]] BackendOps make_ops_43499(Ops43499Bindings ops) noexcept;
 }  // namespace ghostlock::jni
