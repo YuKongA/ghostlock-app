@@ -294,12 +294,20 @@ namespace ghostlock::jni {
         }
         /* 只读打开：写不经过这个 fd —— 写是经 ESP 报文 + splice 落进页缓存，目标只需读权限；用 O_RDWR 对系统文件会 EACCES（2026-10-15 真机实证）。 */
         const int fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
-        if (fd < 0) {
+        /* 供应商载体（/vendor/…）对本进程 EACCES：**不再直接失败** —— 记下这门是"未打开/远端"（fd 保持 -1），
+         * 由落地（surface）用 patch #1 写下的 helper 桥去读它、拼接它（2026-10-15，照 tools/pagecache_load_lkm 的配方）。 */
+        const int open_errno = errno;
+        const bool remote = (fd < 0) && (open_errno == EACCES || open_errno == EPERM);
+        if (fd < 0 && !remote) {
             return false;
         }
+        if (remote) {
+            GL_LOGI("resolve: %s exists but this process cannot open it (errno=%d) -> remote",
+                    path.c_str(), open_errno);
+        }
         for (std::size_t index = 0U; index < kMaxDoors; ++index) {
-            if (g_doors[index].fd < 0) {
-                g_doors[index].fd = fd;
+            if (g_doors[index].fd < 0 && g_doors[index].path.empty()) {
+                g_doors[index].fd = fd;              /* remote 时为 -1：占着槽但没开 */
                 g_doors[index].path = path;
                 token = index + 1U;
                 /* 门开了就把落地装配建起来：载体路径来自请求，凭据来自会话参数。 */
@@ -309,7 +317,9 @@ namespace ghostlock::jni {
                 return true;
             }
         }
-        static_cast<void>(::close(fd));
+        if (fd >= 0) {
+            static_cast<void>(::close(fd));
+        }
         return false;
     }
 
