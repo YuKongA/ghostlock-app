@@ -606,6 +606,16 @@ object TypedBackendProbe {
         stepwise.initialize(init43284())
         val stepTarget = stepwise.openTargetStepwise(doorPath)
         step("typed: stepwise 43284 open target=" + stepTarget + " refusal=" + stepwise.lastRefusal)
+        /* Single point check on a safe target: write a known pattern, then read it back at the same
+         * offset and at its neighbours. That answers whether read and write share one address space. */
+        runCatching {
+            val pat = ByteArray(16) { index -> (0xA0 + index).toByte() }
+            val wrote = stepwise.writeBlock(stepTarget, 0x1000L, pat)
+            val hex = { b: ByteArray? -> b?.joinToString(" ") { x -> "%02x".format(x) } ?: "null" }
+            step("typed: probe pattern wrote=" + wrote + " at=" + hex(stepwise.readBlock(stepTarget, 0x1000L)))
+            step("typed: probe pattern below=" + hex(stepwise.readBlock(stepTarget, 0xFF0L)))
+            step("typed: probe pattern above=" + hex(stepwise.readBlock(stepTarget, 0x1010L)))
+        }.onFailure { problem -> step("typed: probe pattern refused " + problem.javaClass.simpleName) }
         val stepSocket = stepwise.openEspSocket()
         step("typed: stepwise 43284 socket=" + stepSocket + " refusal=" + stepwise.lastRefusal)
         val stepSurface = stepwise.buildSurface()
