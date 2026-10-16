@@ -594,7 +594,7 @@ namespace ghostlock::jni {
         }
         auto window = std::make_unique<backend::cve_2026_43284::landing::PageCacheWrite>(
             *g_surfaces[slot]->doors_ops, *g_surfaces[slot]->io);
-        GL_LOGI("surface: built slot=%zu (door fd + io wired)", slot);
+        GL_LOGI("landing: built slot=%zu (window over this surface)", slot);
         /* 窗口必须比落地对象活得久：把窗口也挂在 surface 上。 */
         g_surfaces[slot]->window = std::move(window);
         g_landings[slot] = std::make_unique<backend::cve_2026_43284::landing::PageCacheLanding>(
