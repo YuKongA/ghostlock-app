@@ -126,6 +126,36 @@ class Assembled43284(
     }
 
     /** 动态钩子计划（符号 + guard 策略 + 镜像）；返回四个数：branch / displaced / site / landing。 */
+    /**
+     * Recompute the site branch so it lands on OUR payload offset, then write the block back.
+     *
+     * A branch written by an earlier session can point somewhere else entirely (the device showed a
+     * target 0x98 past the payload). Computing the word here, from the same offset the payload went to,
+     * makes the two impossible to disagree.
+     *
+     * @param ticket open target ticket.
+     * @param siteOffset site file offset (the branch instruction sits twelve bytes in).
+     * @param landingOffset file offset our payload starts at.
+     * @return 0 ok; -1 no ticket; -2 block unreadable; -3 write refused.
+     */
+    fun rewriteSiteBranch(ticket: Long, siteOffset: Long, landingOffset: Long): Int {
+        if (ticket == 0L) {
+            return -1
+        }
+        val blockAt = siteOffset - (siteOffset % 16L)
+        val within = (siteOffset - blockAt).toInt()
+        val block = readBlock(ticket, blockAt) ?: return -2
+        val branchAt = siteOffset + 12L
+        val delta = landingOffset - branchAt
+        val imm = ((delta shr 2) and 0x03FFFFFFL).toInt()
+        val word = 0x14000000 or imm
+        val at = within + 12
+        block[at] = (word and 0xFF).toByte()
+        block[at + 1] = ((word shr 8) and 0xFF).toByte()
+        block[at + 2] = ((word shr 16) and 0xFF).toByte()
+        block[at + 3] = ((word shr 24) and 0xFF).toByte()
+        return if (writeBlock(ticket, blockAt, block) > 0) 0 else -3
+    }
     fun hookPlan(symbol: String, guardPolicy: Int = 0): LongArray? {
         val refusal = refusalSlot()
         val out = LongArray(4)
