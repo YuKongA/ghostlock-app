@@ -280,7 +280,10 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                         GL_LOGI("block[%zu] verify failed: want %02x%02x%02x%02x got unreadable (ok=%d size=%zu)", at,
                                 want[0], want[1], want[2], want[3], back.ok() ? 1 : 0, back.value.size());
                     }
-                    *refusal = kVerifyFailed;  /* budget-exhausted：预算用尽仍不中 */
+                    /* 首个不符块是哪一块、试了几次 —— 与同一跑的 block[…] landed 行对齐即可判明是写没到还是读不到。 */
+            GL_LOGI("verify failed: block_at=%zu offset=%llu tries=%zu", at,
+                    static_cast<unsigned long long>(request.offset + at), tries);
+            *refusal = kVerifyFailed;  /* budget-exhausted：预算用尽仍不中 */
                     GL_LOGI("block[%zu]: budget exhausted after %zu tries", at, tries);
                     return false;
                 }
