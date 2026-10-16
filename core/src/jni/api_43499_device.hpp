@@ -6,6 +6,7 @@
  */
 #include <cstdint>
 #include <vector>
+#include "backend/cve_2026_43499/access_params.hpp"
 
 namespace ghostlock::jni {
     /**
@@ -30,6 +31,16 @@ namespace ghostlock::jni {
     [[nodiscard]] int device_initialize_43499(std::uint64_t accessId, std::uint64_t route,
                                              std::uint64_t offset, bool offset_set) noexcept;
     /** @return 0 成功；否则 Access 状态码（收尾第一步，先 shutdown 再 destroy）。 */
+/** Fill from the assembly (new; the four-argument version stays). */
+void fill_access_params_43499_full(backend::cve_2026_43499::Access43499Parameters &params,
+                                 std::uint64_t route, std::uint64_t offset,
+                                 bool offset_set, const std::uint64_t *assembly,
+                                 std::size_t count) noexcept;
+
+/** Initialize carrying the assembly (new entry point). */
+[[nodiscard]] int device_initialize_43499_full(std::uint64_t accessId, std::uint64_t route,
+                                            std::uint64_t offset, bool offset_set,
+                                            const std::uint64_t *assembly, std::size_t count) noexcept;
     [[nodiscard]] int device_shutdown_43499(std::uint64_t accessId) noexcept;
     /** @return 拆掉一个 43499 的内核访问对象。 */
     [[nodiscard]] bool device_destroy_access_43499(std::uint64_t accessId) noexcept;

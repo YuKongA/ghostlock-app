@@ -304,6 +304,36 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43499_Native43499_destroyAc
 }
 
 
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43499_Native43499_initialize43499Full(
+        JNIEnv *env, jclass, jlong, jlong accessId, jint route, jlong offset, jboolean offsetSet,
+        jlongArray assembly_in, jobjectArray refusal_out) {
+    std::vector<std::uint64_t> assembly{};
+    if (assembly_in != nullptr) {
+        const jsize count = env->GetArrayLength(assembly_in);
+        if (count > 0) {
+            jlong *const raw = env->GetLongArrayElements(assembly_in, nullptr);
+            if (raw != nullptr) {
+                assembly.reserve(static_cast<std::size_t>(count));
+                for (jsize i = 0; i < count; ++i) {
+                    assembly.push_back(static_cast<std::uint64_t>(raw[i]));
+                }
+                env->ReleaseLongArrayElements(assembly_in, raw, JNI_ABORT);
+            }
+        }
+    }
+    const int status = ghostlock::jni::device_initialize_43499_full(
+        static_cast<std::uint64_t>(accessId), static_cast<std::uint64_t>(route),
+        static_cast<std::uint64_t>(offset), offsetSet != JNI_FALSE,
+        assembly.empty() ? nullptr : assembly.data(), assembly.size());
+    if (status == 0) {
+        return answer(env, ghostlock::jni::CallCode::Ok, "", refusal_out);
+    }
+    const std::string named = status < 0
+        ? (status == -1 ? "init:no-handle" : "init:stale-handle")
+        : (std::string("init:") + ghostlock::contract::KernelAccess::status_name(
+              static_cast<ghostlock::contract::KernelAccess::Status>(status)));
+    return answer(env, ghostlock::jni::CallCode::Failed, named.c_str(), refusal_out);
+}
 JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43499_Native43499_initialize43499(
         JNIEnv *env, jclass, jlong, jlong accessId, jint route, jlong offset, jboolean offsetSet,
         jobjectArray refusal_out) {
