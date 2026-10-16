@@ -100,6 +100,23 @@ object Native43499 {
         offsetSet: Boolean,
         refusalOut: Array<String>,
     ): Int
+    /**
+     *  Initialize carrying the assembly (new entry point; the old one is untouched).
+     *
+     *  assembly order, seventeen values decided in Kotlin:
+     *  waiter, task, lock, buffer, maxAttempts, armHold, armSequence, parkMs, settleUs,
+     *  consumerDelayUs, burstCalls, maxCalls, fallbackLockUs, niceModulus, policy, fakeTask, fakeLock.
+     *  A shorter array falls back to the old behaviour.
+     */
+    external fun initialize43499Full(
+        handle: Long,
+        accessId: Long,
+        route: Int,
+        offset: Long,
+        offsetSet: Boolean,
+        assembly: LongArray,
+        refusalOut: Array<String>,
+    ): Int
 
     /** 写一块（通道 PiWindow）；失败时 refusalOut[0] 为 write:<原因>。 */
     external fun write43499(

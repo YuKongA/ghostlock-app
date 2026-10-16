@@ -19,6 +19,13 @@ class Assembled43499(private val handle: Long) {
 
     /** 当前的内核访问对象句柄（0 = 没有）。 */
     var accessId: Long = 0L
+    /**
+     *  Assembly for initialize: seventeen values, in the order the JNI export documents
+     *  (waiter, task, lock, buffer, maxAttempts, armHold, armSequence, parkMs, settleUs,
+     *  consumerDelayUs, burstCalls, maxCalls, fallbackLockUs, niceModulus, policy, fakeTask, fakeLock).
+     *  The caller decides the values (Kotlin side); null keeps the plain entry point.
+     */
+    var assembly: LongArray? = null
         private set
 
     private fun refusalSlot(): Array<String> = arrayOf("")
@@ -64,7 +71,12 @@ class Assembled43499(private val handle: Long) {
             return false
         }
         val refusal = refusalSlot()
-        val code = Native43499.initialize43499(handle, accessId, route, offset, offsetSet, refusal)
+        val assemb = assembly
+        val code = if (assemb != null && assemb.isNotEmpty()) {
+            Native43499.initialize43499Full(handle, accessId, route, offset, offsetSet, assemb, refusal)
+        } else {
+            Native43499.initialize43499(handle, accessId, route, offset, offsetSet, refusal)
+        }
         record(code, refusal)
         return code == 0
     }
