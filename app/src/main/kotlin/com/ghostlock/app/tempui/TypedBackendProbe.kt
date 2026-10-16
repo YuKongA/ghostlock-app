@@ -94,11 +94,14 @@ object TypedBackendProbe {
     private fun runOnce(context: android.content.Context): List<String> {
         probeContext = context
         val lines = mutableListOf<String>()
+        /* 第一件事：把模块要执行的收尾脚本放到它的固定路径上。 */
         fun step(line: String) {
             lines += line
             GhostLog.i(TAG, line)
             lineListener?.invoke(line)
         }
+        /* first thing: the script the module runs must be in place (see deployUmhPayload). */
+        deployUmhPayload(context) { line -> step(line) }
         /*
          *  43284 的唯一阻塞项的**关键一问**（纯 Kotlin，不需要 native）：
          *  公开 API 能不能**分配一个 SPI 并读回它**？能 ⇒ app 侧可自建 SA、帧材料自产；
@@ -534,6 +537,30 @@ object TypedBackendProbe {
             sequencePresent = adoptSequence > 0L,
         )
     }
+    /**
+     *  把 UMH 收尾脚本部署到模块固定的路径（A6-4：它是 DEVICE PAYLOAD，随 APK 以 assets/payload/root_cmd.sh 打包）。
+     *
+     *  模块（12304 B 那份）默认执行 /data/local/tmp/.ghostlock_lkm_cmd.sh（ghostlock.c: static char *cmd），
+     *  未就位则模块加载后无人跑 ksud late-load —— 本会话卡住的正是这一步。
+     *
+     *  @param context 读 assets 用。
+     *  @param onLine 逐行上报（失败具名，不静默）。
+     */
+    private fun deployUmhPayload(context: android.content.Context, onLine: (String) -> Unit) {
+        runCatching {
+            val target = java.io.File("/data/local/tmp/.ghostlock_lkm_cmd.sh")
+            if (!target.exists()) {
+                val bytes = context.assets.open("payload/root_cmd.sh").use { stream -> stream.readBytes() }
+                target.writeBytes(bytes)
+                target.setExecutable(true, false)
+            }
+            val size = if (target.exists()) target.length().toString() else "-"
+            onLine("typed: umh payload path=" + target.absolutePath + " exists=" + (if (target.exists()) "1" else "0") + " bytes=" + size)
+        }.onFailure { problem ->
+            onLine("typed: umh payload refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+        }
+    }
+
     private fun resolve43284() = com.ghostlock.app.core.generated.ResolveTarget43284(
         role = 1,
         path = "/system/lib64/libc++.so".toByteArray(),
