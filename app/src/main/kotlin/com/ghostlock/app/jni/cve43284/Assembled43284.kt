@@ -154,7 +154,7 @@ class Assembled43284(
         block[at + 1] = ((word shr 8) and 0xFF).toByte()
         block[at + 2] = ((word shr 16) and 0xFF).toByte()
         block[at + 3] = ((word shr 24) and 0xFF).toByte()
-        return if (writeBlock(ticket, blockAt, block) > 0) 0 else -3
+        return if (writeBlock(ticket, blockAt, block) == 0) 0 else -3
     }
     fun hookPlan(symbol: String, guardPolicy: Int = 0): LongArray? {
         val refusal = refusalSlot()
