@@ -265,7 +265,7 @@ namespace ghostlock::jni {
             return false;
         }
         return landing->read_block(static_cast<std::uint64_t>(request.offset),
-                                     std::span<std::byte>(out.data(), out.size()));
+                                     reinterpret_cast<std::uint8_t *>(out.data()));
     }
 
     backend::cve_2026_43284::SaMaterial sa_material_of(const Init43284Values &params) noexcept {
