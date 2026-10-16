@@ -816,7 +816,7 @@ val hookPlanWords = hook.hookPlan("splice")
  * needs; rewriteSiteBranch does not look at the displaced instruction, it just writes the word. */
 val branchFix = if (hookPlanWords != null && hookPlanWords.size >= 4)
     hook.rewriteSiteBranch(hookDoor, hookPlanWords[2], hookPlanWords[3]) else -9
-step("typed: hook branch rewrite=" + branchFix)
+step("typed: hook branch rewrite=" + branchFix + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
 val hookLanding = if (hookPlanWords != null && hookPlanWords.size >= 4) hookPlanWords[3] else 0xFE628L
 step("typed: hook landing=" + hookLanding)
 val payloadWrote = if (payload != null) hook.writeImage(payload, hookLanding, 16L, saInit(hook.nextSequence())) else false
