@@ -8,6 +8,7 @@
         <package android:name="me.weishu.kernelsu.pr" />
         <package android:name="me.weishu.kernelsu" />
         <package android:name="com.resukisu.resukisu" />
+        <package android:name="org.bakasu.bakasu" />
         <package android:name="com.kowx712.supermanager" />
     </queries>
     <application
