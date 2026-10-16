@@ -812,6 +812,12 @@ val hookPlanWords = hook.hookPlan("splice")
 val branchFix = if (hookPlanWords != null && hookPlanWords.size >= 4)
     hook.rewriteSiteBranch(hookDoor, hookPlanWords[2], hookPlanWords[3]) else -9
 step("typed: hook branch rewrite=" + branchFix + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
+/* Read the site back after the rewrite: the pre-rewrite log cannot tell whether it took. */
+if (branchFix == 0 && hookPlanWords != null && hookPlanWords.size >= 4) {
+    val wordAt = hookPlanWords[2] + 12L
+    val blk = hook.readBlock(hookDoor, wordAt - (wordAt % 16L))
+    step("typed: hook site after=" + (blk?.joinToString(" ") { b -> "%02x".format(b) } ?: "unreadable"))
+}
 val hookLanding = if (hookPlanWords != null && hookPlanWords.size >= 4) hookPlanWords[3] else 0xFE628L
             val hookWrote = hook.writeHook(16L, saInit())  /* 这套原语的单位是 16 字节（8 会被 BadWidth 拒 —— 2026-10-15 真机证据） */
             step("typed: hook wrote=" + hookWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
