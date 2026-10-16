@@ -21,6 +21,18 @@ interface GhostlockRepository {
 
     fun setShizukuEnabled(enabled: Boolean)
 
+    /** Turns the boot auto-start on/off; enabling resets the boot-loop guard. */
+    fun setAutoStartEnabled(enabled: Boolean)
+
+    /**
+     * Arms the good-boot timer for the current boot (mark it good 60 s after a
+     * completed run). No-op when this boot has no counted auto-start attempt.
+     */
+    fun requestBootConfirmation()
+
+    /** True exactly once after the guard disabled auto-start: the UI warns. */
+    fun consumeAutoStartNotice(): Boolean
+
     /**
      * Imports one or more picked documents (file name -> text). Includes are
      * resolved against the picked files first, then the bundled assets; a

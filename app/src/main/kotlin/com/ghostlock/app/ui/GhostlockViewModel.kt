@@ -42,6 +42,7 @@ sealed interface GhostlockEffect {
     data class Clipboard(val text: String) : GhostlockEffect
     data class KeepScreenAwake(val enabled: Boolean) : GhostlockEffect
     data object OpenShizuku : GhostlockEffect
+    data object RequestNotificationPermission : GhostlockEffect
 }
 
 private const val OverwriteSummaryLimit = 12
@@ -92,7 +93,21 @@ class GhostlockViewModel(
         viewModelScope.launch {
             refreshSnapshot()
             applyRecommendedShizuku()
-            maybeSuggestShizukuForW3()
+            /* The guard warning outranks the W3 hint: auto-start was running
+             * and its notice is the one that explains the reboots. */
+            val notice = withContext(Dispatchers.IO) { repository.consumeAutoStartNotice() }
+            if (notice) {
+                mutableState.update {
+                    it.copy(
+                        dialogVisible = true,
+                        dialogType = DialogType.NOTICE,
+                        dialogTitleRes = R.string.autostart_disabled_title,
+                        dialogMessageRes = R.string.autostart_disabled_message,
+                    )
+                }
+            } else {
+                maybeSuggestShizukuForW3()
+            }
         }
     }
 
@@ -842,6 +857,15 @@ class GhostlockViewModel(
         viewModelScope.launch { refreshSnapshot() }
     }
 
+    fun toggleAutoStart(enabled: Boolean) {
+        repository.setAutoStartEnabled(enabled)
+        mutableState.update { it.copy(autoStartEnabled = enabled) }
+        if (enabled) {
+            send(GhostlockEffect.Toast(R.string.autostart_hint))
+            send(GhostlockEffect.RequestNotificationPermission)
+        }
+    }
+
     fun onRun() = runExploit()
 
     /** Explains why the run button is greyed out. */
@@ -895,6 +919,9 @@ class GhostlockViewModel(
                 val code = runExploitUseCase(pair, useShizuku, ::appendLog)
                 appendLog(if (code == 0) "result: exploit completed" else "result: exploit failed (exit code=$code)")
                 appendLog("exit code=$code")
+                /* The run completed: arm the guard's good-boot timer (no-op
+                 * unless this boot has a counted auto-start attempt). */
+                repository.requestBootConfirmation()
             } finally {
                 endOperation()
                 send(GhostlockEffect.KeepScreenAwake(false))
@@ -1064,6 +1091,7 @@ class GhostlockViewModel(
                 forceAttackTestEnabled = snapshot.forceAttackTest,
                 shizukuEnabled = snapshot.shizukuEnabled,
                 shizukuStatus = snapshot.shizukuStatus,
+                autoStartEnabled = snapshot.autoStartEnabled,
                 profileInvalidPaths = loaded?.invalidPaths ?: emptySet(),
                 executionHasProfile = loaded?.hasProfile ?: false,
                 customCpuPair = loaded?.let(::customCpuPairOf),

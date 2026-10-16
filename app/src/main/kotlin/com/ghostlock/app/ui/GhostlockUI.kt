@@ -98,6 +98,8 @@ data class GhostlockUiState(
     val kernelSupported: Boolean = false,
     val shizukuEnabled: Boolean = false,
     val shizukuStatus: ShizukuStatus = ShizukuStatus.NOT_REQUIRED,
+    /** Boot auto-start toggle, mirrored from the boot-loop guard state. */
+    val autoStartEnabled: Boolean = false,
     val running: Boolean = false,
     val cpuPairLabels: List<String> = emptyList(),
     val cpuPairIndex: Int = 0,
@@ -184,6 +186,7 @@ interface GhostlockActions {
     fun onSafeModeChanged(enabled: Boolean)
     fun onForceAttackTestChanged(enabled: Boolean)
     fun onShizukuChanged(enabled: Boolean)
+    fun onAutoStartChanged(enabled: Boolean)
     fun onDialogItemSelected(index: Int)
     fun onDialogInputChange(value: String)
     fun onDialogConfirm(value: String)
@@ -723,6 +726,12 @@ private fun ControlPanel(
                         else -> R.string.shizuku_status_checking
                     },
                 ),
+            )
+            SwitchPreference(
+                checked = state.autoStartEnabled,
+                onCheckedChange = actions::onAutoStartChanged,
+                title = stringResource(R.string.autostart_label),
+                summary = stringResource(R.string.autostart_summary),
             )
         }
         Card(modifier = modifier.padding(top = 12.dp)) {
