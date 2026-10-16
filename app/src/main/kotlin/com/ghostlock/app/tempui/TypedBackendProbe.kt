@@ -793,7 +793,7 @@ object TypedBackendProbe {
         /* ① hook 段：同一条 SA、同一条 ESP 套接字；目标是 /system/lib64/libc++.so 的 sentry 站点。 */
         runCatching {
             val hook = Assembled43284(Native43284.create()) { saInit() }
-            hook.openTargetStepwise(Assembled43284.HOOK_TARGET)
+            val hookDoor = hook.openTargetStepwise(Assembled43284.HOOK_TARGET)
             hook.reuseSocketFrom(stepwise)
             hook.buildSurface()
             hook.buildLanding()
@@ -811,6 +811,12 @@ object TypedBackendProbe {
                     /* The branch was written for the landing the plan carries; a Kotlin constant disagreed with it on
  * the device (the branch aimed 0x98 past 0xFE628), so take the offset from the plan itself. */
 val hookPlanWords = hook.hookPlan("splice")
+/** The site is already patched on disk (writeHook answers displaced-mismatch), and the branch that
+ * older code left there aims 0xC short of the payload entry. Force the word to the one this run
+ * needs; rewriteSiteBranch does not look at the displaced instruction, it just writes the word. */
+val branchFix = if (hookPlanWords != null && hookPlanWords.size >= 4)
+    hook.rewriteSiteBranch(hookDoor, hookPlanWords[2], hookPlanWords[3]) else -9
+step("typed: hook branch rewrite=" + branchFix)
 val hookLanding = if (hookPlanWords != null && hookPlanWords.size >= 4) hookPlanWords[3] else 0xFE628L
 step("typed: hook landing=" + hookLanding)
 val payloadWrote = if (payload != null) hook.writeImage(payload, hookLanding, 16L, saInit(hook.nextSequence())) else false
