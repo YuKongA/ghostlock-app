@@ -7,6 +7,7 @@
  *  其余缝（resolve / write_block / read_block / module_check / trigger / wait_terminal）属于真正的
  *  设备工作（J7.5 的 43284 链），不在这里。
  */
+#include "backend/cve_2026_43284/landing/crash_dump_bridge.hpp"
 #include "jni/gl_log.hpp"
 #include "backend/cve_2026_43284/kernel_access.hpp"
 #include "backend/cve_2026_43284/landing/pagecache_door_linux.hpp"
@@ -437,6 +438,11 @@ namespace ghostlock::jni {
         std::unique_ptr<PairedDoor> door;
         std::unique_ptr<backend::cve_2026_43284::landing::RealSpliceIo> io;
         std::unique_ptr<backend::cve_2026_43284::landing::PageCacheWrite> window;
+        /* 载体打不开时走 helper 桥：桥、远程门、以及窗口用的 DoorOps 引用（2026-10-15：vendor 载体对本进程 EACCES）。 */
+        std::unique_ptr<backend::cve_2026_43284::landing::CrashDumpBridge> bridge;
+        std::unique_ptr<backend::cve_2026_43284::landing::RemoteDoor> remote;
+        backend::cve_2026_43284::landing::DoorOps *doors_ops = nullptr;
+        bool target_remote = false;
     };
     constexpr std::size_t kMaxSurfaces = 4U;
     std::unique_ptr<Surface> g_surfaces[kMaxSurfaces];
