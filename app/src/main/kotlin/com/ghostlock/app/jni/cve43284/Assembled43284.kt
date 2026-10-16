@@ -178,7 +178,7 @@ class Assembled43284(
         carrierPath: String,
         selinuxContext: String = "u:r:vendor_modprobe:s0",
         insmodPath: String = "/vendor/bin/insmod",
-        mutexPath: String = "/dev/df",
+        mutexPath: String = "/dev/dx",  /* 容量 8 字节（≤7 字符 + NUL）；不用 /dev/df：那是 10-05 遗留的陈旧 in-flight 标记，载荷见它会一直等 */
         attrExecPath: String = "/proc/self/attr/exec",
         displaced: Int? = null,
     ): Int {

