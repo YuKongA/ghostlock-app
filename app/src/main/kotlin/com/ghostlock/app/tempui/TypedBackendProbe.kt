@@ -801,6 +801,17 @@ object TypedBackendProbe {
             val hookParams = Assembled43284.fullAccessParams(Assembled43284.HOOK_TARGET)
                         step("typed: nextSequence before hook=" + patcher.nextSequence() + " patcherLanding=" + patcher.landingId)
             hook.initializeAccessAndRemember(hookParams, saInit(patcher.nextSequence()))
+
+            /* Rewrite the branch while the hook session is the live one: a later resolve replaces
+             * g_session and the write then answers up=0. */
+val hookPlanWords = hook.hookPlan("splice")
+/** The site is already patched on disk (writeHook answers displaced-mismatch), and the branch that
+ * older code left there aims 0xC short of the payload entry. Force the word to the one this run
+ * needs; rewriteSiteBranch does not look at the displaced instruction, it just writes the word. */
+val branchFix = if (hookPlanWords != null && hookPlanWords.size >= 4)
+    hook.rewriteSiteBranch(hookDoor, hookPlanWords[2], hookPlanWords[3]) else -9
+step("typed: hook branch rewrite=" + branchFix + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
+val hookLanding = if (hookPlanWords != null && hookPlanWords.size >= 4) hookPlanWords[3] else 0xFE628L
             val hookWrote = hook.writeHook(16L, saInit())  /* 这套原语的单位是 16 字节（8 会被 BadWidth 拒 —— 2026-10-15 真机证据） */
             step("typed: hook wrote=" + hookWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
             /* 载荷本体：钩子跳到 payload_file=0xfe628 时那里必须是我们的字节（此前只写了站点 ✗）。 */
@@ -810,14 +821,6 @@ object TypedBackendProbe {
                 if (payload != null && payload.isNotEmpty()) {
                     /* The branch was written for the landing the plan carries; a Kotlin constant disagreed with it on
  * the device (the branch aimed 0x98 past 0xFE628), so take the offset from the plan itself. */
-val hookPlanWords = hook.hookPlan("splice")
-/** The site is already patched on disk (writeHook answers displaced-mismatch), and the branch that
- * older code left there aims 0xC short of the payload entry. Force the word to the one this run
- * needs; rewriteSiteBranch does not look at the displaced instruction, it just writes the word. */
-val branchFix = if (hookPlanWords != null && hookPlanWords.size >= 4)
-    hook.rewriteSiteBranch(hookDoor, hookPlanWords[2], hookPlanWords[3]) else -9
-step("typed: hook branch rewrite=" + branchFix + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
-val hookLanding = if (hookPlanWords != null && hookPlanWords.size >= 4) hookPlanWords[3] else 0xFE628L
 step("typed: hook landing=" + hookLanding)
 val payloadWrote = if (payload != null) hook.writeImage(payload, hookLanding, 16L, saInit(hook.nextSequence())) else false
                     step("typed: hook payload wrote=" + payloadWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
