@@ -33,4 +33,10 @@ namespace ghostlock::jni {
     [[nodiscard]] int device_shutdown_43499(std::uint64_t accessId) noexcept;
     /** @return 拆掉一个 43499 的内核访问对象。 */
     [[nodiscard]] bool device_destroy_access_43499(std::uint64_t accessId) noexcept;
+/** Adapter context: which access and which route an action applies to. */
+    struct Ops43499Context final { std::uint64_t access_id = 0U; std::uint64_t route = 0U; };
+
+/** Device action table for 43499 (forward declared; defined in api_43499_ops.cpp). */
+    [[nodiscard]] struct DeviceOps43499 device_ops_43499(Ops43499Context *context) noexcept;
+
 }  // namespace ghostlock::jni
