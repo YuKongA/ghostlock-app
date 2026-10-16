@@ -124,18 +124,33 @@ object GhostLog {
  * 超过 @see MAX_BYTES 就从零重来；写失败只当没写成 —— 日志不该把主流程拖下水。
  */
 object FileSink : LogSink {
-    private const val PATH = "/data/local/tmp/ghostlock-run.log"
+    /*
+     * 候选路径按应用一定可写的顺序排：
+     *   ① 应用私有 files 目录，唯一稳定可写，且能用
+     *      `adb shell run-as com.ghostlock.app cat files/ghostlock-run.log` 读回来（本包 debuggable）；
+     *   ② 应用专属外部目录 /sdcard/Android/data/<pkg>/files，adb 可直接读，作为回退。
+     * /data/local/tmp 不在此列：那里属于 shell，untrusted_app 域写不进去（真机已验）。
+     */
+    private val CANDIDATES = arrayOf(
+        "/data/user/0/com.ghostlock.app/files/ghostlock-run.log",
+        "/data/data/com.ghostlock.app/files/ghostlock-run.log",
+        "/sdcard/Android/data/com.ghostlock.app/files/ghostlock-run.log",
+    )
     private const val MAX_BYTES = 2L * 1024L * 1024L
 
     override fun write(level: LogLevel, tag: String, message: String, line: String) {
-        try {
-            val file = java.io.File(PATH)
-            if (file.length() > MAX_BYTES) {
-                file.writeText("")
+        for (candidate in CANDIDATES) {
+            try {
+                val file = java.io.File(candidate)
+                file.parentFile?.mkdirs()
+                if (file.length() > MAX_BYTES) {
+                    file.writeText("")
+                }
+                file.appendText(System.currentTimeMillis().toString() + " " + line + "\n")
+                return
+            } catch (_: Throwable) {
+                /* 换下一个候选；全部失败就只当日志文件不存在（不拖累主流程）。 */
             }
-            file.appendText(System.currentTimeMillis().toString() + " " + line + "\n")
-        } catch (_: Throwable) {
-            /* 没权限或磁盘问题：只当这条文件日志不存在。 */
         }
     }
 }
