@@ -888,7 +888,17 @@ object TypedBackendProbe {
         1L, 2, 1, 96L, 48L, 56L, 264L, 4L, 7L, 0L, 150L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0, 0,
         false, 0L, 0L, false, 4096L, false, 0L, 12L,
         /* 43499 interface params (2026-10-16): perf slots+spec / ring / spray / pump / route. Placeholders for now. */
-        0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
+        /* 具体值（目标：数值先写在 Kotlin）。perf 四种常用软件事件；环形缓冲与喷的规格给保守值；
+         * 泵次数照退役的 500000；routeSelected 先选 Select（与"单 route"真机门禁一致）。 */
+        4L,                       /* perfSlots */
+        1L, 0L,                   /* perf0: PERF_TYPE_SOFTWARE / PERF_COUNT_SW_CPU_CLOCK */
+        1L, 1L,                   /* perf1: PERF_COUNT_SW_TASK_CLOCK */
+        1L, 2L,                   /* perf2: PERF_COUNT_SW_PAGE_FAULTS */
+        1L, 3L,                   /* perf3: PERF_COUNT_SW_CONTEXT_SWITCHES */
+        64L, 1L,                  /* ringPages / ringWakeup */
+        4096L, 256L,              /* spraySize / sprayCount */
+        500000L,                  /* pumpIters（退役值） */
+        1L,                       /* routeSelected = Select */
     )
 
     private fun layout43499() = KernelLayout43499(
