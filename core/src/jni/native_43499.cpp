@@ -32,6 +32,14 @@ namespace {
     using ghostlock::jni::wrapper::has_room;
     using ghostlock::jni::wrapper::write_longs;
 
+    /** 设备层侧表（沿用 43284 设备层的既有模式）：表里的动作要知道对哪个 access、哪条 route。 */
+    ghostlock::jni::Ops43499Context g_ops_ctx{};
+
+    /** 会话工厂：造一个**带设备表**的会话（此前是空表 ⇒ 每个 op 都 op-not-wired）。 */
+    Backend43499 make_43499_session() noexcept {
+        return Backend43499(ghostlock::jni::device_ops_43499(&g_ops_ctx));
+    }
+
     ghostlock::jni::wrapper::Registry<Backend43499> &registry() noexcept {
         static ghostlock::jni::wrapper::Registry<Backend43499> table;
         return table;
@@ -63,6 +71,7 @@ extern "C" {
 JNIEXPORT jlong JNICALL Java_com_ghostlock_app_jni_cve43499_Native43499_create(JNIEnv *, jclass) {
     /* 会话模板：缝在这里给（43499 的设备实现属于 J7.5，此刻仍为空 ⇒ op-not-wired）。 */
     registry().set_factory([]() noexcept { return Backend43499{}; });
+    registry().set_factory(&make_43499_session);
     return static_cast<jlong>(registry().create());
 }
 
