@@ -632,9 +632,14 @@ namespace ghostlock::jni {
         const std::size_t want = static_cast<std::size_t>(handle) - 1U;
         for (std::size_t i = 0U; i < kMaxSurfaces; ++i) {
             if (g_surfaces[i] != nullptr && g_surfaces[i]->door_slot == want && g_landings[i] != nullptr) {
+                GL_LOGI("landing_of_door hit token=0x%llx want=%zu surf=%zu door_path=%s",
+                        static_cast<unsigned long long>(door_token), want, i,
+                        (want < kMaxDoors && !g_doors[want].path.empty()) ? g_doors[want].path.c_str() : "(unknown)");
                 return g_landings[i].get();
             }
         }
+        GL_LOGI("landing_of_door miss token=0x%llx want=%zu surfaces=%zu",
+                static_cast<unsigned long long>(door_token), want, kMaxSurfaces);
         return nullptr;
     }
     std::uint64_t device_make_landing(const std::uint64_t surfaceId) noexcept {
