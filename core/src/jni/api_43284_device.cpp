@@ -224,10 +224,14 @@ namespace ghostlock::jni {
     bool device_write_block(const Init43284Values &, const WriteBlock43284Values &request,
                             const std::uint64_t door_token, std::uint64_t &sequence,
                             void *) noexcept {
-        GL_LOGI("write_block enter session=%d up=%d bytes=%zu offset=%llu",
-                (g_session != nullptr) ? 1 : 0,
-                ((g_session != nullptr) && g_session->up) ? 1 : 0,
-                request.block.size(), static_cast<unsigned long long>(request.offset));
+        {
+            const std::size_t who = (door_token == 0U) ? 0U : static_cast<std::size_t>(door_token) - 1U;
+            const char *const target = (who < kMaxDoors) ? g_doors[who].path.c_str() : "(no-door)";
+            GL_LOGI("write_block enter target=%s session=%d up=%d bytes=%zu offset=%llu", target,
+                    (g_session != nullptr) ? 1 : 0,
+                    ((g_session != nullptr) && g_session->up) ? 1 : 0,
+                    request.block.size(), static_cast<unsigned long long>(request.offset));
+        }
         if (g_session == nullptr || !g_session->up || request.block.size() != 16U) {
             return false;
         }
