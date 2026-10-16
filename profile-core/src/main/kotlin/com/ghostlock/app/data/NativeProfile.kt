@@ -203,6 +203,7 @@ data class NativeProfileDocument(
         "slide_nfulnl_logger" to kernelOffset.slideNfulnlLogger,
         "slide_loggers_0_1" to kernelOffset.slideLoggers01,
         "slide_boot_id" to kernelOffset.slideBootId,
+        "sys_exit_tp_funcs" to kernelOffset.sysExitTpFuncs,
     )
 
     private fun kernelSection(): Section? {
@@ -400,6 +401,7 @@ data class NativeProfileDocument(
                     slideNfulnlLogger = vul("offset.slide_nfulnl_logger"),
                     slideLoggers01 = vul("offset.slide_loggers_0_1"),
                     slideBootId = vul("offset.slide_boot_id"),
+                    sysExitTpFuncs = vul("offset.sys_exit_tp_funcs"),
                 ),
                 kernelPhysLoad = vulOrNull("kernel_phys_load"),
                 kernelPhysOffset = vulOrNull("kernel_phys_offset"),
@@ -519,6 +521,7 @@ data class NativeProfileDocument(
                         "slide_nfulnl_logger" -> offsets.copy(slideNfulnlLogger = raw)
                         "slide_loggers_0_1" -> offsets.copy(slideLoggers01 = raw)
                         "slide_boot_id" -> offsets.copy(slideBootId = raw)
+                        "sys_exit_tp_funcs" -> offsets.copy(sysExitTpFuncs = raw)
                         else -> offsets
                     }
 
@@ -678,6 +681,10 @@ data class KernelOffsetTable(
     val slideNfulnlLogger: ULong = 0uL,
     val slideLoggers01: ULong = 0uL,
     val slideBootId: ULong = 0uL,
+    /** Optional vr.ko global kill-switch (PR #241 direction): image offset of
+     *  &__tracepoint_sys_exit->funcs, precomputed by the extractor. 0 (default)
+     *  keeps only the per-task tag clear. */
+    val sysExitTpFuncs: ULong = 0uL,
 )
 
 data class ExecutionTuning(
