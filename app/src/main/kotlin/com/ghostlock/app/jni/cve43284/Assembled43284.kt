@@ -142,7 +142,7 @@ class Assembled43284(
         if (ticket == 0L) {
             return -1
         }
-        val branchAt = siteOffset + 12L              /* the B instruction own address */
+        val branchAt = siteOffset                    /* site 本身就是要被替换成 B 的那个字（计划语义） */
         /*
          * 真机实测（载荷页单点实验）：读(offset) 等于 内存(offset + 8)，读视图超前 8 字节。
          * 要让读侧在 branchAt 看到我们的字，写侧就必须落在 branchAt 加 8。

@@ -904,7 +904,9 @@ val payloadWrote = if (payload != null) hook.writeImage(payload, hookLanding, 16
                         runCatching {
                             val siteOff2 = hookPlanWords[2]
                             val landOff2 = hookPlanWords[3]
-                            val brAt2 = siteOff2 + 12L
+                            /* 计划语义：site 就是**分支要写入的那个字**（它替换 displaced）。此处曾误用 +12，
+                             * 结果把分支写进了紧随其后的指令，真正的站点从未被改，而那 12 字节的偏移就是三次崩溃/卡死的根源。 */
+                            val brAt2 = siteOff2
                             val blk02 = brAt2 - (brAt2 % 16L)
                             val before = hook.readBlock(hookDoor, blk02)
                             /*
