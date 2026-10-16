@@ -887,6 +887,8 @@ object TypedBackendProbe {
     private fun init43499() = Init43499(
         1L, 2, 1, 96L, 48L, 56L, 264L, 4L, 7L, 0L, 150L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0, 0,
         false, 0L, 0L, false, 4096L, false, 0L, 12L,
+        /* 43499 interface params (2026-10-16): perf slots+spec / ring / spray / pump / route. Placeholders for now. */
+        0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
     )
 
     private fun layout43499() = KernelLayout43499(
