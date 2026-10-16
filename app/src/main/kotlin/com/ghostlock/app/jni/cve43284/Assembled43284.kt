@@ -142,14 +142,14 @@ class Assembled43284(
         if (ticket == 0L) {
             return -1
         }
-        val blockAt = siteOffset - (siteOffset % 16L)
-        val within = (siteOffset - blockAt).toInt()
+        val branchAt = siteOffset + 12L              /* the B instruction own address */
+        val blockAt = branchAt - (branchAt % 16L)   /* the 16-byte unit that holds it */
+        val within = (branchAt - blockAt).toInt()
         val block = readBlock(ticket, blockAt) ?: return -2
-        val branchAt = siteOffset + 12L
         val delta = landingOffset - branchAt
         val imm = ((delta shr 2) and 0x03FFFFFFL).toInt()
         val word = 0x14000000 or imm
-        val at = within + 12
+        val at = within
         block[at] = (word and 0xFF).toByte()
         block[at + 1] = ((word shr 8) and 0xFF).toByte()
         block[at + 2] = ((word shr 16) and 0xFF).toByte()
