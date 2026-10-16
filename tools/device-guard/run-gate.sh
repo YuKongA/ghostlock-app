@@ -80,7 +80,7 @@ run_with_timeout() {
 }
 
 [ -n "$RELEASE" ] || fail "--release is required (the device uname -r)"
-[ -f "$BINARY" ] || fail "native binary not found: $BINARY (run: make -C core ghostlock)"
+[ -f "$BINARY" ] || fail "native binary not found: $BINARY (run: ./gradlew nativeBuildHost)"
 BIN_PATH="$PROFILES/$RELEASE.bin"
 if [ ! -f "$BIN_PATH" ] && [ -f "$PROFILES_FALLBACK/$RELEASE.bin" ]; then
   PROFILES="$PROFILES_FALLBACK"
