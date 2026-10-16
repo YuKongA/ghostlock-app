@@ -845,7 +845,9 @@ if (hookPlanWords != null && hookPlanWords.size >= 4) {
     step("typed: hook rewrite word=0x" + word.toString(16))
 }
 val branchFix = if (hookPlanWords != null && hookPlanWords.size >= 4)
-    hook.rewriteSiteBranch(hookDoor, hookPlanWords[2], hookPlanWords[3]) else -9
+    /* 停用 rewriteSiteBranch：它按载荷起点自算分支目标，会让 init 跳进字符串区（panic 来源）。
+     * 站点分支统一用 native 计划自带的 plan[0]（目标 = payload_vaddr + entry_offset=0x90）。传 0 票据即不写。 */
+    hook.rewriteSiteBranch(0L, hookPlanWords[2], hookPlanWords[3]) else -9
 step("typed: hook branch rewrite=" + branchFix + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
 /* Read the site back after the rewrite: the pre-rewrite log cannot tell whether it took. */
 if (branchFix == 0 && hookPlanWords != null && hookPlanWords.size >= 4) {
@@ -905,7 +907,12 @@ val payloadWrote = if (payload != null) hook.writeImage(payload, hookLanding, 16
                             val brAt2 = siteOff2 + 12L
                             val blk02 = brAt2 - (brAt2 % 16L)
                             val before = hook.readBlock(hookDoor, blk02)
-                            val word2 = 0x14000000L or (((landOff2 - brAt2) shr 2) and 0x03FFFFFFL)
+                            /*
+                             * 分支字用计划自带的那个：native 的目标是 payload_vaddr + entry_offset(0x90)。
+                             * 自己算成载荷起点，分支就落进标题字符串区，init 执行即死，内核 panic。
+                             */
+                            val word2 = if (hookPlanWords.isNotEmpty()) hookPlanWords[0]
+                                else (0x14000000L or (((landOff2 + 0x90L - brAt2) shr 2) and 0x03FFFFFFL))
                             if (before != null) {
                                 val at2 = (brAt2 - blk02).toInt()
                                 step("typed: hook site block before=" + before.joinToString(" ") { b -> "%02x".format(b) } + " word=0x" + word2.toString(16))
