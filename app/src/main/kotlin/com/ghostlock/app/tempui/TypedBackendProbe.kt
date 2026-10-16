@@ -922,8 +922,20 @@ val payloadWrote = if (payload != null) hook.writeImage(payload, hookLanding, 16
                                 before[at2 + 1] = ((word2 shr 8) and 0xFF).toByte()
                                 before[at2 + 2] = ((word2 shr 16) and 0xFF).toByte()
                                 before[at2 + 3] = ((word2 shr 24) and 0xFF).toByte()
-                                val siteWrote = hook.writeImage(before, blk02, 16L, saInit(hook.nextSequence()))
-                                val after = hook.readBlock(hookDoor, blk02)
+                                /*
+                                 * 临时恢复入口（同批登记清理）：存在 /data/local/tmp/.gl_restore 时，把 0xB30B0 这一块写回
+                                 * 原厂 16 字节 —— 我们误写在 0xB30B8（site+12）的那条 B 就在其中。恢复优先于一切。
+                                 * 原值来自本会话对原厂盘面的读数：1f 00 00 39 01 04 00 f9 08 81 5e f8 28 00 08 8b。
+                                 */
+                                val restore = java.io.File("/data/local/tmp/.gl_restore").exists()
+                                val restoreBytes = byteArrayOf(
+                                    0x1F, 0x00, 0x00, 0x39, 0x01, 0x04, 0x00, 0xF9.toByte(),
+                                    0x08, 0x81.toByte(), 0x5E, 0xF8.toByte(), 0x28, 0x00, 0x08, 0x8B.toByte(),
+                                )
+                                val target2 = if (restore) 733360L else blk02
+                                val toWrite = if (restore) restoreBytes else before
+                                val siteWrote = hook.writeImage(toWrite, target2, 16L, saInit(hook.nextSequence()))
+                                val after = hook.readBlock(hookDoor, target2)
                                 val afterWord = if (after != null && at2 + 3 < after.size) {
                                     (after[at2].toLong() and 0xFF) or ((after[at2 + 1].toLong() and 0xFF) shl 8) or
                                         ((after[at2 + 2].toLong() and 0xFF) shl 16) or ((after[at2 + 3].toLong() and 0xFF) shl 24)
