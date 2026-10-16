@@ -12,7 +12,7 @@ import com.ghostlock.app.data.nativeaccess.NativeReply
 /**
  * 设备门禁：把 JNI 边界在这台真机上走一遍，并把每一步的**原始**结果写进 logcat（TAG=GhostlockGate）。
  *
- * 它验的是边界本身，不是漏洞利用：会话能建起来、Snapshot 能答、没有设备 seam 的 op 必须**具名**
+ * 它验的是边界本身，不是漏洞利用：会话能建起来、Snapshot 能答、没有设备 接口 的 op 必须**具名**
  * 拒绝（op-not-wired:<名字>）、关闭与销毁幂等、销毁后的句柄必须被拒 —— 这几条正是 J1/J2 与
  * J3a/J4a 在当前阶段能给出的全部承诺。
  *
@@ -73,7 +73,7 @@ object DeviceGate {
             is AccessResult.Failure -> step("gate: " + backend + " snapshot transport-failure " + snapshot.detail)
         }
 
-        /* 没有设备 seam 的 op：必须是具名拒绝，而不是沉默。 */
+        /* 没有设备 接口 的 op：必须是具名拒绝，而不是沉默。 */
         val op = if (backend == "cve_2026_43499") NativeProtocol.Op.WriteWord else NativeProtocol.Op.WriteBlock
         val keys = if (backend == "cve_2026_43499") {
             mapOf(

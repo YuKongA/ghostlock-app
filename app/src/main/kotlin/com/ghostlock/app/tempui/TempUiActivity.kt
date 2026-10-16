@@ -47,7 +47,7 @@ private const val TAG_UI = "GhostlockUi"
  * 「设备门禁」按钮把 JNI 边界在本机走一遍，并把每一步写进 logcat（TAG=GhostlockGate），供 adb 抓取；
  * 界面启动时自动跑一次，所以一次 am start 就能拿到完整证据。
  *
- * 它不宣称任何攻击能力、不发起任何攻击步骤：那些要等设备 seam（J3b/J4b）与 Kotlin 步骤引擎（J6）。
+ * 它不宣称任何攻击能力、不发起任何攻击步骤：那些要等设备 接口（J3b/J4b）与 Kotlin 步骤引擎（J6）。
  */
 class TempUiActivity : ComponentActivity() {
 
