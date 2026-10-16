@@ -19,6 +19,8 @@ class Assembled43499(private val handle: Long) {
 
     /** 当前的内核访问对象句柄（0 = 没有）。 */
     var accessId: Long = 0L
+        private set
+
     /**
      *  Assembly for initialize: seventeen values, in the order the JNI export documents
      *  (waiter, task, lock, buffer, maxAttempts, armHold, armSequence, parkMs, settleUs,
@@ -26,7 +28,6 @@ class Assembled43499(private val handle: Long) {
      *  The caller decides the values (Kotlin side); null keeps the plain entry point.
      */
     var assembly: LongArray? = null
-        private set
 
     private fun refusalSlot(): Array<String> = arrayOf("")
 

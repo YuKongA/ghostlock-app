@@ -474,6 +474,13 @@ object TypedBackendProbe {
             /* 43499 的访问线最小序列：初始化 → 写一块 → 回读 → shutdown（每一步具名）。 */
             if (assembled43499.accessId != 0L) {
                 val route = 1
+                /* Assembly for initialize: seventeen values in the JNI export order, written here in Kotlin.
+                 * They cover the twelve assembly_complete() insists on (buffer/task/lock offsets, attempts,
+                 * arm hold and sequence, park, burst, max calls, nice modulus, fake task and fake lock). */
+                assembled43499.assembly = longArrayOf(
+                    96L, 48L, 56L, 264L, 4L, 20000L, 7L, 150L, 100L,
+                    0L, 4L, 8L, 0L, 8L, 0L, 0x1000L, 0x2000L,
+                )
                 val inited = assembled43499.initializeAccess(route, 0L, true)
                 step("typed: assembled 43499 init=" + inited + " refusal=" + assembled43499.lastRefusal)
                 val probeBlock = ByteArray(16) { index -> (0x40 + index).toByte() }
