@@ -619,14 +619,17 @@ namespace ghostlock::jni {
             return nullptr;
         }
         /*
-         * door_token 是**打包票据**（(门句柄 << 32) | 代），不是下标：门句柄 = slot + 1，
-         * 与 device_make_surface 里同一条解码保持一致（那里也是 >> 32 再减一）。
-         * 早先直接减一会拿票据去比纯下标，命中的总是第一个面 —— 于是读写落到载体的落地。
+         * 到达这里的票据有两种形态：
+         *   · 打包票据 ((门句柄 << 32) | 代)，与 device_make_surface 的解码一致；
+         *   · 以及 readBlock / writeBlock 传进来的纯 slot + 1。
+         * 只认打包形态时查表一律落空（本会话真机：wrote=-4）；只减一时又会命中第一个面，
+         * 于是读写都落到载体的落地（真机：读 libc++ 站点却读出载体里的字符串）。两种都接受。
          */
-        if ((door_token >> 32U) == 0U) {
+        const std::uint64_t handle = (door_token >> 32U) != 0U ? (door_token >> 32U) : door_token;
+        if (handle == 0U) {
             return nullptr;
         }
-        const std::size_t want = static_cast<std::size_t>(door_token >> 32U) - 1U;
+        const std::size_t want = static_cast<std::size_t>(handle) - 1U;
         for (std::size_t i = 0U; i < kMaxSurfaces; ++i) {
             if (g_surfaces[i] != nullptr && g_surfaces[i]->door_slot == want && g_landings[i] != nullptr) {
                 return g_landings[i].get();
