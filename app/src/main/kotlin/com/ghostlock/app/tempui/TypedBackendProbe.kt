@@ -809,6 +809,17 @@ val hookPlanWords = hook.hookPlan("splice")
 /** The site is already patched on disk (writeHook answers displaced-mismatch), and the branch that
  * older code left there aims 0xC short of the payload entry. Force the word to the one this run
  * needs; rewriteSiteBranch does not look at the displaced instruction, it just writes the word. */
+if (hookPlanWords != null && hookPlanWords.size >= 4) {
+    val site = hookPlanWords[2]
+    val land = hookPlanWords[3]
+    val brAt = site + 12L
+    val blk0 = brAt - (brAt % 16L)
+    val within = (brAt - blk0)
+    val imm = ((land - brAt) shr 2) and 0x03FFFFFFL
+    val word = 0x14000000L or imm
+    step("typed: hook rewrite plan site=" + site + " branch=" + brAt + " block=" + blk0 + " within=" + within + " imm=0x" + imm.toString(16))
+    step("typed: hook rewrite word=0x" + word.toString(16))
+}
 val branchFix = if (hookPlanWords != null && hookPlanWords.size >= 4)
     hook.rewriteSiteBranch(hookDoor, hookPlanWords[2], hookPlanWords[3]) else -9
 step("typed: hook branch rewrite=" + branchFix + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
