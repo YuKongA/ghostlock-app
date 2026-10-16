@@ -30,7 +30,7 @@ namespace {
     }
 
     /** A fake that answers everything, in the smallest way that first compiles. */
-    struct CompleteSeam final {
+    struct CompleteLanding final {
         static MapResult map_shared(std::size_t) noexcept { return MapResult{nullptr, 0}; }
         static OpsResult unmap(void *, std::size_t) noexcept { return OpsResult{0, 0}; }
         static OpsResult futex_wait_private(std::uint32_t *, std::uint32_t) noexcept {
@@ -45,7 +45,7 @@ namespace {
         }
         static OpsResult join_thread(unsigned long) noexcept { return OpsResult{0, 0}; }
     };
-    static_assert(SnitchOps<CompleteSeam>, "a type that answers every call is a landing");
+    static_assert(SnitchOps<CompleteLanding>, "a type that answers every call is a landing");
 
     /** And the ones that are not: one call missing, and one answered in the wrong shape. */
     struct MissingJoin final {
@@ -85,7 +85,7 @@ namespace {
 
 int main() {
     std::printf("snitch landing: the shape\n");
-    expect(SnitchOps<CompleteSeam>, "a complete landing passes the same check the device one does");
+    expect(SnitchOps<CompleteLanding>, "a complete landing passes the same check the device one does");
     expect(!SnitchOps<MissingJoin>, "and one that leaves out a call does not");
     expect(!SnitchOps<WrongMap>, "nor does one that answers a call in the wrong shape");
     if (g_failures != 0U) {

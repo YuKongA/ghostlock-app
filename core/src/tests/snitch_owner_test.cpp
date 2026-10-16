@@ -47,7 +47,7 @@ namespace {
     }
 
     /** A landing that refuses every platform call. Nothing here reaches the kernel. */
-    struct RefusingSeam final {
+    struct RefusingLanding final {
         static MapResult map_shared(std::size_t) noexcept { return MapResult{nullptr, -1}; }
         static OpsResult unmap(void *, std::size_t) noexcept { return OpsResult{-1, -1}; }
         static OpsResult futex_wait_private(std::uint32_t *, std::uint32_t) noexcept {
@@ -125,7 +125,7 @@ namespace {
         Call call;
         SnitchInputs bad = good_inputs();
         bad.page_size = 0U;   /* the page size is measured on the device; zero means it was not */
-        const auto out = run_snitch_owner<RefusingSeam, CollisionBuckets>(
+        const auto out = run_snitch_owner<RefusingLanding, CollisionBuckets>(
             bad, call.region, call.patience, 0U, call.word_ptrs, 2U, call.strides, call.range, false,
             call.buckets, call.addresses, 2U, 2U);
         expect(out.status == OwnerVerdict::SetupRefused, "a shape without a page size is refused");
@@ -139,7 +139,7 @@ namespace {
     void a_region_that_cannot_be_laid_out_is_refused_the_same_way() {
         Call call;
         RegionInputs empty{};
-        const auto out = run_snitch_owner<RefusingSeam, CollisionBuckets>(
+        const auto out = run_snitch_owner<RefusingLanding, CollisionBuckets>(
             good_inputs(), empty, call.patience, 0U, call.word_ptrs, 2U, call.strides, call.range,
             false, call.buckets, call.addresses, 2U, 2U);
         expect(out.status == OwnerVerdict::RegionRefused, "a region with no sizes is refused");
@@ -150,7 +150,7 @@ namespace {
     void the_poke_step_is_reached_and_its_refusal_is_named() {
         Call call;
         call.patience.wake_rounds = 4U;
-        const auto out = run_snitch_owner<RefusingSeam, CollisionBuckets>(
+        const auto out = run_snitch_owner<RefusingLanding, CollisionBuckets>(
             good_inputs(), good_region(), call.patience, 0U, call.word_ptrs, 2U, call.strides,
             call.range, false, call.buckets, call.addresses, 2U, 2U);
         expect(out.setup == ghostlock::backend::cve_2026_43499::leak::SnitchSetupVerdict::Ok,

