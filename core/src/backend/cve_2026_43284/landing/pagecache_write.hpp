@@ -150,6 +150,10 @@ namespace ghostlock::backend::cve_2026_43284::landing {
             std::array<std::uint8_t, kMaxDatagramBytes> datagram{};
             store_be32(datagram.data(), spi_);
             store_be32(datagram.data() + 4U, next_seq_);
+            /* 写侧事实：位置、门的 fd（远端为 -1）、套接字、以及本面能否供页（远端=经桥）。 */
+            GL_LOGI("write_block enter pos=%llu fd=%d sock=%d serve=%d",
+                    static_cast<unsigned long long>(position), doors_.file_fd(), doors_.socket_fd(),
+                    splice_.can_serve_page() ? 1 : 0);
             GL_LOGI("window: send seq=%u offset=%llu hdr=%02x%02x%02x%02x%02x%02x%02x%02x", next_seq_,
                         static_cast<unsigned long long>(position),
                         datagram[0], datagram[1], datagram[2], datagram[3],
