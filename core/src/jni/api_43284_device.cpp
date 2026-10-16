@@ -560,6 +560,12 @@ namespace ghostlock::jni {
                 auto surface = std::make_unique<Surface>();
                 surface->door_slot = target_slot;
                 surface->door = std::make_unique<PairedDoor>(g_doors[target_slot].fd, g_sockets[socket_slot]);
+                /* 面与门的配对是这条链的关键事实：哪个 fd、哪扇门，落地的读写就落在那里。 */
+                GL_LOGI("make_surface index=%zu targetId=0x%llx target_slot=%zu fd=%d path=%s socket=%d",
+                        index, static_cast<unsigned long long>(targetId), target_slot,
+                        g_doors[target_slot].fd,
+                        g_doors[target_slot].path.empty() ? "(none)" : g_doors[target_slot].path.c_str(),
+                        g_sockets[socket_slot]);
                 const bool remote = g_doors[target_slot].fd < 0;
                 if (remote) {
                     /* 载体是本进程打不开的 vendor 文件：读与写都经 patch #1 写下的 helper（桥）。 */
