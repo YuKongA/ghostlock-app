@@ -147,7 +147,7 @@ class Assembled43284(
          * 真机实测（载荷页单点实验）：读(offset) 等于 内存(offset + 8)，读视图超前 8 字节。
          * 要让读侧在 branchAt 看到我们的字，写侧就必须落在 branchAt 加 8。
          */
-        val writeAt = branchAt + 8L
+        val writeAt = branchAt                  /* 不再用任何偏斜猜测：按站点自身的坐标整块读改写 */
         val blockAt = writeAt - (writeAt % 16L)     /* the 16-byte unit that holds it */
         val within = (writeAt - blockAt).toInt()
         val block = readBlock(ticket, blockAt) ?: return -2

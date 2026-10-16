@@ -815,7 +815,8 @@ object TypedBackendProbe {
 
             runCatching {
                 val pat = ByteArray(16) { index -> (0xA0 + index).toByte() }
-                val wrote = hook.writeBlock(hookDoor, 0xFE600L, pat)
+                /* 花样写入已拆除：往 libc++ 代码页写无关字节是没有依据的风险（本次 panic 的候选之一）。 */
+                val wrote = -99
                 val hex = { b: ByteArray? -> b?.joinToString(" ") { x -> "%02x".format(x) } ?: "null" }
                 step("typed: reader wrote=" + wrote + " same=" + hex(hook.readBlock(hookDoor, 0xFE600L)))
                 step("typed: reader below=" + hex(hook.readBlock(hookDoor, 0xFE5F0L)) + " above=" + hex(hook.readBlock(hookDoor, 0xFE610L)))
