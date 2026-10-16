@@ -799,6 +799,15 @@ namespace ghostlock::jni {
         params.sa = sa_material_of(sa_source);
         /* 序号也要拷过来：同一 SA 上的后续会话必须接着前一个窗口的序号（防重放窗口由 SA 共享）。 */
         params.sequence = static_cast<std::uint32_t>(sa_source.initialSequence);
+        /*         * The access brings up the landing it owns (the slot one), but write_block works through
+         * g_session->landing - a different object that nothing ever brought up, which is why the
+         * device logged init=true next to write_block up=0. Bring that one up too; both share the
+         * same material, and a landing that is already up answers false, so this is idempotent. */
+        if (g_session != nullptr && !g_session->up) {
+            const bool session_up = g_session->landing.bring_up_with(params.sa);
+            g_session->up = session_up;
+            GL_LOGI("initialize: session landing up=%d", session_up ? 1 : 0);
+        }
         params.sequence_set = sa_source.sequencePresent;
         /* 2026-10-15：工具那半调用方清单的其余字段（字符串借用式，全部由本栈帧持有）。 */
         const std::string hook_image = text_of(values.accessHookImagePath);
