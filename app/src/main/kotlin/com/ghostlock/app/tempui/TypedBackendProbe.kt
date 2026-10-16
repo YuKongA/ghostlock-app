@@ -800,7 +800,8 @@ object TypedBackendProbe {
             hook.buildAccess()
             val hookParams = Assembled43284.fullAccessParams(Assembled43284.HOOK_TARGET)
                         step("typed: nextSequence before hook=" + patcher.nextSequence() + " patcherLanding=" + patcher.landingId)
-            hook.initializeAccessAndRemember(hookParams, saInit(patcher.nextSequence()))
+            val hookInit = hook.initializeAccessAndRemember(hookParams, saInit(patcher.nextSequence()))
+            step("typed: hook init=" + hookInit + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
 
             /* Rewrite the branch while the hook session is the live one: a later resolve replaces
              * g_session and the write then answers up=0. */
