@@ -259,9 +259,13 @@ namespace ghostlock::jni {
         if (door_token == 0U || slot >= kMaxDoors || g_doors[slot].fd < 0) {
             return false;
         }
-        const ssize_t got = ::pread(g_doors[slot].fd, out.data(), out.size(),
-                                    static_cast<off_t>(request.offset));
-        return got == static_cast<ssize_t>(out.size());
+        /* Through the landing, like the write: pread sees the file, not the page cache the write went to. */
+        auto *const landing = landing_of_door(door_token);
+        if (landing == nullptr) {
+            return false;
+        }
+        return landing->read_block(static_cast<std::uint64_t>(request.offset),
+                                     std::span<std::byte>(out.data(), out.size()));
     }
 
     backend::cve_2026_43284::SaMaterial sa_material_of(const Init43284Values &params) noexcept {
