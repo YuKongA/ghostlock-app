@@ -847,9 +847,35 @@ object TypedBackendProbe {
         step("typed: 43499 shutdown-after-destroy code=" + code + " refusal=" + refusal[0])
     }
 
+    /**
+     *  43284 自检段，外加**每次运行一次**的收尾两行（本批的日志增量）。
+     *
+     *  机械改动（2026-10-17）：原函数体改名为 [probe43284Body]，本函数只负责「建账 + 收尾」——
+     *  `run.43284 finish:` 与 `verify sampling:` 因此对**每一条**退出路径（库缺失、create 失败、
+     *  正常结束、中途抛异常）都恰好打印一次，且都排在 `probe43284 -> done` 之前。
+     *
+     *  @param step 统一日志回调（屏幕 / logcat / 文件同一行）。
+     */
     private fun probe43284(step: (String) -> Unit) {
+        val finish = RunFinish43284()
+        try {
+            probe43284Body(step, finish)
+        } finally {
+            /* 收尾两行不参与抽样：一次运行各一行（ref 的 run.chain / run.trigger / run.wait 并成一行）。 */
+            finish.emit { line -> step(line) }
+        }
+    }
+
+    /**
+     *  43284 自检段的本体（原 [probe43284] 的函数体，机械改名）。
+     *
+     *  @param step   统一日志回调。
+     *  @param finish 本次运行的收尾账（只写事实，不参与控制流）。
+     */
+    private fun probe43284Body(step: (String) -> Unit, finish: RunFinish43284) {
         if (!Native43284.ensureLoaded()) {
             step("typed: 43284 library missing (lib" + Native43284.LIBRARY + ".so)")
+            finish.noteError("library-missing")
             return
         }
         step("typed: 43284 library loaded")
@@ -860,6 +886,7 @@ object TypedBackendProbe {
         meter.after("Native43284.create", "handle=" + handle)
         if (handle <= 0) {
             step("typed: 43284 create failed")
+            finish.noteError("create-failed")
             return
         }
         step("typed: 43284 create ok")
@@ -1103,7 +1130,7 @@ object TypedBackendProbe {
         step("typed: 43284 destroy code=" + code + " refusal=" + refusal[0])
 
         meter.before("probeAssembled43284", "doorPath=" + doorPath.absolutePath)
-        probeAssembled43284(step, doorPath.absolutePath)
+        probeAssembled43284(step, doorPath.absolutePath, finish)
         meter.after("probeAssembled43284", "done")
 
         /* 43499 侧最小序列：建会话 → 按 route 取访问对象（1/2/3 都试，看工厂接受哪个）→ 收尾。 */
@@ -1302,10 +1329,18 @@ object TypedBackendProbe {
      * 用 Assembled43284 走一遍最小闭环（独立会话）：建 → 初始化 → 开门 → 读块 → 收尾。
      *
      * 这一段刻意只用**包装类**（拼装在 Kotlin），native 侧一行未改 —— 它验证的是包装类本身可用。
+     *
+     * 本段同时是收尾账（[RunFinish43284]）的**事实来源**：模块区写成/验成、patch#1、钩子
+     * 计划/武装/应用/恢复、触发、终态与收尾，都在事实发生的那一行旁边记账（只记事实，不改控制流）。
+     *
+     * @param step   统一日志回调。
+     * @param doorPath 门探测用的路径（与应用缓存里的门文件同一个）。
+     * @param finish 本次运行的收尾账；收尾两行由 [probe43284] 在 finally 里统一打印。
      */
-    private fun probeAssembled43284(step: (String) -> Unit, doorPath: String) {
+    private fun probeAssembled43284(step: (String) -> Unit, doorPath: String, finish: RunFinish43284) {
         if (!Native43284.ensureLoaded()) {
             step("typed: assembled 43284 library missing")
+            finish.noteError("library-missing")
             return
         }
         /*
@@ -1331,6 +1366,7 @@ object TypedBackendProbe {
         meter.after("Native43284.create", "handle=" + handle)
         if (handle <= 0) {
             step("typed: assembled 43284 create failed")
+            finish.noteError("assembled-create-failed")
             return
         }
         val session = Assembled43284(handle)

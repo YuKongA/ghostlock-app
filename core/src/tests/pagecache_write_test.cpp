@@ -96,6 +96,9 @@ namespace {
         /* The surface says which halves it can serve: a carrier this process cannot open is served
          * by a bridge, and the window asks here rather than assuming a descriptor exists. */
         [[nodiscard]] bool can_serve_page() const noexcept override { return can_serve; }
+        /* 桥的形态由面报出来：门声明的形态与它必须在路由起来时相同（见 open_doors）。 */
+        [[nodiscard]] int bridge_mode() const noexcept override { return mode; }
+        int mode = ghostlock::backend::cve_2026_43284::landing::kBridgeModeSpawn;
         [[nodiscard]] bool can_read_page() const noexcept override { return can_read_page_flag; }
         bool can_serve = true;
         bool can_read_page_flag = true;
@@ -111,6 +114,25 @@ namespace {
         sa.hmac_key[0] = 0xBBU;
         sa.set = true;
         return sa;
+    }
+
+    /** 半切换的装配在路由起来时就被拒：门说 spawn、面说 session（或反过来）会让每块仍然 fork 一次，
+     *  而这件事只有从耗时里才看得出来 —— 所以它不该跑起来。 */
+    void a_half_switched_bridge_is_refused() {
+        using ghostlock::backend::cve_2026_43284::landing::kBridgeModeSession;
+
+        FakeDoors doors;
+        RecordingSplice splice;
+        splice.mode = kBridgeModeSession;
+        PageCacheWrite mismatched(doors, splice);
+        expect(!mismatched.open_doors(frame()), "a surface in session mode over doors in spawn mode is refused");
+        expect(splice.sent == 0, "and nothing was written through it");
+
+        FakeDoors paired_doors;
+        RecordingSplice paired_splice;
+        paired_splice.mode = kBridgeModeSession;
+        PageCacheWrite matched(paired_doors, paired_splice, -1, kBridgeModeSession);
+        expect(matched.open_doors(frame()), "the same form on both sides comes up");
     }
 
     void one_block_is_read_vectored_and_sent() {
@@ -259,6 +281,8 @@ namespace {
 }  // namespace
 
 int main() {
+    std::printf("page cache write: the bridge form on both sides\n");
+    a_half_switched_bridge_is_refused();
     std::printf("page cache write: one block\n");
     one_block_is_read_vectored_and_sent();
     std::printf("page cache write: the documented shape\n");

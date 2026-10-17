@@ -385,7 +385,7 @@ namespace ghostlock::backend::cve_2026_43284::landing {
     long BridgeSession::request(Op op, std::uint64_t offset, int fd_to_pass,
                                 std::uint8_t *out) noexcept {
         if (!open_ || request_fd_ < 0 || reply_fd_ < 0) {
-            if (!dead_ && outcome_ != Outcome::Ok) {
+            if (!dead_) {
                 outcome_ = Outcome::Closed;
             }
             return -1;

@@ -9,13 +9,35 @@
  *  the refusal of a frame too short to hold the page, that the helper path's diagnostic read is
  *  sampled rather than per block (and that the preimage still comes from the same source), and that
  *  the vector and the check are the primitives' answers rather than a second implementation.
+ *
+ *  It also pins the switch that turns the bridge from one exec per block into one session
+ *  (bridge_session.hpp, default off): a normal answer, a short answer, a child that leaves, a child
+ *  that goes quiet (the 200 ms deadline), an idempotent close, and -- the number the switch exists for
+ *  -- how many helper children the two forms start for the same blocks. The fake helper is this test
+ *  binary re-executed: the bridge execs its helper with the retired chain's argv, so the child is told
+ *  which role to play by an environment variable the parent sets, and it records its pid in a ledger
+ *  file so a fork count is a fact rather than an intention.
  */
 #include <array>
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
 
+#include <fcntl.h>
+#include <sys/socket.h>
+#include <sys/uio.h>
+#include <unistd.h>
+
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
+
+#include "backend/cve_2026_43284/landing/bridge_session.hpp"
+#include "backend/cve_2026_43284/landing/crash_dump_bridge.hpp"
 #include "backend/cve_2026_43284/landing/esp_crypto.hpp"
 #include "backend/cve_2026_43284/landing/real_splice_io.hpp"
 
@@ -420,6 +442,433 @@ namespace {
                "from one helper read, with the source's own bytes");
     }
 
+
+    /* ------------------------------------------------------------------ *
+     * The persistent bridge: the fake helper, and the switch that selects it.
+     * ------------------------------------------------------------------ */
+
+    using ghostlock::backend::cve_2026_43284::landing::BridgeSession;
+    using ghostlock::backend::cve_2026_43284::landing::CrashDumpBridge;
+    using ghostlock::backend::cve_2026_43284::landing::kBridgeModeSession;
+    using ghostlock::backend::cve_2026_43284::landing::kBridgeModeSpawn;
+    using ghostlock::backend::cve_2026_43284::landing::kBridgeReplyBytes;
+    using ghostlock::backend::cve_2026_43284::landing::kBridgeRequestBytes;
+    using ghostlock::backend::cve_2026_43284::landing::kBridgeSessionMagic;
+
+    /** Where a fake child records that it ran: one pid per line, so "how many helpers did this cost"
+     *  is counted rather than assumed. */
+    constexpr const char *kLedgerEnv = "GLK_TEST_BRIDGE_LEDGER";
+    /** Which behaviour the fake child plays (normal / short / exit / silent). */
+    constexpr const char *kBehaviourEnv = "GLK_TEST_BRIDGE_BEHAVIOUR";
+    constexpr const char *kFakeCarrier = "/vendor/lib64/libbinderdebug.so";
+
+    std::string g_ledger;
+
+    void store_le32_at(std::uint8_t *out, std::uint32_t value) {
+        for (std::size_t i = 0U; i < 4U; ++i) {
+            out[i] = static_cast<std::uint8_t>((value >> (8U * i)) & 0xffU);
+        }
+    }
+
+    void store_le64_at(std::uint8_t *out, std::uint64_t value) {
+        for (std::size_t i = 0U; i < 8U; ++i) {
+            out[i] = static_cast<std::uint8_t>((value >> (8U * i)) & 0xffULL);
+        }
+    }
+
+    std::uint64_t load_le64_at(const std::uint8_t *in) {
+        std::uint64_t value = 0ULL;
+        for (std::size_t i = 0U; i < 8U; ++i) {
+            value |= static_cast<std::uint64_t>(in[i]) << (8U * i);
+        }
+        return value;
+    }
+
+    /** The block the fake answers with at an offset: a pattern that proves the offset travelled. */
+    void fake_block(std::uint64_t offset, std::uint8_t *out) {
+        for (std::size_t i = 0U; i < kBlockBytes; ++i) {
+            out[i] = static_cast<std::uint8_t>((offset + i) & 0xffULL);
+        }
+    }
+
+    bool write_all(int fd, const std::uint8_t *data, std::size_t size) {
+        std::size_t done = 0U;
+        while (done < size) {
+            const ssize_t wrote = ::write(fd, data + done, size - done);
+            if (wrote <= 0) {
+                return false;
+            }
+            done += static_cast<std::size_t>(wrote);
+        }
+        return true;
+    }
+
+    void record_child() {
+        const char *path = std::getenv(kLedgerEnv);
+        if (path == nullptr) {
+            return;
+        }
+        const int fd = ::open(path, O_WRONLY | O_APPEND | O_CREAT, 0600);
+        if (fd < 0) {
+            return;
+        }
+        char line[32] = {};
+        const int length = std::snprintf(line, sizeof(line), "%d\n", static_cast<int>(::getpid()));
+        if (length > 0) {
+            (void) write_all(fd, reinterpret_cast<const std::uint8_t *>(line),
+                             static_cast<std::size_t>(length));
+        }
+        (void) ::close(fd);
+    }
+
+    /** Reads one request off the session's standard input, with the descriptor a splice rides on. */
+    bool read_request(int fd, std::uint8_t &op, std::uint64_t &offset, int &passed_fd) {
+        std::uint8_t message[kBridgeRequestBytes] = {};
+        char control[CMSG_SPACE(sizeof(int))] = {};
+        struct iovec body {};
+        body.iov_base = message;
+        body.iov_len = sizeof(message);
+        struct msghdr headers {};
+        headers.msg_iov = &body;
+        headers.msg_iovlen = 1U;
+        headers.msg_control = control;
+        headers.msg_controllen = sizeof(control);
+        for (;;) {
+            const ssize_t got = ::recvmsg(fd, &headers, 0);
+            if (got < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                return false;
+            }
+            if (got != static_cast<ssize_t>(kBridgeRequestBytes)) {
+                return false;
+            }
+            break;
+        }
+        op = message[0];
+        offset = load_le64_at(message + 8);
+        passed_fd = -1;
+        for (struct cmsghdr *header = CMSG_FIRSTHDR(&headers); header != nullptr;
+             header = CMSG_NXTHDR(&headers, header)) {
+            if (header->cmsg_level == SOL_SOCKET && header->cmsg_type == SCM_RIGHTS &&
+                header->cmsg_len >= CMSG_LEN(sizeof(int))) {
+                std::memcpy(&passed_fd, CMSG_DATA(header), sizeof(int));
+            }
+        }
+        return true;
+    }
+
+    /** The child side of the protocol, as the session helper is expected to speak it. */
+    int run_fake_session_child() {
+        record_child();
+        const char *behaviour = std::getenv(kBehaviourEnv);
+        const bool silent = behaviour != nullptr && std::strcmp(behaviour, "silent") == 0;
+        const bool short_answer = behaviour != nullptr && std::strcmp(behaviour, "short") == 0;
+        const bool leaves_early = behaviour != nullptr && std::strcmp(behaviour, "exit") == 0;
+        for (;;) {
+            std::uint8_t op = 0U;
+            std::uint64_t offset = 0U;
+            int passed_fd = -1;
+            if (!read_request(STDIN_FILENO, op, offset, passed_fd)) {
+                return 0;
+            }
+            if (op == 0x48U) { /* the handshake */
+                std::uint8_t reply[kBridgeReplyBytes] = {};
+                store_le32_at(reply, 0U);
+                reply[4] = op;
+                store_le64_at(reply + 8, kBridgeSessionMagic);
+                if (!write_all(STDOUT_FILENO, reply, kBridgeReplyBytes)) {
+                    return 0;
+                }
+                if (leaves_early) {
+                    return 0; /* the child that leaves right after introducing itself */
+                }
+                continue;
+            }
+            if (silent) {
+                continue; /* read the request, answer nothing: the parent's deadline is the test */
+            }
+            if (short_answer && op == 0x52U) {
+                const std::uint8_t half[kBridgeReplyBytes] = {};
+                (void) write_all(STDOUT_FILENO, half, 8U);
+                return 0; /* half a reply and gone: a short read, not data */
+            }
+            if (op == 0x52U) {
+                std::uint8_t block[kBlockBytes] = {};
+                fake_block(offset, block);
+                if (!write_all(STDOUT_FILENO, block, kBlockBytes)) {
+                    return 0;
+                }
+                continue;
+            }
+            if (op == 0x53U) {
+                bool moved = false;
+                if (passed_fd >= 0) {
+                    std::uint8_t page[kBlockBytes] = {};
+                    fake_block(offset, page);
+                    moved = write_all(passed_fd, page, kBlockBytes);
+                    (void) ::close(passed_fd);
+                }
+                std::uint8_t status[kBridgeReplyBytes] = {};
+                store_le32_at(status, moved ? 0U : 2U);
+                status[4] = op;
+                store_le64_at(status + 8, offset);
+                if (!write_all(STDOUT_FILENO, status, kBridgeReplyBytes)) {
+                    return 0;
+                }
+                continue;
+            }
+            return 0; /* an op the helper does not know is the end of the session */
+        }
+    }
+
+    /** The one-shot helper, which is what the spawn form execs: sixteen bytes on standard output. */
+    int run_fake_one_shot() {
+        record_child();
+        std::uint8_t block[kBlockBytes] = {};
+        for (std::size_t i = 0U; i < kBlockBytes; ++i) {
+            block[i] = 0x5aU;
+        }
+        (void) write_all(STDOUT_FILENO, block, kBlockBytes);
+        return 0;
+    }
+
+    /** This binary's own path: the fake helper is this test, re-executed. */
+    std::string own_exe() {
+#if defined(__APPLE__)
+        char raw[4096] = {};
+        std::uint32_t size = sizeof(raw);
+        if (_NSGetExecutablePath(raw, &size) != 0) {
+            return {};
+        }
+        char resolved[4096] = {};
+        return ::realpath(raw, resolved) != nullptr ? std::string(resolved) : std::string(raw);
+#else
+        char raw[4096] = {};
+        const ssize_t got = ::readlink("/proc/self/exe", raw, sizeof(raw) - 1U);
+        if (got <= 0) {
+            return {};
+        }
+        return std::string(raw, static_cast<std::size_t>(got));
+#endif
+    }
+
+    /** A fresh ledger and the behaviour for it: every case starts from a known child count. */
+    void reset_ledger(const char *behaviour) {
+        char path[] = "/tmp/glk_bridge_ledger_XXXXXX";
+        const int fd = ::mkstemp(path);
+        if (fd >= 0) {
+            (void) ::close(fd);
+            g_ledger = path;
+            (void) ::setenv(kLedgerEnv, g_ledger.c_str(), 1);
+        }
+        if (behaviour != nullptr) {
+            (void) ::setenv(kBehaviourEnv, behaviour, 1);
+        } else {
+            (void) ::unsetenv(kBehaviourEnv);
+        }
+    }
+
+    std::size_t ledger_children() {
+        std::size_t lines = 0U;
+        if (g_ledger.empty()) {
+            return lines;
+        }
+        std::FILE *file = std::fopen(g_ledger.c_str(), "r");
+        if (file == nullptr) {
+            return lines;
+        }
+        int ch = 0;
+        while ((ch = std::fgetc(file)) != EOF) {
+            if (ch == '\n') {
+                ++lines;
+            }
+        }
+        (void) std::fclose(file);
+        return lines;
+    }
+
+    std::int64_t elapsed_ms(std::int64_t started_us, std::int64_t ended_us) {
+        return (ended_us - started_us) / 1000;
+    }
+
+    std::int64_t now_us_test() {
+        timespec stamp{};
+        if (::clock_gettime(CLOCK_MONOTONIC, &stamp) != 0) {
+            return 0;
+        }
+        return static_cast<std::int64_t>(stamp.tv_sec) * 1000000 +
+               static_cast<std::int64_t>(stamp.tv_nsec) / 1000;
+    }
+
+    /** A block, a page and the handshake over one child -- and the count that proves it. */
+    void the_session_carries_blocks_over_one_child() {
+        reset_ledger(nullptr);
+        const std::string exe = own_exe();
+        expect(!exe.empty(), "the test knows its own path");
+        expect(exe.find(' ') == std::string::npos, "and the path can be argv, as the bridge requires");
+        CrashDumpBridge bridge;
+        expect(bridge.bind(exe.c_str(), exe.size(), kFakeCarrier, std::strlen(kFakeCarrier),
+                           kBridgeModeSession),
+               "the bridge binds in session mode");
+        expect(bridge.bridge_mode() == kBridgeModeSession, "and says which form it is in");
+        std::uint8_t first[kBlockBytes] = {};
+        const OldPageSource source = bridge.old_page();
+        expect(source.read16(source.ctx, 0x10U, first) == static_cast<long>(kBlockBytes),
+               "a block comes back through the session");
+        std::uint8_t want[kBlockBytes] = {};
+        fake_block(0x10U, want);
+        expect(bytes_equal(first, want, kBlockBytes), "and it is the answer for the offset asked");
+
+        int fds[2] = {-1, -1};
+        expect(::pipe(fds) == 0, "the test made a pipe");
+        const HelperWriteSource helper = bridge.helper();
+        const long spliced = helper.splice16(helper.ctx, fds[1], 0x20U);
+        (void) ::close(fds[1]);
+        std::uint8_t page[kBlockBytes] = {};
+        std::size_t got = 0U;
+        while (got < kBlockBytes) {
+            const ssize_t read_bytes = ::read(fds[0], page + got, kBlockBytes - got);
+            if (read_bytes <= 0) {
+                break;
+            }
+            got += static_cast<std::size_t>(read_bytes);
+        }
+        (void) ::close(fds[0]);
+        expect(spliced == static_cast<long>(kBlockBytes), "the page is reported as a whole block");
+        fake_block(0x20U, want);
+        expect(got == kBlockBytes && bytes_equal(page, want, kBlockBytes),
+               "and the child put it in the caller's pipe, not in this process");
+        expect(bridge.session_open(), "the session is up");
+        expect(bridge.session_requests() == 3U, "three requests: the handshake and the two blocks");
+        expect(ledger_children() == 1U, "one helper child for both blocks, not one per block");
+        bridge.close_session();
+        expect(!bridge.session_open(), "closing ends the session");
+        expect(bridge.session_pid() < 0, "and reaps the child");
+    }
+
+    /** A reply that is not a whole answer must not be taken for data. */
+    void a_short_reply_fails_the_session_closed() {
+        reset_ledger("short");
+        const std::string exe = own_exe();
+        BridgeSession session;
+        expect(session.bind(exe.c_str(), exe.size(), kFakeCarrier, std::strlen(kFakeCarrier)),
+               "the session binds");
+        expect(session.open(), "a session helper answers the handshake");
+        std::uint8_t block[kBlockBytes] = {};
+        expect(session.read16(0U, block) == -1, "half a reply is not a block");
+        expect(session.last_outcome() == BridgeSession::Outcome::ShortReply, "and it says which fault");
+        expect(session.dead(), "and the session is latched dead");
+        expect(session.read16(0x10U, block) == -1, "so the next block fails too, without being asked");
+        expect(ledger_children() == 1U, "nothing restarted behind it");
+        session.close();
+    }
+
+    /** A child that leaves early ends the run of blocks, not just the one that found it gone. */
+    void a_child_that_leaves_fails_every_later_block() {
+        reset_ledger("exit");
+        const std::string exe = own_exe();
+        CrashDumpBridge bridge;
+        static_cast<void>(bridge.bind(exe.c_str(), exe.size(), kFakeCarrier,
+                                      std::strlen(kFakeCarrier), kBridgeModeSession));
+        std::uint8_t block[kBlockBytes] = {};
+        const OldPageSource source = bridge.old_page();
+        expect(source.read16(source.ctx, 0U, block) == -1, "the block that found the child gone fails");
+        expect(bridge.last_outcome() == CrashDumpBridge::Outcome::HelperFailed, "and is named a helper failure");
+        expect(source.read16(source.ctx, 0x10U, block) == -1, "and so does every block after it");
+        expect(source.read16(source.ctx, 0x20U, block) == -1, "all of them, not the next one only");
+        expect(ledger_children() == 1U, "with no second child started to replace it");
+        bridge.close_session();
+    }
+
+    /** Silence is a failure inside the deadline, and the deadline is 200 ms. */
+    void a_quiet_child_times_out() {
+        reset_ledger("silent");
+        const std::string exe = own_exe();
+        BridgeSession session;
+        static_cast<void>(session.bind(exe.c_str(), exe.size(), kFakeCarrier,
+                                       std::strlen(kFakeCarrier)));
+        expect(session.open(), "the handshake still went through");
+        std::uint8_t block[kBlockBytes] = {};
+        const std::int64_t started = now_us_test();
+        expect(session.read16(0U, block) == -1, "a request nobody answers fails");
+        const std::int64_t waited = elapsed_ms(started, now_us_test());
+        expect(waited >= 150, "after roughly the 200 ms deadline");
+        expect(waited < 2000, "and not after a hang");
+        expect(session.last_outcome() == BridgeSession::Outcome::TimedOut, "named a timeout");
+        const std::int64_t again = now_us_test();
+        expect(session.read16(0x10U, block) == -1, "and the next block fails at once");
+        expect(elapsed_ms(again, now_us_test()) < 150, "because the session is already latched");
+        session.close();
+    }
+
+    /** Closing twice is closing once, and the second call does not touch the child. */
+    void close_is_idempotent() {
+        reset_ledger(nullptr);
+        const std::string exe = own_exe();
+        BridgeSession session;
+        static_cast<void>(session.bind(exe.c_str(), exe.size(), kFakeCarrier,
+                                       std::strlen(kFakeCarrier)));
+        expect(session.open(), "the session opens");
+        const pid_t pid = session.pid();
+        expect(pid > 0, "with a child");
+        const std::size_t requests = session.requests();
+        session.close();
+        expect(!session.is_open(), "closing closes");
+        expect(session.pid() < 0, "and reaps");
+        expect(session.request_fd() < 0 && session.reply_fd() < 0, "and gives the channels back");
+        session.close();
+        session.close();
+        expect(session.requests() == requests, "a second close asks the child nothing");
+        expect(session.pid() < 0, "and has nothing left to reap");
+        expect(ledger_children() == 1U, "one child ran, and it ran once");
+    }
+
+    /** The default form: no session is ever created, and the count says so. */
+    void the_default_mode_starts_no_session() {
+        reset_ledger(nullptr);
+        const std::string exe = own_exe();
+        CrashDumpBridge bridge;
+        expect(bridge.bind(exe.c_str(), exe.size(), kFakeCarrier, std::strlen(kFakeCarrier)),
+               "the bridge binds with the default form");
+        expect(bridge.bridge_mode() == kBridgeModeSpawn, "which is spawn, as it is today");
+        std::uint8_t block[kBlockBytes] = {};
+        const OldPageSource source = bridge.old_page();
+        expect(source.read16(source.ctx, 0U, block) == static_cast<long>(kBlockBytes),
+               "a block still comes back, byte for byte as before");
+        expect(source.read16(source.ctx, 0x10U, block) == static_cast<long>(kBlockBytes),
+               "and so does the next one");
+        expect(!bridge.session_open(), "no session was opened");
+        expect(bridge.session_pid() < 0, "no session child exists");
+        expect(bridge.session_requests() == 0U, "and nothing was asked of one");
+        expect(ledger_children() == 2U, "one helper child per block: the cost the switch removes");
+    }
+
+    /** The surface's half of the switch: in session mode the diagnostic read is per block, because it
+     *  is an IPC rather than a fork. The default keeps the sampling the device measurement asked for. */
+    void the_surface_reads_its_bridge_form() {
+        const auto frame = make_frame();
+        SpliceIoOps session_ops = fake_io();
+        session_ops.bridge_mode = kBridgeModeSession;
+        reset_fake();
+        Bridge probed;
+        RealSpliceIo with_session(session_ops, -1, 0, OldPageSource{&probed, &bridge_read16},
+                                  HelperWriteSource{&probed, &bridge_splice16});
+        expect(with_session.bridge_mode() == kBridgeModeSession, "the surface reports the form it was built with");
+        expect(with_session.splice_one(9, frame.data(), frame.size(), 0x40U), "and still sends the block");
+        expect(probed.splice_calls == 1U, "one page from the bridge");
+        expect(probed.read_calls == 1U, "and one diagnostic read, though 0x40 is off the 512-byte cadence");
+
+        reset_fake();
+        Bridge sampled;
+        RealSpliceIo as_before(fake_io(), -1, 0, OldPageSource{&sampled, &bridge_read16},
+                               HelperWriteSource{&sampled, &bridge_splice16});
+        expect(as_before.bridge_mode() == kBridgeModeSpawn, "the default surface is spawn");
+        expect(as_before.splice_one(9, frame.data(), frame.size(), 0x40U), "and sends the block too");
+        expect(sampled.read_calls == 0U, "with no probe off the cadence, exactly as before");
+    }
+
     void the_primitives_are_delegated() {
         std::uint8_t key[32] = {};
         std::uint8_t hmac_key[32] = {};
@@ -467,7 +916,17 @@ namespace {
     }
 }  // namespace
 
-int main() {
+int main(int argc, char **argv) {
+    /* 本测试同时充当桥的子进程（假 helper）：桥的 exec 用的是一次性 helper 的 argv 形状，所以子进程
+     * 靠父进程设的环境变量认出自己，而不是靠 argv[0]（桥把它写成 crashdump64）。 */
+    if (std::getenv(kLedgerEnv) != nullptr) {
+        if (argc == 4 && std::strcmp(argv[3], "session") == 0) {
+            return run_fake_session_child();
+        }
+        if (argc == 3) {
+            return run_fake_one_shot();
+        }
+    }
     std::printf("real splice io: the direct descriptor\n");
     the_direct_descriptor_sends_one_datagram();
     std::printf("real splice io: short transfers and -EINTR\n");
@@ -480,6 +939,15 @@ int main() {
     refusals();
     std::printf("real splice io: the sampled probe and the preimage\n");
     the_diagnostic_probe_is_sampled_not_per_block();
+    std::printf("real splice io: the persistent bridge session\n");
+    the_session_carries_blocks_over_one_child();
+    a_short_reply_fails_the_session_closed();
+    a_child_that_leaves_fails_every_later_block();
+    a_quiet_child_times_out();
+    close_is_idempotent();
+    std::printf("real splice io: the switch that selects it\n");
+    the_default_mode_starts_no_session();
+    the_surface_reads_its_bridge_form();
     std::printf("real splice io: the primitives are delegated\n");
     the_primitives_are_delegated();
     if (g_failures != 0U) {

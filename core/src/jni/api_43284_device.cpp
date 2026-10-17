@@ -788,7 +788,12 @@ namespace ghostlock::jni {
                      * 不会像 PageCacheDoorLinux 那样再自建一条（那会与同一 SA 的端口冲突 ⇒ EADDRINUSE ⇒ open 失败）。 */
                     surface->door = std::make_unique<PairedDoor>(-1, g_sockets[socket_slot], true);
                     auto bridge = std::make_unique<backend::cve_2026_43284::landing::CrashDumpBridge>();
-                    if (!bridge->bind(helper_path, std::strlen(helper_path), carrier.c_str(), carrier.size())) {
+                    /* 桥形态的唯一读取点（本文件的开关读取）：默认 spawn＝0，与今天逐字节一致；
+                     * 只有把 kBridgeModeDefault 置 1（构建参数 GLK_BRIDGE_MODE=1）才走常驻会话。
+                     * 真机锁屏（2026-10-17）⇒ 默认不动，见 landing/pagecache_doors.hpp。 */
+                    const int bridge_mode = backend::cve_2026_43284::landing::kBridgeModeDefault;
+                    if (!bridge->bind(helper_path, std::strlen(helper_path), carrier.c_str(), carrier.size(),
+                                      bridge_mode)) {
                         GL_LOGI("surface: bridge refused helper=%s carrier=%s", helper_path, carrier.c_str());
                         return 0U;
                     }

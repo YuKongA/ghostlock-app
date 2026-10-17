@@ -72,12 +72,15 @@ namespace ghostlock::backend::cve_2026_43284::landing {
         }
         const long got = session_.read16(offset, out);
         if (got != static_cast<long>(kBlockBytes)) {
-            /* 一次失败就是这一块失败，之后所有块也失败（会话自己锁死，见 BridgeSession::dead）。 */
+            /* 一次失败就是这一块失败，之后所有块也失败（会话自己锁死，见 BridgeSession::dead）；
+             * 失败的出口当场把管道关掉、把子进程收掉，不留到对象析构才关。 */
             outcome_ = Outcome::HelperFailed;
             last_status_ = session_.last_status();
             GL_LOGI("bridge: session read refused offset=%llu outcome=%d requests=%zu",
                     static_cast<unsigned long long>(offset), static_cast<int>(session_.last_outcome()),
                     session_.requests());
+            session_.close();
+            session_started_ = false;
             return -1;
         }
         outcome_ = Outcome::Ok;
@@ -96,6 +99,8 @@ namespace ghostlock::backend::cve_2026_43284::landing {
             GL_LOGI("bridge: session splice refused offset=%llu outcome=%d requests=%zu",
                     static_cast<unsigned long long>(offset), static_cast<int>(session_.last_outcome()),
                     session_.requests());
+            session_.close();
+            session_started_ = false;
             return -1;
         }
         outcome_ = Outcome::Ok;
