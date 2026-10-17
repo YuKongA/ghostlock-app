@@ -6,6 +6,8 @@
  */
 #include "jni/api_43284.hpp"
 
+#include <utility>
+
 namespace ghostlock::jni {
     namespace {
         [[nodiscard]] CallCode named_failure(Refusal &refusal, const CallCode code,
@@ -305,21 +307,13 @@ namespace ghostlock::jni {
         if (request.hookSymbol.empty()) {
             return named_failure(refusal_, CallCode::BadParameters, "bad-parameters:", "hookSymbol");
         }
-        std::uint64_t branch = 0U;
-        std::uint64_t displaced = 0U;
-        std::uint64_t site = 0U;
-        std::uint64_t landing = 0U;
-        std::span<const std::byte> payload{};
-        if (!device_ops_.hook_plan(params_, request, branch, displaced, site, landing, payload,
-                              device_ops_.context)) {
+        /* 计划整份由设备层填（四个字 + guard/displaced + 载荷）：恢复要把同一张计划送回
+         * steps::restore_hook，字段若在这里分两次问就会有两种来源。 */
+        HookPlanOut43284 plan{};
+        if (!device_ops_.hook_plan(params_, request, plan, device_ops_.context)) {
             return refuse(refusal_, CallCode::Failed, "hook-refused");
         }
-        out.branch_word = branch;
-        out.displaced_word = displaced;
-        out.site_offset = site;
-        out.landing_offset = landing;
-        out.payload.assign(reinterpret_cast<const std::uint8_t *>(payload.data()),
-                           reinterpret_cast<const std::uint8_t *>(payload.data()) + payload.size());
+        out = std::move(plan);
         refusal_.clear();
         return CallCode::Ok;
     }

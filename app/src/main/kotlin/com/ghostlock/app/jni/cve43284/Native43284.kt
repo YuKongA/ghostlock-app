@@ -31,6 +31,29 @@ object Native43284 {
         refusalOut: Array<String>,
     ): Int
 
+    /**
+     *  恢复钩子：把 plan 的 guard/displaced 两个字写回站点所在的块并回读（终点 cleanup 的恢复段）。
+     *
+     *  参照 ghostlock-app-ref@5f184760 的 src/core/backend/cve_2026_43284/steps/chain.cpp:355
+     *  （注释原文 "It runs on every terminus path"）与同树 steps/hook_patch.cpp:193-225 的 restore 段：
+     *  每次运行结束都跑一次，先于任何面被拆掉。native 只搬运 —— 幂等、写序与判据都在
+     *  steps::restore_hook 里（pagecache_steps.hpp）。
+     *
+     *  @param params 写面参数（载体/目标/偏移；与 writeHook 同一份）
+     *  @param hook   写面票据与块宽（WriteHook43284：access 票据＝那张拼接面，宽度＝块宽）
+     *  @param plan   hookPlan 同源的计划（站点偏移、guard、displaced；恢复按它写回）
+     *  @param init   会话材料（access 的读/写要 usable_for_access）
+     *  @return 0 表示站点块已写回并回读一致；失败时 refusalOut[0] 为 hook-restore:<原因>。
+     */
+    external fun restoreHook(
+        handle: Long,
+        params: com.ghostlock.app.core.generated.AccessParams43284,
+        hook: com.ghostlock.app.core.generated.WriteHook43284,
+        plan: com.ghostlock.app.core.generated.HookPlan43284,
+        init: Init43284,
+        refusalOut: Array<String>,
+    ): Int
+
     /** 这个 backend 的库名（CMake 目标 ghostlock43284）。 */
     const val LIBRARY = "ghostlock43284"
 
@@ -81,7 +104,13 @@ object Native43284 {
 
     external fun moduleCheck(handle: Long, request: ModuleCheck43284, refusalOut: Array<String>): Int
 
-    /** 动态钩子计划。@param out 四个 long：branch、displaced、site、landing。 */
+    /**
+     *  动态钩子计划。
+     *
+     *  @param out 十个 long：branch、displaced、site、landing、hookVaddr、guard、payloadVaddr、
+     *         payloadMax、entryOffset、displacedOffset。前四个是写层的四个字；后六个是同一张计划的
+     *         其余事实，装配成 HookPlan43284 之后送回 [restoreHook]。
+     */
     external fun hookPlan(
         handle: Long,
         request: HookPlanRequest43284,

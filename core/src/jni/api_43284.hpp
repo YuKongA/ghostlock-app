@@ -144,6 +144,24 @@ namespace ghostlock::jni {
     inline constexpr std::uint64_t kFactApplied = 1U << 20U;
     inline constexpr std::uint64_t kFactVerified = 1U << 21U;
 
+    /** 钩子计划的结果：前四个是本构建的四个字（写层用），其余是同一张计划的整份字段
+     *  （恢复层要把 plan 原样送回 native，见 Backend43284::hook_plan / Native43284::restoreHook）。 */
+    struct HookPlanOut43284 final {
+        std::uint64_t branch_word = 0U;
+        std::uint64_t displaced_word = 0U;
+        std::uint64_t site_offset = 0U;
+        std::uint64_t landing_offset = 0U;
+        /* 写层要的 SentryPlan 其余字段：由设备层从它持有的完整计划里原样带出（只装结构，不判断）。 */
+        std::uint64_t hook_vaddr = 0U;
+        std::uint64_t guard_instruction = 0U;
+        std::uint64_t payload_file_offset = 0U;
+        std::uint64_t payload_vaddr = 0U;
+        std::uint64_t payload_max_bytes = 0U;
+        std::uint64_t entry_offset = 0U;
+        std::uint64_t displaced_offset = 0U;
+        std::vector<std::uint8_t> payload{};
+    };
+
     /** 设备工作，用函数指针给；每个回调都收到完整的会话参数与本次请求组。 */
     struct DeviceOps43284 final {
         bool (*resolve)(const Init43284Values &params, const ResolveTarget43284Values &request,
@@ -156,10 +174,9 @@ namespace ghostlock::jni {
                            void *context) noexcept = nullptr;
         bool (*module_check)(const Init43284Values &params, const ModuleCheck43284Values &request,
                              void *context) noexcept = nullptr;
+        /** 计划整份填进 out（含载荷）：四个字与恢复要的 guard/displaced 同源，调用方不再各问一次。 */
         bool (*hook_plan)(const Init43284Values &params, const HookPlanRequest43284Values &request,
-                          std::uint64_t &branch_word, std::uint64_t &displaced_word,
-                          std::uint64_t &site_offset, std::uint64_t &landing_offset,
-                          std::span<const std::byte> &payload, void *context) noexcept = nullptr;
+                          HookPlanOut43284 &out, void *context) noexcept = nullptr;
         bool (*trigger)(const Init43284Values &params, const Trigger43284Values &request,
                         void *context) noexcept = nullptr;
         bool (*wait_terminal)(const Init43284Values &params, const Wait43284Values &request,
@@ -184,22 +201,6 @@ namespace ghostlock::jni {
         std::vector<std::uint8_t> block{};
         BlockState state = BlockState::Empty;
         bool matches_last_write = false;
-    };
-
-    /** 钩子计划的结果。 */
-    struct HookPlanOut43284 final {
-        std::uint64_t branch_word = 0U;
-        std::uint64_t displaced_word = 0U;
-        std::uint64_t site_offset = 0U;
-        std::uint64_t landing_offset = 0U;
-        /* 写层要的 SentryPlan 其余字段：由设备层从它持有的完整计划里原样带出（只装结构，不判断）。 */
-        std::uint64_t guard_instruction = 0U;
-        std::uint64_t payload_file_offset = 0U;
-        std::uint64_t payload_vaddr = 0U;
-        std::uint64_t payload_max_bytes = 0U;
-        std::uint64_t entry_offset = 0U;
-        std::uint64_t displaced_offset = 0U;
-        std::vector<std::uint8_t> payload{};
     };
 
     /** 43284 的会话：一个对象一份状态，函数就是它的方法（并发由句柄表负责）。 */

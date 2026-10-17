@@ -27,6 +27,24 @@ namespace ghostlock::jni {
     [[nodiscard]] bool device_write_hook(const contract::WriteHook43284Values &values,
                                         const contract::AccessParams43284Values &params_values,
                                         const Init43284Values &sa_source) noexcept;
+    /**
+     *  恢复钩子：把 plan 的两个字写回站点所在的块并回读（steps::restore_hook 的那一步）。
+     *
+     *  只搬运、不判断：面由 access 票据给（同一 access ⇒ 同一拼接面与同一通道），宽度与 plan 由
+     *  调用方给；是否幂等、先改哪个字由 steps 层决定（见 pagecache_steps.hpp 的 restore_hook）。
+     *
+     *  @param values       写面：access 票据与块宽（与 writeHook 同一张表）
+     *  @param params_values 同一份 AccessParams（路径借用式，只在调用期有效）
+     *  @param plan_values  plan（与 hookPlan 同源的那张，恢复要按它把 guard 与 displaced 写回）
+     *  @param sa_source   会话材料（access 的读/写要 usable_for_access，必须有 sa）
+     *  @param why         失败时收具名原因（steps 层的名字原样带出）
+     *  @return 块写回并回读一致 true；否则 false（上层给 hook-restore:...）
+     */
+    [[nodiscard]] bool device_restore_hook(const contract::WriteHook43284Values &values,
+                                           const contract::AccessParams43284Values &params_values,
+                                           const contract::HookPlan43284Values &plan_values,
+                                           const Init43284Values &sa_source,
+                                           const char **why) noexcept;
     /** @return 写一个镜像并逐块校验（patch#1 用的那一步）。 */
     [[nodiscard]] bool device_write_image(const contract::WriteImage43284Values &values,
                                          const contract::AccessParams43284Values &params_values,

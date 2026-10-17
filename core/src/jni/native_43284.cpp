@@ -30,6 +30,13 @@ namespace {
 
     using Registry = ghostlock::jni::wrapper::Registry<Backend43284>;
 
+    /**
+     *  hookPlan 写回的 long 数：前四个是写层的四个字（branch、displaced、site、landing），
+     *  后六个是同一张计划的其余字段（hook_vaddr、guard、payload_vaddr、payload_max、entry、
+     *  displaced_offset）—— 恢复层把它们装配成 HookPlan43284 再送回 restoreHook。
+     */
+    constexpr std::size_t kHookPlanWords = 10U;
+
     Registry &registry() noexcept {
         static Registry table;
         return table;
@@ -200,7 +207,9 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_moduleChe
 
 JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_hookPlan(
         JNIEnv *env, jclass, jlong handle, jobject request, jlongArray out, jobjectArray refusal_out) {
-    if (!has_room(env, out, 4U)) {
+    /* 十个 long：前四个是写层的四个字（顺序不变），后六个是同一张计划的其余事实 —— 恢复层要把
+     * plan 原样送回 restoreHook，所以它必须先在 Kotlin 手里（顺序见 Native43284.hookPlan 的 KDoc）。 */
+    if (!has_room(env, out, kHookPlanWords)) {
         return answer(env, CallCode::BadParameters, "bad-parameters:out-array", refusal_out);
     }
     ghostlock::jni::HookPlanRequest43284Values values{};
@@ -215,11 +224,14 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_hookPlan(
                                                     return backend.hook_plan(values, plan);
                                                 });
     if (outcome.code == CallCode::Ok) {
-        const jlong words[4] = {
-            static_cast<jlong>(plan.branch_word),    static_cast<jlong>(plan.displaced_word),
-            static_cast<jlong>(plan.site_offset),    static_cast<jlong>(plan.landing_offset),
+        const jlong words[kHookPlanWords] = {
+            static_cast<jlong>(plan.branch_word),        static_cast<jlong>(plan.displaced_word),
+            static_cast<jlong>(plan.site_offset),        static_cast<jlong>(plan.landing_offset),
+            static_cast<jlong>(plan.hook_vaddr),         static_cast<jlong>(plan.guard_instruction),
+            static_cast<jlong>(plan.payload_vaddr),      static_cast<jlong>(plan.payload_max_bytes),
+            static_cast<jlong>(plan.entry_offset),       static_cast<jlong>(plan.displaced_offset),
         };
-        static_cast<void>(write_longs(env, out, words, 4U));
+        static_cast<void>(write_longs(env, out, words, kHookPlanWords));
     }
     return answer(env, outcome.code, outcome.refusal, refusal_out);
 }
@@ -590,6 +602,58 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_writeHook
     const bool wrote = ghostlock::jni::device_write_hook(values, params_values, hook_sa);
     return answer(env, wrote ? CallCode::Ok : CallCode::Failed,
                   wrote ? "" : "hook-write-refused", refusal_out);
+}
+
+/**
+ *  恢复钩子：把 plan 的两个字写回站点块（驱动器终点那条 cleanup 的恢复段）。
+ *
+ *  参照 c ghostlock-app-ref@5f184760 的 c src/core/backend/cve_2026_43284/steps/chain.cpp:355
+ *  （"It runs on every terminus path"）与同树 c steps/hook_patch.cpp:193-225 的 restore 段：
+ *  恢复在每次运行结束时无条件跑一次，先于任何面被拆掉。
+ *
+ *  @param params 写面参数（载体/目标/偏移；借用式路径在读取器内拷进 native）
+ *  @param hook   写面票据与块宽（WriteHook43284，与 writeHook 同一张表）
+ *  @param plan   hookPlan 同源的计划（站点偏移、guard、displaced；恢复按它写回）
+ *  @param init   会话材料（access 的读/写要 usable_for_access）
+ *  @return 0 表示站点块已写回并回读一致；失败时 refusalOut[0] 为 hook-restore:<steps 层名字>。
+ *          Kotlin 的布尔就是 code == 0。
+ */
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_restoreHook(
+        JNIEnv *env, jclass, jlong handle, jobject params, jobject hook, jobject plan, jobject init,
+        jobjectArray refusal_out) {
+    ghostlock::jni::contract::AccessParams43284Values params_values{};
+    ghostlock::jni::contract::ReadFailure params_failure{};
+    if (!ghostlock::jni::contract::readAccessParams43284(env, params, &params_values, &params_failure)) {
+        const auto outcome = refuse_read(handle, params_failure);
+        return answer(env, outcome.code, outcome.refusal, refusal_out);
+    }
+    ghostlock::jni::contract::WriteHook43284Values hook_values{};
+    ghostlock::jni::contract::ReadFailure hook_failure{};
+    if (!ghostlock::jni::contract::readWriteHook43284(env, hook, &hook_values, &hook_failure)) {
+        const auto outcome = refuse_read(handle, hook_failure);
+        return answer(env, outcome.code, outcome.refusal, refusal_out);
+    }
+    ghostlock::jni::contract::HookPlan43284Values plan_values{};
+    ghostlock::jni::contract::ReadFailure plan_failure{};
+    if (!ghostlock::jni::contract::readHookPlan43284(env, plan, &plan_values, &plan_failure)) {
+        const auto outcome = refuse_read(handle, plan_failure);
+        return answer(env, outcome.code, outcome.refusal, refusal_out);
+    }
+    ghostlock::jni::Init43284Values sa_source{};
+    ghostlock::jni::contract::ReadFailure sa_failure{};
+    if (!ghostlock::jni::contract::readInit43284(env, init, &sa_source, &sa_failure)) {
+        const auto outcome = refuse_read(handle, sa_failure);
+        return answer(env, outcome.code, outcome.refusal, refusal_out);
+    }
+    const char *why = nullptr;
+    const bool restored = ghostlock::jni::device_restore_hook(
+        hook_values, params_values, plan_values, sa_source, &why);
+    /* steps 层的名字原样带出（step-site-block-unread / step-restore-write-refused / …），
+     * 前缀只标这一次调用的语义，不覆盖原因。 */
+    const std::string named = restored
+        ? std::string()
+        : (std::string("hook-restore:") + (why != nullptr ? why : "refused"));
+    return answer(env, restored ? CallCode::Ok : CallCode::Failed, named.c_str(), refusal_out);
 }
 
 /**

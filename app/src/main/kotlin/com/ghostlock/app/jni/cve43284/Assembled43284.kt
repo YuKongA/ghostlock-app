@@ -247,9 +247,17 @@ class Assembled43284(
         }
         return 0
     }
+    /**
+     *  动态钩子计划（与 native 的 device_sentry_plan 同源）。
+     *
+     *  @param symbol 钩子符号（本构建只认 "splice"；native 只把它当输入校验）
+     *  @param guardPolicy guard 策略（当前 0）
+     *  @return 十个 long：branch、displaced、site、landing、hookVaddr、guard、payloadVaddr、
+     *          payloadMax、entryOffset、displacedOffset（见 [Native43284.hookPlan]）；失败时 null。
+     */
     fun hookPlan(symbol: String, guardPolicy: Int = 0): LongArray? {
         val refusal = refusalSlot()
-        val out = LongArray(4)
+        val out = LongArray(10)
         val code = Native43284.hookPlan(
             handle,
             HookPlanRequest43284(ByteArray(BLOCK) { 0x11 }, symbol.toByteArray(), guardPolicy),
@@ -258,6 +266,29 @@ class Assembled43284(
         )
         record(code, refusal)
         return if (code == 0) out else null
+    }
+
+    /**
+     *  把 [hookPlan] 的十个 word 装配成 plan DTO（只换形状，不加判断）。
+     *
+     *  @param words [hookPlan] 的返回
+     *  @return 字段一一对应的 plan；短于十个 ⇒ null（不完整的东西不能当 plan 用）
+     */
+    fun planOf(words: LongArray): com.ghostlock.app.core.generated.HookPlan43284? {
+        if (words.size < 10) {
+            return null
+        }
+        return com.ghostlock.app.core.generated.HookPlan43284(
+            hookPlanFileOffset = words[2],
+            hookPlanVaddr = words[4],
+            hookPlanGuardInstruction = words[5],
+            hookPlanDisplacedInstruction = words[1],
+            hookPlanPayloadFileOffset = words[3],
+            hookPlanPayloadVaddr = words[6],
+            hookPlanPayloadMaxBytes = words[7],
+            hookPlanEntryOffset = words[8],
+            hookPlanDisplacedOffset = words[9],
+        )
     }
 
     /** 模块校验（镜像字节 + 内核 vermagic 由调用方给）。 */
@@ -522,6 +553,43 @@ class Assembled43284(
             hookWidth = width,
         )
         val code = Native43284.writeHook(handle, params, request, init, refusal)
+        record(code, refusal)
+        return code == 0
+    }
+
+    /**
+     *  分步收尾：恢复钩子（把 plan 的 guard/displaced 写回站点块并回读）。
+     *
+     *  参照 ghostlock-app-ref@5f184760 的 src/core/backend/cve_2026_43284/steps/chain.cpp:355
+     *  （注释原文 "It runs on every terminus path"）与同树 steps/hook_patch.cpp:193-225 的 restore 段。
+     *  幂等：同一份 plan 调两次会再写再验同一块，不报「已经恢复」。
+     *
+     *  @param plan [hookPlan] 装配出的同一张计划（见 [planOf]）
+     *  @param width 块宽（与写站点时同一值；本原语的单位是十六字节）
+     *  @param init 会话材料（序号由这个 access 自己的窗口接续）
+     *  @return 写回并回读一致 true；否则 false（lastRefusal 为 hook-restore:<原因>）
+     */
+    fun restoreHook(
+        plan: com.ghostlock.app.core.generated.HookPlan43284,
+        width: Long,
+        init: Init43284,
+    ): Boolean {
+        if (accessId == 0L) {
+            lastCode = -1
+            lastRefusal = "restore:no-handle"
+            return false
+        }
+        val params = accessParamsLast ?: run {
+            lastCode = -1
+            lastRefusal = "restore:no-params"
+            return false
+        }
+        val refusal = refusalSlot()
+        val request = com.ghostlock.app.core.generated.WriteHook43284(
+            hookAccessId = accessId,
+            hookWidth = width,
+        )
+        val code = Native43284.restoreHook(handle, params, request, plan, init, refusal)
         record(code, refusal)
         return code == 0
     }
