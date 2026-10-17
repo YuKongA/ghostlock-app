@@ -6,8 +6,9 @@
  *  the one place a short transfer is not retried (the pipe-to-socket datagram splice, because it
  *  cannot be appended to the same datagram), both block sources (the direct descriptor and the
  *  injected bridge, each exercised; a bridge that cannot deliver a full block sends no datagram),
- *  the refusal of a frame too short to hold the page, and that the vector and the check are the
- *  primitives' answers rather than a second implementation.
+ *  the refusal of a frame too short to hold the page, that the helper path's diagnostic read is
+ *  sampled rather than per block (and that the preimage still comes from the same source), and that
+ *  the vector and the check are the primitives' answers rather than a second implementation.
  */
 #include <array>
 #include <cerrno>
@@ -393,6 +394,32 @@ namespace {
         expect(g_fake.close_calls == 2U, "the pipe is closed anyway");
     }
 
+    /** 探针的粒度，与 preimage 的来源：载体不可直读时，**一块只该有一次 helper 调用去送页**，
+     *  诊断用的 read16 只在 512 字节的抽样点上出现；而向量所依赖的那次 preimage 读照旧按需发生
+     *  （抽样掉的是诊断，不是 preimage）。 */
+    void the_diagnostic_probe_is_sampled_not_per_block() {
+        const auto frame = make_frame();
+        reset_fake();
+        Bridge bridge;
+        RealSpliceIo io(fake_io(), -1, 0, OldPageSource{&bridge, &bridge_read16},
+                        HelperWriteSource{&bridge, &bridge_splice16});
+        expect(io.splice_one(9, frame.data(), frame.size(), 0x40U), "a block off the cadence still sends");
+        expect(bridge.splice_calls == 1U, "with exactly one helper call for the page");
+        expect(bridge.read_calls == 0U, "and no diagnostic read: the probe is not per block");
+        expect(g_fake.span_calls == 0U, "no descriptor, no page splice");
+
+        expect(io.splice_one(9, frame.data(), frame.size(), 0x200U), "a block on the 512-byte cadence sends");
+        expect(bridge.splice_calls == 2U && bridge.read_calls == 1U,
+               "and only the sampled block also reads the source, once");
+        expect(g_fake.datagram_calls == 2U, "both datagrams went out");
+
+        std::uint8_t old_block[kBlockBytes] = {};
+        expect(io.read_at(-1, old_block, kBlockBytes, 0x80U) == static_cast<long>(kBlockBytes),
+               "the preimage still comes back without the per-block probe");
+        expect(bridge.read_calls == 2U && old_block[0] == 0x5aU && old_block[kBlockBytes - 1U] == 0x5aU,
+               "from one helper read, with the source's own bytes");
+    }
+
     void the_primitives_are_delegated() {
         std::uint8_t key[32] = {};
         std::uint8_t hmac_key[32] = {};
@@ -451,6 +478,8 @@ int main() {
     a_failed_page_splice_fails_closed();
     std::printf("real splice io: refusals\n");
     refusals();
+    std::printf("real splice io: the sampled probe and the preimage\n");
+    the_diagnostic_probe_is_sampled_not_per_block();
     std::printf("real splice io: the primitives are delegated\n");
     the_primitives_are_delegated();
     if (g_failures != 0U) {

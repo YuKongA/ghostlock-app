@@ -100,6 +100,13 @@ namespace ghostlock::backend::cve_2026_43284::landing {
 
         /** Send one datagram of @p size bytes: the in-memory bytes before the ciphertext slot, the
          *  page spliced from the target at @p offset, then the in-memory remainder (the check).
+         *
+         *  @note The helper path's "what would the same source read here" cross-check is a
+         *        diagnostic, not part of the frame: it is sampled every 512 bytes, because doing it
+         *        per block costs one extra helper fork+exec per block on a carrier this process
+         *        cannot read. The page that is authenticated and that lands is still the one the
+         *        helper splices into the pipe -- sampling the probe does not change where the page
+         *        comes from.
          *  @return false when @p datagram is null, when the frame is too short to hold the page,
          *          when no page source can run, or when any step fails; then no datagram is sent. */
         [[nodiscard]] bool splice_one(int socket_fd, const std::uint8_t *datagram,

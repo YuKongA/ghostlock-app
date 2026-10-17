@@ -1,9 +1,11 @@
 /** @file tests/pagecache_steps_test.cpp
  *  封装步骤的证据：名字映射，以及「按块写入 + 每块回读」这一共用实现。
  *
- *  判据四条：① 五个名字往返一致，别的名字不认；② 一个 40 字节镜像按 16 字节宽写成 3 块，
+ *  判据五条：① 五个名字往返一致，别的名字不认；② 一个 40 字节镜像按 16 字节宽写成 3 块，
  *  偏移逐块递进、最后一块补零；③ 写被拒 ⇒ step-write-refused，回读不符 ⇒ step-verify-failed；
- *  ④ 空镜像 / 空 access 各有一个具名拒绝。假 access 记录每一次读写，不碰设备。
+ *  ④ 空镜像 / 空 access 各有一个具名拒绝；⑤ 回读抽样：规则一处、次数 ≈ blocks/32+2、
+ *  抽样块不符整段失败并把该块记进 failed_block、verify_every=0 时每块都读。
+ *  假 access 记录每一次读写，不碰设备。
  */
 #include <cstddef>
 #include <cstdint>
@@ -163,6 +165,140 @@ namespace {
                "each block sits at its own offset");
         expect(access.widths.size() == 3U && access.widths[2] == 16U, "every block is one width");
         expect(access.memory[0x1028] == std::byte{0}, "the short last block is zero-padded");
+    }
+
+    /** (f) 回读抽样的规则只有一处（verify_this_block）：四条子句各有一块证据。 */
+    void the_sampling_rule_has_four_clauses() {
+        expect(steps::verify_this_block(0U, 1U, 32U, false), "a one-block segment reads its only block");
+        expect(steps::verify_this_block(0U, 100U, 32U, false), "the first block is always read");
+        expect(steps::verify_this_block(99U, 100U, 32U, false), "the last block is always read");
+        expect(steps::verify_this_block(32U, 100U, 32U, false) &&
+                       steps::verify_this_block(64U, 100U, 32U, false),
+               "every Nth block is read");
+        expect(!steps::verify_this_block(31U, 100U, 32U, false), "a block between samples is not");
+        expect(steps::verify_this_block(31U, 100U, 32U, true), "but the block after a failure is");
+        expect(steps::verify_this_block(31U, 100U, 0U, false), "verify_every=0 reads every block");
+        expect(!steps::verify_this_block(100U, 100U, 32U, false), "an index past the end is not a block");
+    }
+
+    /** (g) verify_every=32 的整段（769 块 = 载体实测块数）：回读次数 ≈ blocks/32+2，且只落在采样点。 */
+    void thirty_two_samples_one_block_in_thirty_two() {
+        constexpr std::size_t kWidth = 16U;
+        constexpr std::size_t kBlocks = 769U;
+        constexpr std::uint64_t kBase = 0x1000U;
+        FakeAccess access{};
+        cve::AccessParams params{};
+        std::vector<std::byte> image(kBlocks * kWidth, std::byte{0x5AU});
+        steps::WriteRequest request{};
+        request.access = &access;
+        request.params = &params;
+        request.image = std::span<const std::byte>(image.data(), image.size());
+        request.offset = kBase;
+        request.width = kWidth;
+        request.verify_every = 32U;
+        const char *refusal = nullptr;
+        const bool wrote = steps::write_image_verified(request, &refusal);
+        if (!wrote) { std::printf("  (refusal: %s)\n", refusal == nullptr ? "-" : refusal); }
+        expect(wrote, "the whole carrier goes in");
+        expect(access.offsets.size() == kBlocks, "every block is written");
+        const std::size_t reads = access.read_offsets.size();
+        expect(reads <= (kBlocks / 32U) + 2U, "the readbacks are no more than blocks/32+2");
+        expect(reads >= kBlocks / 32U, "and not fewer than blocks/32");
+        bool only_samples = true;
+        for (const std::uint64_t at : access.read_offsets) {
+            const auto block = static_cast<std::size_t>((at - kBase) / kWidth);
+            if (!steps::verify_this_block(block, kBlocks, 32U, false)) { only_samples = false; }
+        }
+        expect(only_samples, "every read is a sample point");
+        expect(request.failed_block == steps::kNoFailedBlock, "nothing failed, so nothing is recorded");
+    }
+
+    /** (h) verify_every=0 ⇒ 每块都回读（要全程证据时的行为）。 */
+    void zero_reads_every_block_back() {
+        constexpr std::size_t kWidth = 16U;
+        constexpr std::size_t kBlocks = 8U;
+        FakeAccess access{};
+        cve::AccessParams params{};
+        std::byte image[kBlocks * kWidth] = {};
+        steps::WriteRequest request{};
+        request.access = &access;
+        request.params = &params;
+        request.image = std::span<const std::byte>(image, sizeof(image));
+        request.offset = 0x3000U;
+        request.width = kWidth;
+        request.verify_every = 0U;
+        const char *refusal = nullptr;
+        expect(steps::write_image_verified(request, &refusal), "the segment goes in");
+        expect(access.read_offsets.size() == kBlocks, "every block is read back");
+        bool in_order = access.read_offsets.size() == kBlocks;
+        for (std::size_t block = 0U; block < kBlocks && in_order; ++block) {
+            if (access.read_offsets[block] != 0x3000U + block * kWidth) { in_order = false; }
+        }
+        expect(in_order, "at each block's own offset, in order");
+    }
+
+    /** (i) 抽样块回读不符 ⇒ 整段失败、失败块被记下、且它之后没有块被写（fail-closed）。
+     *  这一块确实是**被读过**的（失败行随之逐块打印，不受 512 字节门限）。 */
+    void a_sampled_block_that_does_not_come_back_fails_the_segment() {
+        constexpr std::size_t kWidth = 16U;
+        constexpr std::size_t kBlocks = 64U;
+        constexpr std::uint64_t kBase = 0x2000U;
+        constexpr std::size_t kBadBlock = 32U;
+        FakeAccess access{};
+        cve::AccessParams params{};
+        std::byte image[kBlocks * kWidth] = {};
+        steps::WriteRequest request{};
+        request.access = &access;
+        request.params = &params;
+        request.image = std::span<const std::byte>(image, sizeof(image));
+        request.offset = kBase;
+        request.width = kWidth;
+        request.verify_every = 32U;
+        request.budget_ms = 0U;   /* 不重试：一次不符就是失败 */
+        access.corrupt_at = kBase + kBadBlock * kWidth;
+        const char *refusal = nullptr;
+        expect(!steps::write_image_verified(request, &refusal), "one bad sampled block fails the segment");
+        expect(refusal != nullptr && std::strcmp(refusal, "step-verify-failed") == 0, "by name");
+        expect(request.failed_block == kBadBlock, "and the block that did not come back is recorded");
+        expect(access.offsets.size() == kBadBlock + 1U, "nothing after it is written");
+        std::size_t reads_of_bad = 0U;
+        for (const std::uint64_t at : access.read_offsets) {
+            if (at == kBase + kBadBlock * kWidth) { ++reads_of_bad; }
+        }
+        expect(reads_of_bad == 1U, "the failing block was read back once");
+        expect(access.read_offsets.size() >= 2U, "and the per-block scan followed it");
+    }
+
+    /** (j) 失败行不随 512 字节门限走：抽样间隔 3、坏块 33（at = 528 B，**不在** 512 边界上）
+     *  ⇒ 仍然整段失败、仍然记下这一块 —— 失败路径是逐块的，抽样只决定读不读。 */
+    void a_failure_off_the_log_cadence_is_still_recorded() {
+        constexpr std::size_t kWidth = 16U;
+        constexpr std::size_t kBlocks = 64U;
+        constexpr std::uint64_t kBase = 0x4000U;
+        constexpr std::size_t kBadBlock = 33U;
+        FakeAccess access{};
+        cve::AccessParams params{};
+        std::byte image[kBlocks * kWidth] = {};
+        steps::WriteRequest request{};
+        request.access = &access;
+        request.params = &params;
+        request.image = std::span<const std::byte>(image, sizeof(image));
+        request.offset = kBase;
+        request.width = kWidth;
+        request.verify_every = 3U;
+        request.budget_ms = 0U;
+        access.corrupt_at = kBase + kBadBlock * kWidth;
+        const char *refusal = nullptr;
+        expect(!steps::write_image_verified(request, &refusal), "a bad block between log lines still fails");
+        expect(refusal != nullptr && std::strcmp(refusal, "step-verify-failed") == 0, "by name");
+        expect(request.failed_block == kBadBlock, "and it is the recorded block");
+        expect((kBadBlock * kWidth) % 512U != 0U, "the block is not on the 512-byte log boundary");
+        std::size_t reads_of_bad = 0U;
+        for (const std::uint64_t at : access.read_offsets) {
+            if (at == kBase + kBadBlock * kWidth) { ++reads_of_bad; }
+        }
+        expect(reads_of_bad == 1U, "it was read back (so its failure line is the per-block one)");
+        expect(access.offsets.size() == kBadBlock + 1U, "nothing after it is written");
     }
 
     void the_hook_lands_and_verifies() {
@@ -518,6 +654,12 @@ int main() {
     names_map_both_ways();
     std::printf("pagecache steps: the shared block loop");
     an_image_is_written_block_by_block();
+    std::printf("pagecache steps: the read-back sampling");
+    the_sampling_rule_has_four_clauses();
+    thirty_two_samples_one_block_in_thirty_two();
+    zero_reads_every_block_back();
+    a_sampled_block_that_does_not_come_back_fails_the_segment();
+    a_failure_off_the_log_cadence_is_still_recorded();
     std::printf("pagecache steps: the hook lands");
     the_hook_lands_and_verifies();
     std::printf("pagecache steps: the hook writes the payload first");

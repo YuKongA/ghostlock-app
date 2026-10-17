@@ -43,6 +43,9 @@ namespace ghostlock::backend::cve_2026_43284::steps {
     /** @return the name of a step (never null). */
     [[nodiscard]] const char *pagecache_step_name(PagecacheStep step) noexcept;
 
+    /** 「没有块失败」的取值：块序号到不了 ~0，所以它可以当哨兵，不必另加一个 bool。 */
+    inline constexpr std::size_t kNoFailedBlock = ~std::size_t{0U};
+
     /** One write request: what to write, where it goes, and one block"s width. */
     struct WriteRequest final {
         contract::KernelAccess *access = nullptr;
@@ -61,6 +64,24 @@ namespace ghostlock::backend::cve_2026_43284::steps {
          *  验证段据它做**有界重试**（0 = 不重试，与旧行为一致）。由调用方给 —— 等多久是上层的事。
          */
         std::uint64_t budget_ms = 0U;
+
+        /**
+         *  回读抽样：**0 = 每块都回读**，N = 首块、每 N 块、最后一块，以及任何一次失败尝试之后的
+         *  下一块一定回读，其余块只写不读。默认 32，与「每 512 字节一行」的日志门同一粒度。
+         *
+         *  为什么是调用方的字段而不是底层策略：载体不可直读时，一次回读就是**一次 helper 的
+         *  fork+exec**（实测 769 块约 57 s 里，每块四次 exec 中的一次）。查多少次是上层的判断
+         *  （整段写 12 KB 的模块与写十来个字的钩子，代价与风险的取舍不同），所以由调用方给。
+         *  抽样只减少**读**的次数，不放宽判据：任何一次回读不符仍然整段失败（fail-closed）。
+         */
+        std::size_t verify_every = 32U;
+
+        /**
+         *  失败记录：由执行体写，成功时不改。整段失败时是**第一个不通过的块**的序号（0 起），
+         *  没有失败时是 kNoFailedBlock。日志里同一块的行本来就逐条保留（不受抽样门限），
+         *  这个字段只是让调用方与测试不必去解析日志。
+         */
+        std::size_t failed_block = kNoFailedBlock;
     };
 
     /** One hook request: where the site and the payload live (the plan), and the block math. */
@@ -172,10 +193,31 @@ namespace ghostlock::backend::cve_2026_43284::steps {
      *  @return Ran, Refused, or NoDevice. */
     [[nodiscard]] StepOutcome run_pagecache_step(PagecacheStep step, StepContext &context,
                                                 const char **refusal) noexcept;
-    /** Write an image block by block and read every block back: the loop that separates "the
-     *  datagram was sent" from "the page now holds this".
-     *  @param request the access, the parameters, the image and its position
-     *  @param refusal receives a named reason when the write or the read-back fails
-     *  @return true when every block went in and came back; false with @p refusal set otherwise. */
+    /** 这一块要不要回读？抽样规则**只有这一处**，四条子句各有一个理由：
+     *  - \c verify_every 为 0 ⇒ 每块都读（调用方要全程证据）；
+     *  - \c after_failure ⇒ 下一块一定要读：上一次尝试没通过（重发过、或回读不符过），
+     *    说明这条通道此刻不可信，抽样不适用于它；
+     *  - 首块与最后一块一定读：整段的两个边界，块数为 1 时两者是同一块；
+     *  - 其余按 \c block % verify_every == 0 抽样。
+     *  @param block 块序号（0 起）
+     *  @param blocks 整段的块数
+     *  @param verify_every 调用方给的抽样间隔（0 = 每块）
+     *  @param after_failure 上一次尝试是否没通过
+     *  @return true 表示这一块要回读；块序号越界返回 false。 */
+    [[nodiscard]] bool verify_this_block(std::size_t block, std::size_t blocks,
+                                         std::size_t verify_every, bool after_failure) noexcept;
+
+    /** Write an image block by block and read the sampled blocks back: the loop that separates
+     *  "the datagram was sent" from "the page now holds this".
+     *
+     *  Every block is written; the read-back follows \c WriteRequest::verify_every (first block,
+     *  every Nth, the last one, and the block after any failed attempt). A read-back that does not
+     *  match still fails the whole segment -- the sampling decides how often the carrier is read,
+     *  never whether a mismatch is tolerated. The write path itself (preimage, vector, splice) is
+     *  the same for sampled and unsampled blocks: the page that lands is the same page.
+     *  @param request the access, the parameters, the image, its position and the sampling interval
+     *  @param refusal receives a named reason when the write or a read-back fails
+     *  @return true when every block went in and every sampled block came back; false with
+     *          @p refusal set and \c WriteRequest::failed_block naming the block otherwise. */
     [[nodiscard]] bool write_image_verified(WriteRequest &request, const char **refusal) noexcept;
 }  // namespace ghostlock::backend::cve_2026_43284::steps

