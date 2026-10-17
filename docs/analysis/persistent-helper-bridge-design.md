@@ -57,3 +57,19 @@
 1) 单测：请求/应答短读超时 fail-closed；子进程异常退出时后续块全失败；关闭幂等。
 2) 真机：`write benchmark: per_block_us` 从 ≈74000 降到 ≤3000（769 块 ≤2.5 s）。
 3) 语义：`written=verified`、`hook restore=true`、站点与载体状态与现状一致。
+
+## 7. 实现后的阻塞项（2026-10-17 00:30，反汇编结论）
+
+`BridgeSession` 已实现（默认 `bridge_mode=0`，行为不变），但**设备上尚不可用**：
+
+- patch #1 内嵌的 helper（1432 B，DirtyFrag 一次性程序）**不读 stdin、没有会话循环**；
+- 因此 `bridge_mode=1` 会在握手处被拒 ⇒ 整段 fail-closed（安全，但不变快）；
+- 要真正启用，必须先产出**会话版 helper 镜像**（常驻进程，循环读 `{op,offset,path_id[,fd]}` 并回 16 B），
+  再用它替换 patch #1 的 blob —— 属于新批次。
+
+### 达到 5 s 量级的两条路（按代价排序）
+
+| 路径 | 前置 | 预期 | 代价 |
+|---|---|---|---|
+| 可直读载体 | 只改 profile 的 `carrier_path`（选取逻辑已支持第一个存在的候选） | 1470 块 ≈ 5 s | 极小；但与“用参照同款 vendor 载体”冲突 |
+| 会话版 helper | 新写并编译常驻 helper，替换 patch #1 blob | 1470 块 ≈ 0.1 s 量级 | 大：新增 aarch64 程序 + blob 替换 + 真机验证 |
