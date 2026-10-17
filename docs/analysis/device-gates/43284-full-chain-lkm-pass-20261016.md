@@ -39,3 +39,12 @@ adb -s QV770MFGJ1 shell 'tail -6 /data/local/tmp/.ghostlock_lkm.log'
 adb -s QV770MFGJ1 shell 'su -c id; getenforce'
 adb -s QV770MFGJ1 shell 'dd if=/system/lib64/libc++.so bs=1 skip=$((0xFE628)) count=8 | od -An -c -v'   # 应为 /dev/df
 ```
+
+## 追加：已加载态再跑会空转（用户实测确认，2026-10-16）
+
+KernelSU 已加载后再次执行攻击**不会产生任何新结果**（空转）：模块已在 `/proc/modules`，没有可加载目标；
+且“踩”的效力来自**本次开机会话**内的共享页补丁 —— 重启即丢弃页缓存写入（磁盘基线保持原样，早前实测 md5
+`ce7f5940bb1f2b8083cb1e0ade97bea4`）。
+
+因此判据只在**冷机**形态下有意义：干净启动 ⇒ 装钩与踩踏在**同一会话内**完成 ⇒ 才会出现 `/dev/dfm0` 与 `kernelsu`。
+任何“屏幕/文件日志一致性”之类的**观测性**验证不依赖成功，可在任意一轮进行。
