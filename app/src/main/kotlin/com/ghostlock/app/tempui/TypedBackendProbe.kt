@@ -990,10 +990,13 @@ val payloadWrote = if (payload != null) hook.writeImage(payload, hookLanding, 16
             val triggerCode = hook.trigger(triggerDelay)
             step("typed: hook trigger code=" + triggerCode + " delayMs=" + hookParams.accessTriggerDelayMs + " used=" + triggerDelay + " refusal=" + hook.lastRefusal)
             val terminal = hook.waitTerminal(
-                budgetMs = 15000L,
-                pollMs = 100L,
+                /* 参考对应：预算 5000 ms、10 ms 轮询（chain.hpp:196 / real_ops.cpp:391-432）；
+                 * 失败标记是 /dev/dfm1（real_ops.hpp:59-60），此前写成 /dev/df1 ⇒ 永不匹配。
+                 * 注意：注释里不要出现星号斜杠连写，那会提前结束块注释。 */
+                budgetMs = 5000L,
+                pollMs = 10L,
                 successMarker = "/dev/dfm0",  /* /dev/df* 对 app 不可读，但 stat 可判存在（真机已验） */
-                failureMarker = "/dev/df1",
+                failureMarker = "/dev/dfm1",
                 inFlightMarker = "/dev/df",
                 moduleMarker = "/sys/module/dirtyfrag",
                 moduleName = "kernelsu",
