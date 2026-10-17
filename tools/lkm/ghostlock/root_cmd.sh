@@ -71,6 +71,23 @@ echo "[*] late-load exit=$?" >>"$LOG"
 for i in $(seq 1 50); do
   if grep -q kernelsu /proc/modules 2>/dev/null; then
     echo '[+] KernelSU module loaded' >>"$LOG"
+    # --- bring the userspace side up ---
+    # The module alone is not enough: the manager reads ksud's state, so post-fs-data
+    # (which creates /data/adb/ksu and loads the sepolicy) and a detached services
+    # daemon (which owns the su channel) have to run as well. Both are logged verbatim,
+    # and their exit codes decide nothing on their own - the checks below do.
+    echo '[*] ksud post-fs-data' >>"$LOG"
+    "$KSUD" post-fs-data >>"$LOG" 2>&1
+    echo "[*] post-fs-data exit=$?" >>"$LOG"
+    echo '[*] ksud services (detached)' >>"$LOG"
+    ( setsid "$KSUD" services >>"$LOG" 2>&1 & ) 2>/dev/null || { "$KSUD" services >>"$LOG" 2>&1 & }
+    sleep 1
+    echo "[*] ksud version=$("$KSUD" --version 2>/dev/null)" >>"$LOG"
+    if [ -d /data/adb/ksu ]; then
+      echo '[*] ksu dir=present' >>"$LOG"
+    else
+      echo '[!] ksu dir=absent' >>"$LOG"
+    fi
     touch /dev/dfm0 /data/local/tmp/.ghostlock_lkm_ok
     exit 0
   fi
