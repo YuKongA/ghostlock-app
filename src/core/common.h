@@ -46,6 +46,13 @@
 
 #include "kernelsnitch/utils.h"
 
+/* v11.2: non-fatal step logger for the race window. kernelsnitch/utils.h
+ * defines pr_error() as "log + exit(-1)" in app builds; the first v11.1
+ * live run showed one missed futex op there kills the whole process
+ * (exit 255) and every other PI worker with it. Anything inside the
+ * waiter/owner/consumer window must log plainly instead. */
+#define pr_step(fmt, ...) printf("[x] " fmt, ##__VA_ARGS__)
+
 #include "profile/accessors.hpp"
 #include "support/decls.hpp"
 #include "route/route_api.hpp"

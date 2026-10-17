@@ -21,6 +21,8 @@ bool ghostlock::race::PiRace::reset(
     owner_stop.store(0, std::memory_order_relaxed);
     route_done.store(0, std::memory_order_relaxed);
     waiter_tid.store(0, std::memory_order_relaxed);
+    owner_tid.store(0, std::memory_order_relaxed);
+    consumer_tid.store(0, std::memory_order_relaxed);
     consumer_go.store(0, std::memory_order_relaxed);
     consumer_stop.store(0, std::memory_order_relaxed);
     consumer_calls.store(0, std::memory_order_relaxed);

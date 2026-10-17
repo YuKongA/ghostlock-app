@@ -497,6 +497,29 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     override suspend fun lastRunStuckStep(): String? = withContext(Dispatchers.IO) {
         runCatching {
+            /* v11.8e: rescue the native O_SYNC tee. The native writes
+             * filesDir/native-osync.log with O_SYNC per line precisely so a
+             * kernel panic cannot eat the forensic trail — but the file is
+             * app-private (adb shell gets EACCES) and a reinstall deletes
+             * it. Copy it into the debug export area on every launch, then
+             * remove the private copy so each panic is exported exactly
+             * once. */
+            runCatching {
+                val osync = File(filesDir, "native-osync.log")
+                if (osync.isFile && osync.length() > 0) {
+                    val settings = debugSettings()
+                    if (settings.exportEnabled) {
+                        val archive = DebugAttackLog.open(appContext, "osync", settings.exportLocation)
+                        if (archive != null) {
+                            osync.bufferedReader(StandardCharsets.UTF_8).useLines { lines ->
+                                lines.forEach { line -> runCatching { archive.append(line) } }
+                            }
+                            runCatching { archive.close() }
+                            runCatching { osync.delete() }
+                        }
+                    }
+                }
+            }
             val file = File(filesDir, RunStateFileName)
             if (!file.isFile) return@runCatching null
             RunStateCodec.parseStuckStep(file.readText())

