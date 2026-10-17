@@ -15,7 +15,7 @@
 | 探针与回读抽样（每块 exec 4.00 → 2.06） | `pagecache.cpp:158-165` / `:231` | `verify_every`（默认 32）+ 探针每 512 B | `1d5369d4` |
 | patch #1 保持逐块回读 | 参照 `crash_dump.cpp` 同款 | `verify_every = 0`（runner） | `b4b291eb` |
 
-## 批次 1（进行中）
+## 批次 1（已完成 · `0f0196f1`）
 
 | 项 | 参照位置 | 现状 | 目标 |
 |---|---|---|---|
@@ -24,7 +24,7 @@
 | trigger 参数化（双 fork + 500 ms） | `real_ops.cpp:355-379` | 写死 `crash_dump32` + 150 ms | igniter 与 delay 由参数给 |
 | guard 策略具名 Skip | `execution_binding.cpp:241` | `guardPolicy=0` 靠猜 | `GUARD_POLICY_SKIP` + 日志 |
 
-## 批次 2：写坏能回退
+## 批次 2：写坏能回退（steps 层已完成 `fdbde604`；runner/JNI 接线进行中）
 
 | 项 | 参照位置 | 现状 |
 |---|---|---|
@@ -32,7 +32,7 @@
 | rollback 倒序写回 | `chain.cpp:285-305` | 无 |
 | `rollback_incomplete` 上报 | `stage_runner.cpp:697-742` | 无 |
 
-## 批次 3：计划与载体
+## 批次 3：计划与载体（进行中 · 闭包校验 + 载体候选表）
 
 | 项 | 参照位置 | 现状 |
 |---|---|---|
@@ -40,7 +40,7 @@
 | 载体候选表 | `execution_binding.cpp:141-148` | 单一路径常量 |
 | fillPayloadSlots 的 ko_target 一致性 | `backend_terminal.cpp:321` | 已一致（两处同写 `/vendor/lib64/libbinderdebug.so`） |
 
-## 批次 4：模块终态
+## 批次 4：模块终态（进行中 · vermagic 精确公式 + 模块 precheck，新建文件）
 
 | 项 | 参照位置 | 现状 |
 |---|---|---|
@@ -54,3 +54,15 @@
 | 项 | 参照位置 | 现状 |
 |---|---|---|
 | LKM 窗口 open / close(UNLOAD) | `chain.cpp:362-380` | 无（`window opened=0 failed=1`） |
+
+## 状态快照（2026-10-16 23:5x）
+
+| 批次 | 状态 | 证据 |
+|---|---|---|
+| 1 · seq / wait / trigger / guard | **已完成** | `0f0196f1`，Kotlin 单测 47 例全过 |
+| 2 · journal / rollback | steps 层完成，接线进行中 | `fdbde604`；runner/JNI 未传缓冲 |
+| 3 · 闭包 / 载体候选 | 进行中 | 新文件未落 |
+| 4 · vermagic / precheck | 进行中 | 新文件未落 |
+| 5 · LKM 窗口 UNLOAD | 未开始 | 不阻塞 LkmLoaded |
+
+真机侧独立问题（与本表并行）：模块写得进去，但 `insmod` 未把模块带起来；见 runbook §11 的证据表与定性实验。
