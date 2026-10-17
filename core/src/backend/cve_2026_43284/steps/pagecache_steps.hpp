@@ -77,11 +77,39 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         std::size_t verify_every = 32U;
 
         /**
+         *  回滚日志（可选）：**容量由调用方给**，本单元不分配、不持有、不新增全局状态 ——
+         *  全部走 request。空 span ⇒ 不记日志、不回滚（默认行为与加日志之前一致）。
+         *
+         *  一条记录 = 一个块 = width 字节（镜像写的 width 是 16，与参照实现的 16 B 旧块一致）；
+         *  journal_capacity_bytes 是**声明容量**，0 表示「用满 span」，两者取小。
+         *  记录在每块**写之前**追加（先 read 拿旧块，走的就是本单元既有的回读路径），
+         *  容量不足 ⇒ 置 journal_overflow 并**继续写**（与参照实现同：溢出只记录，不中止）。
+         */
+        std::span<std::byte> journal{};
+        std::size_t journal_capacity_bytes = 0U;
+
+        /**
          *  失败记录：由执行体写，成功时不改。整段失败时是**第一个不通过的块**的序号（0 起），
          *  没有失败时是 kNoFailedBlock。日志里同一块的行本来就逐条保留（不受抽样门限），
          *  这个字段只是让调用方与测试不必去解析日志。
          */
         std::size_t failed_block = kNoFailedBlock;
+    };
+
+    /**
+     *  一次镜像写的账：写了几块、验了几块、回滚了几块。
+     *
+     *  written / verified 的语义与加日志之前一致：written = 写调用报成功（整块）的块数，
+     *  verified = 真做过回读且**比中**的块数（抽样只减少读的次数，不放宽判据）。
+     *  回滚三项只在提供了 journal 时才可能非零：blocks_rolled_back = 写回的旧块条数，
+     *  rollback_incomplete = 有块写不回（写失败或回读不符），journal_overflow = 容量不足。
+     */
+    struct WriteOutcome final {
+        std::size_t written = 0U;
+        std::size_t verified = 0U;
+        std::size_t blocks_rolled_back = 0U;
+        bool journal_overflow = false;
+        bool rollback_incomplete = false;
     };
 
     /** One hook request: where the site and the payload live (the plan), and the block math. */
@@ -215,9 +243,21 @@ namespace ghostlock::backend::cve_2026_43284::steps {
      *  match still fails the whole segment -- the sampling decides how often the carrier is read,
      *  never whether a mismatch is tolerated. The write path itself (preimage, vector, splice) is
      *  the same for sampled and unsampled blocks: the page that lands is the same page.
-     *  @param request the access, the parameters, the image, its position and the sampling interval
+     *
+     *  给了 journal 时另外两件事（参照实现 ghostlock-app-ref@5f184760 的 journal / rollback）：
+     *  ① 每块**写之前**先 read 取旧块、把 width 字节追加进 journal（容量不足 ⇒ journal_overflow，
+     *     照旧继续写）；② 任一块 fail-closed（写被拒、旧块读不到）或回读不符 ⇒ 按 journal
+     *  **逆序**把旧块写回，每块写后回读比较；写不回或回读不符的块计入 rollback_incomplete，
+     *  其余条目照旧回滚。回滚不动攻击原语与页来源：它走的还是同一个 access / channel / 宽度。
+     *  @param request the access, the parameters, the image, its position, the sampling interval and
+     *         the optional journal (storage, declared capacity)
      *  @param refusal receives a named reason when the write or a read-back fails
+     *  @param outcome optional ledger: blocks written, blocks verified, blocks rolled back and the
+     *         two rollback flags (nullptr keeps the call shape the callers had)
      *  @return true when every block went in and every sampled block came back; false with
-     *          @p refusal set and \c WriteRequest::failed_block naming the block otherwise. */
-    [[nodiscard]] bool write_image_verified(WriteRequest &request, const char **refusal) noexcept;
+     *          @p refusal set and \c WriteRequest::failed_block naming the block otherwise.
+     *  @note 拒绝名 step-journal-unread 表示「旧块读不到，因此这一块不能写」（写了就回不去），
+     *        与 step-write-refused / step-verify-failed 一样是 fail-closed。 */
+    [[nodiscard]] bool write_image_verified(WriteRequest &request, const char **refusal,
+                                            WriteOutcome *outcome = nullptr) noexcept;
 }  // namespace ghostlock::backend::cve_2026_43284::steps

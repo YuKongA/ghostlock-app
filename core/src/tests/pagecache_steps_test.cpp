@@ -4,7 +4,9 @@
  *  判据五条：① 五个名字往返一致，别的名字不认；② 一个 40 字节镜像按 16 字节宽写成 3 块，
  *  偏移逐块递进、最后一块补零；③ 写被拒 ⇒ step-write-refused，回读不符 ⇒ step-verify-failed；
  *  ④ 空镜像 / 空 access 各有一个具名拒绝；⑤ 回读抽样：规则一处、次数 ≈ blocks/32+2、
- *  抽样块不符整段失败并把该块记进 failed_block、verify_every=0 时每块都读。
+ *  抽样块不符整段失败并把该块记进 failed_block、verify_every=0 时每块都读；
+ *  ⑥ journal / rollback：第 k 块失败 ⇒ 旧块**逆序**写回且每块回读一致、容量不足 ⇒ overflow 且
+ *  **继续写**、回滚里某块写不回 ⇒ incomplete 且其余仍回滚、成功路径 rolled_back=0。
  *  假 access 记录每一次读写，不碰设备。
  */
 #include <cstddef>
@@ -44,6 +46,11 @@ namespace {
          *  This is how a test makes one specific block fail its verify while every other lands. */
         static constexpr std::uint64_t kNoCorruption = ~std::uint64_t{0U};
         std::uint64_t corrupt_at = kNoCorruption;
+        /** 回滚证据用的闸门：某个偏移上第 N 次（0 起）写被拒，其余写照常。
+         *  kNoCorruption = 不设。让原写成功、回滚那一次被拒 ⇒ 只有回滚断，写阶段不受影响。 */
+        std::uint64_t refuse_write_at = kNoCorruption;
+        std::size_t refuse_write_attempt = 0U;
+        std::size_t writes_at_refused_slot = 0U;
         /** Big enough for the offsets this test uses (0x1000+): the guard is the unit's business,
          *  not something the test should trip by accident. */
         static constexpr std::size_t kMemoryBytes = 1U << 20U;
@@ -74,6 +81,13 @@ namespace {
             offsets.push_back(offset_of(parameters));
             widths.push_back(in.size());
             if (refuse_write) { return AccessResult<std::size_t>::failed(Status::Unsupported); }
+            if (offset_of(parameters) == refuse_write_at) {
+                const std::size_t attempt = writes_at_refused_slot;
+                ++writes_at_refused_slot;
+                if (attempt == refuse_write_attempt) {
+                    return AccessResult<std::size_t>::failed(Status::Unsupported);
+                }
+            }
             const auto at = static_cast<std::size_t>(offset_of(parameters));
             if (at + in.size() > kMemoryBytes) { return AccessResult<std::size_t>::failed(Status::Unsupported); }
             for (std::size_t i = 0U; i < in.size(); ++i) { memory[at + i] = in[i]; }
@@ -299,6 +313,209 @@ namespace {
         }
         expect(reads_of_bad == 1U, "it was read back (so its failure line is the per-block one)");
         expect(access.offsets.size() == kBadBlock + 1U, "nothing after it is written");
+    }
+
+    /** 把段内的字节铺成 old：写之前的页内容，回滚之后必须逐字节回到这里。 */
+    void fill_block(FakeAccess &access, std::uint64_t at, std::size_t bytes, std::byte old) noexcept {
+        for (std::size_t i = 0U; i < bytes; ++i) { access.memory[at + i] = old; }
+    }
+
+    /** 某一块是否逐字节等于 want。 */
+    [[nodiscard]] bool block_is(const FakeAccess &access, std::uint64_t at, std::size_t width,
+                                std::byte want) noexcept {
+        for (std::size_t i = 0U; i < width; ++i) {
+            if (access.memory[at + i] != want) { return false; }
+        }
+        return true;
+    }
+
+    /** (k) 第 k 块回读不符 ⇒ journal 里的旧块**逆序**写回，且每块写后回读一致（判据 a）。
+     *  失败的这一块在日志里是逐行的那一条（不受 512 字节门限），回滚行也逐块保留。 */
+    void a_verified_failure_rolls_the_journal_back_in_reverse() {
+        constexpr std::size_t kWidth = 16U;
+        constexpr std::size_t kBlocks = 8U;
+        constexpr std::size_t kBadBlock = 5U;
+        constexpr std::uint64_t kBase = 0x6000U;
+        const std::byte kOld{0xEE};
+        const std::byte kNew{0x5A};
+        FakeAccess access{};
+        cve::AccessParams params{};
+        fill_block(access, kBase, kBlocks * kWidth, kOld);
+        std::byte image[kBlocks * kWidth] = {};
+        for (std::size_t i = 0U; i < sizeof(image); ++i) { image[i] = kNew; }
+        std::byte journal[kBlocks * kWidth] = {};
+        steps::WriteRequest request{};
+        request.access = &access;
+        request.params = &params;
+        request.image = std::span<const std::byte>(image, sizeof(image));
+        request.offset = kBase;
+        request.width = kWidth;
+        request.verify_every = 0U;   /* 每块都回读：失败点确定在第 k 块 */
+        request.journal = std::span<std::byte>(journal, sizeof(journal));
+        access.corrupt_at = kBase + static_cast<std::uint64_t>(kBadBlock) * kWidth;
+        steps::WriteOutcome outcome{};
+        const char *refusal = nullptr;
+        expect(!steps::write_image_verified(request, &refusal, &outcome), "a bad block fails the segment");
+        expect(refusal != nullptr && std::strcmp(refusal, "step-verify-failed") == 0, "by name");
+        expect(request.failed_block == kBadBlock, "and the block is recorded");
+        expect(outcome.written == kBadBlock + 1U, "written counts the block that did not come back");
+        expect(outcome.verified == kBadBlock, "verified counts the ones that did");
+        expect(outcome.blocks_rolled_back == kBadBlock + 1U, "every journaled block was written back");
+        expect(!outcome.rollback_incomplete, "and every write-back came back");
+        expect(!outcome.journal_overflow, "the journal was big enough");
+        expect(access.offsets.size() == 2U * (kBadBlock + 1U), "one restore per journaled block");
+        bool newest_first = access.offsets.size() == 2U * (kBadBlock + 1U);
+        for (std::size_t i = 0U; i <= kBadBlock && newest_first; ++i) {
+            const std::uint64_t want = kBase + static_cast<std::uint64_t>(kBadBlock - i) * kWidth;
+            if (access.offsets[kBadBlock + 1U + i] != want) { newest_first = false; }
+        }
+        expect(newest_first, "the restores run newest first");
+        bool prefix_back = true;
+        for (std::size_t block = 0U; block < kBadBlock; ++block) {
+            if (!block_is(access, kBase + static_cast<std::uint64_t>(block) * kWidth, kWidth, kOld)) {
+                prefix_back = false;
+            }
+        }
+        expect(prefix_back, "the journaled prefix is back to what it held");
+        bool bad_as_journaled = access.memory[kBase + kBadBlock * kWidth] == std::byte{0x7F};
+        for (std::size_t i = 1U; i < kWidth && bad_as_journaled; ++i) {
+            if (access.memory[kBase + kBadBlock * kWidth + i] != kOld) { bad_as_journaled = false; }
+        }
+        expect(bad_as_journaled, "the bad block came back as the page read then");
+        expect(journal[0] == kOld && journal[kBadBlock * kWidth] == std::byte{0x7F},
+               "one block-sized record per journaled block");
+    }
+
+    /** (l) journal 容量不足 ⇒ overflow=1 且**仍然继续写**（判据 b）：溢出只记录，不中止。 */
+    void a_short_journal_overflows_and_keeps_writing() {
+        constexpr std::size_t kWidth = 16U;
+        constexpr std::size_t kBlocks = 4U;
+        constexpr std::size_t kCapacityBlocks = 2U;
+        constexpr std::uint64_t kBase = 0x7000U;
+        const std::byte kOld{0xEE};
+        const std::byte kNew{0x5A};
+        FakeAccess access{};
+        cve::AccessParams params{};
+        fill_block(access, kBase, kBlocks * kWidth, kOld);
+        std::byte image[kBlocks * kWidth] = {};
+        for (std::size_t i = 0U; i < sizeof(image); ++i) { image[i] = kNew; }
+        std::byte journal[kBlocks * kWidth] = {};
+        steps::WriteRequest request{};
+        request.access = &access;
+        request.params = &params;
+        request.image = std::span<const std::byte>(image, sizeof(image));
+        request.offset = kBase;
+        request.width = kWidth;
+        request.verify_every = 0U;
+        request.journal = std::span<std::byte>(journal, sizeof(journal));
+        /* 存储够 4 条，但**声明**容量只有 2 条：声明的那一项说了算。 */
+        request.journal_capacity_bytes = kCapacityBlocks * kWidth;
+        steps::WriteOutcome outcome{};
+        const char *refusal = nullptr;
+        expect(steps::write_image_verified(request, &refusal, &outcome), "a full journal does not stop the write");
+        expect(outcome.journal_overflow, "the overflow is recorded");
+        expect(outcome.written == kBlocks && outcome.verified == kBlocks, "every block went in and came back");
+        expect(outcome.blocks_rolled_back == 0U && !outcome.rollback_incomplete, "nothing to roll back");
+        expect(access.offsets.size() == kBlocks, "the blocks after the overflow are still written");
+        bool landed = true;
+        for (std::size_t block = 0U; block < kBlocks; ++block) {
+            if (!block_is(access, kBase + static_cast<std::uint64_t>(block) * kWidth, kWidth, kNew)) {
+                landed = false;
+            }
+        }
+        expect(landed, "the page holds the image");
+        std::size_t reads_of[kBlocks] = {};
+        for (const std::uint64_t at : access.read_offsets) {
+            const auto block = static_cast<std::size_t>((at - kBase) / kWidth);
+            if (block < kBlocks) { ++reads_of[block]; }
+        }
+        expect(reads_of[0] == 2U && reads_of[1] == 2U, "the journaled blocks are read before and after");
+        expect(reads_of[2] == 1U && reads_of[3] == 1U, "past the capacity only the read-back remains");
+        expect(journal[0] == kOld && journal[kCapacityBlocks * kWidth] == std::byte{0},
+               "nothing is recorded past the declared capacity");
+    }
+
+    /** (m) 回滚里某块写不回 ⇒ incomplete=1，其余块仍回滚（判据 c）。 */
+    void a_block_that_cannot_be_written_back_is_incomplete() {
+        constexpr std::size_t kWidth = 16U;
+        constexpr std::size_t kBlocks = 6U;
+        constexpr std::size_t kBadBlock = 4U;    /* 回读不符，触发回滚 */
+        constexpr std::size_t kStuckBlock = 2U;  /* 回滚时写被拒 */
+        constexpr std::uint64_t kBase = 0x8000U;
+        const std::byte kOld{0xEE};
+        const std::byte kNew{0x5A};
+        FakeAccess access{};
+        cve::AccessParams params{};
+        fill_block(access, kBase, kBlocks * kWidth, kOld);
+        std::byte image[kBlocks * kWidth] = {};
+        for (std::size_t i = 0U; i < sizeof(image); ++i) { image[i] = kNew; }
+        std::byte journal[kBlocks * kWidth] = {};
+        steps::WriteRequest request{};
+        request.access = &access;
+        request.params = &params;
+        request.image = std::span<const std::byte>(image, sizeof(image));
+        request.offset = kBase;
+        request.width = kWidth;
+        request.verify_every = 0U;
+        request.journal = std::span<std::byte>(journal, sizeof(journal));
+        access.corrupt_at = kBase + static_cast<std::uint64_t>(kBadBlock) * kWidth;
+        access.refuse_write_at = kBase + static_cast<std::uint64_t>(kStuckBlock) * kWidth;
+        access.refuse_write_attempt = 1U;  /* 0 = 原写（成功），1 = 回滚那一次（被拒） */
+        steps::WriteOutcome outcome{};
+        const char *refusal = nullptr;
+        expect(!steps::write_image_verified(request, &refusal, &outcome), "the segment fails");
+        expect(outcome.rollback_incomplete, "the block that could not be written back is recorded");
+        expect(outcome.blocks_rolled_back == kBadBlock, "the other journaled blocks are still written back");
+        expect(access.memory[kBase + kStuckBlock * kWidth] == kNew, "the stuck block keeps the image");
+        bool others_back = true;
+        for (std::size_t block = 0U; block < kBadBlock; ++block) {
+            if (block == kStuckBlock) { continue; }
+            if (!block_is(access, kBase + static_cast<std::uint64_t>(block) * kWidth, kWidth, kOld)) {
+                others_back = false;
+            }
+        }
+        expect(others_back, "the rest is back to what it held");
+        expect(access.offsets.size() == 2U * (kBadBlock + 1U),
+               "every journaled block was attempted, not just the ones before the stuck one");
+        bool newest_first = access.offsets.size() == 2U * (kBadBlock + 1U);
+        for (std::size_t i = 0U; i <= kBadBlock && newest_first; ++i) {
+            const std::uint64_t want = kBase + static_cast<std::uint64_t>(kBadBlock - i) * kWidth;
+            if (access.offsets[kBadBlock + 1U + i] != want) { newest_first = false; }
+        }
+        expect(newest_first, "and the attempts still run newest first");
+    }
+
+    /** (n) 成功路径：一条记录都不写回，rolled_back 保持 0（判据 d）。 */
+    void a_clean_segment_rolls_back_nothing() {
+        constexpr std::size_t kWidth = 16U;
+        constexpr std::size_t kBlocks = 8U;
+        constexpr std::uint64_t kBase = 0x9000U;
+        const std::byte kOld{0xEE};
+        const std::byte kNew{0x5A};
+        FakeAccess access{};
+        cve::AccessParams params{};
+        fill_block(access, kBase, kBlocks * kWidth, kOld);
+        std::byte image[kBlocks * kWidth] = {};
+        for (std::size_t i = 0U; i < sizeof(image); ++i) { image[i] = kNew; }
+        std::byte journal[kBlocks * kWidth] = {};
+        steps::WriteRequest request{};
+        request.access = &access;
+        request.params = &params;
+        request.image = std::span<const std::byte>(image, sizeof(image));
+        request.offset = kBase;
+        request.width = kWidth;
+        request.verify_every = 0U;
+        request.journal = std::span<std::byte>(journal, sizeof(journal));
+        steps::WriteOutcome outcome{};
+        const char *refusal = nullptr;
+        expect(steps::write_image_verified(request, &refusal, &outcome), "the segment goes in");
+        expect(outcome.written == kBlocks && outcome.verified == kBlocks, "every block was written and verified");
+        expect(outcome.blocks_rolled_back == 0U, "nothing is written back on success");
+        expect(!outcome.journal_overflow && !outcome.rollback_incomplete, "neither flag is raised");
+        expect(access.offsets.size() == kBlocks, "the write surface saw only the image");
+        expect(access.read_offsets.size() == 2U * kBlocks, "each block is read once to journal and once to verify");
+        expect(journal[0] == kOld && journal[(kBlocks - 1U) * kWidth] == kOld,
+               "every old block is recorded, first and last included");
     }
 
     void the_hook_lands_and_verifies() {
@@ -660,6 +877,11 @@ int main() {
     zero_reads_every_block_back();
     a_sampled_block_that_does_not_come_back_fails_the_segment();
     a_failure_off_the_log_cadence_is_still_recorded();
+    std::printf("pagecache steps: the journal and the rollback");
+    a_verified_failure_rolls_the_journal_back_in_reverse();
+    a_short_journal_overflows_and_keeps_writing();
+    a_block_that_cannot_be_written_back_is_incomplete();
+    a_clean_segment_rolls_back_nothing();
     std::printf("pagecache steps: the hook lands");
     the_hook_lands_and_verifies();
     std::printf("pagecache steps: the hook writes the payload first");

