@@ -52,3 +52,27 @@ uid=0 / Enforcing / kernelsu=1 + ksu.log: [*] late-load kmi=android13-5.15 · ex
 - 序号两条链已连续：`nextSequence before hook=91` → `adopt seq=91` → 载体/载荷/站点同一链。
 - carrier 自检：`block[16] verify failed: want 0100b700 got 0300b700`；helper `spliced=16` 且 `head=0300b700`（与 got 一致 ⇒ 读侧自洽，写未改变该偏移）。
 - 无 `/dev/dfm0` `/dev/dfm1`；`kernelsu`=0；设备稳定（多次运行未崩未卡，除早期两次因错误站点写入引发的 panic/卡死，已修）。
+
+## 五、2026-10-16 会话新增硬事实（真机实证，均已复核）
+
+| 事实 | 证据 | 含义 |
+|---|---|---|
+| 钩子与载荷**此刻仍在全局共享页里** | `adb shell dd if=/system/lib64/libc++.so bs=1 skip=733356 count=4` ⇒ `83 2d 01 14`；`skip=1042104 count=4` ⇒ `e0 07 bf a9` | 写阶段彻底成立：跨运行、跨分钟仍在；任何走该 sentry 的进程都会起火 |
+| helper（桥）通道**完全正常** | `adb shell crash_dump64 16 /vendor/lib64/libbinderdebug.so` ⇒ 输出 `01 00 b7 00 …` | 与自检 `want 0100b700` 同源 ⇒ 自检口径正确；helper argv/stdout 管道均按实测约定工作 |
+| `crash_dump32` **不打印** | 无参 / `1 1 11 1` / `<offset> <path>` 三种调用全部 `exit=0` 且零输出 | 排除它作为点火者的可能 |
+| 三个 shell 域 C++ 进程常驻且映射 libc++ | `shizuku_server`(12 段) · `brevent_daemon`(4) · `brevent_server`(16) | 它们**当前**不走 `ostream` ⇒ 不是自动点火者 |
+| 载体写入 **769/769 全过** | 应用耐久日志 `typed: module wrote=true code=0 refusal=` | 等同成功历史的 `written=769 verified=769` |
+| 序号链路连续 | `carrier_next_after=91` ⇒ 站点/载荷/载体同一条 SA 序号 | 对齐 real_ops.cpp:306-307 的纪律 |
+| 槽值全部对齐参考 | SELinux 长度含尾 NUL（+1）· mutex `/dev/df` | 依据 hook_patch.cpp:303 与 hook_patch.hpp:146 逐字 |
+| 载荷在 **app 域**起火但无权限 | 应用域执行 `crash_dump64` ⇒ `detonate exit=139`（SIGSEGV）；三标记全无 | “踩”已被证明可行 ⇒ **剩唯一变量＝执行域** |
+| 设备资产完好 | `/data/local/tmp/.ghostlock_lkm_cmd.sh`(755) · `.ghostlock_root.sh` | 一旦加载成功，UMH 日志会刷新（现停在 10-10 ⇒ 从未成功） |
+
+### 当前唯一未解变量：**在哪个域里被“踩”**
+
+- 设计本意：载荷把 `/proc/self/attr/exec` 设成 `u:r:vendor_modprobe:s0` 并调 `/vendor/bin/insmod`，因此它**必须**在允许该操作的特权域里运行。
+- 已排除：app 域（被拒 ⇒ 139）· `crash_dump32`（不打印 ⇒ 不踩）。
+- 进行中（三路并行）：A 逐行 verbose 落码；B 退役链复现评估与对比字段清单；C 自建“动态链接系统 libc++ 且会打印”的 shell 域程序。
+
+### 判据（不变）
+
+`/dev/df`（载荷开始运行）⇒ `/dev/dfm0`（成功）/`/dev/dfm1`（失败）⇒ `/proc/modules` 含 `kernelsu` ⇒ UMH 日志刷新。
