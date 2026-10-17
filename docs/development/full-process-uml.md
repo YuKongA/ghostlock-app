@@ -551,7 +551,50 @@ sequenceDiagram
 ./gradlew deviceGate（装 APK → 起临时界面 → 抓 logcat → 按 native 导出的 manifest **机器校验**）；
 两者合起来 = ./gradlew gateAll。
 
-## 5. 维护约定
+## 5. Kotlin 侧链驱动器（2026-10-16 · 照 `ghostlock-app-ref@5f184760` 移植）
+
+```mermaid
+classDiagram
+  class SequenceContinuation {
+    -value: Long
+    +current(): Long
+    +advance(returned: Long)
+  }
+  class WaitPolicy43284 {
+    <<object>>
+    +TIMEOUT_MS = 15000
+    +POLL_MS = 40
+    +POLL_ATTEMPTS = 5
+    +ALT_BUDGET_MS = 200
+    +await(primary: String, alt: String): Int
+  }
+  class TriggerSpec43284 {
+    <<object>>
+    +DEFAULT_DELAY_MS = 500
+    +DEFAULT_IGNITER: String
+    +DEFAULT_RETRIES = 1
+    +detonate(handle: Long, delayMs: Long): Int
+  }
+  class Assembled43284 {
+    +GUARD_POLICY_SKIP = 0
+    +hookPlan(symbol, guardPolicy)
+    +writeImage(...)
+    +restoreHook(plan, width, init)
+  }
+  Assembled43284 --> SequenceContinuation : advances on success
+  Assembled43284 --> TriggerSpec43284 : fires through
+  Assembled43284 --> WaitPolicy43284 : waits through
+```
+
+要点：`SequenceContinuation` 是**每次运行一个局部对象**（非全局）；三处写点成功后由 native 返回的序号推进，
+日志固定 `seq: <prev> -> <next> (auto)`。`WaitPolicy43284` 先判可读标记（`.ghostlock_lkm_ok|fail`），
+仍在飞再判 `/dev/dfm0|dfm1`，两者任一命中即终态。`TriggerSpec43284` 的 igniter 与延迟是**参数**，默认 500 ms。
+`GUARD_POLICY_SKIP` 值仍为 0（`bti c` 下 Reject 挂不上钩），只是把裸 0 变成有名字的常量并在日志里打出 `guard=Skip`。
+
+参照位置：`real_ops.cpp:250-257/307-327/339-344`（seq 交棒）、`cve_2026_43284_state.hpp:29-31` 与 `real_ops.cpp:405-415`（wait）、
+`real_ops.cpp:355-379` 与 `execution_binding.cpp:170`（trigger）、`execution_binding.cpp:241`（guard）。
+
+## 6. 维护约定
 
 - **一处权威**：本文件是唯一权威 UML；其他文档**链接**本件，不重画同一结构。结构变化（新增/删除层、暴露面条目、拒绝码、相位）⇒ **同批**更新本件对应图。
 - **引用**：`docs/analysis/adr/README.md` · `handoff-payload-batch-plan.md` · `contract-design.md` · `plugin-runtime-integration-design.md` · `root-manager-selection-design.md` · `docs/archive/*` · `engineering-rules.md` · `AGENTS.md`。
