@@ -51,6 +51,9 @@ object TypedBackendProbe {
      */
     private const val MODULE_PATH = "/data/local/tmp/ghostlock.ko"
 
+    /** 自建载体的大小：远大于 12304 B 的模块，且 app 自己可读写（快路径）。 */
+    private const val CARRIER_FILE_BYTES: Long = 1L shl 20
+
     /**
      *  一步的**前后各一行**日志：调用了什么 + 参数（前），返回 + 耗时 ms（后）。
      *
@@ -1452,7 +1455,26 @@ object TypedBackendProbe {
          * 缺省走 steps/chain.hpp:69-75 的四个默认载体）。当前实现与从前一样只取第一项；
          * 这里多出来的只是 readable 标记与一行日志（backend_terminal.cpp:318-331：只绑一个载体、不回退）。
          */
-        val carrier = CarrierCandidates.select()
+        /* 测试用：把可直读系统库放在候选首位，验证 file_fd>=0 的快路径（跑完还原）。 */
+        /*
+         * 速度优化（2026-10-17 实测）：载体可直读时 769 块只需 **80 ms**（105 µs/块）；
+         * vendor 载体不可直读时要 48 957 ms（每块两次 helper fork）。
+         * 冷跑时 ksu 尚未加载 ⇒ SELinux Enforcing ⇒ app 打不开 vendor。
+         * 因此把载体放在**应用自己的目录**里：app 必然能 open ⇒ 本地 fd ⇒ 快路径；
+         * UMH 期间模块已把 SELinux 设为 Permissive，root 的 insmod 能读到该文件。
+         */
+        val speedCarrierPath = probeContext?.let { ctx ->
+            java.io.File(ctx.filesDir, "carrier.bin").also { file ->
+                runCatching {
+                    java.io.RandomAccessFile(file, "rw").use { raf ->
+                        if (raf.length() < CARRIER_FILE_BYTES) {
+                            raf.setLength(CARRIER_FILE_BYTES)
+                        }
+                    }
+                }
+            }.absolutePath
+        }
+        val carrier = CarrierCandidates.select(profileCarrierPath = speedCarrierPath)
         step(carrier.line())
         /*
          * 整条链**一个**序号计数器（ref 的 ctx->page.next_seq 在整次运行里是唯一的）：
