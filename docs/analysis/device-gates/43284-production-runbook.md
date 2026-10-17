@@ -98,3 +98,28 @@ adb -s QV770MFGJ1 shell 'run-as com.ghostlock.app tail -20 files/ghostlock-run.l
 | 事务性 | 一切可能失败的判断都在第一次写入之前 | 同样（先算容量再写） | ✅ 同 |
 
 结论：同一 minor 直接改名这一条**已对齐**；跨 minor 也不会破坏镜像（放不下就不改）。
+
+## 11. 真机证据表（2026-10-16 晚，同一设备、同一构建线）
+
+| 时间 | 模块 | 载体 | 结果 | 结论 |
+|---|---|---|---|---|
+| 22:02 | 12304 B | `/vendor/lib64/libbinderdebug.so` | `module wrote=true` | 写链可用 |
+| 23:26 | 12304 B | `/system/lib64/libc++.so`（试验） | `step-verify-failed` | 不能把被钩的文件当载体 |
+| 23:33 | 12304 B | vendor | `module wrote=true` · 载荷建出 `/dev/df` · **无 UMH** | 钩子与载荷正常，断点在 `insmod` |
+| 23:43 | 23512 B | vendor | `image-write:step-write-refused:**call-failed**` | 该载体**收不下** 23512 B |
+
+### 运行后的稳定现象（每轮一致）
+
+```text
+hook site block wrote=true verified=true    站点写入 + 回读 ✓
+hook trigger code=0 delayMs=500             载荷被踩到 ✓
+/dev/df 出现（shell 视角 Permission denied） 载荷执行到建互斥 ✓
+UMH 日志停在 20:46                           模块**未进入内核** ✗
+hook restore=true                           钩子被撤 ✓（不再遗留）
+wait terminal=2                             因无 .ghostlock_lkm_ok ⇒ 超时（判据正确）
+```
+
+### 下一步的定性实验
+
+把模块换成参照实现自带的 `dirtyfrag-13-5.15.ko`（11168 B）：比 12304 B 更小（必写得进去）且是 ref 自己在用。
+它能载入 ⇒ 问题在我们的 `.ko`；它也载不进去 ⇒ 问题在载荷侧 `insmod`（域 / argv / 路径）。一次实验即可分开两类原因。
