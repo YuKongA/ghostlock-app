@@ -32,7 +32,18 @@ pagecache_steps.cpp::write_image_verified  （每块一次循环）
 - 复原路径显式传 `verify_every=0`（它需要每块证据）⇒ 那次 114 s 可由 1470×3 次 fork 完全解释；
 - 之后一次真机跑，用 `write benchmark: per_block_us` 判定是否降到 2 次 fork 的水平（≈50 ms/块）。
 
-## 结论
+## 复核更正（同日）
 
-写路径目前**没有**常驻桥，每块最少 2 次 fork；要达到 5 s 量级（1470 块）必须把 fork 降到 ~0（可直读载体）
-或改成常驻桥（每次 IPC 代替每次 fork），二者都已在设计稿 `persistent-helper-bridge-design.md` 里给出。
+上表把 78 ms/块 读成「3 次 fork × 25 ms」，这一步是错的：
+
+- `pagecache_write.hpp:250` 的 `read_block` 是 landing 的**读取 API**，只有 steps 层在抽样判据成立时才会调用它；
+  它并不是 `write_block` 内部的固定第三步（先前那段 sed 把两个函数拼在了一起看）。
+- 若每次 fork 的真实成本约 **38 ms**，那么 2.06 次/块 × 38 ms ≈ **78 ms/块**，与 1470 块 / 114 s 完全吻合。
+  ⇒ 因此**抽样是生效的**，没有「未抽样的第三次 fork」这个缺陷。
+- 早期 769 块 / 57 s（≈74 ms/块）发生在抽样落地之前，那时是 3 次/块 ⇒ 3 × 25 ms ≈ 75 ms 也吻合（fork 成本随负载在 25–38 ms 间浮动）。
+
+## 结论（更正后）
+
+写路径每块最少 **2 次 fork**（旧块 + splice 页），这是 vendor 载体的固有成本；
+要把 1470 块压到 5 s 量级，只有两条路：**可直读载体**（fork→pread）或**常驻桥**（fork→IPC），
+两者都写在 `persistent-helper-bridge-design.md` 里。抽样只影响回读，不改变这两条路径的选择。
