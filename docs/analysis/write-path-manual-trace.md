@@ -82,3 +82,15 @@ pagecache_steps.cpp::write_image_verified  （每块一次循环）
 
 ⇒ 结论：**机制不同、效果等价** —— 我们把 Skip 编码在 plan 里（不匹配就按计划值写），
   参照实现把策略做成枚举在装配期分支；两侧都不会因为 guard 字不是 BTI 而拒绝写钩子。
+
+## 附：restore 的顺序与幂等（trace 第五项）
+
+| 项 | 参照 `chain.cpp:350-362` 的要求 | 我们（`TypedBackendProbe.kt`） |
+|---|---|---|
+| 时机 | **先恢复钩子，再释放写面**（“before release closes the write surface”） | `finally`（:2102）里调 `restoreHook`（:2121-2128），**之后**才 `destroyAccessNow`（:2149-2150） |
+| 无条件 | 成功/失败/早退都走 | hook 段用 `runCatching` 收异常，`finally` 必走；报告行自身再抛也不影响 |
+| 幂等 | 回调本身“未挂钩即 no-op” | `steps::restore_hook` 写回的两字取自 plan（原厂值）；重复调用写同样的值，回读一致即成功 |
+| 失败语义 | 返回 `hook_restored=false`，不掩盖主结果 | 真机曾出现 `step-restore-verify-failed` → 加**有界重试**（`78b13936`）后 `attempts=2 readback_same=1` ✓ |
+
+⇒ 结论：顺序与幂等都**符合参照的要求**；重试是我们为避免“派发式写未落盘”而加的保守措施，
+  只在回读不符时多写几次，不改变成功路径的语义。
