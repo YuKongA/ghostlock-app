@@ -397,6 +397,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             const auto back = request.access->read(0U, request.width, request.channel, *request.params);
                 /* 回读结果本身（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/chain.cpp:252-262
                  *  —— 那边写完按同一 offset 读回一块再逐字节比较；patch #1 的同款校验在 crash_dump.cpp:52-66）。 */
+                if ((at % 32U) == 0U) {   /* 与参照实现同粒度：每 512 字节一行；失败行仍逐块 */
                 GL_LOGI("image block[%zu] readback: off=%llu len=%zu ok=%d size=%zu same=%d head=%02x%02x%02x%02x",
                         at, static_cast<unsigned long long>(request.offset + at), request.width,
                         back.ok() ? 1 : 0, back.value.size(),
@@ -410,6 +411,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                             ? static_cast<unsigned>(std::to_integer<std::uint8_t>(back.value[2])) : 0U,
                         back.ok() && back.value.size() > 3U
                             ? static_cast<unsigned>(std::to_integer<std::uint8_t>(back.value[3])) : 0U);
+                }
                 if (back.ok() && back.value.size() == request.width &&
                     std::memcmp(back.value.data(), in, request.width) == 0) {
                     /* How long did this block take, and how many tries? A block that never matches
