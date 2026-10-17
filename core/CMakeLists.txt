@@ -97,6 +97,7 @@ set(GL_DEVICE_EXTRA_SRCS
   src/backend/cve_2026_43284/embed/libcxx_blob.cpp
   src/backend/cve_2026_43284/steps/pagecache_steps.cpp
   src/backend/cve_2026_43284/landing/crash_dump_bridge.cpp
+  src/backend/cve_2026_43284/landing/bridge_session.cpp
   src/backend/cve_2026_43284/landing/encap_peer.cpp
   src/backend/cve_2026_43284/embed/splicehelper_blob.cpp
 )

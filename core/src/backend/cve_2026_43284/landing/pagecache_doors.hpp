@@ -20,7 +20,22 @@
 
 #include "backend/cve_2026_43284/access_params.hpp"
 
+/* 桥的形态：装配层的一个取值，不是第二个实现。默认 0 = 每块 fork 一次（今天的行为，逐字节不变）；
+ * 显式 1 = 一次 fork 的常驻会话（bridge_session.hpp）。默认不动的原因写在 docs/analysis/
+ * persistent-helper-bridge-design.md 与本批报告里：真机锁屏（2026-10-17），没有设备见证过的行为不上默认。
+ * 切换点只有这里：门的取值、面的取值与桥的取值都读 kBridgeModeDefault，所以一条构建参数就能整链切换。 */
+#ifndef GLK_BRIDGE_MODE
+#define GLK_BRIDGE_MODE 0
+#endif
+
 namespace ghostlock::backend::cve_2026_43284::landing {
+    /** 每块 fork 一次：现状，也是默认。 */
+    inline constexpr int kBridgeModeSpawn = 0;
+    /** 一次 fork、之后每块一次 IPC。 */
+    inline constexpr int kBridgeModeSession = 1;
+    /** 唯一的默认值。 */
+    inline constexpr int kBridgeModeDefault =
+        GLK_BRIDGE_MODE == 1 ? kBridgeModeSession : kBridgeModeSpawn;
     class PageCacheDoorLinux;
 }  // namespace ghostlock::backend::cve_2026_43284::landing
 
@@ -48,7 +63,19 @@ namespace ghostlock::backend::cve_2026_43284::landing {
     /** The doors of one route lifetime: opened once, closed once, only by their opener. */
     class PageCacheDoors final {
     public:
-        PageCacheDoors(DoorOps &ops, int handed_in_fd = -1) noexcept : ops_(ops), handed_in_(handed_in_fd) {}
+        /**
+         *  @param ops          The system calls the two doors need.
+         *  @param handed_in_fd A carrier descriptor the caller already holds; used and never closed
+         *                      here.
+         *  @param bridge_mode  How this route serves a carrier it cannot open: kBridgeModeSpawn (the
+         *                      default, one helper exec per block) or kBridgeModeSession (one exec,
+         *                      asked over a channel). The window compares it with the surface's own
+         *                      value when the route comes up, so a half-switched assembly is refused
+         *                      at bring-up rather than paying a fork per block unnoticed.
+         */
+        PageCacheDoors(DoorOps &ops, int handed_in_fd = -1,
+                       int bridge_mode = kBridgeModeDefault) noexcept
+            : ops_(ops), handed_in_(handed_in_fd), bridge_mode_(bridge_mode) {}
 
         /** Open both doors. On failure nothing is left half open. */
         [[nodiscard]] bool open(const SaMaterial &sa) noexcept {
@@ -92,6 +119,8 @@ namespace ghostlock::backend::cve_2026_43284::landing {
         [[nodiscard]] int socket_fd() const noexcept { return socket_fd_; }
         /** Whether the file door is this object's to close. */
         [[nodiscard]] bool owns_file() const noexcept { return owns_file_; }
+        /** 这条路由声明的桥形态（0 = spawn，1 = session）。 */
+        [[nodiscard]] int bridge_mode() const noexcept { return bridge_mode_; }
 
     private:
         void close_owned() noexcept {
@@ -110,6 +139,7 @@ namespace ghostlock::backend::cve_2026_43284::landing {
         int handed_in_ = -1;
         int file_fd_ = -1;
         int socket_fd_ = -1;
+        int bridge_mode_ = kBridgeModeDefault;
         bool owns_file_ = false;
         bool open_ = false;
     };

