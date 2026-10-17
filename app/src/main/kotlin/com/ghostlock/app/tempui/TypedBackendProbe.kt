@@ -1522,6 +1522,19 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                  */
                 val moduleBytesRaw = java.io.File(MODULE_PATH).readBytes()
                 /*
+                 * 模块前置检查（参照 ghostlock-app-ref@5f184760:lkm/lkm_image.cpp 的 precheck）：
+                 * ELF64/AArch64 信封、`.modinfo`、`name=`、`vermagic=` 任一不成立 ⇒ 把计划闸门置为失败，
+                 * 于是 writeHook / 载荷 / 模块 / trigger 前重放**四个写点全都不写**（fail-closed）。
+                 */
+                when (val pre = com.ghostlock.app.jni.cve43284.ModulePrecheck43284.check(moduleBytesRaw)) {
+                    is com.ghostlock.app.jni.cve43284.ModulePrecheck43284.Precheck.Ok ->
+                        step("module precheck: name=" + pre.name + " vermagic=" + pre.vermagic)
+                    else -> {
+                        step("module precheck: refused " + pre)
+                        planGate = PlanCheck(false, "plan:module-precheck:" + pre, "")
+                    }
+                }
+                /*
                  * vermagic 必须等于本机 UTS_RELEASE + 选项串，否则别的机型会拒载；同一 minor 布局一致，
                  * 所以这里按“同 minor 直接改名”处理（参照 ghostlock-app-ref@5f184760 的 lkm_image.cpp：
                  * required_vermagic / classify_vermagic_diff / outcome=rewritten）。
