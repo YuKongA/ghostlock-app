@@ -534,7 +534,12 @@ object TypedBackendProbe {
          */
         val terminal = LongArray(1)
         val wait = Wait43284(
-            budgetMs = WaitPolicy43284.TIMEOUT_MS,
+            /*
+             * 自检用**短预算**（ALT_BUDGET_MS），攻击段才用 TIMEOUT_MS。
+             * 理由：这段的标记是哨兵（永远不会出现），断言的是“预算内保持 inflight”；
+             * 用 15000 只会让每次 probe 白等 15 s，不增加任何判据 ✓（真机实测的 15 s 空转就来自这里）。
+             */
+            budgetMs = WaitPolicy43284.ALT_BUDGET_MS,
             pollMs = WaitPolicy43284.POLL_MS,
             successMarker = "ghostlock-ok".toByteArray(),
             failureMarker = "ghostlock-failed".toByteArray(),
