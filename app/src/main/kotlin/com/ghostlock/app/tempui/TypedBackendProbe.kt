@@ -1175,7 +1175,7 @@ object TypedBackendProbe {
         var hookForRestore: Assembled43284? = null
         var hookPlanWordsForRestore: LongArray? = null
         /* ① hook 段：同一条 SA、同一条 ESP 套接字；目标是 /system/lib64/libc++.so 的 sentry 站点。 */
-        runCatching {
+        val hookOutcome = runCatching {
             meter.before("Native43284.create", "(hook session)")
             val hookHandle = Native43284.create()
             meter.after("Native43284.create", "handle=" + hookHandle)
@@ -1537,9 +1537,16 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
             }.onFailure { problem ->
                 step("typed: ksud status refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
             }
-        }.onFailure { problem ->
-            step("typed: hook refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
         }
+        /*
+         * 终点恢复放在 finally 里：hook 段自己用 runCatching 收住异常，报告那一句若再抛（日志 I/O）
+         * 也不会把恢复跳过去 —— 恢复是这条链的终点义务，不是成功路径的收尾。
+         */
+        try {
+            hookOutcome.onFailure { problem ->
+                step("typed: hook refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+            }
+        } finally {
         /*
          * 终点恢复（无条件）：成功、hook wait 超时、以及任何异常路径都走到这里。
          * 参照 ghostlock-app-ref@5f184760 的 src/core/backend/cve_2026_43284/steps/chain.cpp:355
@@ -1580,6 +1587,7 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                 "typed: hook restore=false refusal=" +
                     problem.javaClass.simpleName + ":" + (problem.message ?: ""),
             )
+        }
         }
         step("typed: patch1 wrote=" + patchWrote + " refusal=" + patcher.lastRefusal +
             " helperBytes=" + (helperForPatch?.size ?: -1))
