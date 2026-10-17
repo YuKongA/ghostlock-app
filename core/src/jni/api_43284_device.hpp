@@ -45,11 +45,37 @@ namespace ghostlock::jni {
                                            const contract::HookPlan43284Values &plan_values,
                                            const Init43284Values &sa_source,
                                            const char **why) noexcept;
-    /** @return 写一个镜像并逐块校验（patch#1 用的那一步）。 */
+    /**
+     *  一次镜像写的真实账：与 native 的 `write outcome:` 行同源的五个数。
+     *
+     *  @note 语义与 steps::WriteOutcome（core/src/backend/cve_2026_43284/steps/pagecache_steps.hpp:107-113）
+     *        逐项相同：written = 写调用报成功（整块）的块数，verified = 真回读且比中的块数，
+     *        rolled_back = 回滚写回的旧块条数；两个标志只在提供了 journal 时才可能非零。
+     *        早退（没有句柄 / 参数不可用）时五个数全保持 0 —— 没有发生的事不猜。
+     */
+    struct WriteOutcome43284 final {
+        std::uint64_t written = 0U;
+        std::uint64_t verified = 0U;
+        std::uint64_t rolled_back = 0U;
+        bool journal_overflow = false;
+        bool rollback_incomplete = false;
+    };
+
+    /**
+     *  写一个镜像并逐块校验（patch#1 用的那一步）。
+     *
+     *  @param values        写面：accessId / offset / width / bytes / budget，全由 Kotlin 给。
+     *  @param params_values 同一份 AccessParams（路径借用式，只在调用期有效）。
+     *  @param sa_source     会话材料（usable_for_access 要求 sa 已设置）。
+     *  @param why           失败时收具名原因（steps 层的名字原样带出）。
+     *  @param outcome       可选的本次账（见 WriteOutcome43284）；null ⇒ 不写。
+     *  @return 全部块写完并校验通过 true；否则 false（上层给 image-write-refused）。
+     */
     [[nodiscard]] bool device_write_image(const contract::WriteImage43284Values &values,
                                          const contract::AccessParams43284Values &params_values,
                                          const Init43284Values &sa_source,
-                                         const char **why) noexcept;
+                                         const char **why,
+                                         WriteOutcome43284 *outcome = nullptr) noexcept;
     /** @return 初始化 Access（路径字段借用式，必须活到调用结束）。 */
     /** @return 0 成功；否则是 Access 的状态码（上层翻成具名拒绝）。 */
     [[nodiscard]] int device_access_initialize(std::uint64_t accessId,

@@ -38,6 +38,7 @@
 #include "backend/cve_2026_43284/access_params.hpp"
 #include "backend/cve_2026_43284/lkm/module_facts.hpp"
 #include "jni/api_43284.hpp"
+#include "jni/api_43284_device.hpp"
 
 namespace ghostlock::jni {
     namespace {
@@ -1182,15 +1183,24 @@ namespace ghostlock::jni {
      *  把一个镜像写进载体并逐块校验（驱动器里 steps::write_image_verified 的那一步，patch#1 用的就是它）。
      *
      *  @param values 生成的 Values（在 contract 里）：accessId/offset/width/bytes 全由 Kotlin 给。
-     *  @param params 同一份 AccessParams（借用式路径只在调用期有效）。
+     *  @param params_values 同一份 AccessParams（借用式路径只在调用期有效）。
+     *  @param sa_source 会话材料（写这一层也要 usable_for_access，必须有 sa）。
+     *  @param why 失败时收具名原因（steps 层的名字原样带出）。
+     *  @param outcome 可选的本次账（WriteOutcome43284）：由 ledger.outcome 填充，早退时保持全 0。
      *  @return 全部块写完并校验通过 true；否则 false（上层给 image-write-refused）。
+     *  @note 账与 `write outcome:` 行同一个来源、同一时刻：日志里看到什么，调用方就拿回什么。
      */
     bool device_write_image(const contract::WriteImage43284Values &values,
                             const contract::AccessParams43284Values &params_values,
                             const Init43284Values &sa_source,
-                            const char **why) noexcept {
+                            const char **why,
+                            WriteOutcome43284 *outcome) noexcept {
         if (why != nullptr) {
             *why = nullptr;
+        }
+        /* 先清零：早退路径（没有句柄 / 参数不可用）没有账可报，零即「本次没有写」。 */
+        if (outcome != nullptr) {
+            *outcome = WriteOutcome43284{};
         }
         const std::uint64_t access_id = static_cast<std::uint64_t>(values.imageAccessId);
         if (access_id == 0U) {
@@ -1305,6 +1315,14 @@ namespace ghostlock::jni {
                 ledger.outcome.rollback_incomplete ? "rollback-incomplete: " : "",
                 ledger.outcome.written, ledger.outcome.verified, ledger.outcome.blocks_rolled_back,
                 ledger.outcome.journal_overflow ? 1 : 0, ledger.outcome.rollback_incomplete ? 1 : 0);
+        /* 同一批五数原样交给调用方（账是可选输出：null 就不写，不改返回值）。 */
+        if (outcome != nullptr) {
+            outcome->written = static_cast<std::uint64_t>(ledger.outcome.written);
+            outcome->verified = static_cast<std::uint64_t>(ledger.outcome.verified);
+            outcome->rolled_back = static_cast<std::uint64_t>(ledger.outcome.blocks_rolled_back);
+            outcome->journal_overflow = ledger.outcome.journal_overflow;
+            outcome->rollback_incomplete = ledger.outcome.rollback_incomplete;
+        }
         {
             const auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(
                     std::chrono::steady_clock::now() - write_started).count();

@@ -550,9 +550,24 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_accessIni
     return answer(env, CallCode::Failed, named.c_str(), refusal_out);
 }
 
+/**
+ *  写一个镜像并逐块校验：调用码 + 具名拒绝 + 可选的**真实五数**。
+ *
+ *  五数（written / verified / rolled / overflow / incomplete）与 native 的 `write outcome:` 行同源：
+ *  由 device_write_image 从 ledger.outcome 填进 C++ 的账，再由这里写进调用方给的数组。
+ *
+ *  @param outcome_out 可选的 jlongArray（长度 ≥ 5 才写；null ⇒ 不写）：
+ *         [0]=written [1]=verified [2]=rolled [3]=journal_overflow(0|1) [4]=rollback_incomplete(0|1)
+ *  @param refusal_out String[]（长度 ≥ 1）：成功写空串，失败写 image-write:<原因>
+ *  @return 0 成功；其余是调用码（Kotlin 侧以 0 判成功）
+ *  @note 账是**可选输出**，不是判据：数组缺省/过短都不改变调用码与拒绝名。
+ */
 JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_writeImage(
         JNIEnv *env, jclass, jlong handle, jobject params, jobject image, jobject init,
-        jobjectArray refusal_out) {
+        jobjectArray refusal_out, jlongArray outcome_out) {
+    /* 先清零：早退（参数读不出）时数组里不该留着上一次的账。null / 短数组由 write_longs 自己拒绝。 */
+    const jlong no_outcome[5] = {0, 0, 0, 0, 0};
+    static_cast<void>(write_longs(env, outcome_out, no_outcome, 5U));
     ghostlock::jni::contract::AccessParams43284Values params_values{};
     ghostlock::jni::contract::ReadFailure params_failure{};
     if (!ghostlock::jni::contract::readAccessParams43284(env, params, &params_values, &params_failure)) {
@@ -572,7 +587,17 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43284_Native43284_writeImag
         return answer(env, outcome.code, outcome.refusal, refusal_out);
     }
     const char *why = nullptr;
-    const bool wrote = ghostlock::jni::device_write_image(values, params_values, sa_source, &why);
+    ghostlock::jni::WriteOutcome43284 outcome{};
+    const bool wrote = ghostlock::jni::device_write_image(values, params_values, sa_source, &why, &outcome);
+    /* 五数搬到 Java 数组（null / 短数组 ⇒ 不写）：顺序与 `write outcome:` 行一致。 */
+    const jlong measured[5] = {
+        static_cast<jlong>(outcome.written),
+        static_cast<jlong>(outcome.verified),
+        static_cast<jlong>(outcome.rolled_back),
+        outcome.journal_overflow ? 1 : 0,
+        outcome.rollback_incomplete ? 1 : 0,
+    };
+    static_cast<void>(write_longs(env, outcome_out, measured, 5U));
     const std::string named = wrote ? std::string()
                                     : (std::string("image-write:") + (why != nullptr ? why : "refused"));
     return answer(env, wrote ? CallCode::Ok : CallCode::Failed, named.c_str(), refusal_out);

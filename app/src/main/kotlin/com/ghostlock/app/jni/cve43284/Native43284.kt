@@ -146,6 +146,8 @@ object Native43284 {
      *
      *  @param params AccessParams（载体/目标/偏移）
      *  @param image  WriteImage43284（accessId/offset/width/bytes）
+     *  @param outcomeOut 可选的五个 long（written / verified / rolled / overflow / incomplete）：
+     *         native 从 `ledger.outcome` 填（与它自己的 `write outcome:` 行同源）；null 或长度不足 5 ⇒ 不写。
      *  @return 0 表示写完并校验通过；失败时 refusalOut[0] 为 image-write-refused。
      */
     external fun writeImage(
@@ -154,6 +156,7 @@ object Native43284 {
         image: com.ghostlock.app.core.generated.WriteImage43284,
         init: Init43284,
         refusalOut: Array<String>,
+        outcomeOut: LongArray?,
     ): Int
 
     /** 初始化 Access；失败时 refusalOut[0] 为 access-initialize-refused。 */

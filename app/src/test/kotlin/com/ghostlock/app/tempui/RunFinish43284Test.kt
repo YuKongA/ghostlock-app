@@ -6,12 +6,15 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 收尾账的三条判据（本批新增的唯一可执行约束）。
+ * 收尾账的五条判据（本批的可执行约束）。
  *
  * 1. `run.43284 finish:` 的字段顺序：前十二个与参照 `run.chain`（ghostlock-app-ref@5f184760
  *    的 `src/core/backend/cve_2026_43284/stage_runner.cpp:697-742`）逐字同序，trigger/wait 的五个在后；
- * 2. `verified` 只数**真的读回来且比中**的块（抽样模式下没读的块不算，读失败/不符也不算）；
- * 3. 失败路径（异常/早退）也要打这两行，并且 `error=` / `hook_error=` 带具名原因。
+ * 2. `written` / `verified` 是 **native 的账**（noteOutcome 累加），不再按 `bytes / 16` 推算；
+ *    抽样（noteSampled）只进 `verify sampling:` 行，不覆盖 finish 行；
+ * 3. `rolled_back` / `journal_overflow` / `rollback_incomplete` 由 native 透传（不再恒 0）；
+ * 4. 两段写要累加（钩子 2 块 + 镜像 4 块 ⇒ written=6），verified 与 native 两次回报之和一致；
+ * 5. 失败路径（异常/早退）也要打这两行，并且 `error=` / `hook_error=` 带具名原因。
  */
 class RunFinish43284Test {
 
@@ -54,7 +57,8 @@ class RunFinish43284Test {
     fun verifiedCountsOnlyBlocksThatWereReadBack() {
         val finish = RunFinish43284()
         finish.noteModuleWritten(12304)
-        assertEquals("模块区按 16 B 一块：12304 / 16 = 769", 769, finish.written)
+        assertEquals("模块区按 16 B 一块：12304 / 16 = 769", 769, finish.moduleBlocks)
+        assertEquals("noteModuleWritten 不再推算 written（写成几块只有 native 的账知道）", 0, finish.written)
         assertEquals("写成功不等于验过：还没回读", 0, finish.verified)
 
         val image = ByteArray(12304) { index -> (index % 251).toByte() }
@@ -82,9 +86,78 @@ class RunFinish43284Test {
         assertEquals("读不回来的 20 块不进账", 20, sample.unreadable.size)
 
         finish.noteSampled(sample.verified)
-        assertEquals("verified 只数真正回读过的块", 4, finish.verified)
+        assertEquals("抽样行只数真正回读过的块", 4, finish.samplingVerified)
+        assertEquals("抽样不覆盖 native 的 verified（没有账就是 0）", 0, finish.verified)
         assertEquals("verify sampling: every=32 verified=4 of 769", finish.samplingLine())
-        assertTrue("finish 行里的 verified 与抽样行同源", finish.finishLine().contains(" verified=4 "))
+
+        /* native 报账之后，finish 行的 verified 以它为准（与抽样行的 4 是两回事）。 */
+        finish.noteOutcome(written = 769, verified = 25, rolled = 0, overflow = 0, incomplete = 0)
+        assertTrue("finish 行里的 verified 来自 noteOutcome", finish.finishLine().contains(" verified=25 "))
+        assertEquals("抽样行保持自己的数（不跟 finish 行一起变）", 4, finish.samplingVerified)
+    }
+
+    /**
+     * ① 两段写累加：钩子 2 块 + 镜像 4 块 ⇒ written=6；verified 与 native 两次回报之和一致。
+     */
+    @Test
+    fun twoWritesAddUpToTheNativeTotals() {
+        val finish = RunFinish43284()
+
+        /* 第一段：钩子载荷 2 块（native 回报 written=2 verified=2）。 */
+        finish.noteOutcome(written = 2, verified = 2, rolled = 0, overflow = 0, incomplete = 0)
+        /* 第二段：模块镜像 4 块（native 回报 written=4 verified=3 —— 有一块回读不符）。 */
+        finish.noteOutcome(written = 4, verified = 3, rolled = 0, overflow = 0, incomplete = 0)
+
+        assertEquals("两段写累加：2 + 4 = 6", 6, finish.written)
+        assertEquals("verified = native 两次回报之和（2 + 3），不是抽样数、不是 bytes/16", 5, finish.verified)
+        assertTrue("finish 行带累计值", finish.finishLine().contains(" written=6 verified=5 "))
+
+        /* 抽样数与 native 的账互不覆盖。 */
+        finish.noteSampled(1)
+        assertEquals("抽样数只进 sampling 行", 1, finish.samplingVerified)
+        assertEquals("抽样不改变 finish 行的 verified", 5, finish.verified)
+    }
+
+    /**
+     * ② 回滚三项透传：注入非零值之后 finish 行不再是 0。
+     */
+    @Test
+    fun rollbackNumbersPassThroughInsteadOfStayingZero() {
+        val finish = RunFinish43284()
+        finish.noteOutcome(written = 4, verified = 1, rolled = 3, overflow = 1, incomplete = 1)
+
+        assertEquals("回滚块数原样记账", 3, finish.rolledBack)
+        assertTrue("journal 溢出置位", finish.journalOverflow)
+        assertTrue("回滚不完整置位", finish.rollbackIncomplete)
+        val line = finish.finishLine()
+        assertTrue("finish 行带 rolled_back=3", line.contains(" rolled_back=3 "))
+        assertTrue("finish 行带 journal_overflow=1", line.contains(" journal_overflow=1 "))
+        assertTrue("finish 行带 rollback_incomplete=1", line.contains(" rollback_incomplete=1 "))
+
+        /* 第二次回报：rolled 继续累加；两个标志是「任一次为真」而不是计数。 */
+        finish.noteOutcome(written = 2, verified = 2, rolled = 1, overflow = 0, incomplete = 0)
+        assertEquals("回滚块数按调用累加", 4, finish.rolledBack)
+        assertEquals("written 继续累加", 6, finish.written)
+        assertTrue("标志保持置位", finish.journalOverflow)
+    }
+
+    /**
+     * ② 的数组形：probe 给 native 的那个 `LongArray(5)` 直接进账；空/短数组不猜数。
+     */
+    @Test
+    fun theNativeOutcomeArrayIsWhatGetsRecorded() {
+        val finish = RunFinish43284()
+        finish.noteOutcome(longArrayOf(2, 2, 0, 0, 0))
+        finish.noteOutcome(longArrayOf(4, 3, 1, 1, 0))
+        assertEquals(6, finish.written)
+        assertEquals(5, finish.verified)
+        assertEquals(1, finish.rolledBack)
+        assertTrue(finish.journalOverflow)
+
+        finish.noteOutcome(LongArray(4))
+        finish.noteOutcome(null)
+        assertEquals("短数组/空数组不是「全 0 的一次写」，而是没拿到账", 6, finish.written)
+        assertEquals(5, finish.verified)
     }
 
     @Test

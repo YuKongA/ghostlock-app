@@ -538,8 +538,20 @@ class Assembled43284(
         return code == 0
     }
 
-    /** 分步：写一个镜像并逐块校验（patch#1：image = helper、offset = 0、width = 16）。 */
-    fun writeImage(image: ByteArray, offset: Long, width: Long, init: Init43284): Boolean {
+    /**
+     *  分步：写一个镜像并逐块校验（patch#1：image = helper、offset = 0、width = 16）。
+     *
+     *  @param outcome 可选的五个 long（written / verified / rolled / overflow / incomplete）：
+     *         成功时由 native 填（与它的 `write outcome:` 行同源）；null ⇒ 不要账。
+     *  @return 调用码为 0 即 true（内容是否真的落上仍由 native 的回读判定）。
+     */
+    fun writeImage(
+        image: ByteArray,
+        offset: Long,
+        width: Long,
+        init: Init43284,
+        outcome: LongArray? = null,
+    ): Boolean {
         if (accessId == 0L) {
             lastCode = -1
             lastRefusal = "write:no-handle"
@@ -565,7 +577,7 @@ class Assembled43284(
              */
             imageBudgetMs = 200L,
         )
-        val code = Native43284.writeImage(handle, params, request, init, refusal)
+        val code = Native43284.writeImage(handle, params, request, init, refusal, outcome)
         record(code, refusal)
         /* 写成功后自动接续（ref real_ops.cpp:307-327 的「交回」）：日志 seq: <prev> -> <next> (auto)。 */
         if (code == 0) {

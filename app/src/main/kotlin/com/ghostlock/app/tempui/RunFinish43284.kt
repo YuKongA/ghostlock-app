@@ -22,12 +22,12 @@ import com.ghostlock.app.jni.cve43284.Assembled43284
  * # 值只来自本次运行统计到的变量（不猜数）
  * | 字段 | 来源 | 含义 |
  * |---|---|---|
- * | written | [noteModuleWritten] | 模块区**整段报成功**时按 `bytes / 16` 计的块数（12304 B ⇒ 769） |
- * | verified | [noteSampled] | 抽样回读中**真的读回来且比中**的块数（见 [VerifySampling43284]） |
- * | rolled_back | 常量 0 | 本路径 Kotlin 不持有 journal（native 的账只在它自己的 `write outcome:` 行里） |
+ * | written | [noteOutcome] | native 每次写镜像回报的 written 之和（**不再**按 `bytes / 16` 推算） |
+ * | verified | [noteOutcome] | native 回报的 verified 之和（**不是**抽样数；抽样数只进 `verify sampling:` 行） |
+ * | rolled_back | [noteOutcome] | native 回报的回滚块数之和（不再恒 0） |
  * | cleanup | [noteCleanup] | 终点收尾（拆 Access / 拆落地 / 拆分步会话 / 关会话）是否全部报成功 |
- * | journal_overflow | 常量 0 | 同上：没有 Kotlin journal，就没有溢出 |
- * | rollback_incomplete | 常量 0 | 同上：没有 Kotlin 回滚，就没有回滚不完整 |
+ * | journal_overflow | [noteOutcome] | native 回报的 journal 溢出（任一次为真即真；不再恒 0） |
+ * | rollback_incomplete | [noteOutcome] | native 回报的回滚不完整（任一次为真即真；不再恒 0） |
  * | crash_dump | [noteCrashDump] | patch#1（crash_dump64 的 helper）整段写成功 |
  * | hook_planned | [noteHookPlanned] | hookPlan 拿到了（ref：资产准备好了，不是「挂上了」） |
  * | hook_armed | [noteHookArmed] | 钩子载荷真的落进 libc++ 页 |
@@ -44,12 +44,24 @@ import com.ghostlock.app.jni.cve43284.Assembled43284
  */
 class RunFinish43284(private val every: Int = VerifySampling43284.EVERY_BLOCKS) {
 
-    /** 模块区写成（整段报成功）的块数。 */
+    /**
+     * 本次运行**真实**写成的块数：native 每次 `writeImage` 回报的 written 之和（见 [noteOutcome]）。
+     *
+     * @note 不再由 `bytes / 16` 推算，也不再是常量：只有报了账的写才计数。
+     */
     var written: Int = 0
         private set
 
-    /** 抽样回读中真的读回来且比中的块数。 */
+    /**
+     * 本次运行**真实**验成的块数：native 每次回报的 verified 之和。
+     *
+     * @note [noteSampled] 的抽样结果不进这里（它只服务 `verify sampling:` 行）：写路径的账以 native 为准。
+     */
     var verified: Int = 0
+        private set
+
+    /** 抽样回读（[VerifySampling43284]）数出来的块数：只进 `verify sampling:` 行。 */
+    var samplingVerified: Int = 0
         private set
 
     /** 模块区的总块数（抽样率行的分母）。 */
@@ -70,37 +82,81 @@ class RunFinish43284(private val every: Int = VerifySampling43284.EVERY_BLOCKS) 
     private var error: String = NONE
 
     /**
-     * 本路径不持有 journal，故回滚块数恒 0。
+     * native 回报的回滚块数（[noteOutcome] 按调用累加）。
      *
-     * @note native 的 writeImage 内部确实有 journal，但它的账只出现在自己的
-     *       `write outcome: written=… verified=… rolled=…` 行里；Kotlin 侧拿不到，**不用猜数**。
+     * @note 这是**真的**回滚条数，不是常量 0：写失败且 journal 写回成功时它才非零；
+     *       native 的 `write outcome: … rolled=…` 行与它是同一份账。
      */
-    val rolledBack: Int = 0
+    var rolledBack: Int = 0
+        private set
 
-    /** 同上：没有 Kotlin journal，就不会溢出。 */
-    val journalOverflow: Boolean = false
+    /** native 回报的 journal 容量不足（任一次为真即真；溢出只记录、不中止写，与参照实现同）。 */
+    var journalOverflow: Boolean = false
+        private set
 
-    /** 同上：没有 Kotlin 回滚，就不会有回滚不完整。 */
-    val rollbackIncomplete: Boolean = false
+    /** native 回报的回滚不完整（有块写不回/回读不符；任一次为真即真）。 */
+    var rollbackIncomplete: Boolean = false
+        private set
 
     /**
-     * 记一次模块区的整段写结果。
+     * 记一次模块区的整段写结果：只定**总块数**（抽样率行的分母）。
      *
-     * @param bytes 镜像字节数；整段报成功时才计块。失败段不猜「半途写了几块」——
-     *              native 只在它自己的 outcome 行里知道那个数。
+     * @param bytes 镜像字节数；≤0 ⇒ 0 块
+     * @note 这里**不再**推算 written：写成几块只有 native 的账知道（[noteOutcome]）。
      */
     fun noteModuleWritten(bytes: Int) {
         moduleBlocks = if (bytes <= 0) 0 else (bytes + Assembled43284.BLOCK - 1) / Assembled43284.BLOCK
-        written = moduleBlocks
     }
 
     /**
-     * 记一次抽样回读的**真实**结果。
+     * 记一次抽样回读的**真实**结果（只进 `verify sampling:` 行）。
      *
      * @param verifiedBlocks 真的读回来且比中的块数（[VerifySampling43284.sample] 的返回值）
+     * @note finish 行的 verified 以 native 的账为准（[noteOutcome]）：抽样是补读，不是写路径的账。
      */
     fun noteSampled(verifiedBlocks: Int) {
-        verified = if (verifiedBlocks <= 0) 0 else verifiedBlocks
+        samplingVerified = if (verifiedBlocks <= 0) 0 else verifiedBlocks
+    }
+
+    /**
+     * 记一次 native 写镜像的**真实五数**（与 `write outcome:` 行同源），按调用累加。
+     *
+     * @param written    这次写报成功的块数
+     * @param verified   这次真回读且比中的块数
+     * @param rolled     这次回滚写回的旧块条数
+     * @param overflow   journal 容量不足（0/1；非零即置位，不累加）
+     * @param incomplete 回滚不完整（0/1；非零即置位，不累加）
+     * @note 负值按 0 处理：native 不会给负数，给了也不许把已经记账的数做小。
+     */
+    fun noteOutcome(written: Int, verified: Int, rolled: Int, overflow: Int, incomplete: Int) {
+        this.written += atLeastZero(written)
+        this.verified += atLeastZero(verified)
+        rolledBack += atLeastZero(rolled)
+        if (overflow != 0) {
+            journalOverflow = true
+        }
+        if (incomplete != 0) {
+            rollbackIncomplete = true
+        }
+    }
+
+    /**
+     * 记一次 native 写镜像的五数（数组形：native 的 outcomeOut）。
+     *
+     * @param outcome `[written, verified, rolled, overflow, incomplete]`；null 或短于 [OUTCOME_WORDS] ⇒ 不记
+     * @note 没有账就不猜：短数组不是「全 0 的一次写」，而是一次**没拿到账**的调用。
+     */
+    fun noteOutcome(outcome: LongArray?) {
+        if (outcome == null || outcome.size < OUTCOME_WORDS) {
+            return
+        }
+        noteOutcome(
+            written = outcome[0].toInt(),
+            verified = outcome[1].toInt(),
+            rolled = outcome[2].toInt(),
+            overflow = outcome[3].toInt(),
+            incomplete = outcome[4].toInt(),
+        )
     }
 
     /** patch#1（crash_dump64 的 helper）整段写成功 ⇒ `crash_dump=1`。 */
@@ -204,12 +260,14 @@ class RunFinish43284(private val every: Int = VerifySampling43284.EVERY_BLOCKS) 
     }
 
     /**
-     * 抽样率行：一眼看出「验过的块 / 总块数」与间隔。
+     * 抽样率行：一眼看出「抽样验过的块 / 总块数」与间隔。
      *
      * @return `verify sampling: every=<n> verified=<n> of <n>`
+     * @note 这个 verified 是 [noteSampled] 的（[VerifySampling43284] 补读的结果）；finish 行的 verified
+     *       是 native 的账（[noteOutcome]）。两者同义不同源，所以分两处打印，不互相覆盖。
      */
     fun samplingLine(): String =
-        "verify sampling: every=" + every + " verified=" + verified + " of " + moduleBlocks
+        "verify sampling: every=" + every + " verified=" + samplingVerified + " of " + moduleBlocks
 
     /**
      * 收尾行：ref `run.chain` 的十二个字段（逐字同序）+ `run.trigger` / `run.wait` 的五个字段。
@@ -259,6 +317,9 @@ class RunFinish43284(private val every: Int = VerifySampling43284.EVERY_BLOCKS) 
     /** 布尔一律 0/1（与 ref 的 append_bool 同形）。 */
     private fun flag(value: Boolean): String = if (value) "1" else "0"
 
+    /** 记账只加不减：负值按 0 处理（native 不会给负数，给了也不许把账做小）。 */
+    private fun atLeastZero(value: Int): Int = if (value <= 0) 0 else value
+
     companion object {
         /** 行首（逐字；单测按它切字段）。 */
         const val PREFIX: String = "run.43284 finish: "
@@ -268,6 +329,9 @@ class RunFinish43284(private val every: Int = VerifySampling43284.EVERY_BLOCKS) 
 
         /** wait 段没走到时的名字（本次运行没有终态可报）。 */
         const val WAIT_NONE: String = "none"
+
+        /** native 五数的宽度（written / verified / rolled / overflow / incomplete）。 */
+        const val OUTCOME_WORDS: Int = 5
 
         /** 名字字段的长度上限：保证一行仍然有界。 */
         private const val NAME_MAX: Int = 64

