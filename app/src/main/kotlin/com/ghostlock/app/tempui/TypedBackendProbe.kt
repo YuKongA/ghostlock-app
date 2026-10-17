@@ -1445,12 +1445,14 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
             /* ② 模块写进 vendor 载体：载体对本进程 EACCES ⇒ 读与写都经 patch#1 写下的 helper（桥）。 */
             runCatching {
                 /*
-                 * 用**已被本机证明能载入**的那份模块：`/data/local/tmp/helper.ko`（23512 B）。
-                 * 依据：今天 22:50 的成功记录（`wait outcome=LkmLoaded`）用的就是它；两份 .ko 的
-                 * UMH 逻辑与命令行完全相同（都跑 `/data/local/tmp/.ghostlock_lkm_cmd.sh`），
-                 * 唯一差别是体积/是否注册 /dev/glk 窗口。`ghostlock.ko`（12304 B）在本机从未载入成功。
+                 * 用**本机写链能送进去**的那份模块：`/data/local/tmp/ghostlock.ko`（12304 B）。
+                 * 真机对照（同一载体、同一构建，只差模块体积）：
+                 *   · 23:33 → 12304 B ⇒ `module wrote=true` ✓
+                 *   · 23:43 → 23512 B ⇒ `image-write:step-write-refused:**call-failed**` ✗（1470 块中途失败）
+                 * 两份 .ko 的 UMH 逻辑与命令行相同（都跑 `/data/local/tmp/.ghostlock_lkm_cmd.sh`），
+                 * 所以先把“能完整写进去”这份立住，再单独查 insmod 为什么没把模块带起来。
                  */
-                val moduleBytesRaw = java.io.File("/data/local/tmp/helper.ko").readBytes()
+                val moduleBytesRaw = java.io.File("/data/local/tmp/ghostlock.ko").readBytes()
                 /*
                  * vermagic 必须等于本机 UTS_RELEASE + 选项串，否则别的机型会拒载；同一 minor 布局一致，
                  * 所以这里按“同 minor 直接改名”处理（参照 ghostlock-app-ref@5f184760 的 lkm_image.cpp：
