@@ -194,6 +194,8 @@ namespace ghostlock::jni {
         wait.exists = &path_exists;
         wait.sleep_ms = &sleep_ms;
         const char *const reason = backend::cve_2026_43284::steps::wait_for_module(wait);
+        /* 具名：nullptr=成功；step-wait-timeout=仍在飞；其它=失败条件，名字就是原因。 */
+        GL_LOGI("wait_for_module -> %s", reason == nullptr ? "(success)" : reason);
         if (reason == nullptr) {
             terminal = TerminalState::Success;
             return true;
