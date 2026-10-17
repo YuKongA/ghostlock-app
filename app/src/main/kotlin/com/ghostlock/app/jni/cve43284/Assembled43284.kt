@@ -180,7 +180,12 @@ class Assembled43284(
         payloadFileOffset: Long,   /* 载荷文件偏移；payload_vaddr = 它 + 0x4000 */
         selinuxContext: String = "u:r:vendor_modprobe:s0",
         insmodPath: String = "/vendor/bin/insmod",
-        mutexPath: String = "/dev/dx",  /* 容量 8 字节（≤7 字符 + NUL）；不用 /dev/df：那是 10-05 遗留的陈旧 in-flight 标记，载荷见它会一直等 */
+        /*
+         * 参考 hook_patch.hpp:146 逐字：kLibcxxMutexPath = "/dev/df"（容量 8 字节：≤7 字符 + NUL）。
+         * 曾经改用 /dev/dx，是担心 10-05 遗留的陈旧 in-flight 标记让载荷死等；
+         * 真机上 /dev/df 当前不存在（已验证），所以按参考对齐。
+         */
+        mutexPath: String = "/dev/df",
         attrExecPath: String = "/proc/self/attr/exec",
         displaced: Int? = null,
     ): Int {
@@ -215,7 +220,11 @@ class Assembled43284(
         if (!put(0x47, 64, carrierPath)) {
             return -2
         }
-        val lengthWord = 0xD2800000.toInt() or ((selinuxContext.length and 0xFFFF) shl 5) or 2
+        /*
+         * 参考 hook_patch.cpp:303 逐字："The SELinux write includes the trailing NUL byte upstream."
+         * 所以长度 = size + 1（含尾 NUL）；此前少了 1，属于清点 #13 记录的不一致。
+         */
+        val lengthWord = 0xD2800000.toInt() or (((selinuxContext.length + 1) and 0xFFFF) shl 5) or 2
         for (index in 0 until 4) {
             blob[0x16C + index] = ((lengthWord shr (index * 8)) and 0xFF).toByte()
         }
