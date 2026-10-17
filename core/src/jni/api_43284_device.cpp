@@ -894,6 +894,12 @@ namespace ghostlock::jni {
         /* 序号也要拷过来：同一 SA 上的后续会话必须接着前一个窗口的序号（防重放窗口由 SA 共享）。 */
         params.sequence = static_cast<std::uint32_t>(sa_source.initialSequence);
         /*
+         * 但只有值不够：`has_sequence()` 看的是 `sequence_set`（access_params.hpp:161），
+         * 漏了它，Access::initialize 就**不会** adopt（kernel_access.hpp:76-82）——
+         * 这条通路曾在 893fce97 的重排里被吞掉，是本轮清点发现的实际回归。
+         */
+        params.sequence_set = sa_source.sequencePresent;
+        /*
          * The session is built by device_resolve, whose request carries no SA at all, so its landing
          * was constructed with an empty material and never came up (the device logged
          * bring_up refused already_up=0 sa_set=0). This call does carry the material, so bring the
