@@ -136,10 +136,14 @@ class TempUiActivity : ComponentActivity() {
         val loaded = runCatching {
             java.io.File("/proc/modules").readText().contains("kernelsu")
         }.getOrDefault(false)
+        /*
+         * 参照实现（ghostlock-app-ref@5f184760）在 **ksu 已加载** 的情况下依旧能跑完并再次启动 ksu，
+         * 所以这里**不能在已加载时跳过** ✗ —— 那会挡掉唯一被证明可重复的路径。
+         * 改为：只**提示**当前状态，然后照常跑链（是否成功由链自己的判据决定）。
+         */
         if (loaded) {
-            val line = "skip: kernelsu already loaded -> cold boot required for a real run"
-            emit(line)
-            return listOf(line, "kernelsu: " + ksuState())
+            emit("note: kernelsu already loaded -> running anyway (the reference does the same)")
+            emit("kernelsu: " + ksuState())
         }
         return runAttackStreamingInner(emit)
     }
