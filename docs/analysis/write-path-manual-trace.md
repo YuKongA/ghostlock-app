@@ -58,3 +58,16 @@ pagecache_steps.cpp::write_image_verified  （每块一次循环）
 | 重试 | 无（一次点火） | `DEFAULT_RETRIES = 1`（失败重试一次） |
 
 ⇒ 结论：trigger 的结构与默认值**一致**；我们对点火失败多一次重试，属于更保守的差异（不改变成功路径）。
+
+## 附：wait 判据的对照（trace 第三项）
+
+| 项 | 参照 `real_ops.cpp:400-420` | 我们 `WaitPolicy43284.await` | 差异 |
+|---|---|---|---|
+| 结构 | **单循环**跑满 `kLkmWaitTimeoutMs`（15000） | **两段式**：先 15000 跑主判据，仍在飞再给 200 ms 备用 | 结构不同 |
+| 失败优先 | **先判失败**（`kLkmFailureMarker` 与 alt），再判成功 —— 陈旧 success 不会掩盖新的 failure | 先主判据（成功/失败同权，由 probe 返回顺序决定） | **行为可能不同** |
+| 备用标记 | 成功/失败的 alt 标记与主标记**在同一个循环里**都判 | alt 只在第二段（200 ms）内判 | 若 alt 在 15 s 后才出现会漏 |
+| 模块存在 | `probe_exists(kLkmModulePath)` 作为**成功判据之一** | 我们也有 `moduleMarker`/`moduleName`（自检用到），但攻击段是否把它当成功判据**未在代码中确认** | 待核 |
+| `/dev/df` | 明确**不是**终态（只表示钩子被踩到） | 同样只作 inflight | 一致 |
+
+⇒ 待办（离线可改）：把 `await` 改成 ref 的**单循环 + 失败优先 + 主/备标记同轮判 + 模块存在成功**；
+  单测覆盖：陈旧 success + 新 failure ⇒ 必须判失败；alt 在 14.9 s 出现 ⇒ 成功；模块存在但无标记 ⇒ 成功。
