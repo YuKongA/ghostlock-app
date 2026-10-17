@@ -670,6 +670,11 @@ object TypedBackendProbe {
         val aes = saAesKey
         val hmac = saHmacKey
         if (aes == null || hmac == null) {
+            /*
+             * 曾经的静默退化让“没建 SA”伪装成“一切照跑”：报文 SPI=0x1234 与内核 SA 不符 ⇒ 静默丢弃 ⇒
+             * 门/写/落地全线 miss（21:18 冷跑的真因）。改为**明说**：谁退化过、后果是什么。
+             */
+            GhostLog.i("GhostlockTyped", "saInit: SA material missing -> fallback to probe material (all ESP writes will be dropped)")
             return init43284()
         }
         return Init43284(
