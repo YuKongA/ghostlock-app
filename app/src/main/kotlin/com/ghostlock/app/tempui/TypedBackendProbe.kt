@@ -1501,10 +1501,16 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                 /* 参考对应：预算 5000 ms、10 ms 轮询（chain.hpp:196 / real_ops.cpp:391-432）；
                  * 失败标记是 /dev/dfm1（real_ops.hpp:59-60），此前写成 /dev/df1 ⇒ 永不匹配。
                  * 注意：注释里不要出现星号斜杠连写，那会提前结束块注释。 */
-                budgetMs = 5000L,
+                /*
+                 * 15000 / 10：参照实现的文档默认（ghostlock-app-ref@5f184760:state.hpp:29-31 = 15000/40/5；
+                 * real_ops.cpp:408-414 的 wait 还接受**备用标记**）。
+                 * 为什么必须用备用标记：Enforcing 下 shell/app 域 stat `/dev/dfm0` 会被拒（本机实测 Permission denied），
+                 * 只盯它必然超时；我们的 root 脚本会同时 touch `/data/local/tmp/.ghostlock_lkm_ok`（可读）⇒ 用它作主判据。
+                 */
+                budgetMs = 15000L,
                 pollMs = 10L,
-                successMarker = "/dev/dfm0",  /* /dev/df* 对 app 不可读，但 stat 可判存在（真机已验） */
-                failureMarker = "/dev/dfm1",
+                successMarker = "/data/local/tmp/.ghostlock_lkm_ok",
+                failureMarker = "/data/local/tmp/.ghostlock_lkm_fail",
                 inFlightMarker = "/dev/df",
                 moduleMarker = "/sys/module/dirtyfrag",
                 moduleName = "kernelsu",
