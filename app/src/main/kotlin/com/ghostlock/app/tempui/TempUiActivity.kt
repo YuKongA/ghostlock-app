@@ -113,6 +113,35 @@ class TempUiActivity : ComponentActivity() {
      */
     /** 流式攻击：每一行实时回调给界面（界面据此逐行上屏）。 */
     private fun onAttackStreaming(emit: (String) -> Unit): List<String> {
+        /*
+         * 预检短路：KernelSU 已在 ⇒ 整条链会空转（模块已在 /proc/modules，没有可加载目标；
+         * 载荷是“一次性”的，且钩子只活在本次开机会话的页缓存里）。
+         * 这里直接跳过并说明原因，避免无意义的几十秒等待（真机实测 769 块载体写约 51 s）。
+         * 判据只在冷机形态有意义：干净启动后同一会话内才会再出 /dev/dfm0 与 kernelsu。
+         */
+        val loaded = runCatching {
+            java.io.File("/proc/modules").readText().contains("kernelsu")
+        }.getOrDefault(false)
+        if (loaded) {
+            val line = "skip: kernelsu already loaded -> cold boot required for a real run"
+            emit(line)
+            return listOf(line, "kernelsu: " + ksuState())
+        }
+        return runAttackStreamingInner(emit)
+    }
+
+    /** 已加载状态的一句话摘要（模块行与三标记态），供预检与面板复用。 */
+    private fun ksuState(): String {
+        val module = runCatching {
+            java.io.File("/proc/modules").readText().lineSequence().firstOrNull { it.contains("kernelsu") }
+        }.getOrNull() ?: "(absent)"
+        val marks = listOf("/dev/df", "/dev/dfm0", "/dev/dfm1").joinToString(" ") { path ->
+            path + "=" + (if (java.io.File(path).exists()) "yes" else "no")
+        }
+        return module.trim() + " | " + marks
+    }
+
+    private fun runAttackStreamingInner(emit: (String) -> Unit): List<String> {
         GhostLog.i(TAG_UI, "tempui: full 43284 attack start (streaming)")
         return TypedBackendProbe.run(applicationContext, emit)
     }
