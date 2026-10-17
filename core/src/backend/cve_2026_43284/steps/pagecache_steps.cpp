@@ -372,9 +372,15 @@ namespace ghostlock::backend::cve_2026_43284::steps {
              * 耐心由调用方给（request.budget_ms；0 = 不重试，与旧行为一致）—— 等多久是上层的事。 */
             const auto verify_deadline = std::chrono::steady_clock::now() +
                                          std::chrono::milliseconds(request.budget_ms);
-            GL_LOGI("block[%zu]: wrote=%zu/%zu offset=%llu budget_ms=%llu", at, written.value, request.width,
-                    static_cast<unsigned long long>(request.offset + at),
-                    static_cast<unsigned long long>(request.budget_ms));
+            /*
+             * 粒度对齐参照实现（ghostlock-app-ref@5f184760 每 512 字节一行）：每 32 块打一行。
+             * 失败路径（resent / verify failed / landing miss）仍逐块打印，定位能力不减。
+             */
+            if ((at % 32U) == 0U) {
+                GL_LOGI("block[%zu]: wrote=%zu/%zu offset=%llu budget_ms=%llu", at, written.value, request.width,
+                        static_cast<unsigned long long>(request.offset + at),
+                        static_cast<unsigned long long>(request.budget_ms));
+            }
             std::size_t tries = 0U;
             const auto block_start = std::chrono::steady_clock::now();
             for (;;) {
