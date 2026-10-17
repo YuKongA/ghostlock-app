@@ -491,8 +491,13 @@ class Assembled43284(
             imageOffset = offset,
             imageWidth = width,
             imageBytes = image,
-            /* 耐心由 Kotlin 给：200 ms 内没比中就报 budget 用尽（写是派发式的，落盘要等内核）。 */
-            imageBudgetMs = 200L,
+            /*
+             * 不重试（0）。参照实现每块只读一次（ghostlock-app-ref@5f184760:pagecache.cpp:182 与 chain.cpp:321），
+             * 而这里原先是 200 ms 预算 + 2 ms 轮询：首读不中时单块最坏可拖到 154 s（见
+             * docs/analysis/ref-5f18476-port-plan.md §三）。写是派发式的，落盘靠内核；回读只作抽样校验，
+             * 因此把“等”去掉，速度才与参照同量级（769 块 × 3.4 ms ≈ 2.6 s）。
+             */
+            imageBudgetMs = 0L,
         )
         val code = Native43284.writeImage(handle, params, request, init, refusal)
         record(code, refusal)
