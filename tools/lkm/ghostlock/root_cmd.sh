@@ -63,6 +63,14 @@ fi
 KMI="$AVER-$KVER"
 echo "[*] late-load kmi=$KMI ksud=$KSUD" >>"$LOG"
 
+# A stale in-flight marker is a mutex nobody will ever release: the payload creates /dev/df
+# while it loads and waits on it, so a leftover from an earlier boot (or an earlier run in
+# this one) makes every later attempt sit still. Clear it while we are still root here.
+if [ -e /dev/df ]; then
+  echo '[*] clearing stale in-flight marker /dev/df' >>"$LOG"
+  rm -f /dev/df 2>>"$LOG" || echo '[!] could not clear /dev/df' >>"$LOG"
+fi
+
 chmod 755 "$KSUD" 2>/dev/null
 "$KSUD" late-load --kmi "$KMI" --allow-shell >>"$LOG" 2>&1
 echo "[*] late-load exit=$?" >>"$LOG"
@@ -93,6 +101,8 @@ for i in $(seq 1 50); do
     else
       echo '[!] ksu dir=absent' >>"$LOG"
     fi
+    # The in-flight marker is finished; /dev/dfm0 stays behind as the success record.
+    rm -f /dev/df 2>/dev/null
     touch /dev/dfm0 /data/local/tmp/.ghostlock_lkm_ok
     exit 0
   fi
