@@ -94,3 +94,14 @@ pagecache_steps.cpp::write_image_verified  （每块一次循环）
 
 ⇒ 结论：顺序与幂等都**符合参照的要求**；重试是我们为避免“派发式写未落盘”而加的保守措施，
   只在回读不符时多写几次，不改变成功路径的语义。
+
+## 附：journal / rollback 的对照（trace 第七项）
+
+| 项 | 参照 `chain.cpp:153-173,285-305` | 我们（`pagecache_steps.cpp:406-431`） |
+|---|---|---|
+| 记录时机 | 写之前把旧块记入 journal；容量不足只置 `journal_overflow` 并继续 | 同（`journal_capacity_bytes` 声明容量，取小） |
+| 回滚顺序 | **逆序**写回 | `for (i = journal.count; i > 0; --i)` ✓ 逆序 |
+| 回滚校验 | 写后回读比较，不符记 incomplete | `write` → `read` → `memcmp`；不符置 `rollback_incomplete=true`，其余条目照旧回滚 ✓ |
+| 记账 | `blocks_rolled_back` / `rollback_incomplete` | `++rolled` / `outcome.rollback_incomplete` ✓，并打 `rollback block[i]: off=… restored=… rolled=… incomplete=…` |
+
+⇒ 结论：**与参照一致**（逆序、逐块回读、失败继续且上报）。
