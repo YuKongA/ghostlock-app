@@ -59,3 +59,31 @@
 adb -s QV770MFGJ1 shell 'grep -i kernelsu /proc/modules; ls -l /dev/df /dev/dfm0 /dev/dfm1; su -c id; getenforce; tail -8 /data/local/tmp/.ghostlock_lkm.log'
 adb -s QV770MFGJ1 shell 'run-as com.ghostlock.app tail -20 files/ghostlock-run.log'
 ```
+
+## 6. 速度基线（2026-10-16 晚，对齐 `ghostlock-app-ref@5f184760`）
+
+| 项 | 参照实现 | 我们（本批之后） | 依据 |
+|---|---|---|---|
+| 载体 | 可直读（每块 pread，约 3.4 ms/块） | 已改 `/system/lib64/libc++.so`（可直读） | `4ce37fa7` · ref `pagecache.cpp:158-165` |
+| 重试 | 每块只读一次 | `imageBudgetMs = 0`（不重试） | `ddda1931` · ref `chain.cpp:321` |
+| 块数 | 1470 块（23520 B 模块） | 769 块（12304 B 模块） | 记录 `written=1470` vs `module bytes=12304` |
+| 期望耗时 | 约 5 s | **约 2.6 s**（769 × 3.4 ms） | 本表换算 |
+
+## 7. 模块 vermagic（跨机型）
+
+模块只在 `vermagic` 等于本机 `UTS_RELEASE` + 选项串时才可 `insmod`；同一 minor 布局一致，故可**原地改名**：
+
+```text
+公式（ref lkm_image.cpp:388-412）：<release> SMP [preempt] [mod_unload] [modversions] aarch64
+实现：Kotlin retagVermagicForDevice()（2c588a82）；放不下就原样返回并记一行，绝不截断 ELF。
+```
+
+## 8. 已加载态下仍可重跑
+
+`kernelsu` 已在 `/proc/modules` 时，**不再跳过**：只打印 `note: kernelsu already loaded -> running anyway` 然后照跑
+（`00b52132`）。依据：参照实现在已加载态依旧跑完并再次启动 ksu。
+
+## 9. 收尾（restore）
+
+参照实现在**唯一边界**无条件恢复钩子（`ghostlock-app-ref@5f184760:chain.cpp:350-359`：It runs on every terminus path），
+并以 `hook_restored=1` 记录。我们已有 `steps::restore_hook`（幂等 + 单测）；接线（JNI + Kotlin try/finally）在 `18ca836e` 批次进行中。
