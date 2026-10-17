@@ -87,9 +87,17 @@ internal object LogFile {
             return try {
                 /* 大小必须**现取**：ParcelFileDescriptor.getStatSize() 是打开那一刻的快照，
                  * 用它判断增长永远是 0（2026-10-16 真机实测：文件涨到 4.3 MB 也没轮转）。 */
-                if (Os.fstat(current.desk.fileDescriptor).st_size > MAX_BYTES) {
-                    Os.ftruncate(current.desk.fileDescriptor, 0L)
-                }
+                /*
+                 * 曾经在这里 ftruncate(0)：日志一过 2 MB 就被清空，一轮链跑完只剩尾部几十行 ——
+                 * 现场证据全丢（真机实测：≥4 MB ⇒ 只剩 79 行）。现在**不再清空**；
+                 * 面板只读尾部窗口（200 行），文件增长不影响使用，但证据完整保留。
+                 */
+                /*
+                 * 这里过去是 `if (size > MAX_BYTES) ftruncate(fd, 0)`：日志一过 2 MB 就被清空，
+                 * 一轮链跑完只剩尾部几十行（真机实测 ≥4 MB ⇒ 只剩 79 行），现场证据全丢。
+                 * 现在**不再清空**：面板只读尾部窗口，文件增长不影响使用，但证据完整保留。
+                 */
+                // 不再清空（见上）；MAX_BYTES 仅作为历史阈值保留在常量里。
                 val bytes = (text + "\n").toByteArray(Charsets.UTF_8)
                 var done = 0
                 while (done < bytes.size) {
