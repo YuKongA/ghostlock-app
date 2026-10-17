@@ -39,6 +39,13 @@ import com.ghostlock.app.ui.theme.GhostlockTheme
 private const val TAG_UI = "GhostlockUi"
 
 /**
+ * 复原按钮的文案（按钮 id 就取这个名字：本界面没有资源 id，UI 测试按它定位）。
+ *
+ * 它**不是**攻击步骤：只把原厂字节写回载体并还原钩子站点，见 TypedBackendProbe.restoreCarrier。
+ */
+private const val RESTORE_CARRIER_LABEL = "复原载体 restore carrier"
+
+/**
  * 最小临时 UI：只做诊断，不做业务。
  *
  * 用户裁定（2026-10-14）：旧 Kotlin UI 全面废弃，测试期间只保留一个临时界面；新 UI 用 Material，
@@ -66,6 +73,8 @@ class TempUiActivity : ComponentActivity() {
                     onContracts = ::reportContracts,
                     onGate = ::runDeviceGate,
                     onAttackStreaming = ::onAttackStreaming,
+                    /* 显式带 Context：新进程里 probeContext 还没有值，复原要建 SA 必须自己拿到它。 */
+                    onRestoreCarrier = { emit -> TypedBackendProbe.restoreCarrier(applicationContext, emit) },
                     onPlan = ::runPlans,
                 )
             }
@@ -191,6 +200,7 @@ private fun TempUiScreen(
     onContracts: () -> List<String>,
     onGate: () -> List<String>,
     onAttackStreaming: ((String) -> Unit) -> List<String>,
+    onRestoreCarrier: suspend ((String) -> Unit) -> Boolean,
     onPlan: () -> List<String>,
 ) {
     val lines = remember { mutableStateListOf<String>() }
@@ -233,6 +243,32 @@ private fun TempUiScreen(
         }
     }
 
+    /**
+     * 复原载体：**只跑** TypedBackendProbe.restoreCarrier（写回原厂字节 + 还原钩子站点）。
+     *
+     * 与攻击分开的入口：不建链、不加载模块、不 trigger。日志由 restoreCarrier 自己写 GhostLog
+     * （统一面板读的是同一份文件），这里只把同一批行收进旧列表兜底，并在最后补一行结果。
+     */
+    fun runRestoreCarrier() {
+        scope.launch {
+            val ok = runCatching {
+                withContext(Dispatchers.IO) {
+                    onRestoreCarrier { line ->
+                        lines += line
+                    }
+                }
+            }.getOrElse { problem ->
+                val report = "复原载体 失败: " + problem.javaClass.simpleName + ": " + (problem.message ?: "")
+                GhostLog.e(TAG_UI, report)
+                lines += report
+                false
+            }
+            val report = "restore: carrier restored=" + ok
+            GhostLog.i(TypedBackendProbe.TAG, report)
+            lines += report
+        }
+    }
+
     LaunchedEffect(Unit) {
         GhostLog.configure(LogLevel.Info)
         /* 统一日志流（2026-10-16 用户裁定：屏幕上的日志必须与 adb 的一样）：打开文件 + 把 native
@@ -256,6 +292,13 @@ private fun TempUiScreen(
             components.Action("跑一遍计划") { runHeavy("计划") { onPlan() } }
             components.Action("探测 JNI 库") { runHeavy("探测") { onProbe() } }
             components.Action("能力契约面") { runHeavy("契约") { onContracts() } }
+        }
+        /* 复原入口：**单独一排**，与上面的攻击按钮（★ 那一行）隔开。
+         * 它不是攻击步骤：只把 /system 的原厂前 23512 B 写回 /vendor 载体，并还原钩子站点。
+         * 点它只跑 TypedBackendProbe.restoreCarrier。 */
+        components.Body("复原 = 补救路径（写回原厂字节；不加载模块、不 trigger）", Modifier)
+        components.Actions {
+            components.Action(RESTORE_CARRIER_LABEL) { runRestoreCarrier() }
         }
         components.Actions {
             components.Action("清空") {

