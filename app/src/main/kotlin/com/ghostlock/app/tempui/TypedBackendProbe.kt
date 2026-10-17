@@ -205,7 +205,9 @@ object TypedBackendProbe {
         }
 
         /* 拼一帧**探针**材料落盘（只证明 SaFrame.build/writeTo 可用）：SPI 用刚申请到的那个，encap 用 4500。
-         * 注意不能写 SA 的真实路径 —— SA 区已先跑完，这里再写一次会用测试材料覆盖内核 SA 的那份帧。 */
+         * 注意两点：① 不能写 SA 的真实路径 —— SA 区已先跑完，这里再写一次会用测试材料覆盖内核 SA 的那份帧；
+         * ② 目的地必须是应用可创建文件的地方 —— /data/local/tmp 是 0771 shell:shell，app 只能改写已存在的
+         *    666 文件、建不了新文件（2026-10-16 真机：探针帧 EACCES，SA 帧因文件已存在而成功）。 */
         runCatching {
             val manager = context.getSystemService(android.net.IpSecManager::class.java)
             val address = java.net.InetAddress.getByName("127.0.0.1")
@@ -223,9 +225,10 @@ object TypedBackendProbe {
                 hmacKey = hmacKey,
             )
             meter.after("SaFrame.build", "bytes=" + frame.size)
-            meter.before("SaFrame.writeTo", "path=/data/local/tmp/ghostlock-sa-probe.frame bytes=" + frame.size)
+            val probeFramePath = context.cacheDir.absolutePath + "/ghostlock-sa-probe.frame"
+            meter.before("SaFrame.writeTo", "path=" + probeFramePath + " bytes=" + frame.size + " (probe)")
             val written = com.ghostlock.app.jni.cve43284.SaFrame.writeTo(
-                "/data/local/tmp/ghostlock-sa-probe.frame",
+                probeFramePath,
                 frame,
             )
             meter.after("SaFrame.writeTo", "ok=" + written)
@@ -329,22 +332,34 @@ object TypedBackendProbe {
                     " transform=" + (transform != null),
             )
             meter.after("IpSecTransform.Builder.buildTransportModeTransform", "transform=" + (transform != null))
-            meter.before("SaFrame.build", "spi=0x" + Integer.toHexString(spi) + " encap=" + encapPort + " sender=" + saSenderPort)
-            val frame = com.ghostlock.app.jni.cve43284.SaFrame.build(spi, encapPort, saSenderPort, aesKey, hmacKey)
-            meter.after("SaFrame.build", "bytes=" + frame.size)
-            meter.before("SaFrame.writeTo", "path=/data/local/tmp/ghostlock-sa.frame bytes=" + frame.size + " (SA)")
-            val written = com.ghostlock.app.jni.cve43284.SaFrame.writeTo(
-                "/data/local/tmp/ghostlock-sa.frame",
-                frame,
-            )
-            meter.after("SaFrame.writeTo", "ok=" + written)
-            step("typed: ipsec sa frame=" + written + " (SA 已建、帧按同一材料落盘)")
             transform != null && retainedAes == 32 && retainedHmac == 32
         }.getOrElse { problem ->
             step("typed: ipsec sa refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
             false
         }
         saReady = ready
+        /*
+         * 帧落盘只服务设备上的外部工具（native pagecache_load_lkm 读这个路径）；它写不成**不影响 SA 本身**，
+         * 所以放在 saReady 判定之后单独做、单独记 —— 绝不因一个辅助文件把已建成的 SA 判成未就绪。
+         */
+        if (ready) {
+            runCatching {
+                val frameAes = saAesKey ?: ByteArray(32)
+                val frameHmac = saHmacKey ?: ByteArray(32)
+                meter.before("SaFrame.build", "spi=0x" + Integer.toHexString(saSpi) + " encap=" + saEncapPort + " sender=" + saSenderPort)
+                val frame = com.ghostlock.app.jni.cve43284.SaFrame.build(saSpi, saEncapPort, saSenderPort, frameAes, frameHmac)
+                meter.after("SaFrame.build", "bytes=" + frame.size)
+                meter.before("SaFrame.writeTo", "path=/data/local/tmp/ghostlock-sa.frame bytes=" + frame.size + " (SA)")
+                val written = com.ghostlock.app.jni.cve43284.SaFrame.writeTo(
+                    "/data/local/tmp/ghostlock-sa.frame",
+                    frame,
+                )
+                meter.after("SaFrame.writeTo", "ok=" + written)
+                step("typed: ipsec sa frame=" + written + " (SA 已建、帧按同一材料落盘)")
+            }.onFailure { problem ->
+                step("typed: ipsec sa frame refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+            }
+        }
         return ready
     }
 

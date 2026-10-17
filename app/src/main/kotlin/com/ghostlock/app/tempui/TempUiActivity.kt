@@ -105,14 +105,28 @@ class TempUiActivity : ComponentActivity() {
     }
 
     /**
+     *  链的硬前置：SA 未建立就整条跳过（不进入 50 秒写阶段）。
+     *
+     *  @param emit 逐行回调（与统一日志同内容）。
+     *  @return null = SA 就绪、可以跑链；否则为两行拒跑原文（已写进统一日志并交给 emit）。
+     */
+    private fun saGuard(emit: (String) -> Unit): List<String>? =
+        TypedBackendProbe.ensureChainReady(applicationContext) { line ->
+            GhostLog.i(TypedBackendProbe.TAG, line)
+            emit(line)
+        }
+
+    /**
      *  完整攻击（43284）：patch#1 → 载体 → hook → trigger → wait，一次点完。
      *
      *  @note 链子本身在**工作线程**里跑（Android 禁止主线程做网络/重 IO），但这里 **join 回来**，
      *        所以对调用者仍是同步语义 —— 房间里没有留下没被等的异步。
+     *  @note 每产生一行就实时回调（界面据此逐行上屏）。
      *  @return 每一步的结局（与 logcat 的 GhostlockTyped 相同）。
      */
-    /** 流式攻击：每一行实时回调给界面（界面据此逐行上屏）。 */
     private fun onAttackStreaming(emit: (String) -> Unit): List<String> {
+        /* SA 先于链：建不成 ⇒ 两行拒跑，50 秒写阶段一步都不进（21:18 冷跑教训）。 */
+        saGuard(emit)?.let { refusal -> return refusal }
         /*
          * 预检短路：KernelSU 已在 ⇒ 整条链会空转（模块已在 /proc/modules，没有可加载目标；
          * 载荷是“一次性”的，且钩子只活在本次开机会话的页缓存里）。
@@ -142,11 +156,13 @@ class TempUiActivity : ComponentActivity() {
     }
 
     private fun runAttackStreamingInner(emit: (String) -> Unit): List<String> {
+        saGuard(emit)?.let { refusal -> return refusal }
         GhostLog.i(TAG_UI, "tempui: full 43284 attack start (streaming)")
         return TypedBackendProbe.run(applicationContext, emit)
     }
 
     private fun runAttack(): List<String> {
+        saGuard { }?.let { refusal -> return refusal }
         GhostLog.i(TAG_UI, "tempui: full 43284 attack start")
         val lines = java.util.concurrent.ConcurrentLinkedQueue<String>()
         lines.addAll(TypedBackendProbe.run(applicationContext))
