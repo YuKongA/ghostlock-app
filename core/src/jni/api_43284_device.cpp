@@ -1288,6 +1288,8 @@ namespace ghostlock::jni {
                 backend::cve_2026_43284::steps::journal_bytes_for(request.image, request.width));
         static char land_message[224] = {};
         const char *refusal = nullptr;
+        /* 基准：写阶段的墙钟时间与每块成本（时长是唯一可比的判据，见 runbook §11）。 */
+        const auto write_started = std::chrono::steady_clock::now();
         const auto ledger = backend::cve_2026_43284::steps::write_image_journaled(
                 request, std::span<std::byte>(journal.data(), journal.size()), &refusal,
                 std::span<char>{});
@@ -1298,6 +1300,14 @@ namespace ghostlock::jni {
                 ledger.outcome.rollback_incomplete ? "rollback-incomplete: " : "",
                 ledger.outcome.written, ledger.outcome.verified, ledger.outcome.blocks_rolled_back,
                 ledger.outcome.journal_overflow ? 1 : 0, ledger.outcome.rollback_incomplete ? 1 : 0);
+        {
+            const auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - write_started).count();
+            const std::size_t blocks = ledger.blocks == 0U ? 1U : ledger.blocks;
+            GL_LOGI("write benchmark: blocks=%zu elapsed_ms=%lld per_block_us=%lld",
+                    ledger.blocks, static_cast<long long>(elapsed_us / 1000),
+                    static_cast<long long>(elapsed_us / static_cast<long long>(blocks)));
+        }
         if (!wrote && why != nullptr) {
             /* 组帧层的错误码（20/21/22/23 = 前端 / splice / 长度 / 后缀；0 = 报文发出去了）：
              * 「报文到底发出去没有」只有它能回答，所以非零时优先报它。 */
