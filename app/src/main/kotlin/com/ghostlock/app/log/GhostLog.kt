@@ -118,32 +118,26 @@ object GhostLog {
  * adb logcat -s <tag>:V 就能取到自己的那一段，不必事后在混合输出里再筛一遍。
  */
 /**
- * 第二个去处：把同一行**追加到设备文件**里，让日志扛得住重启（logcat 缓冲会随重启清空，屏幕上的环也随进程消失）。
+ * 第二个去处：把同一行**追加到设备文件**里 —— 这一份同时是**屏幕上的日志的来源**：
+ * native 行写的是同一个 fd（见 [UnifiedLog] 与 [NativeLogBridge]），所以屏幕与
+ * `run-as com.ghostlock.app tail files/ghostlock-run.log` 看到的是同一种行。
  *
- * 路径固定 /data/local/tmp/ghostlock-run.log，临时界面与门禁共用一份，便于事后取证。
- * 超过 @see MAX_BYTES 就从零重来；写失败只当没写成 —— 日志不该把主流程拖下水。
+ * 路径、轮转与开关都在 [LogFile]（候选路径、MAX_BYTES 也在那里）；写失败只当没写成 ——
+ * 日志不该把主流程拖下水。
  */
 object FileSink : LogSink {
-    /*
-     * 候选路径按应用一定可写的顺序排：
-     *   ① 应用私有 files 目录，唯一稳定可写，且能用
-     *      `adb shell run-as com.ghostlock.app cat files/ghostlock-run.log` 读回来（本包 debuggable）；
-     *   ② 应用专属外部目录 /sdcard/Android/data/<pkg>/files，adb 可直接读，作为回退。
-     * /data/local/tmp 不在此列：那里属于 shell，untrusted_app 域写不进去（真机已验）。
-     */
-    private val CANDIDATES = arrayOf(
-        "/data/user/0/com.ghostlock.app/files/ghostlock-run.log",
-        "/data/data/com.ghostlock.app/files/ghostlock-run.log",
-        "/sdcard/Android/data/com.ghostlock.app/files/ghostlock-run.log",
-    )
-    private const val MAX_BYTES = 2L * 1024L * 1024L
-
     override fun write(level: LogLevel, tag: String, message: String, line: String) {
-        for (candidate in CANDIDATES) {
+        /* 统一去处（2026-10-16 用户裁定：屏幕上的日志必须与 adb 的一样）：与 native 同一个 fd、同一种行格式。 */
+        if (UnifiedLog.append(level, line)) {
+            return
+        }
+        /* //TODO(unified-log-20261016): fd 打不开时的旧兜底（候选路径轮询 + epoch 前缀）。它与统一格式
+         * 不同形 ⇒ 屏幕读不到；判据全绿、Lead 确认后随 LogFile 的兜底一起清理。 */
+        for (candidate in LogFile.CANDIDATES) {
             try {
                 val file = java.io.File(candidate)
                 file.parentFile?.mkdirs()
-                if (file.length() > MAX_BYTES) {
+                if (file.length() > LogFile.MAX_BYTES) {
                     file.writeText("")
                 }
                 file.appendText(System.currentTimeMillis().toString() + " " + line + "\n")

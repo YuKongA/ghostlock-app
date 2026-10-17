@@ -19,6 +19,7 @@
 
 #include "jni/api_43499.hpp"
 #include "jni/attack_contract_reader.hpp"
+#include "jni/gl_log.hpp"
 #include "jni/marshal_43499.hpp"
 #include "jni/wrapper_support.hpp"
 
@@ -406,6 +407,19 @@ JNIEXPORT jint JNICALL Java_com_ghostlock_app_jni_cve43499_Native43499_read43499
         env->SetLongArrayRegion(out_len, 0, 1, &count);
     }
     return answer(env, ghostlock::jni::CallCode::Ok, "", refusal_out);
+}
+
+/**
+ *  把 native 日志的第二份去处接到**应用打开的 fd** 上（Kotlin：com.ghostlock.app.log.NativeLogBridge）。
+ *
+ *  @param fd 应用以 O_APPEND 打开的追加写 fd；-1 表示注销（退回只走 logcat）。
+ *  @return 上一次注册的 fd（-1＝之前没注册过）。
+ *  @note 注册**按库各一份**（gl_log.hpp 的注册位是内联函数内的静态量，随 DSO 复制），所以每个库
+ *        都有自己的这个入口；Kotlin 侧加载一个库就注册一次。
+ */
+JNIEXPORT jint JNICALL Java_com_ghostlock_app_log_NativeLogBridge_attachFd43499(JNIEnv *, jclass,
+                                                                                jint fd) {
+    return static_cast<jint>(ghostlock::log::set_export_fd(static_cast<int>(fd)));
 }
 
 }  // extern "C"

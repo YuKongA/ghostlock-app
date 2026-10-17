@@ -27,6 +27,7 @@ import com.ghostlock.app.core.SessionPhase
 import com.ghostlock.app.jni.Native
 import com.ghostlock.app.log.GhostLog
 import com.ghostlock.app.log.LogLevel
+import com.ghostlock.app.log.UnifiedLog
 import com.ghostlock.app.data.profile.AndroidAssetSource
 import com.ghostlock.app.ui.kit.AndroidUiKitStore
 import com.ghostlock.app.ui.kit.UiKit
@@ -71,20 +72,28 @@ class TempUiActivity : ComponentActivity() {
         }
     }
 
+    /** 探测结果逐行进统一日志（屏幕与 adb 看到同一批行）。 */
     private fun probeNative(): List<String> {
         val loaded = Native.ensureLoaded()
-        return listOf(
+        val lines = listOf(
             "jni: 库名=" + Native.LIBRARY + " 可加载=" + loaded,
             "jni: 入口=create/invoke/shutdown/destroy（四入口；GLKJ 帧 + 会话状态机已落地）",
         )
+        lines.forEach { line -> GhostLog.i(TAG_UI, line) }
+        return lines
     }
 
-    private fun reportContracts(): List<String> = listOf(
-        "core: AccessDomain=" + AccessDomain.entries.joinToString(),
-        "core: AccessFailure=" + AccessFailure.entries.joinToString(),
-        "core: SessionPhase=" + SessionPhase.entries.joinToString(),
-        "core: 能力接口=KernelMemoryAccess / PageCacheAccess（描述符由 native 发布）",
-    )
+    /** 契约面逐行进统一日志（同上：只记事实）。 */
+    private fun reportContracts(): List<String> {
+        val lines = listOf(
+            "core: AccessDomain=" + AccessDomain.entries.joinToString(),
+            "core: AccessFailure=" + AccessFailure.entries.joinToString(),
+            "core: SessionPhase=" + SessionPhase.entries.joinToString(),
+            "core: 能力接口=KernelMemoryAccess / PageCacheAccess（描述符由 native 发布）",
+        )
+        lines.forEach { line -> GhostLog.i(TAG_UI, line) }
+        return lines
+    }
 
     /** 跑两个 backend 的声明计划；每一步的结局见 logcat 的 GhostlockPlan。 */
     private fun runPlans(): List<String> {
@@ -138,6 +147,8 @@ private fun TempUiScreen(
     val lines = remember { mutableStateListOf<String>() }
     val components = kitOf(kit)
     val scope = rememberCoroutineScope()
+    /* 统一日志流是否可用（日志 fd 打开成功）：可用时主显示是它，否则退回下面的旧列表。 */
+    var unified by remember { mutableStateOf(false) }
 
     /* 重活一律走 IO 线程：界面立刻可点（此前主线程被占住 ⇒ 按钮全无响应），且异常变成一行文字而不是崩溃。 */
     /* 流式版本：动作每产生一行就上屏（攻击链要跑半分钟以上，不能等它结束才显示）。 */
@@ -149,7 +160,10 @@ private fun TempUiScreen(
                     action { line -> collected += line; lines += line }
                 }
             }.getOrElse { problem ->
-                listOf(what + " 失败: " + problem.javaClass.simpleName + ": " + (problem.message ?: ""))
+                /* 失败也是一行日志：进统一流，屏幕上看得见（不只落在下面的兜底列表里）。 */
+                val report = what + " 失败: " + problem.javaClass.simpleName + ": " + (problem.message ?: "")
+                GhostLog.e(TAG_UI, report)
+                listOf(report)
             }
             if (out.isNotEmpty() && collected.isEmpty()) {
                 lines += out
@@ -160,13 +174,22 @@ private fun TempUiScreen(
     fun runHeavy(what: String, action: () -> List<String>) {
         scope.launch {
             val out = runCatching { withContext(Dispatchers.IO) { action() } }
-                .getOrElse { problem -> listOf(what + " 失败: " + problem.javaClass.simpleName + ": " + (problem.message ?: "")) }
+                .getOrElse { problem ->
+                    /* 同上：失败行也进统一流。 */
+                    val report = what + " 失败: " + problem.javaClass.simpleName + ": " + (problem.message ?: "")
+                    GhostLog.e(TAG_UI, report)
+                    listOf(report)
+                }
             lines += out
         }
     }
 
     LaunchedEffect(Unit) {
         GhostLog.configure(LogLevel.Info)
+        /* 统一日志流（2026-10-16 用户裁定：屏幕上的日志必须与 adb 的一样）：打开文件 + 把 native
+         * 三个库接到同一个 fd 上；状态行本身也写进流里，屏幕上看得到"接上了没有"。 */
+        UnifiedLog.start().forEach { statusLine -> GhostLog.i(TAG_UI, statusLine) }
+        unified = UnifiedLog.fileReady
         GhostLog.i(TAG_UI, "tempui: 临时界面已启动")
         lines += "tempui: 临时界面已启动（旧 UI 已废弃）"
         /* 用户裁定（2026-10-16）：**启动即执行**一律取消 —— 整条链只由按钮触发（否则一开 app 就跑攻击）。 */
@@ -186,11 +209,22 @@ private fun TempUiScreen(
             components.Action("能力契约面") { runHeavy("契约") { onContracts() } }
         }
         components.Actions {
-            components.Action("清空") { lines.clear() }
+            components.Action("清空") {
+                lines.clear()
+                /* 屏幕上的那一份也一起清（两处一起清，屏幕与 adb 才不会各显示一半）。 */
+                UnifiedLog.clear()
+            }
         }
-        components.Body(
-            text = lines.joinToString("\n"),
-            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
-        )
+        if (unified) {
+            /* 主显示：统一日志流（Kotlin 行 + native 行，同一份文件；尾部跟随 + 自动滚动）。 */
+            LogStreamPanel(kit = components, modifier = Modifier.weight(1f))
+        } else {
+            /* //TODO(unified-log-20261016): 旧显示（行动返回的原始列表）留作兜底：日志 fd 打不开时
+             * 它是唯一还能看的去处；统一流稳定后与 FileSink 的旧兜底一起清理。 */
+            components.Body(
+                text = lines.joinToString("\n"),
+                modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+            )
+        }
     }
 }

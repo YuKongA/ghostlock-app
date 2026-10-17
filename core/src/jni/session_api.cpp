@@ -29,6 +29,7 @@
 #include <vector>
 
 #include "contract/kernel_access.hpp"
+#include "jni/gl_log.hpp"
 #include "jni/session_handles.hpp"
 #include "jni/ops_43284.hpp"
 #include "jni/session_object.hpp"
@@ -268,4 +269,18 @@ Java_com_ghostlock_app_jni_Native_nativeSessionDestroy(JNIEnv *env, jclass, jlon
         state.sessions[index] = nullptr;
     }
     state.table.retire(index);
+}
+
+/**
+ *  把 native 日志的第二份去处接到**应用打开的 fd** 上（Kotlin：com.ghostlock.app.log.NativeLogBridge）。
+ *
+ *  @param fd 应用以 O_APPEND 打开的追加写 fd；-1 表示注销（退回只走 logcat）。
+ *  @return 上一次注册的 fd（-1＝之前没注册过）。
+ *  @note 注册**按库各一份**（gl_log.hpp 的注册位是内联函数内的静态量，随 DSO 复制），所以每个库
+ *        都有自己的这个入口；Kotlin 侧加载一个库就注册一次。
+ */
+extern "C" JNIEXPORT jint JNICALL
+Java_com_ghostlock_app_log_NativeLogBridge_attachFdLegacy(JNIEnv *env, jclass, jint fd) {
+    static_cast<void>(env);
+    return static_cast<jint>(ghostlock::log::set_export_fd(static_cast<int>(fd)));
 }
