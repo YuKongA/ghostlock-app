@@ -972,7 +972,7 @@ val payloadWrote = if (payload != null) hook.writeImage(payload, hookLanding, 16
                 step("typed: module bytes=" + moduleBytes.size)
                 val carrierPath = "/vendor/lib64/libbinderdebug.so"
                 val module = Assembled43284(Native43284.create()) { saInit() }
-                module.openTargetStepwise(carrierPath)
+                val moduleDoor = module.openTargetStepwise(carrierPath)
                 module.reuseSocketFrom(stepwise)
                 module.buildSurface()
                 module.buildLanding()
@@ -982,6 +982,16 @@ val payloadWrote = if (payload != null) hook.writeImage(payload, hookLanding, 16
                 step("typed: module init=" + moduleInit + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
                 val moduleWrote = module.writeImage(moduleBytes, 0L, 16L, saInit(module.nextSequence()))
                 step("typed: module wrote=" + moduleWrote + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
+            /*
+             * 判定实验：写报成功但目标偏移不变时，扫一遍邻近偏移。
+             * 若**别处**变了 ⇒ 落错页（页面由 SA/seq 决定）；若**哪都没变** ⇒ 报文被丢（ICV/口径不符）。
+             */
+            runCatching {
+                for (probeOffset in longArrayOf(0L, 16L, 32L, 4096L, 8192L, 16384L)) {
+                    val blk = module.readBlock(moduleDoor, probeOffset)
+                    step("typed: carrier scan off=" + probeOffset + " head=" + (blk?.take(4)?.joinToString(" ") { b -> "%02x".format(b) } ?: "null"))
+                }
+            }.onFailure { problem -> step("typed: carrier scan refused " + problem.javaClass.simpleName) }
             }.onFailure { problem ->
                 step("typed: module refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
             }
