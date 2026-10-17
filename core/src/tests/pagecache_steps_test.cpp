@@ -6,6 +6,7 @@
  *  ④ 空镜像 / 空 access 各有一个具名拒绝。假 access 记录每一次读写，不碰设备。
  */
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <span>
@@ -32,8 +33,15 @@ namespace {
       public:
         std::vector<std::uint64_t> offsets{};
         std::vector<std::size_t> widths{};
+        /** Reads are recorded too: a test can then see *which* read came back last -- the read-back
+         *  of the site block has to be the one that follows the site write, not the pre-check. */
+        std::vector<std::uint64_t> read_offsets{};
         bool refuse_write = false;
         bool corrupt = false;
+        /** The offset whose read-back comes back altered (one byte); kNoCorruption means none.
+         *  This is how a test makes one specific block fail its verify while every other lands. */
+        static constexpr std::uint64_t kNoCorruption = ~std::uint64_t{0U};
+        std::uint64_t corrupt_at = kNoCorruption;
         /** Big enough for the offsets this test uses (0x1000+): the guard is the unit's business,
          *  not something the test should trip by accident. */
         static constexpr std::size_t kMemoryBytes = 1U << 20U;
@@ -51,9 +59,10 @@ namespace {
         [[nodiscard]] AccessResult<std::span<const std::byte>> read(
                 std::uint64_t, std::size_t size, contract::AccessChannel, const contract::KernelAccess::AccessMiscParameters &parameters) noexcept override {
             const auto at = static_cast<std::size_t>(offset_of(parameters));
+            read_offsets.push_back(offset_of(parameters));
             if (at + size > kMemoryBytes) { return AccessResult<std::span<const std::byte>>::failed(Status::Unsupported); }
             for (std::size_t i = 0U; i < size; ++i) { scratch[i] = memory[at + i]; }
-            if (corrupt) { scratch[0] = static_cast<std::byte>(0x7FU); }
+            if (corrupt || offset_of(parameters) == corrupt_at) { scratch[0] = static_cast<std::byte>(0x7FU); }
             return AccessResult<std::span<const std::byte>>::ok(
                     std::span<const std::byte>(&scratch[0], size));
         }
@@ -210,6 +219,217 @@ namespace {
         expect(!steps::write_hook(wrong, &refusal) && std::strcmp(refusal, "step-guard-mismatch") == 0,
                "a missing guard names itself");
     }
+    /** The geometry a hook test needs: which block encloses the site, where inside it the site sits,
+     *  and how many blocks the payload takes. Derived from the plan itself, never assumed. */
+    struct HookGeometry final {
+        std::uint64_t site_block = 0U;
+        std::size_t within = 0U;
+        std::size_t payload_blocks = 0U;
+        std::size_t payload_bytes = 0U;
+    };
+
+    HookGeometry geometry_of(const cve::hook::SentryPlan &plan, std::size_t width) noexcept {
+        HookGeometry geometry{};
+        geometry.site_block = plan.hook_file_offset - (plan.hook_file_offset % width);
+        geometry.within = static_cast<std::size_t>(plan.hook_file_offset - geometry.site_block);
+        std::uint8_t payload[64U * 64U] = {};
+        std::size_t size = 0U;
+        if (cve::hook::build_sentry_payload(plan, payload, sizeof(payload), size) == cve::hook::SentryError::Ok) {
+            geometry.payload_bytes = size;
+            geometry.payload_blocks = (size + width - 1U) / width;
+        }
+        return geometry;
+    }
+
+    void put_le32(std::byte *memory, std::size_t at, std::uint32_t word) noexcept {
+        memory[at] = static_cast<std::byte>(word & 0xFFU);
+        memory[at + 1U] = static_cast<std::byte>((word >> 8U) & 0xFFU);
+        memory[at + 2U] = static_cast<std::byte>((word >> 16U) & 0xFFU);
+        memory[at + 3U] = static_cast<std::byte>((word >> 24U) & 0xFFU);
+    }
+
+    std::uint32_t get_le32(const std::byte *memory, std::size_t at) noexcept {
+        return static_cast<std::uint32_t>(std::to_integer<std::uint8_t>(memory[at])) |
+               (static_cast<std::uint32_t>(std::to_integer<std::uint8_t>(memory[at + 1U])) << 8U) |
+               (static_cast<std::uint32_t>(std::to_integer<std::uint8_t>(memory[at + 2U])) << 16U) |
+               (static_cast<std::uint32_t>(std::to_integer<std::uint8_t>(memory[at + 3U])) << 24U);
+    }
+
+    /** The image the plan expects: guard word before the site, displaced word at it. */
+    void plant_site(FakeAccess &access, const cve::hook::SentryPlan &plan, std::size_t width) noexcept {
+        const auto geometry = geometry_of(plan, width);
+        const auto site = static_cast<std::size_t>(geometry.site_block) + geometry.within;
+        put_le32(access.memory, site - 4U, plan.guard_instruction);
+        put_le32(access.memory, site, plan.displaced_instruction);
+    }
+
+    /** (a) 写序：先载荷的每一块（从 payload_file_offset 起、逐块），**最后**才是包裹站点的块。
+     *  参考：成功历史 hook_patch.cpp:176-189 先 shellcode 全部块、再写 trampoline 块；上游
+     *  exp.c:716-740 同序。站点先写会让分支指向尚未写入的 landing，走到该 sentry 的进程执行零字节。 */
+    void the_payload_lands_before_the_site() {
+        const auto plan = cve::hook::device_sentry_plan();
+        constexpr std::size_t kWidth = 16U;
+        const auto geometry = geometry_of(plan, kWidth);
+        expect(geometry.payload_blocks > 1U, "the payload spans several blocks");
+        expect(geometry.site_block + kWidth <= FakeAccess::kMemoryBytes, "the site block fits the fake");
+        FakeAccess access{};
+        cve::AccessParams params{};
+        plant_site(access, plan, kWidth);
+        steps::HookRequest request{};
+        request.access = &access;
+        request.params = &params;
+        request.plan = &plan;
+        request.width = kWidth;
+        const char *refusal = nullptr;
+        const bool hooked = steps::write_hook(request, &refusal);
+        if (!hooked) { std::printf("  (hook refusal: %s)\n", refusal == nullptr ? "-" : refusal); }
+        expect(hooked, "the hook lands");
+        expect(access.offsets.size() == geometry.payload_blocks + 1U,
+               "the hook writes every payload block and the site block, once each");
+        bool payload_in_order = access.offsets.size() == geometry.payload_blocks + 1U;
+        for (std::size_t block = 0U; block < geometry.payload_blocks && payload_in_order; ++block) {
+            if (access.offsets[block] != plan.payload_file_offset + block * kWidth) { payload_in_order = false; }
+        }
+        expect(payload_in_order, "the payload goes in from payload_file_offset, block by block");
+        expect(!access.offsets.empty() && access.offsets.back() == geometry.site_block,
+               "the block that carries the site is written last");
+    }
+
+    /** (b) 任一载荷块失败 ⇒ 站点块从未被写过：分支不得在 landing 就绪前生效。
+     *  逐块让回读失真，每一轮都是一次全新的写钩子，唯一的坏块就是那一块。 */
+    void a_failed_payload_block_never_writes_the_site() {
+        const auto plan = cve::hook::device_sentry_plan();
+        constexpr std::size_t kWidth = 16U;
+        const auto geometry = geometry_of(plan, kWidth);
+        const auto site = static_cast<std::size_t>(geometry.site_block);
+        std::size_t named_failures = 0U;
+        bool touched_site = false;
+        for (std::size_t block = 0U; block < geometry.payload_blocks; ++block) {
+            FakeAccess access{};
+            cve::AccessParams params{};
+            plant_site(access, plan, kWidth);
+            access.corrupt_at = plan.payload_file_offset + block * kWidth;
+            steps::HookRequest request{};
+            request.access = &access;
+            request.params = &params;
+            request.plan = &plan;
+            request.width = kWidth;
+            const char *refusal = nullptr;
+            if (!steps::write_hook(request, &refusal) && refusal != nullptr &&
+                std::strcmp(refusal, "step-verify-failed") == 0) {
+                ++named_failures;
+            }
+            for (const std::uint64_t at : access.offsets) {
+                if (at == geometry.site_block) { touched_site = true; }
+            }
+            if (get_le32(access.memory, site + geometry.within) != plan.displaced_instruction) {
+                touched_site = true;
+            }
+        }
+        expect(named_failures == geometry.payload_blocks, "every corrupted payload block fails the hook by name");
+        expect(!touched_site, "a failed block leaves the site block unwritten");
+    }
+
+    /** (c) 站点写成功之后立刻回读一致：最后一次读就是站点块，站点块其余字节原样保留。 */
+    void the_site_is_read_back_after_it_is_written() {
+        const auto plan = cve::hook::device_sentry_plan();
+        constexpr std::size_t kWidth = 16U;
+        const auto geometry = geometry_of(plan, kWidth);
+        const auto site = static_cast<std::size_t>(geometry.site_block);
+        FakeAccess access{};
+        cve::AccessParams params{};
+        plant_site(access, plan, kWidth);
+        /* A marker in the part of the block the hook must not touch (above the guard word). */
+        const bool marker_fits = geometry.within >= 8U;
+        if (marker_fits) { access.memory[site + geometry.within - 8U] = std::byte{0x5AU}; }
+        steps::HookRequest request{};
+        request.access = &access;
+        request.params = &params;
+        request.plan = &plan;
+        request.width = kWidth;
+        const char *refusal = nullptr;
+        const bool hooked = steps::write_hook(request, &refusal);
+        if (!hooked) { std::printf("  (hook refusal: %s)\n", refusal == nullptr ? "-" : refusal); }
+        expect(hooked, "the hook lands");
+        std::uint32_t branch = 0U;
+        expect(cve::hook::hook_branch(plan, branch) == cve::hook::SentryError::Ok, "the branch encodes");
+        expect(get_le32(access.memory, site + geometry.within) == branch, "the site holds the branch word");
+        expect(!access.read_offsets.empty() && access.read_offsets.back() == geometry.site_block,
+               "the last read is the site block: the write-back was read back");
+        expect(!access.offsets.empty() && access.offsets.back() == geometry.site_block,
+               "and the site block is the last thing written before that read");
+        if (marker_fits) {
+            expect(access.memory[site + geometry.within - 8U] == std::byte{0x5AU},
+                   "the rest of the site block is preserved");
+        }
+    }
+
+
+    /** (d) restore 的最小步：站点两字按计划写回（guard 在站点前、displaced 在站点），写后回读一致。 */
+    void the_restore_puts_both_words_back() {
+        const auto plan = cve::hook::device_sentry_plan();
+        constexpr std::size_t kWidth = 16U;
+        const auto geometry = geometry_of(plan, kWidth);
+        const auto site = static_cast<std::size_t>(geometry.site_block);
+        FakeAccess access{};
+        cve::AccessParams params{};
+        plant_site(access, plan, kWidth);
+        steps::HookRequest request{};
+        request.access = &access;
+        request.params = &params;
+        request.plan = &plan;
+        request.width = kWidth;
+        const char *refusal = nullptr;
+        expect(steps::write_hook(request, &refusal), "the hook lands before the restore");
+        std::uint32_t branch = 0U;
+        expect(cve::hook::hook_branch(plan, branch) == cve::hook::SentryError::Ok, "the branch encodes");
+        expect(get_le32(access.memory, site + geometry.within) == branch, "the hook replaced the site word");
+        const bool restored = steps::restore_hook(plan, request, &refusal);
+        if (!restored) { std::printf("  (restore refusal: %s)\n", refusal == nullptr ? "-" : refusal); }
+        expect(restored, "the restore completes");
+        expect(get_le32(access.memory, site + geometry.within) == plan.displaced_instruction,
+               "the displaced instruction is back at the site");
+        expect(get_le32(access.memory, site + geometry.within - 4U) == plan.guard_instruction,
+               "the guard word before it is the plan's guard");
+        expect(!access.offsets.empty() && access.offsets.back() == geometry.site_block,
+               "the restore writes the block that carries the site");
+        expect(!access.read_offsets.empty() && access.read_offsets.back() == geometry.site_block,
+               "and reads that block back after the write");
+    }
+
+    /** (e) restore 幂等：重复调用结果一致（同样的字节、同一块），没有 surface 时具名拒绝。 */
+    void the_restore_is_idempotent() {
+        const auto plan = cve::hook::device_sentry_plan();
+        constexpr std::size_t kWidth = 16U;
+        const auto geometry = geometry_of(plan, kWidth);
+        const auto site = static_cast<std::size_t>(geometry.site_block);
+        FakeAccess access{};
+        cve::AccessParams params{};
+        plant_site(access, plan, kWidth);
+        steps::HookRequest request{};
+        request.access = &access;
+        request.params = &params;
+        request.plan = &plan;
+        request.width = kWidth;
+        const char *refusal = nullptr;
+        expect(steps::write_hook(request, &refusal), "the hook lands");
+        expect(steps::restore_hook(plan, request, &refusal), "the first restore completes");
+        std::byte snapshot[16] = {};
+        std::memcpy(snapshot, access.memory + site, kWidth);
+        const std::size_t writes = access.offsets.size();
+        expect(steps::restore_hook(plan, request, &refusal), "a second restore is not an error");
+        expect(std::memcmp(access.memory + site, snapshot, kWidth) == 0, "and it leaves the same bytes");
+        expect(access.offsets.size() == writes + 1U && access.offsets.back() == geometry.site_block,
+               "it re-writes the same block");
+        expect(get_le32(access.memory, site + geometry.within) == plan.displaced_instruction &&
+                       get_le32(access.memory, site + geometry.within - 4U) == plan.guard_instruction,
+               "the two words are still the plan's");
+        steps::HookRequest no_access{};
+        expect(!steps::restore_hook(plan, no_access, &refusal) &&
+                       std::strcmp(refusal, "step-access-missing") == 0,
+               "a restore without a surface names itself");
+    }
+
     void the_wait_reads_the_markers_in_order() {
         FakeWorld world{};
         g_world = &world;
@@ -300,6 +520,13 @@ int main() {
     an_image_is_written_block_by_block();
     std::printf("pagecache steps: the hook lands");
     the_hook_lands_and_verifies();
+    std::printf("pagecache steps: the hook writes the payload first");
+    the_payload_lands_before_the_site();
+    a_failed_payload_block_never_writes_the_site();
+    the_site_is_read_back_after_it_is_written();
+    std::printf("pagecache steps: the restore");
+    the_restore_puts_both_words_back();
+    the_restore_is_idempotent();
     std::printf("pagecache steps: the wait and the trigger");
     the_wait_reads_the_markers_in_order();
     the_trigger_forks_and_returns();

