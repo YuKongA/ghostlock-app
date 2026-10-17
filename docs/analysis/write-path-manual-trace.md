@@ -105,3 +105,17 @@ pagecache_steps.cpp::write_image_verified  （每块一次循环）
 | 记账 | `blocks_rolled_back` / `rollback_incomplete` | `++rolled` / `outcome.rollback_incomplete` ✓，并打 `rollback block[i]: off=… restored=… rolled=… incomplete=…` |
 
 ⇒ 结论：**与参照一致**（逆序、逐块回读、失败继续且上报）。
+
+## 附：闭包闸门是否真挡住写点（trace 第八项）
+
+`TypedBackendProbe.kt` 里以 `planGate?.ok == true` 为前置的写点共 **4 处**：
+
+| 行 | 写点 |
+|---|---|
+| :1807 | 钩子（站点块） |
+| :1831 | landing 载荷 |
+| :1961 | 模块镜像 |
+| :1984 | trigger 前的站点重放 |
+
+⇒ 结论：闭包失败（越界/重叠/末块/整除/容量）或模块 precheck 失败时，**一个区域都不会写** ✓。
+  唯一不受闸门约束的是 `trigger` 本身；此时钩子未写入，点火对 libc++ 无副作用（ref 同样是“先 hook 后 trigger”）。
