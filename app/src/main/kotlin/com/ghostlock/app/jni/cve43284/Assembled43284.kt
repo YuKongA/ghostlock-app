@@ -523,12 +523,13 @@ class Assembled43284(
             imageWidth = width,
             imageBytes = image,
             /*
-             * 不重试（0）。参照实现每块只读一次（ghostlock-app-ref@5f184760:pagecache.cpp:182 与 chain.cpp:321），
-             * 而这里原先是 200 ms 预算 + 2 ms 轮询：首读不中时单块最坏可拖到 154 s（见
-             * docs/analysis/ref-5f18476-port-plan.md §三）。写是派发式的，落盘靠内核；回读只作抽样校验，
-             * 因此把“等”去掉，速度才与参照同量级（769 块 × 3.4 ms ≈ 2.6 s）。
+             * 写是**派发式**的：报文发出即返回，内核处理完才落到页缓存。参照实现写完立刻回读（chain.cpp:321），
+             * 但它在**同一条线程**里 splice 到套接字、上下文的时序与我们从 app 经 JNI 分两段调用不同。
+             * 真机实证（2026-10-16 23:14，budget=0）：首块回读立即不符 ⇒ `module wrote=false`、0.5 s 就失败；
+             * 而 budget=200 时曾稳定通过（20:46 / 22:02 两次）。所以保留一个有界预算：正常块首次即中，
+             * 只有真正没落盘的块才等，最坏 200 ms/块且只影响该块。
              */
-            imageBudgetMs = 0L,
+            imageBudgetMs = 200L,
         )
         val code = Native43284.writeImage(handle, params, request, init, refusal)
         record(code, refusal)
