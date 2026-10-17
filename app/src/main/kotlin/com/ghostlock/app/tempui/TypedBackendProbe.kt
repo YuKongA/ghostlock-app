@@ -995,6 +995,27 @@ val payloadWrote = if (payload != null) hook.writeImage(payload, hookLanding, 16
             }.onFailure { problem ->
                 step("typed: module refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
             }
+            /*
+             * 参考的分阶段语义：write 阶段只 arm；**trigger 阶段才 apply**（门禁记录：
+             * write 行 hook=0、trigger 行 hook=1）。所以这里在触发前**重新应用站点块**，
+             * 保证被踩的那一刻钩子确实在页里，而不是更早写下的那一份。
+             */
+            if (hookPlanWords != null && hookPlanWords.size >= 4) {
+                runCatching {
+                    val siteNow = hookPlanWords[2]
+                    val blkNow = siteNow - (siteNow % 16L)
+                    val cur = hook.readBlock(hookDoor, blkNow)
+                    if (cur != null) {
+                        val atNow = (siteNow - blkNow).toInt()
+                        val w = hookPlanWords[0].toInt()
+                        cur[atNow] = (w and 0xFF).toByte()
+                        cur[atNow + 1] = ((w shr 8) and 0xFF).toByte()
+                        cur[atNow + 2] = ((w shr 16) and 0xFF).toByte()
+                        cur[atNow + 3] = ((w shr 24) and 0xFF).toByte()
+                        step("typed: trigger-time apply wrote=" + hook.writeImage(cur, blkNow, 16L, saInit(hook.nextSequence())))
+                    }
+                }.onFailure { problem -> step("typed: trigger-time apply refused " + problem.javaClass.simpleName) }
+            }
             /* 非 0 延迟：触发要等 helper/hook 的效应铺开（设计里的 accessTriggerDelayMs 目前是 0）。 */
             val triggerDelay = if (hookParams.accessTriggerDelayMs > 0L) hookParams.accessTriggerDelayMs else 2000L
             val triggerCode = hook.trigger(triggerDelay)
