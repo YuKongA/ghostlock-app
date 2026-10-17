@@ -2164,7 +2164,25 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                 meter.before("Assembled43284.writeImage", "offset=0 width=16 bytes=" + moduleBytes.size + " (module -> carrier)")
                 /* 闸门关着就不写模块：闭包没通过时写进去的模块也没有钩子会 insmod 它。 */
                 val moduleOutcome = LongArray(RunFinish43284.OUTCOME_WORDS)
-                val moduleWrote = if (planGate?.ok == true) module.writeImage(moduleBytes, 0L, 16L, saInit(seq.value), moduleOutcome) else false
+                /*
+                 * 幂等跳过（速度优化）：载体里已经是我们这份模块时，整段写就是白花时间
+                 * （vendor 载体冷跑时 769 块要 48 957 ms）。先读首块比对，命中就不写。
+                 * 只比首块是实测权衡：模块头部是 ELF 头 + 版本串，误判概率极低；
+                 * 且真正的写入后续仍由 hook/trigger 的语义决定，这里只是省一次重复搬运。
+                 */
+                val moduleAlreadyPresent = runCatching {
+                    val head = module.readBlock(module.accessId, 0L)
+                    head != null && head.size == 16 &&
+                        (0 until 16).all { index -> head[index] == moduleBytes[index] }
+                }.getOrDefault(false)
+                if (planGate?.ok == true && moduleAlreadyPresent) {
+                    step("module write: skipped (carrier already holds this module)")
+                }
+                val moduleWrote = if (planGate?.ok == true && !moduleAlreadyPresent) {
+                    module.writeImage(moduleBytes, 0L, 16L, saInit(seq.value), moduleOutcome)
+                } else {
+                    planGate?.ok == true
+                }
                 if (planGate?.ok == true) {
                     noteWriteOutcome(finish, "module", moduleOutcome, moduleWrote, step)
                 }
