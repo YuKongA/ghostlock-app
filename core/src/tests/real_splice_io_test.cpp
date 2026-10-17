@@ -81,6 +81,20 @@ namespace {
         std::size_t read_calls = 0U;
         std::uint64_t read_first_offset = 0U;
 
+        /* The helper's pipe: how many bytes the fake helper wrote, and how the read answers. */
+        Answer pipe_answer = Answer::Full;
+        std::size_t pipe_left = kBlockBytes;
+        bool pipe_eintr_pending = false;
+        std::size_t pipe_calls = 0U;
+        std::size_t pipe_total = 0U;
+        std::uint8_t pipe_byte = 0x5AU;
+
+        /* What each memory segment carried, in call order: the page segment is checked against
+         * the block the one fetch returned, not against a constant. */
+        std::size_t vmsplice_segments = 0U;
+        std::uint8_t vmsplice_data[4][64] = {};
+        std::size_t vmsplice_lens[4] = {};
+
         std::size_t send_calls = 0U;
         std::size_t close_calls = 0U;
     };
@@ -98,8 +112,16 @@ namespace {
         return 0;
     }
 
-    long fake_vmsplice(int, const std::uint8_t *, std::size_t len, unsigned) noexcept {
+    long fake_vmsplice(int, const std::uint8_t *data, std::size_t len, unsigned) noexcept {
         ++g_fake.vmsplice_calls;
+        if (g_fake.vmsplice_segments < 4U) {
+            const std::size_t copy = len < 64U ? len : 64U;
+            for (std::size_t i = 0U; i < copy; ++i) {
+                g_fake.vmsplice_data[g_fake.vmsplice_segments][i] = data[i];
+            }
+            g_fake.vmsplice_lens[g_fake.vmsplice_segments] = len;
+            ++g_fake.vmsplice_segments;
+        }
         switch (g_fake.vmsplice_answer) {
         case Answer::Full:
             g_fake.vmsplice_total += len;
@@ -188,6 +210,26 @@ namespace {
         return -EIO;
     }
 
+    /* The helper's block arrives here: the fake pipe holds pipe_left bytes, then end of file -- so
+     * a short helper is a short read, and the fetch must refuse it. */
+    long fake_read_pipe(int, std::uint8_t *out, std::size_t len) noexcept {
+        ++g_fake.pipe_calls;
+        if (g_fake.pipe_answer == Answer::Fail) {
+            return -EIO;
+        }
+        if (g_fake.pipe_answer == Answer::EintrOnce && g_fake.pipe_eintr_pending) {
+            g_fake.pipe_eintr_pending = false;
+            return -EINTR;
+        }
+        const std::size_t give = len < g_fake.pipe_left ? len : g_fake.pipe_left;
+        for (std::size_t i = 0U; i < give; ++i) {
+            out[i] = static_cast<std::uint8_t>(g_fake.pipe_byte + i);
+        }
+        g_fake.pipe_left -= give;
+        g_fake.pipe_total += give;
+        return static_cast<long>(give);
+    }
+
     long fake_read_at(int, std::uint8_t *out, std::size_t len, std::uint64_t offset) noexcept {
         if (g_fake.read_calls == 0U) {
             g_fake.read_first_offset = offset;
@@ -227,7 +269,7 @@ namespace {
 
     SpliceIoOps fake_io() noexcept {
         return SpliceIoOps{&fake_pipe2, &fake_splice, &fake_vmsplice,
-                           &fake_send_datagram, &fake_read_at, &fake_close_fd};
+                           &fake_send_datagram, &fake_read_at, &fake_read_pipe, &fake_close_fd};
     }
 
     /** The injected bridge's record. */
@@ -317,20 +359,71 @@ namespace {
         expect(g_fake.read_first_offset == 0x80U, "starting where it was asked to");
     }
 
-    void both_sources_are_exercised() {
-        const auto frame = make_frame();
-        std::uint8_t old_block[kBlockBytes] = {};
-
-        /* (a) no descriptor at all: the bridge reads the block and puts the page in the pipe. */
+    /** (a) One helper run supplies the block, and the datagram carries those same sixteen bytes:
+     *  the preimage and the ciphertext are one fetch -- nothing runs the helper a second time. */
+    void one_exec_yields_the_preimage_and_the_ciphertext() {
         reset_fake();
         Bridge bridge;
         RealSpliceIo io_bridge(fake_io(), -1, 0, OldPageSource{},
                                HelperWriteSource{&bridge, &bridge_splice16});
-        expect(io_bridge.splice_one(9, frame.data(), frame.size(), 0x40U), "the bridge path sends");
+        std::uint8_t old_block[kBlockBytes] = {};
+        expect(io_bridge.page_in_frame(), "with no descriptor the page travels in the frame");
+        expect(io_bridge.fetch_block(-1, old_block, 0x40U) == static_cast<long>(kBlockBytes),
+               "one helper run yields the block");
         expect(bridge.splice_calls == 1U && bridge.splice_offset == 0x40U,
-               "the helper was asked for the page at the offset");
-        expect(g_fake.span_calls == 0U, "no descriptor, no page splice");
-        expect(g_fake.datagram_calls == 1U, "and the datagram still went out");
+               "the helper was asked for the block at the write offset");
+        expect(bridge.splice_pipe_fd == g_fake.pipe_fds[1],
+               "with its standard output on the pipe this process reads");
+        expect(g_fake.pipe2_calls == 1U, "one pipe for that run");
+        expect(g_fake.pipe_calls == 1U && g_fake.pipe_total == kBlockBytes,
+               "and the whole block came back through it");
+        expect(g_fake.close_calls == 2U, "both ends are given back");
+        expect(old_block[0] == g_fake.pipe_byte, "the bytes are the helper's, not a constant");
+
+        auto frame = make_frame();
+        for (std::size_t i = 0U; i < kBlockBytes; ++i) {
+            frame[kHeaderBytes + kBlockBytes + i] = old_block[i];
+        }
+        expect(io_bridge.splice_one(9, frame.data(), frame.size(), 0x40U), "the datagram goes out");
+        expect(bridge.splice_calls == 1U, "without a second helper run");
+        expect(g_fake.span_calls == 0U, "and with no page splice from a descriptor");
+        expect(g_fake.vmsplice_calls == 3U, "header+vector, the page from the frame, and the check");
+        expect(g_fake.vmsplice_lens[1] == kBlockBytes, "the page segment is one block");
+        expect(bytes_equal(g_fake.vmsplice_data[1], old_block, kBlockBytes),
+               "and it is exactly the block the one fetch returned");
+        expect(g_fake.datagram_calls == 1U, "one datagram, of the whole frame");
+
+        /* (c) three faults, three refusals: no short read ever becomes a datagram. */
+        reset_fake();
+        g_fake.pipe_left = 8U;
+        Bridge slow_bridge;
+        RealSpliceIo io_short_pipe(fake_io(), -1, 0, OldPageSource{},
+                                   HelperWriteSource{&slow_bridge, &bridge_splice16});
+        expect(io_short_pipe.fetch_block(-1, old_block, 0x40U) == 8L,
+               "a short pipe read is a short fetch");
+
+        reset_fake();
+        Bridge short_bridge;
+        short_bridge.splice_result = 8L;
+        RealSpliceIo io_short_helper(fake_io(), -1, 0, OldPageSource{},
+                                     HelperWriteSource{&short_bridge, &bridge_splice16});
+        expect(io_short_helper.fetch_block(-1, old_block, 0x40U) == 8L,
+               "a helper that does not move the block is a short fetch");
+        expect(g_fake.pipe_calls == 0U, "and nothing is read from a helper that did not deliver");
+
+        reset_fake();
+        Bridge failed_bridge;
+        failed_bridge.splice_result = -1L;
+        RealSpliceIo io_failed_helper(fake_io(), -1, 0, OldPageSource{},
+                                      HelperWriteSource{&failed_bridge, &bridge_splice16});
+        expect(io_failed_helper.fetch_block(-1, old_block, 0x40U) == -1L,
+               "a helper that failed is a failed fetch");
+        expect(g_fake.pipe_calls == 0U, "with nothing read from its pipe either");
+    }
+
+    void both_sources_are_exercised() {
+        const auto frame = make_frame();
+        std::uint8_t old_block[kBlockBytes] = {};
 
         /* (b) the direct read fails: the bound source supplies the block. */
         reset_fake();
@@ -342,27 +435,19 @@ namespace {
         expect(reading.read_calls == 1U && reading.read_offset == 0x80U, "which was asked for the block");
         expect(g_fake.read_calls == 1U, "and the descriptor was tried first");
 
-        /* (c) a bridge that cannot deliver the full block sends no datagram. */
+        /* (b2) with a descriptor the fetch is the direct read; the page is spliced, not in the frame. */
         reset_fake();
-        Bridge short_bridge;
-        short_bridge.splice_result = 8L;
-        RealSpliceIo io_short(fake_io(), -1, 0, OldPageSource{},
-                              HelperWriteSource{&short_bridge, &bridge_splice16});
-        expect(!io_short.splice_one(9, frame.data(), frame.size(), 0x40U),
-               "a short bridge delivery fails the block closed");
-        expect(g_fake.datagram_calls == 0U, "and nothing is sent");
-        expect(g_fake.close_calls == 2U, "the pipe is still given back");
+        RealSpliceIo io_direct(fake_io(), 7);
+        expect(!io_direct.page_in_frame(), "with a descriptor the page is spliced, not in the frame");
+        expect(io_direct.fetch_block(7, old_block, 0x90U) == static_cast<long>(kBlockBytes),
+               "and the fetch is the direct read");
+        expect(g_fake.read_calls == 1U && g_fake.read_first_offset == 0x90U,
+               "at the offset it was asked for");
 
-        Bridge error_bridge;
-        error_bridge.splice_result = -5L;
-        RealSpliceIo io_error(fake_io(), -1, 0, OldPageSource{},
-                              HelperWriteSource{&error_bridge, &bridge_splice16});
-        expect(!io_error.splice_one(9, frame.data(), frame.size(), 0x40U),
-               "a failing bridge fails the block closed too");
-
-        /* (d) no descriptor and no bridge: refused before anything is opened. */
+        /* (d) no descriptor and no bridge: refused before anything is opened, and no fetch. */
         reset_fake();
         RealSpliceIo io_none(fake_io(), -1);
+        expect(io_none.fetch_block(-1, old_block, 0U) == -EBADF, "no source is no block");
         expect(!io_none.splice_one(9, frame.data(), frame.size(), 0x40U), "no page source, no datagram");
         expect(g_fake.pipe2_calls == 0U, "and nothing is opened for it");
     }
@@ -445,6 +530,8 @@ int main() {
     the_direct_descriptor_sends_one_datagram();
     std::printf("real splice io: short transfers and -EINTR\n");
     short_transfers_and_eintr_are_retried();
+    std::printf("real splice io: one exec for preimage and ciphertext\n");
+    one_exec_yields_the_preimage_and_the_ciphertext();
     std::printf("real splice io: the two block sources\n");
     both_sources_are_exercised();
     std::printf("real splice io: a failed page splice\n");

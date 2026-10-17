@@ -42,6 +42,9 @@ namespace {
          *  This is how a test makes one specific block fail its verify while every other lands. */
         static constexpr std::uint64_t kNoCorruption = ~std::uint64_t{0U};
         std::uint64_t corrupt_at = kNoCorruption;
+        /** 只让第一次读该偏移失真：造「一次失败、重发后比中」的块，用来验抽样后的强制全查。 */
+        std::uint64_t corrupt_once_at = kNoCorruption;
+        bool corrupt_once_used = false;
         /** Big enough for the offsets this test uses (0x1000+): the guard is the unit's business,
          *  not something the test should trip by accident. */
         static constexpr std::size_t kMemoryBytes = 1U << 20U;
@@ -63,6 +66,10 @@ namespace {
             if (at + size > kMemoryBytes) { return AccessResult<std::span<const std::byte>>::failed(Status::Unsupported); }
             for (std::size_t i = 0U; i < size; ++i) { scratch[i] = memory[at + i]; }
             if (corrupt || offset_of(parameters) == corrupt_at) { scratch[0] = static_cast<std::byte>(0x7FU); }
+            if (!corrupt_once_used && offset_of(parameters) == corrupt_once_at) {
+                corrupt_once_used = true;
+                scratch[0] = static_cast<std::byte>(0x7FU);
+            }
             return AccessResult<std::span<const std::byte>>::ok(
                     std::span<const std::byte>(&scratch[0], size));
         }
@@ -163,6 +170,94 @@ namespace {
                "each block sits at its own offset");
         expect(access.widths.size() == 3U && access.widths[2] == 16U, "every block is one width");
         expect(access.memory[0x1028] == std::byte{0}, "the short last block is zero-padded");
+    }
+
+    /** 抽样 (a)：首块、每 N 块、最后一块一定回读；其余块不回读 —— 读写次数就是证据。 */
+    void sampling_reads_the_first_stride_and_last_block() {
+        FakeAccess access{};
+        cve::AccessParams params{};
+        std::byte image[5U * 16U] = {};
+        for (std::size_t i = 0U; i < sizeof(image); ++i) { image[i] = static_cast<std::byte>(i + 1U); }
+        steps::WriteRequest request{};
+        request.access = &access;
+        request.params = &params;
+        request.image = std::span<const std::byte>(image, sizeof(image));
+        request.offset = 0x1000U;
+        request.width = 16U;
+        request.verify_every = 3U;
+        const char *refusal = nullptr;
+        expect(steps::write_image_verified(request, &refusal), "the image still goes in");
+        expect(access.offsets.size() == 5U, "every block is still written");
+        expect(access.read_offsets.size() == 3U, "three read-backs for five blocks at stride three");
+        expect(access.read_offsets.size() == 3U && access.read_offsets[0] == 0x1000U &&
+                       access.read_offsets[1] == 0x1030U && access.read_offsets[2] == 0x1040U,
+               "the first block, every third block, and the last block are read back");
+    }
+
+    /** 抽样 (b)：任何一次失败尝试之后，下一块无论步长都全查。 */
+    void a_failure_makes_the_next_block_read_back() {
+        FakeAccess access{};
+        cve::AccessParams params{};
+        std::byte image[40U * 16U] = {};
+        steps::WriteRequest request{};
+        request.access = &access;
+        request.params = &params;
+        request.image = std::span<const std::byte>(image, sizeof(image));
+        request.offset = 0x1000U;
+        request.width = 16U;
+        request.verify_every = 32U;
+        /* 预算给足，让首块能重发一次；第一次回读失真，第二次比中。 */
+        request.budget_ms = 100U;
+        access.corrupt_once_at = 0x1000U;
+        const char *refusal = nullptr;
+        expect(steps::write_image_verified(request, &refusal), "the image lands after one retry");
+        expect(access.offsets.size() == 41U, "the first block was sent twice, the rest once");
+        bool next_read = false;
+        for (const std::uint64_t at : access.read_offsets) {
+            if (at == 0x1010U) { next_read = true; }
+        }
+        expect(next_read, "the block after the failed attempt is read back whatever the stride");
+        expect(access.read_offsets.size() == 5U,
+               "first block twice, next block once, the two sampled blocks, and no more");
+    }
+
+    /** 抽样 (c)：被抽到的那一块不符仍然是整段失败（失败即整段失败，语义未变）。 */
+    void a_sampled_block_that_does_not_land_fails_the_segment() {
+        FakeAccess access{};
+        cve::AccessParams params{};
+        std::byte image[64U * 16U] = {};
+        steps::WriteRequest request{};
+        request.access = &access;
+        request.params = &params;
+        request.image = std::span<const std::byte>(image, sizeof(image));
+        request.offset = 0x1000U;
+        request.width = 16U;
+        request.verify_every = 32U;
+        request.budget_ms = 0U;
+        /* 第 32 块恰好在抽样点上（32 % 32 == 0）：它读到的不是写进去的字节。 */
+        access.corrupt_at = 0x1200U;
+        const char *refusal = nullptr;
+        expect(!steps::write_image_verified(request, &refusal),
+               "a sampled block that does not come back fails the whole segment");
+        expect(refusal != nullptr && std::strcmp(refusal, "step-verify-failed") == 0,
+               "and the refusal keeps its name");
+    }
+
+    /** 步长 0 = 不抽样：每块都回读（调用方的显式选择）。 */
+    void a_zero_stride_reads_every_block() {
+        FakeAccess access{};
+        cve::AccessParams params{};
+        std::byte image[3U * 16U] = {};
+        steps::WriteRequest request{};
+        request.access = &access;
+        request.params = &params;
+        request.image = std::span<const std::byte>(image, sizeof(image));
+        request.offset = 0x1000U;
+        request.width = 16U;
+        request.verify_every = 0U;
+        const char *refusal = nullptr;
+        expect(steps::write_image_verified(request, &refusal), "the image goes in");
+        expect(access.read_offsets.size() == 3U, "a zero stride reads back every block");
     }
 
     void the_hook_lands_and_verifies() {
@@ -518,6 +613,11 @@ int main() {
     names_map_both_ways();
     std::printf("pagecache steps: the shared block loop");
     an_image_is_written_block_by_block();
+    std::printf("pagecache steps: read-back sampling");
+    sampling_reads_the_first_stride_and_last_block();
+    a_failure_makes_the_next_block_read_back();
+    a_sampled_block_that_does_not_land_fails_the_segment();
+    a_zero_stride_reads_every_block();
     std::printf("pagecache steps: the hook lands");
     the_hook_lands_and_verifies();
     std::printf("pagecache steps: the hook writes the payload first");

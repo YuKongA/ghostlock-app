@@ -61,6 +61,13 @@ namespace ghostlock::backend::cve_2026_43284::steps {
          *  验证段据它做**有界重试**（0 = 不重试，与旧行为一致）。由调用方给 —— 等多久是上层的事。
          */
         std::uint64_t budget_ms = 0U;
+        /**
+         *  回读抽样步长：每 N 块回读一次；**首块、每 N 块、最后一块，以及任何失败尝试后的下一块**
+         *  一定回读。0 = 不抽样，每块都回读（旧行为）。由调用方给 —— 查多密是上层的事，
+         *  本层只照这个数执行，不自行决定策略。抽样只是少做几次回读；任何一次回读不符仍然是
+         *  整段失败（失败即整段失败，语义未变）。
+         */
+        std::uint64_t verify_every = 32U;
     };
 
     /** One hook request: where the site and the payload live (the plan), and the block math. */

@@ -30,6 +30,15 @@ namespace {
         }
     }
 
+    bool bytes_equal(const std::uint8_t *left, const std::uint8_t *right, std::size_t size) {
+        for (std::size_t i = 0U; i < size; ++i) {
+            if (left[i] != right[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     class FakeDoors final : public DoorOps {
     public:
         [[nodiscard]] int open_target() noexcept override { return 7; }
@@ -99,6 +108,62 @@ namespace {
         [[nodiscard]] bool can_read_page() const noexcept override { return can_read_page_flag; }
         bool can_serve = true;
         bool can_read_page_flag = true;
+    };
+
+    /** A surface with no descriptor at all: one fetch brings the block back, and the datagram's
+     *  ciphertext slot is those same bytes. The direct read is refused, so a second read through
+     *  the old path would show up here. */
+    class FetchingSplice final : public SpliceOps {
+      public:
+        long fetch_result = 16L;
+        int fetch_calls = 0;
+        std::uint64_t fetch_offset = 0U;
+        int read_calls = 0;
+        int iv_calls = 0;
+        int sent = 0;
+        std::uint8_t fetched[16] = {};
+        std::uint8_t vector_input[16] = {};
+        std::uint8_t sent_page[16] = {};
+
+        [[nodiscard]] long read_at(int, std::uint8_t *, std::size_t,
+                                   std::uint64_t) noexcept override {
+            ++read_calls;
+            return -1;
+        }
+        [[nodiscard]] long fetch_block(int, std::uint8_t *out,
+                                       std::uint64_t offset) noexcept override {
+            ++fetch_calls;
+            fetch_offset = offset;
+            if (fetch_result != static_cast<long>(16)) {
+                return fetch_result;
+            }
+            for (std::size_t i = 0U; i < 16U; ++i) {
+                out[i] = static_cast<std::uint8_t>(0x33U + i);
+                fetched[i] = out[i];
+            }
+            return static_cast<long>(16);
+        }
+        [[nodiscard]] bool page_in_frame() const noexcept override { return true; }
+        [[nodiscard]] bool splice_one(int, const std::uint8_t *datagram, std::size_t,
+                                      std::uint64_t) noexcept override {
+            ++sent;
+            for (std::size_t i = 0U; i < 16U; ++i) {
+                sent_page[i] = datagram[8U + 16U + i];
+            }
+            return true;
+        }
+        void compute_iv(const std::uint8_t *old_block, const std::uint8_t *,
+                        const std::uint8_t *, std::uint8_t *out) noexcept override {
+            ++iv_calls;
+            for (std::size_t i = 0U; i < 16U; ++i) {
+                vector_input[i] = old_block[i];
+                out[i] = 0x44U;
+            }
+        }
+        void compute_icv(const std::uint8_t *, std::size_t, const std::uint8_t *,
+                         std::uint8_t, std::uint8_t *) noexcept override {}
+        [[nodiscard]] bool can_serve_page() const noexcept override { return true; }
+        [[nodiscard]] bool can_read_page() const noexcept override { return true; }
     };
 
     SaMaterial frame() noexcept {
@@ -245,6 +310,41 @@ namespace {
         expect(write.read_outcome() == ReadOutcome::Read, "with the read's own verdict beside it");
     }
 
+    /** The speed path, pinned at the window: one fetch is at once the vector's preimage and the
+     *  sixteen bytes the datagram carries -- the carrier is not read a second time for the page. */
+    void one_fetch_supplies_the_preimage_and_the_ciphertext() {
+        FakeDoors doors;
+        FetchingSplice splice;
+        PageCacheWrite write(doors, splice);
+        static_cast<void>(write.open_doors(frame()));
+        std::uint8_t block[16] = {};
+        expect(write.write_block(0x40U, block), "the block goes out");
+        expect(splice.fetch_calls == 1 && splice.fetch_offset == 0x40U,
+               "one fetch, at the write offset");
+        expect(splice.read_calls == 0, "the window did not read the carrier a second time");
+        expect(splice.iv_calls == 1 && splice.vector_input[0] == 0x33U,
+               "the vector is derived from the fetched block");
+        expect(splice.sent == 1, "one datagram");
+        expect(bytes_equal(splice.sent_page, splice.fetched, 16U),
+               "and its ciphertext slot is exactly those same sixteen bytes");
+    }
+
+    /** A short or failed fetch sends nothing and derives no vector. */
+    void a_short_fetch_sends_nothing() {
+        FakeDoors doors;
+        FetchingSplice splice;
+        splice.fetch_result = 8L;
+        PageCacheWrite write(doors, splice);
+        static_cast<void>(write.open_doors(frame()));
+        std::uint8_t block[16] = {};
+        expect(!write.write_block(0x40U, block), "a short fetch fails the block closed");
+        expect(write.outcome() == WriteOutcome::NoOldBlock, "and the reason is named");
+        expect(splice.sent == 0 && splice.iv_calls == 0, "so nothing is sent and no vector derived");
+        splice.fetch_result = -5L;
+        expect(!write.write_block(0x40U, block), "a failing fetch fails the block closed too");
+        expect(splice.sent == 0, "and still nothing is sent");
+    }
+
     void a_failed_send_leaves_the_sequence_alone() {
         FakeDoors doors;
         RecordingSplice splice;
@@ -267,6 +367,10 @@ int main() {
     a_failed_read_means_no_datagram();
     std::printf("page cache write: a failed send\n");
     a_failed_send_leaves_the_sequence_alone();
+    std::printf("page cache write: one fetch, preimage and ciphertext\n");
+    one_fetch_supplies_the_preimage_and_the_ciphertext();
+    std::printf("page cache write: a short fetch\n");
+    a_short_fetch_sends_nothing();
     std::printf("page cache write: the read face\n");
     a_block_reads_back_through_the_same_surface();
     std::printf("page cache write: a surface with no page source\n");

