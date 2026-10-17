@@ -71,3 +71,14 @@ pagecache_steps.cpp::write_image_verified  （每块一次循环）
 
 ⇒ 待办（离线可改）：把 `await` 改成 ref 的**单循环 + 失败优先 + 主/备标记同轮判 + 模块存在成功**；
   单测覆盖：陈旧 success + 新 failure ⇒ 必须判失败；alt 在 14.9 s 出现 ⇒ 成功；模块存在但无标记 ⇒ 成功。
+
+## 附：hook guard 的对照（trace 第四项）
+
+| 项 | 参照 `5f184760` | 我们 |
+|---|---|---|
+| 策略 | `execution_binding.cpp:241` 生产路径用 `HookGuardPolicy::Skip`（`bti c` 下 Reject 挂不上钩） | `hookPlan(symbol, guardPolicy)` 的 `GUARD_POLICY_SKIP = 0`，日志打 `guard=Skip` |
+| 落点 | 策略在**规划/绑定阶段**决定 | 同样在**规划阶段**编码进 plan（`guard_instruction` 即当时的字） |
+| 写入时核对 | 按 plan 的 guard/displaced 两字落块 | `pagecache_steps.cpp:154` 先核 `word_at(within-4) == plan.guard_instruction` 再写；:264 写回时同源 |
+
+⇒ 结论：**机制不同、效果等价** —— 我们把 Skip 编码在 plan 里（不匹配就按计划值写），
+  参照实现把策略做成枚举在装配期分支；两侧都不会因为 guard 字不是 BTI 而拒绝写钩子。
