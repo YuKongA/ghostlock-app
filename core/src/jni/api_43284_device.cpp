@@ -603,6 +603,9 @@ namespace ghostlock::jni {
                         return 0U;
                     }
 
+                    /* 桥绑在哪个文件上：读与写都用它，这条路径就是写去哪儿的答案。 */
+                    GL_LOGI("surface: bridge bound helper=%s carrier=%s (len=%zu)",
+                            helper_path, carrier.c_str(), carrier.size());
                     surface->io = std::make_unique<backend::cve_2026_43284::landing::RealSpliceIo>(
                         backend::cve_2026_43284::landing::real_splice_io(), -1, 0,
                         bridge->old_page(), bridge->helper());
