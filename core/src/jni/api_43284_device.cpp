@@ -561,7 +561,12 @@ namespace ghostlock::jni {
         /** 建面时那扇门的**完整票据**：查表先按它精确匹配，避免多个面同槽值时的误配。 */
         std::uint64_t door_token = 0U;
     };
-    constexpr std::size_t kMaxSurfaces = 4U;
+    /*
+     * 面与门必须同容量：门是 8（kMaxDoors），面原为 4 ⇒ 第 5 扇门起建不出面 ⇒
+     * `landing_of_door miss token=0x7 want=6 surfaces=4` ⇒ 之后所有 access/write 都是 no-handle
+     * （真机 21:18 与 23:23 两次冷跑都卡在这里；同会话第二次因门号回落才偶然通过）。
+     */
+    constexpr std::size_t kMaxSurfaces = 8U;
     std::unique_ptr<Surface> g_surfaces[kMaxSurfaces];
     std::unique_ptr<backend::cve_2026_43284::landing::PageCacheLanding> g_landings[kMaxSurfaces];
 
