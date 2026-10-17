@@ -87,3 +87,14 @@ adb -s QV770MFGJ1 shell 'run-as com.ghostlock.app tail -20 files/ghostlock-run.l
 
 参照实现在**唯一边界**无条件恢复钩子（`ghostlock-app-ref@5f184760:chain.cpp:350-359`：It runs on every terminus path），
 并以 `hook_restored=1` 记录。我们已有 `steps::restore_hook`（幂等 + 单测）；接线（JNI + Kotlin try/finally）在 `18ca836e` 批次进行中。
+
+## 10. vermagic 写回的契约（与 ref 逐条对照）
+
+| 步骤 | 参照实现 `lkm_image.cpp:574-620` | 我们（Kotlin `retagVermagic`） | 等价 |
+|---|---|---|---|
+| 前置校验 | 校验 ELF 信封 + 解析 `.modinfo` | 直接搜首个 `vermagic=` | 近似（风险极低） |
+| 放不下时 | `VermagicSlotTooSmall`，**镜像字节不变** | 原样返回 + 记一行 | ✅ 同 |
+| 写入 | 写 `vermagic=` + 新串 + **槽内清零** | 同样 | ✅ 同 |
+| 事务性 | 一切可能失败的判断都在第一次写入之前 | 同样（先算容量再写） | ✅ 同 |
+
+结论：同一 minor 直接改名这一条**已对齐**；跨 minor 也不会破坏镜像（放不下就不改）。
