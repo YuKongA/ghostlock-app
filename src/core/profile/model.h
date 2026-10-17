@@ -238,7 +238,11 @@ namespace ghostlock::profile {
         GHOSTLOCK_EXEC_U32(heap_kernelsnitch_timeout_ms)
         GHOSTLOCK_EXEC_U32(race_route_wait_ms)
         [[nodiscard]] uint32_t race_route_done_timeout_ms() const noexcept {
-            constexpr uint32_t kDefaultRouteDoneTimeoutMs = 300000;
+            /* v8: 60s. A healthy compact route finishes 4 select attempts in
+             * ~1s; the previous 300s default cost five dead minutes per hung
+             * attempt and the beat dump needs at most 30 beats to name the
+             * stuck worker. The device conf may still raise it explicitly. */
+            constexpr uint32_t kDefaultRouteDoneTimeoutMs = 60000;
             return or_default(values_.execution.race_route_done_timeout_ms,
                               kDefaultRouteDoneTimeoutMs);
         }
@@ -266,8 +270,29 @@ namespace ghostlock::profile {
         GHOSTLOCK_EXEC_U32(handoff_enforce_poll_interval_ms)
 #undef GHOSTLOCK_EXEC_U32
 
+        [[nodiscard]] uint8_t effective_compact_waiter() const noexcept {
+            if (values_.misc.compact_waiter.has_value()) {
+                return *values_.misc.compact_waiter;
+            }
+            /* 5.10 select_stack: the Kotlin legacy converter unconditionally
+             * strips the top-level compact_waiter key on import, so the wire
+             * may omit it. Infer the 5.10 legacy layout (2) for 5.x
+             * select_stack profiles when the key is absent; explicit values
+             * (5.15 multicast's 1, 6.x forms) always win. */
+            if (values_.meta.kernel_major == 5 && values_.route == kRouteSelectStack) {
+                return 2;
+            }
+            return 0;
+        }
+
         [[nodiscard]] bool has_compact_waiter() const noexcept {
-            return loaded_ && values_.misc.compact_waiter.value_or(0) != 0;
+            return loaded_ && effective_compact_waiter() != 0;
+        }
+
+        /* GKI 5.x exports a shim copy of selinux_state for the core kernel;
+         * stages that must clear both instances gate on this. */
+        [[nodiscard]] uint8_t kernel_major() const noexcept {
+            return values_.meta.kernel_major;
         }
 
         [[nodiscard]] bool safe_mode() const noexcept {
@@ -289,7 +314,7 @@ namespace ghostlock::profile {
             return loaded_
                        ? (SelectStackLayout){
                            .waiter_shift = values_.geometry.pselect_waiter_shift,
-                           .compact_waiter = values_.misc.compact_waiter,
+                           .compact_waiter = effective_compact_waiter(),
                        }
                        : SelectStackLayout{};
         }

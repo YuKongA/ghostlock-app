@@ -24,7 +24,7 @@ namespace ghostlock::kernel {
     inline constexpr int32_t SKB_FRAG_BIAS = 0;
 
     inline constexpr int32_t FAKE_TASK_PRIO = 120;
-    inline constexpr int32_t FAKE_WAITER_PRIO = 140;
+    inline constexpr int32_t FAKE_WAITER_PRIO = 130;
     inline constexpr unsigned FAKE_TASK_UCLAMP_REQ_OFF = 0x350;
     inline constexpr unsigned FAKE_TASK_UCLAMP_OFF = 0x358;
     inline constexpr unsigned FAKE_UCLAMP_ACTIVE_BIT = 16;

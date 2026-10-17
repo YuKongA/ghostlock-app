@@ -15,6 +15,7 @@
 #include "profile/entry.h"
 #include "support/fatal_error.hpp"
 #include "support/run_state.hpp"
+#include "support/osync_log.hpp"
 #include "route/orchestrator.hpp"
 
 #include <array>
@@ -27,6 +28,13 @@ using namespace ghostlock;
 
 int main(int argc, char **argv) {
     try {
+        /* v11.8: the app redirects stdout into ghostlock-direct-*.log.txt, so
+         * stdio switches to full block buffering and every panic eats the last
+         * ~8KB of log — both 2026-10-03 afternoon runs died with a truncated
+         * final line, hiding whether the race started. Force line-unbuffered
+         * so the on-device log is panic-accurate. */
+        ::setvbuf(stdout, nullptr, _IONBF, 0);
+        ::setvbuf(stderr, nullptr, _IONBF, 0);
         profile::kernel_offsets decoded = {};
         std::array<char, 256> release_buf{};
         binary_profile::component_ids ids{
@@ -66,6 +74,12 @@ int main(int argc, char **argv) {
             return 1;
         }
         support::run_state::configure(status_record);
+
+        /* v11.8f: O_SYNC tee lives in the run's debug-export dir when the app
+         * passed --dump-kernel-log — same folder as profile.conf, directly
+         * pullable over adb even after a panic. Falls back to app-private
+         * dirs when the dump dir is absent (CLI/manual runs). */
+        support::osync_log_init(dump_dir);
 
         int32_t loaded;
         if (prebuilt_path != nullptr) {

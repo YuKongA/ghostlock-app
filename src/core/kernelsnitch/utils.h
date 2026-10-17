@@ -34,6 +34,7 @@
 
 #ifdef ANDROID_APP_NO_LKM
 #include <android/log.h>
+#include "support/osync_log.hpp"
 #endif
 
 // #define DEBUG
@@ -100,18 +101,20 @@
 #endif
 #else
 #ifdef ANDROID_APP_NO_LKM
+/* v11.8b: route every line through support::pr_emit_logcat — logcat for live
+ * debugging plus the native-owned O_SYNC tee file that survives panics. */
 #define pr_error(fmt, ...) do { \
-        __android_log_print(ANDROID_LOG_ERROR, "google_poc_app", "[!] " fmt, ##__VA_ARGS__); \
+        ghostlock::support::pr_emit_logcat(ANDROID_LOG_ERROR, "[!] " fmt, ##__VA_ARGS__); \
         exit(-1); \
     } while (0)
 #define pr_warning(fmt, ...) do { \
-        __android_log_print(ANDROID_LOG_WARN, "google_poc_app", "[-] " fmt, ##__VA_ARGS__); \
+        ghostlock::support::pr_emit_logcat(ANDROID_LOG_WARN, "[-] " fmt, ##__VA_ARGS__); \
     } while (0)
 #define pr_info(fmt, ...) do { \
-        __android_log_print(ANDROID_LOG_INFO, "google_poc_app", "[*] " fmt, ##__VA_ARGS__); \
+        ghostlock::support::pr_emit_logcat(ANDROID_LOG_INFO, "[*] " fmt, ##__VA_ARGS__); \
     } while (0)
 #define pr_success(fmt, ...) do { \
-        __android_log_print(ANDROID_LOG_INFO, "google_poc_app", "[+] " fmt, ##__VA_ARGS__); \
+        ghostlock::support::pr_emit_logcat(ANDROID_LOG_INFO, "[+] " fmt, ##__VA_ARGS__); \
     } while (0)
 #else
 #define pr_error(fmt, ...) do { \

