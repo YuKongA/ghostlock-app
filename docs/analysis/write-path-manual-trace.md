@@ -47,3 +47,14 @@ pagecache_steps.cpp::write_image_verified  （每块一次循环）
 写路径每块最少 **2 次 fork**（旧块 + splice 页），这是 vendor 载体的固有成本；
 要把 1470 块压到 5 s 量级，只有两条路：**可直读载体**（fork→pread）或**常驻桥**（fork→IPC），
 两者都写在 `persistent-helper-bridge-design.md` 里。抽样只影响回读，不改变这两条路径的选择。
+
+## 附：trigger 点火者的对照（同日 trace 第二项）
+
+| 项 | 参照 `5f184760` | 我们 |
+|---|---|---|
+| 形态 | `real_ops.cpp:359` 双 fork；`:372-373` 孙进程 `usleep(delay)` 后**可选** `execl(exec_path, …)` | `TriggerSpec43284.detonate` 双 fork，孙进程睡 `delayMs` 后按 `igniterPath` 执行 |
+| 点火者 | **参数** `ctx->exec_path`（生产由 `execution_binding.cpp:170` 给 500 ms） | **参数** `igniterPath`，默认 `/apex/com.android.runtime/bin/crash_dump32` + args `1 1 11 1` |
+| 延迟 | 参数（生产 500） | `DEFAULT_DELAY_MS = 500` |
+| 重试 | 无（一次点火） | `DEFAULT_RETRIES = 1`（失败重试一次） |
+
+⇒ 结论：trigger 的结构与默认值**一致**；我们对点火失败多一次重试，属于更保守的差异（不改变成功路径）。
