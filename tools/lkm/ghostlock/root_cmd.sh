@@ -82,6 +82,11 @@ for i in $(seq 1 50); do
     echo '[*] ksud services (detached)' >>"$LOG"
     ( setsid "$KSUD" services >>"$LOG" 2>&1 & ) 2>/dev/null || { "$KSUD" services >>"$LOG" 2>&1 & }
     sleep 1
+    # The event set the manager expects on a booted device: post-fs-data, services, boot-completed.
+    # All three exist in ksud's cli (checked on the device: `libksud.so --help` lists them).
+    echo '[*] ksud boot-completed' >>"$LOG"
+    "$KSUD" boot-completed >>"$LOG" 2>&1
+    echo "[*] boot-completed exit=$?" >>"$LOG"
     echo "[*] ksud version=$("$KSUD" --version 2>/dev/null)" >>"$LOG"
     if [ -d /data/adb/ksu ]; then
       echo '[*] ksu dir=present' >>"$LOG"
