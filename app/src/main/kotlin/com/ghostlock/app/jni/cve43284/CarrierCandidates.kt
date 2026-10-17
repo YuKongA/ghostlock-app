@@ -125,6 +125,9 @@ object CarrierCandidates {
      */
     fun isReadableAt(path: String): Boolean = File(path).canRead()
 
+    /** 存在性判据：与 ref 的 file_fact 探测同义（探测被拒 ⇒ false ⇒ 退回第一项）。 */
+    fun existsAt(path: String): Boolean = File(path).exists()
+
     /**
      *  选择载体：当前实现恒取第一项（行为不变），只把 `readable` 标出来。
      *
@@ -132,11 +135,27 @@ object CarrierCandidates {
      *  @param readable           直读判据（单测注入用；生产用 [isReadableAt]）。
      *  @return 选择结论；[CarrierChoice.index] 恒为 0。
      */
+    /**
+     * 选一个候选载体：**设备上第一个存在的**那个，全都不存在就退回第一项。
+     *
+     * 依据 ghostlock-app-ref@5f184760:backend/cve_2026_43284/backend_terminal.cpp:138-163：
+     * 逐个 kDefaultCarriers 探测，命中即用；探测被拒时退回第一项，因为链在载体不可用时会 fail-closed。
+     *
+     * @param profileCarrierPath profile 指定的载体（优先）
+     * @param readable 可读性判据（写进日志，不参与选择）
+     * @param exists 存在性判据（选择用；默认真实文件系统）
+     */
     fun select(
         profileCarrierPath: String? = null,
         readable: (String) -> Boolean = ::isReadableAt,
+        exists: (String) -> Boolean = ::existsAt,
     ): CarrierChoice {
         val all = ordered(profileCarrierPath)
+        for ((index, candidate) in all.withIndex()) {
+            if (exists(candidate.path)) {
+                return CarrierChoice(index = index, total = all.size, candidate = candidate, readable = readable(candidate.path))
+            }
+        }
         val first = all[0]
         return CarrierChoice(index = 0, total = all.size, candidate = first, readable = readable(first.path))
     }
