@@ -34,21 +34,25 @@
 ## §二 “高可能性”逐条展开
 
 ### H1（#1）站点块先于载荷落地
+
 - 为什么可能 panic：`write_hook` 先把 libc++ 的站点字写成 `B payload_vaddr+0x90`（A `steps/pagecache_steps.cpp:155-164`），**之后**才写载荷（`:178-194`）。libc++.so 的页是 init 早已映射的同一物理页，页缓存一改，init 的下一次 `sentryC1` 调用**立刻**走分支：目标区如果还没有我们的字节（本次运行载荷尚未写成、或载荷写失败/被丢弃），init 在线程 1 上执行零字节/旧数据 → SIGILL/SIGSEGV；init 是 critical 进程，其死亡在 Android 上直接触发内核 panic/重启。B/C 的顺序都是从载荷到站点（B `steps/hook_patch.cpp:176-189`；C `exp.c:716-740`），正是为了不出现这个窗口。
 - 触发条件：站点 pristine（guard/displaced 对得上）→ 写站点成功 → 在载荷 30 个块写完前，init 主线程打任意一条日志（或任何走到 `sentryC1` 的路径）。写载荷一块要一次 ESP 往返，窗口是几十毫秒级，不是纳秒级。
 - 最小修复方向：顺序固定为“载荷全部写并逐块确认 → 再写站点块 → 立刻回读确认”；站点未确认前不得让分支生效；把“站点是否已改”做成显式状态，失败路径必须回写。
 
 ### H2（#2 + #5）钩子从不恢复，且 UMH 脚本把 mutex 删掉 → 可重入
+
 - 为什么可能 panic：`/dev/df` 是载荷自己用 `O_CREAT|O_EXCL` 建的**一次性** mutex（C `libcxx.S:56-66`）；文件在 ⇒ 载荷直接 `return`（`:65-66`）。A 的脚本在 late-load 前后各删一次（`root_cmd.sh:69-72`、`:105`），等于**重新武装**仍留在 libc++ 里的分支（A 没有 restore，见 #2）。此后 init 每次在主线程打日志都会：建 /dev/df → clone → 写 `u:r:vendor_modprobe:s0` → `execve /vendor/bin/insmod <carrier>`（`libcxx.S:104-126`）。而 insmod 起来的正是 `ghostlock.ko`，它的 init 又会 UMH 跑同一个脚本、脚本又删 /dev/df（`ghostlock.c:139-166` + `root_cmd.sh:105`）——形成“加载→脚本→删 mutex→下一次 init 日志再加载”的自持环，每一轮还切换 SELinux permissive/enforcing 并 fork 一批 `ksud` 进程。B/C 都没有这个闭环（B 的脚本不删；C 的 App 只 stat）。
 - 触发条件：钩子已装（#1 成功）且模块至少成功加载过一次；此后任何 init 主线程日志。
 - 最小修复方向：脚本不碰 /dev/df；成功路径保留 mutex 作为“已点火”的持久证据；若确需二次点火，必须先在受控路径 restore 钩子，再显式删 mutex，再重新 apply。
 
 ### H3（#3）验证失败就重发 + 无回滚
+
 - 为什么可能 panic：`write_image_verified` 在回读不匹配时**再次调用 write**（`steps/pagecache_steps.cpp:303-311`），200 ms 预算、2 ms 间隔（`K:495`、`steps:369`）意味着单块最多约百次 16 B 覆盖写；而 A 自己记录过“读视图与内存视图相差 8 字节”（`K:146-150`）——一旦坐标真是偏的，这百次写就是把 libc++ 代码页上**相邻指令**反复改坏，init 取指即崩。B 只读一次、失败即 journal 回滚（`steps/chain.cpp:252-266`、`:136-153`）；C 根本不回读（`exp.c:345-376`），因此也不会把一次意图放大成百次写。
 - 触发条件：任一原因导致回读不匹配（ICV 被丢、页未落、坐标偏移、序号被防重放丢弃）。
 - 最小修复方向：先“只读确认”，确认目标块**未被改动**才允许重发；重试上限 1–2 次；失败即用写前保存的原块回写（至少对钩子站点与载荷首块），并在 refusal 里保留“已写块数”。
 
 ### H4（#4）vma→file 换算被硬编码，且两处各算一次
+
 - 为什么可能 panic：A 的 plan 是常量（`hook/sentry_hook.cpp:82-92`），Kotlin 又独立假定 `vaddr = file + 0x4000`（`K:236-238`）。站点两字（`bti c` / `ldr x8,[x1]`）能对上**并不证明** delta 是 0x4000：分支目标是按 vaddr 算的（`sentry_hook.cpp:109-127`），delta 一旦不同，分支会落到 landing 之外的页内数据/空白，init 执行即崩。B 的 `payload_file` 与 `payload_vaddr` 从同一 `exec_segment` 导出（`steps/elf_hook.cpp:412-414`），不存在第二个假设；C 由 `find_hook_target` 现场算（`exp.c:681-682`）。
 - 触发条件：设备上的 libc++.so 与常量来源不是同一份（OTA、不同 build、或 payload 落点不是 exec LOAD 的 file end）。
 - 最小修复方向：vaddr↔file 只保留**一处**推导（从 program headers），branch 与 jump-back 都用这一份；plan 只作为“期望值”，与推导值不一致即拒绝，而不是直接写。
@@ -73,6 +77,7 @@
 - **panic 最可能来自 #1（站点先于载荷）+ #2（无 restore）**，两者叠加后被 #5（脚本删 `/dev/df`）变成可重复触发：先是一次“分支指向未写区”的 init 执行，后是一轮轮“init 日志 → insmod → UMH 脚本 → 删 mutex”的自持环。B 用“载荷先写 + 永不删 mutex + 终点无条件 restore”三件事同时堵住了这三条；A 三件都没有。
 - 次要但独立的高风险是 #3（验证失败重发且无回滚）与 #4（vaddr 假设）；它们不需要 init 配合，只要页写不中就会把代码页反复改坏。
 - **下一步先在离线验证**（不碰设备、不跑 gradle）：
+
   1. 用 ELF 推导（B 的 `steps/elf_hook.cpp` 同一套公式）在 host 上核对：`0xFE628` 是否等于 exec LOAD 的 `file_offset+size`、delta 是否真为 `0x4000`、room 是否 ≥ 480、站点前 4 字节是否 `0xD503245F`、站点是否 `0xF9400028`。
   2. 用 host 单测 + 假 surface 记录写序列，断言 `write_hook` 的写序应为“载荷块…→站点块”，并断言任一失败路径都会回写站点；当前实现会在这条断言上失败。
   3. 用 host 的帧/HMAC 向量对拍 A/B/C 的 40 字节 MAC 输入（A 与 B 已逐字相同，可作为回归基线）。
