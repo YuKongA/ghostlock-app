@@ -1,141 +1,155 @@
-# host 攻击数据流测试 计划（2026-10-01）
+[English](host-attack-dataflow-plan.md) | [简体中文](host-attack-dataflow-plan_ZH.md)
 
-## 现状与基线
+# Host attack dataflow tests (2026-10-01)
 
-- 攻击数据流入口是 `runtime::Pipeline<F,B,M>::run`（`route/pipeline.hpp`）：先
-  `Backend::run<M>`（`cve_2026_43499_backend.cpp` 的 W1→W2/W3 chain），再把
-  `VictimChain` 交给 `Frontend::run`（`root_child_frontend.cpp` 的 handoff）。
-- 这些步骤直接调用副作用原语（真攻击 / 真内核 / 真子进程）：
-  `attack::*`、`support::prepare_good_kernel_page`、`route::middleware::run_middleware_route`
-  （真 PI race）、`victim::spawn_victim`（fork）、`victim::verify_*`、
-  `handoff_probe_run`、`config::runtime_config_snapshot()`。
-- host 侧目前只有 `backend_contract_test`（只验证 concept）与
-  `component_catalog_test`，**没有任何测试执行 `run<M>`**。
-- 约束（AGENTS.md）：攻击路径改动必须 `cmp_disasm` 8 函数；只有
-  `g_exploit_session` 一个可变全局；`ExploitSession` 字段布局固定；PI 窗口不得引入
-  间接分派。
+## Status and baseline
 
-## 目标与约束
+- Historical pre-change baseline: `81b25c01`. Implementation: `15f34caf`.
+- The attack dataflow starts at `runtime::Pipeline<F,B,M>::run` in `route/pipeline.hpp`.
+  It first runs `Backend::run<M>`, the W1→W2/W3 chain in `cve_2026_43499_backend.cpp`,
+  then passes `VictimChain` to `Frontend::run`, the handoff in `root_child_frontend.cpp`.
+- These steps directly call operations with side effects: `attack::*`,
+  `support::prepare_good_kernel_page`, `route::middleware::run_middleware_route`
+  for the real PI race, `victim::spawn_victim` for fork, `victim::verify_*`,
+  `handoff_probe_run`, and `config::runtime_config_snapshot()`.
+- Before implementation, the host only had `backend_contract_test`, which checks
+  the concept, and `component_catalog_test`. No test executed `run<M>`.
+- Constraints: changes to the attack path require `cmp_disasm` for 8 functions.
+  `g_exploit_session` is the only mutable global. The `ExploitSession` field
+  layout is fixed. No indirect dispatch may be added within the PI window.
 
-目标：在 host 上把整个攻击**数据流/控制流**跑通并可断言——W1→W2/W3 chain→handoff
-一直到 `RunResult::Completed`——同时把真实攻击原语换成 nop、`verify*` 与 route 结果可脚本化。
+## Problem
 
-非目标：
-- 不改 Android 攻击路径的任何源码（`attack/`、`route/`、`session/` 的生产 TU 不动），
-  因此 Android 二进制不变、`cmp_disasm` 天然 IDENTICAL；
-- 不新增生产可变全局、不改 `ExploitSession` 字段布局；
-- 不在 host 上做任何真实内核写入、fork 真实受害进程或装载 KernelSU。
+The full attack dataflow cannot run on the host, so tests cannot assert stage
+order, retries, W3 chain rounds, or the park and handoff branches.
 
-## 设计：链接期 stub（不改攻击路径源码）
+## Goals and constraints
 
-host 测试直接编译**未修改**的 `cve_2026_43499_backend.cpp` 与
-`root_child_frontend.cpp`，然后**用 host stub 替换**它们依赖的副作用 TU（ODR 替换）。
-生产源码里调用什么符号，stub 就提供同名同签名的实现；Android 构建完全不链接这些 stub。
+Goal: run W1→W2/W3 chain→handoff to `RunResult::Completed` on the host, while
+replacing real attack operations with nops and scripting `verify*` and route results.
+
+Non-goals:
+
+- Do not change Android attack path source. Production TUs in `attack/`, `route/`,
+  and `session/` stay unchanged, so the Android binary stays unchanged and
+  `cmp_disasm` is IDENTICAL by construction.
+- Do not add mutable globals to production or change the `ExploitSession` field layout.
+- Do not perform real kernel writes, fork real victim processes, or load KernelSU
+  on the host.
+
+## Design: link-time stubs
+
+Host tests compile the unchanged `cve_2026_43499_backend.cpp` and
+`root_child_frontend.cpp` directly. Host stubs replace the TUs that provide their
+side effects through ODR replacement. The stubs use the same symbol names and
+signatures. Android builds do not link these stubs.
 
 ```mermaid
 flowchart LR
-    subgraph prod [生产源码（host 也编译，不改）]
+    subgraph prod [Production source, also compiled unchanged on the host]
         P[Pipeline::run]
         B[cve_2026_43499_backend.cpp]
         F[root_child_frontend.cpp]
     end
-    subgraph stubs [host stub TU（仅测试链接）]
+    subgraph stubs [Host stub TUs, linked only in tests]
         A[attack_stub]
         S[support_stub]
         R[route_stub]
         V[victim_stub]
         H[handoff_stub]
-        C[config_stub]
+        G[glue_stub]
     end
     SC[(HostAttackScript)]
-    B --> A & S & R & V & H & C
-    F --> A & V & H & C
+    B --> A & S & R & V & H
+    F --> A & V & H
     P --> B & F
-    SC <--> A & R & V & H & C
+    SC <--> A & R & V & H
 ```
 
-**脚本 API（`tests/host/host_attack_script.hpp`，host-only）**
-- `verify_w2 / verify_selinux / verify_seccomp / verify_leaf`：`std::deque<int32_t>`，每次
-  `verify_*` 弹出下一个结果（空队列时取 `default`）。
-- `attack_write_status`：`std::deque<Status>`，控制每次 `run_middleware_route` 的返回
-  （默认 `ROUTE_OK`）。
-- `spawn`：`std::deque<{pid, task}>`，控制每次 `spawn_victim`。
-- `handoff_ready`：bool，控制 `handoff_probe_run().ready()`。
-- 记录器：`std::vector<std::string>` 调用序列，供断言数据流顺序/次数。
+### Script API in `src/core/tests/host/host_attack_script.hpp`
 
-脚本对象是 stub TU 内部的一个 host-only singleton（只存在于测试二进制，不进生产）。
-它不属于生产可变全局，故不违反 AGENTS 的全局约束。
+- `verify_selinux` / `verify_w2` / `verify_seccomp` / `verify_leaf`:
+  `std::deque<int32_t>`. Each call pops the front value. An empty queue uses
+  the corresponding `*_default`.
+- `route_results`: `std::deque<Status>`. Each `run_middleware_route` call pops
+  one result, defaulting to `true`.
+- `spawns`: `std::deque<{pid, task}>`. Each `spawn_victim` call pops one entry.
+- `handoff_ready`: controls `handoff_probe_run().ready()`.
+- `calls`: `std::vector<std::string>`. Records call order for assertions.
+- `selinux_off_initial` / `enforce_readable_value` / `process_has_seccomp_value`
+  and `page_base`: fixed probe values and a fake page base address.
 
-**stub 清单**（按符号）
+The script object is a host-only singleton inside the stub TUs. It exists only
+in the test binary, never in production, so it is not a production mutable global.
 
-| stub TU | 提供的符号（生产调用点） | host 行为 |
+### Stub inventory
+
+| Stub TU | Symbols provided | Host behavior |
 |---|---|---|
-| `attack_stub.cpp` | `in_direct_map` / `slab_drain` / `timer_*` / `install_profile` / `write_root_script` / `apply_iomem_cache` / `perf_find_task` | `in_direct_map`→true；其余 nop/固定值 |
-| | `check_selinux_off` / `enforce_readable` / `process_has_seccomp` | 脚本化（selinux 用 `verify_selinux` 队列决定首次返回值） |
-| `support_stub.cpp` | `prepare_good_kernel_page` / `discard_prebuilt_page` / `quarantine_reclaim_sockets` / `release_quarantined_reclaim_sockets` / `disable_rseq_for_thread` / `log_startup_context` / `init_p0_profile` | 假页指针 / 恒 true / nop |
-| | `kernel::set_unbuffer/set_limit/pin_to_core` | nop |
-| `route_stub.cpp` | `middleware::run_middleware_route` / `reserve_standard_io` / `do_*_fake_lock_route` | 返回脚本化 `RouteStatus`；nop |
-| `victim_stub.cpp` | `victim::spawn_victim` / `verify_selinux_stage` / `verify_w2_stage` / `verify_seccomp_probe_stage` / `verify_leaf_dir_stage` | 假 {pid,task}；从脚本队列返回 |
-| `handoff_stub.cpp` | `handoff_probe_run` / `kernelsu_module_visible` / `ksu_root_owned` / `scan_ksu_log` | `ready()` 按脚本；`ksu_root_owned`→false |
-| `config_stub.cpp` | `config::runtime_config_snapshot()` | 返回默认 `RuntimeConfig`（不读环境） |
+| `attack_stub.cpp` | `in_direct_map`, `check_selinux_off`, `enforce_readable`, `process_has_seccomp`, `log_execution_settings`, `resolve_profile_addresses`, `install_profile`, `apply_iomem_cache`, `slab_drain`, `write_root_script`, `perf_find_task`, `timer_reset`, `timer_mark` | `in_direct_map` returns true, probes use script values, and the rest are nops |
+| `support_stub.cpp` | `log_sync`, `log_startup_context`, `init_p0_profile`, `disable_rseq_for_thread`, `prepare_good_kernel_page`, `discard_prebuilt_page`, `quarantine_reclaim_sockets`, `release_quarantined_reclaim_sockets` | Fake page base address, constant true, and nops |
+| `route_stub.cpp` | `middleware::run_middleware_route`, `reserve_standard_io`, `do_pselect_fake_lock_route`, `do_tcp_fake_lock_route`, `do_kernel5_fake_lock_route` | The route returns a scripted `Status`, and the rest are nops |
+| `victim_stub.cpp` | `victim::spawn_victim`, `verify_selinux_stage`, `verify_w2_stage`, `verify_seccomp_probe_stage`, `verify_leaf_dir_stage` | Fake pid/task values. Verification uses script queues |
+| `handoff_stub.cpp` | `handoff_probe_run`, `kernelsu_module_visible`, `ksu_root_owned`, `scan_ksu_log` | `ready()` follows the script. The rest return false |
+| `glue_stub.cpp` | `sched_setaffinity` / `sched_getaffinity` / `sched_getcpu` on macOS | Empty implementations so inline `pin_to_core` can link |
 
-实链接（host 安全、无副作用）：`profile/model.h` 的 `TargetProfile`（测试用默认构造）、
-`support/native_resource.cpp`（fd RAII）、`support/run_state.cpp`（纯状态）。
-`victim_context.cpp` 若其方法在 host 只是 pid/fd 记账则实链接，否则一并 stub。
+The real TUs that are safe to link on the host are listed in
+`HOST_ATTACK_DATAFLOW_SOURCES` in `src/Makefile`:
+`runtime_config.cpp`, `exploit_session.cpp`, `address_space.cpp`, `pi_race.cpp`,
+`native_resource.cpp`, `run_state.cpp`, and `heap_context.cpp`.
 
-## 数据流/控制流差异
+## Dataflow differences
 
-生产：`run<M>` 的每个 `verify`/`attack_write` 都触发真内核操作。
-host：同一源码序列不变，只是这些调用落到 stub，返回脚本值；`run_state` 的
-`enter/complete`、重试计数、W3 chain round、park、handoff 分支**全部真实执行**，
-因此可断言数据流。
+In production, each `verify`/`attack_write` in `run<M>` triggers a real kernel
+operation. On the host, the same source sequence calls stubs that return script
+values. The `run_state` `enter/complete` transitions, retry counts, W3 chain
+rounds, park branches, and handoff branches all execute their real logic.
 
-不变量：
-- 生产源码零改动 → Android 构建与攻击函数字节不变；
-- `run<M>` 的语句顺序、日志文本、重试/回退逻辑不变；
-- stub 只在测试链接集里出现。
+Invariants:
 
-## 所有权与生命周期追踪
+- Production source is unchanged. The Android build and attack function bytes
+  stay unchanged.
+- Statement order, log text, retry logic, and fallback logic in `run<M>`
+  stay unchanged.
+- Stubs appear only in the test link set.
 
-- `ExploitSession`：测试栈上构造；`victim`/`heap`/`race`/`parked_*` 字段生命周期由
-  session 本身给出（同 `exploit_session.hpp` 契约）。host 下 `race` 不启动真实线程、
-  `victim` 不含真实 fd（stub 不写 fd）。
-- `spawn_victim` stub：只返回值对象，不创建 fd/子进程 → 无需要回收的 OS 资源。
-- `VictimChain`：栈上、单线程、backend 写 frontend 读，沿用现有契约。
-- 假页指针（`prepare_good_kernel_page`）：不映射、不解引用，仅在 `attack_write` 里被
-  `session.heap.current.base` 接住；route stub 不读它。
-- 终结点：测试函数返回即全部结束，无悬空指针；stub singleton 为测试进程寿命。
-- UAF：无新增堆分配与所有权转移，不引入 use-after-free。
+## Ownership and lifetime
 
-## 兼容性与回滚
+- `ExploitSession`: constructed on the test stack. The session determines the
+  lifetimes of `victim`/`heap`/`race`/`parked_*`, following the
+  `exploit_session.hpp` contract. On the host, `race` starts no real threads
+  and `victim` contains no real fds.
+- `spawn_victim` stub: returns only value objects. It creates no fds or child
+  processes, so there are no OS resources to reclaim.
+- `VictimChain`: on the stack, used by a single thread. The backend writes it
+  and the frontend reads it.
+- Fake page pointer from `prepare_good_kernel_page`: never mapped or
+  dereferenced. Only `session.heap.current.base` stores it, and the route
+  stub does not read it.
+- Endpoints: all test-local lifetimes end when the test function returns, with
+  no dangling pointers. The stub singleton lives until the test process exits.
+- UAF: no new heap allocations or ownership transfers.
 
-- 纯测试侧新增文件 + `src/Makefile` 目标；生产 `OBJS` 不变。
-- 回滚：删除 `tests/host/**` 与 Makefile 目标即可。
-- 需要一次 `make -C src native-host-tests` 确认既有 host 测试不受影响；Android 构建
-  与 `cmp_disasm` 无需重跑（未触碰生产源码），但会跑一次 `make -C src ghostlock` 确认零告警。
+## Compatibility and rollback
 
-## 验证矩阵
+The change only adds test files and a `src/Makefile` target. Production
+`OBJS` stays unchanged. Roll back by removing `src/core/tests/host/**`
+and the Makefile target.
 
-| 批次 | 命令 | 预期 |
-|---|---|---|
-| 数据流 | `make -C src host-attack-dataflow-test`（新目标） | W1→W2→W3→handoff 依脚本顺序执行，`RunResult::Completed` |
-| 重试 | 同上（脚本 `verify_w2 = [0,0,1]`） | W2 恰好 3 次尝试后 `Rooted` |
-| 回退/失败 | 脚本队列耗尽为默认失败 | 走到 `RunResult::Failed`，`stage` 正确 |
-| 回归 | `make -C src native-host-tests` | 全绿 |
-| 生产 | `make -C src ghostlock` | 零告警；未改生产源码 |
+## Verification evidence
 
-## 明确保留
+- [x] `src/core/tests/host/host_attack_script.hpp` and the stub TUs
+  for attack/support/route/victim/handoff/glue.
+- [x] Host shadow header `src/core/tests/host/include/attack/ops.hpp`
+  and platform shims in `linux/futex.h`, `linux/memfd.h`, `sys/prctl.h`,
+  and `sched.h`.
+- [x] The `host-attack-dataflow-test` target in `src/Makefile`. Production
+  backend/frontend source was unchanged.
+- [x] Test cases: happy path, W2 retry, W2 exhaustion, and SELinux retry.
+- [x] `make -C src host-attack-dataflow-test` printed `backend_dataflow_test: ok`
+  and exited with 0. `make -C src native-host-tests` passed in full.
 
-- 生产 `attack/`、`route/`、`session/` 源码与 `ExploitSession` 布局；
-- `cmp_disasm` 基线（本轮不因该改动触发，但按攻击路径惯例保留）；
-- `kernelsnitch/`、`LegacyProfileConverter.kt` 与"明确保留"清单。
+## Remaining work
 
-## 进度
-
-- [x] 计划
-- [x] `tests/host/host_attack_script.hpp` + 各 stub TU（attack/support/route/victim/handoff/glue）
-- [x] host 影子头 `tests/host/include/attack/ops.hpp` + 平台 shim（`linux/futex.h`、`linux/memfd.h`、`sys/prctl.h`、`sched.h`）
-- [x] `src/Makefile` `host-attack-dataflow-test` 目标（生产 backend/frontend 未改动）
-- [x] 测试用例：happy / W2 重试 / W2 耗尽 / SELinux 重试
-- [x] 验证：`make -C src host-attack-dataflow-test` 输出 `backend_dataflow_test: ok` 且 exit 0；`make -C src native-host-tests` 全绿
-- 说明：未改任何生产源码，故 Android 构建与 `cmp_disasm` 不受影响（无需重跑）
+None. Production source was unchanged, so the Android build and `cmp_disasm`
+are unaffected.

@@ -1,79 +1,84 @@
-# 如何新增组件（middleware / backend / frontend）
+English | [简体中文](adding-a-component_ZH.md)
 
-GhostLock 的执行链由 `Pipeline<Frontend, Backend, Middleware>` 在编译期固定：
+# How to add a component (middleware / backend / frontend)
 
-- **frontend**：启动/交接（当前 `root_child`；`umh_forward` 为声明但不可用的占位）；
-- **backend**：漏洞原语与写入步骤（当前 `cve_2026_43499`；`cve_2026_64560` 为纯头占位，不可用）；
-- **middleware**：一次写的 route（`select_stack` / `tcp_zerocopy` / `multicast_waiter`）。
+GhostLock fixes the execution chain at compile time through `Pipeline<Frontend, Backend, Middleware>`:
 
-组件如何被选择、组合与执行，由以下唯一权威决定：
+- **frontend**: startup and handoff. Currently `root_child`; `umh_forward` is a declared but unavailable placeholder.
+- **backend**: exploit primitives and write steps. Currently `cve_2026_43499`; `cve_2026_64560` is an unavailable header-only placeholder.
+- **middleware**: the route for one write: `select_stack` / `tcp_zerocopy` / `multicast_waiter`.
 
-- 可用性：`route/component_catalog.hpp` 的 `frontend_available` / `backend_available` /
-  `middleware_available`。identity 与执行 policy **都不携带 `available`**。
-- 组合与分派：`combination_supported(selection)` 列出可派发三元组；`dispatch_target_of(frontend,
-  backend, middleware)` 给出**完整组合**的分派目标；`orchestrator.hpp` 的每个 case 用
-  `static_assert(P::target == …)` 锁定。**分派键保留完整选择**：当前目录只有
-  `root_child × cve_2026_43499 × {三种 middleware}`，新增 frontend/backend 时必须同时扩展
-  `DispatchTarget` 枚举、映射与 orchestrator 分支——不能只按 middleware 决定 pipeline。
-- 执行入口：`route/pipeline.hpp` 的 `Pipeline<F,B,M>::run`，编译期校验 `catalogued`、
-  `MiddlewarePolicy<M>`、`FrontendExecution<F>` 与 `BackendExecution<B,M>`，返回 `RunResult`。
-- 绑定方式：backend 步骤模板化在 middleware 上（`Cve2026_43499Policy::run<M>` / `attack_write<M>`），
-  以 `M::w2_fast_repair_prebuild` 等静态 hook 直接调用，无虚表；hook 边界 `[[gnu::noinline]]`。
+The following are the sole authorities for component selection, composition, and execution:
 
-新增组件属 L 级改动：先读 `design-philosophy.md` 与 `engineering-standards.md`，产出计划并获认可，
-再按本文改动。
+- Availability: `frontend_available` / `backend_available` / `middleware_available`. Neither identities nor execution policies carry `available`.
+- Composition and dispatch: `combination_supported(selection)` lists dispatchable triples. `dispatch_target_of(frontend,
+  backend, middleware)` gives the dispatch target for a complete combination. Each case in `orchestrator.hpp` locks this down with
+  `static_assert(P::target == …)`. The dispatch key retains the full selection. The current catalog contains only
+  `root_child × cve_2026_43499 × {the three middleware kinds}`. Adding a frontend or backend must also extend the
+  `DispatchTarget` enum, mapping, and orchestrator branches. Middleware alone must not determine the pipeline.
+- Execution entry point: `Pipeline<F,B,M>::run` in `route/pipeline.hpp` checks `catalogued`,
+  `MiddlewarePolicy<M>`, `FrontendExecution<F>`, and `BackendExecution<B,M>` at compile time, and returns `RunResult`.
+- Binding: backend steps are templated on the middleware through `Cve2026_43499Policy::run<M>` / `attack_write<M>`.
+  They call static hooks such as `M::w2_fast_repair_prebuild` directly, without a vtable. Hook boundaries use `[[gnu::noinline]]`.
+
+Adding a component is an L-level change. First read `design-philosophy.md` and `engineering-standards.md`, produce a plan, and obtain approval.
+Then follow this guide.
 
 ---
 
-## 一、新增 middleware（route）
+## 1. Add middleware (a route)
 
-### 改动一览
+### Change overview
 
-| 位置 | 文件 | 做什么 |
+| Area | File | Change |
 |---|---|---|
-| Native 注册 | `profile/model.h` | `RouteKind` 取值、`kRouteFooWaiter`、`kRouteCatalog` 一行 |
-| Native 可用性 | `route/component_catalog.hpp` | `middleware_available` 收录新 kind |
-| Native Policy | `route/route_policy.hpp` | `FooPolicy`（能力 + `supported`/`run` + 需要的 hook 覆写声明），追加到 `RoutePolicyList` |
-| Native 分派 | `route/component_catalog.hpp` + `route/orchestrator.hpp` | `DispatchTarget` 加值、`dispatch_target_of` 映射、orchestrator case（`Pipeline<…, FooPolicy>` + target `static_assert`） |
-| Native 实例化 | `session/backend/cve_2026_43499_backend.cpp` | 显式实例化 `run<FooPolicy>` / `attack_write<FooPolicy>` |
-| Native 实现 | `route/foo_route.{h,cpp}` | Route 类 + `do_foo_fake_lock_route` + policy hook 的 Android 定义 |
-| Native 构建 | `src/Makefile`、`src/CMakeLists.txt` | 加入 `core/route/foo_route.cpp` |
-| Native 传输 | `profile/binary.cpp` | route 字段表（有私有参数时） |
-| Native 导出 | `build.gradle.kts` | `routeFieldPaths` 加该 route |
-| Kotlin 注册 | `data/route/RouteKind.kt` | `(token, wire)` 与配置构造 |
-| Kotlin 参数 | `data/route/FooConfig.kt` | 有私有参数时新增 |
-| 测试 | 见「四」 | catalog/policy/catalog-dispatch/contract/route/cmp_disasm |
+| Native registration | `profile/model.h` | A `RouteKind` value, `kRouteFooWaiter`, and a row in `kRouteCatalog` |
+| Native availability | `route/component_catalog.hpp` | Add the new kind to `middleware_available` |
+| Native policy | `route/route_policy.hpp` | Add `FooPolicy` with capabilities, `supported`/`run`, and required hook override declarations; append it to `RoutePolicyList` |
+| Native dispatch | `route/component_catalog.hpp` + `route/orchestrator.hpp` | Add a `DispatchTarget` value, a `dispatch_target_of` mapping, and an orchestrator case with `Pipeline<…, FooPolicy>` and a target `static_assert` |
+| Native instantiation | `session/backend/cve_2026_43499_backend.cpp` | Explicitly instantiate `run<FooPolicy>` / `attack_write<FooPolicy>` |
+| Native implementation | `route/foo_route.{h,cpp}` | Route class, `do_foo_fake_lock_route`, and Android definitions of policy hooks |
+| Native build | `src/Makefile`, `src/CMakeLists.txt` | Add `core/route/foo_route.cpp` |
+| Native transport | `profile/binary.cpp` | Route field table, if there are private parameters |
+| Native export | `profile-core/.../profile/ProfileExporter.kt` | No change needed: export iterates over all routes through `RouteKind.entries` |
+| Kotlin registration | `data/route/RouteKind.kt` | `(token, wire)` and configuration construction |
+| Kotlin parameters | `data/route/FooConfig.kt` | Add when there are private parameters |
+| Tests | See section 4 | catalog/policy/catalog-dispatch/contract/route/cmp_disasm |
 
-### 1. 注册 route
+Use this table as the checklist.
 
-两侧登记同一个 token 与 wire 值。`src/core/tests/route_catalog_test.cpp` 与
-`app/src/test/.../RouteCatalogAgreementTest.kt` 断言同一列表，任何一边漏改都会失败。
+### 1. Register the route
 
-### 2. 私有参数（可选）
+Register the same token and wire value on both sides. `src/core/tests/route_catalog_test.cpp` and
+`app/src/test/.../RouteCatalogAgreementTest.kt` assert the same list. Missing either side makes the tests fail.
 
-只有这条 route 才用的参数放 route 扩展节：Kotlin `FooConfig` 的 `entries()/apply()/from()`
-与 native `profile/binary.cpp` 的字段表键名逐字一致；导出任务 `routeFieldPaths` 同步。
-共享代码会读的参数属于公共槽，两侧顺序必须一致。
+### 2. Add private parameters, if needed
 
-### 3. Route 本体
+Put parameters used only by this route in its route extension section. The field names and types in Kotlin `FooConfig`'s `entries()/apply()/from()`
+must match the field table in native `profile/binary.cpp`. Put parameters read by shared code in a common section.
+Named sections and entries are unordered. `ProfileExporter` and `ProfileResolver.nativeValue` retrieve values uniformly through `RouteKind`.
+A new route does not need its path registered on the export side.
 
-`route/foo_route.{h,cpp}`：Route 类满足 `RouteLifecycle`（`prepare → execute → disarm → destroy`，
-仅经 `status` 汇报；不用虚基类）。上半部分 host 可编译，入口与 hook 定义放 `#if defined(__ANDROID__)` 段。
+### 3. Implement the route
 
-### 4. Policy 与 hook
+In `route/foo_route.{h,cpp}`, the Route class must satisfy `RouteLifecycle`: `prepare → execute → disarm → destroy`.
+Report results only through `status`. Do not use a virtual base class. Keep the upper portion host-compilable.
+Place entry-point and hook definitions in a `#if defined(__ANDROID__)` block.
 
-`route/route_policy.hpp` 加 `FooPolicy : RoutePolicyDefaults`：
+### 4. Add the policy and hooks
 
-- **能力**（`static constexpr bool`，编译期）：`multicast`、`w2_fast_repair`、`w3_exact_target`、
-  `tcp_payload_layout`、`allows_fallback`。只写需要为 `true` 的，其余继承默认。
-- **有副作用的 hook**：`w2_fast_repair_prebuild/activate(session)`。默认由 `RoutePolicyDefaults`
-  提供；覆写时在该 unit 提供定义并让声明带 `[[gnu::noinline]]`（防止 LTO 把 route 实现内联进攻击函数）。
-- **纯查询**（如一次性 route 的 W1 重试上限、是否需要 scratch 修复、W3 是否精确命中）：不需要 hook，
-  在 backend 步骤内用 `if constexpr (M::…)` + profile 运行时值表达。
+Add `FooPolicy : RoutePolicyDefaults` to `route/route_policy.hpp`:
 
-### 5. 分派与实例化
+- **Capabilities**, declared as compile-time `static constexpr bool` values: `multicast`, `w2_fast_repair`, `w3_exact_target`,
+  `tcp_payload_layout`, and `allows_fallback`. Declare only those that need to be `true`. Inherit the defaults for the rest.
+- **Hooks with side effects**: `w2_fast_repair_prebuild/activate(session)`. `RoutePolicyDefaults` provides defaults.
+  When overriding a hook, define it in that unit and mark its declaration `[[gnu::noinline]]` to prevent LTO from inlining route implementation into attack functions.
+- **Pure queries**, such as the W1 retry limit for a one-shot route, whether scratch repair is needed, or whether W3 requires an exact hit:
+  do not add a hook. Express them in backend steps with `if constexpr (M::…)` and profile runtime values.
 
-catalog 加 `DispatchTarget` 值与该 kind 的映射；orchestrator 加 case：
+### 5. Add dispatch and instantiation
+
+Add the `DispatchTarget` value and the mapping for the kind to the catalog. Add an orchestrator case:
 
 ```cpp
 case DispatchTarget::RootChild_Cve43499_FooWaiter: {
@@ -86,84 +91,62 @@ case DispatchTarget::RootChild_Cve43499_FooWaiter: {
 }
 ```
 
-并在 `cve_2026_43499_backend.cpp` 末尾补该 policy 的显式实例化（漏掉会链接失败）。
-`DispatchTarget` 名带完整组合前缀，是为了让后端/前端维度扩展时映射与分支同步增长。
+Add explicit instantiations for the policy at the end of `cve_2026_43499_backend.cpp`. Omitting them causes a link failure.
+`DispatchTarget` names include the full combination prefix so that mappings and branches grow together when the backend or frontend dimension expands.
 
 ---
 
-## 二、新增 backend
+## 2. Add a backend
 
-| 位置 | 文件 | 做什么 |
+| Area | File | Change |
 |---|---|---|
-| identity | `route/backend_policy.hpp` | `FooBackend` + 与 catalog 绑定的 `static_assert` |
-| 可用性/组合 | `route/component_catalog.hpp` | `BackendKind` 取值、`backend_available`、`combination_supported`、分派维度 |
-| contract 注册 | `route/backend_contract.hpp` | `BackendIdentityList` 加 `FooBackend` |
-| 执行 policy | `session/backend/foo_backend.{hpp,cpp}` | `FooPolicy`（`kind` + `run<M>` / `attack_write`）、identity 绑定断言、显式实例化 |
-| 分派 | `route/orchestrator.hpp` | 新 backend × middleware 组合的 `Pipeline` 分支 |
-| 构建/测试 | `src/Makefile` + `backend_contract_test` + `profile_binary_test` + Kotlin | |
+| Identity | `route/backend_policy.hpp` | `FooBackend` and a `static_assert` binding it to the catalog |
+| Availability/combinations | `route/component_catalog.hpp` | `BackendKind` value, `backend_available`, `combination_supported`, and dispatch dimension |
+| Contract registration | `route/backend_contract.hpp` | Add `FooBackend` to `BackendIdentityList` |
+| Execution policy | `session/backend/foo_backend.{hpp,cpp}` | `FooPolicy` with `kind` and `run<M>` / `attack_write`, identity-binding assertions, and explicit instantiations |
+| Dispatch | `route/orchestrator.hpp` | `Pipeline` branches for the new backend × middleware combinations |
+| Build/tests | `src/Makefile` + `backend_contract_test` + `profile_binary_test` + Kotlin | |
 
-**不可用 backend（占位）**：只提供 identity + `kind` + `unavailable_reason`（参考
-`session/backend/cve_2026_64560_backend.hpp`），不实现 `run`、不实例化 `Pipeline`；可用性由 catalog
-表达，wire 只携带 id（没有 backend 私有 section——未来字段必须进自己的 section，不得复用 43499 的槽）。
-
----
-
-## 三、新增 frontend
-
-与 backend 同构：`route/frontend_contract.hpp` 提供 `FrontendIdentity`（仅 `kind`）与
-`FrontendExecution<F>`（可用 frontend 的 `run(session, chain)` 精确返回 `StageResult`），以及
-`FrontendIdentityList` / `for_each_frontend` 注册表；执行 policy 在 `session/root_child_frontend.hpp`
-（`RootChildPolicy::run` 承载 startup/handoff），该头以 `static_assert` 绑定 identity 与 catalog；
-`Pipeline` 以 `static_assert(FrontendExecution<F>)` 约束组合入口。UMH 的职责边界见
-`frontend_contract.hpp`（child 生命周期与 KernelSU handoff 不合并；UMH 不得默认绑定 KernelSU）。
+**Unavailable backend placeholders** provide only an identity, `kind`, and `unavailable_reason`. See
+`session/backend/cve_2026_64560_backend.hpp`. Do not implement `run` or instantiate `Pipeline`. The catalog
+expresses availability. The wire carries only the id. Backends have no private section at present. Future fields must go in their own section and must not reuse 43499's slots.
 
 ---
 
-## 四、构建、测试与门禁
+## 3. Add a frontend
 
-新增组件至少补这些测试：
+Follow the same structure as a backend. `route/frontend_contract.hpp` provides `FrontendIdentity`, containing `kind` and optionally
+`unavailable_reason`, and `FrontendExecution<F>`, which requires an available frontend's `run(session, chain)` to return exactly
+`StageResult`. It also provides the `FrontendIdentityList` / `for_each_frontend` registry. The execution policy is in
+`session/root_child_frontend.hpp`. `RootChildPolicy::run` handles startup and handoff. That header binds
+the identity and catalog with `static_assert`. `Pipeline` constrains the composition entry point with
+`static_assert(FrontendExecution<F>)`. See `frontend_contract.hpp` for UMH's responsibility boundaries:
+keep the child lifecycle separate from KernelSU handoff. UMH must not bind to KernelSU by default.
 
-1. `route_catalog_test.cpp` / `RouteCatalogAgreementTest.kt`：canonical 列表同步（middleware）。
-2. `route_policy_test.cpp`：能力断言与派发计数（middleware）。
-3. `component_catalog_test.cpp`：组合、`dispatch_target` 与映射（新组合）。
-4. `backend_contract_test.cpp`：`FrontendIdentity` / `FrontendExecution` / `BackendIdentity` /
-   `BackendExecution` / `Pipeline::target`（新 frontend/backend/middleware）。
-5. `foo_route_test.cpp`：构造/析构/几何（middleware），并登记进 `NATIVE_HOST_TESTS`。
-6. `profile_binary_test.cpp`：wire 解码/拒绝（新 id）。
-7. 新增攻击路径函数时，把它加进 `tools/cmp_disasm.py` 的 `TARGETS`。
+---
+
+## 4. Build, test, and pass the gates
+
+Adding a component requires at least these tests:
+
+1. `route_catalog_test.cpp` / `RouteCatalogAgreementTest.kt`: synchronize the canonical list for middleware.
+2. `route_policy_test.cpp`: capability assertions and dispatch counts for middleware.
+3. `component_catalog_test.cpp`: combinations, `dispatch_target`, and mappings for new combinations.
+4. `backend_contract_test.cpp`: `FrontendIdentity` / `FrontendExecution` / `BackendIdentity` /
+   `BackendExecution` / `Pipeline::target` for a new frontend, backend, or middleware.
+5. `foo_route_test.cpp`: construction, destruction, and geometry for middleware. Register it in `NATIVE_HOST_TESTS`.
+6. `profile_binary_test.cpp`: wire decoding and rejection for a new id.
+7. When adding an attack-path function, add it to `TARGETS` in `tools/cmp_disasm.py`.
 
 ```sh
-make -C src ghostlock            # 真机二进制
-make -C src native-host-tests    # 主机单元测试
-make -C src lint-tidy            # clang-tidy（0 findings）
+make -C src ghostlock            # Device binary
+make -C src native-host-tests    # Host unit tests
+make -C src lint-tidy            # clang-tidy (0 findings)
 python3 tools/cmp_disasm.py <baseline> build/native/ghostlock
 ./gradlew :app:testDebugUnitTest --offline
 ```
 
-最后在真机跑一次（冷机、固定 CPU 对、KernelSU 未加载），确认组件被选中、写验证通过，
-并按 `docs/analysis/device-gates/` 格式归档。未过真机不得标 supported。
-
----
-
-## 核对清单
-
-新增 middleware：
-
-- [ ] `RouteKind` + `kRouteCatalog`（两侧一致）
-- [ ] `middleware_available` 收录
-- [ ] `FooPolicy`（能力 + hook）+ `RoutePolicyList`
-- [ ] `DispatchTarget` + `dispatch_target_of` + orchestrator case（target 断言）
-- [ ] `cve_2026_43499_backend.cpp` 显式实例化
-- [ ] Route 类 + 入口 + Android hook 定义
-- [ ] `Makefile` / `CMakeLists.txt` / `routeFieldPaths` / route 扩展节
-- [ ] 测试矩阵 + `cmp_disasm`（触攻击路径时）+ 真机门禁
-
-新增 backend：
-
-- [ ] identity + catalog 可用性/组合 + `BackendIdentityList`
-- [ ] 执行 policy（`run<M>` / 显式实例化 / identity 绑定断言）或占位（无 run）
-- [ ] orchestrator 组合分支 + 测试 + wire 解码测试
-
-新增 frontend：
-
-- [ ] identity（可含 unavailable reason）+ 执行 policy（handoff）+ 组合接线 + 测试
+Finally, run once on a device: cold device, fixed CPU pair, and KernelSU not loaded. Confirm that the component
+is selected and write verification passes. Archive the result in the `docs/analysis/device-gates/` format.
+Do not mark it supported before it passes on a device. See the verification and evidence standards in
+`engineering-standards.md` for the complete gates.
