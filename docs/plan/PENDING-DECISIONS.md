@@ -1,5 +1,9 @@
 # 待裁决清单（v3 · 2026-10-08 更新）
 
+> **2026-10-17 裁定**：Lua / GLKv3 文档 / CLI / script 面已删除（见 `MASTER-PLAN.md` §0.1）。
+> 下列条目**失去对象**、按作废处理：A1（HOCON vs Lua）、A2（批准 ADR-0008/0009/0010）、B1（计划＝脚本）、B2（内置计划脚本）、B4（`steps` 键）。
+> 其余条目（A3、B3、B5、C 组）仍按原文待裁。
+
 > 用法：每条 = **决定什么 / 参考 / 选项与代价 / 建议**。回复编号 + 结论即可（例：A1 裁定 X；其余照建议）。不点名 = 按建议执行。
 > 分组：**§A 阻塞**（不定则某层无法开工）· **§B 设计与规范**（本批/近期）· **§C 账目与仓库** · **§D 批量默认** · **§E 已闭环**（供核对，不重复决定）。
 
@@ -7,11 +11,11 @@
 
 ### A1 R10：静态数据（几何/调参）留 HOCON 还是进 Lua —— 解锁 **P3**
 
-> **已裁定（2026-10-10）· 本条关闭**：选 **A**（JSON + JCS + 生成式 schema）；wire＝JCS JSON + 只读视图；载荷＝stdin/base64；`profile-core` 删除（检查归 Kotlin）；**运行期由 Lua 编排，限制靠运行时**；配置内嵌 Lua steps；v1/v2 统一迁入 `LegacyProfileConverter`。结论见 [config-wire-redesign-plan.md](../analysis/config-wire-redesign-plan.md)（版本号仍是 3，同号重做）。
+> **已裁定（2026-10-10）· 本条关闭**：选 **A**（JSON + JCS + 生成式 schema）；wire＝JCS JSON + 只读视图；载荷＝stdin/base64；`profile-core` 删除（检查归 Kotlin）；**运行期由 Lua 编排，限制靠运行时**；配置内嵌 Lua steps；v1/v2 统一迁入 `LegacyProfileConverter`。结论见 [config-wire-redesign-plan.md](../archive/20261017-1835-config-wire-redesign-plan.md)（版本号仍是 3，同号重做）。
 >
-> **状态（2026-10-08，随 v2）**：**仍适用**（A6 前置；按用户裁定「数值不入 C++」，A1 的选项 ④「先修隐患」中 Kotlin 零填充项随新实现重写而作废，multicast 缺口见 [rewrite-plan-v2](rewrite-plan-v2.md) §4.1）。
+> **状态（2026-10-08，随 v2）**：**仍适用**（A6 前置；按用户裁定「数值不入 C++」，A1 的选项 ④「先修隐患」中 Kotlin 零填充项随新实现重写而作废，multicast 缺口见 [rewrite-plan-v2](../archive/20261017-1835-rewrite-plan-v2.md) §4.1）。
 
-- **参考**：[lua-config-structure-options.md](../analysis/lua-config-structure-options.md)（四层默认值实测 + 三形态四维对比 + 两个先修隐患）· [composition-layer-p4-spec.md](../analysis/composition-layer-p4-spec.md) §9 未决 · P3 规格尚未撰写
+- **参考**：[lua-config-structure-options.md](../archive/20261017-1835-lua-config-structure-options.md)（四层默认值实测 + 三形态四维对比 + 两个先修隐患）· [composition-layer-p4-spec.md](../archive/20261017-1835-composition-layer-p4-spec.md) §9 未决 · P3 规格尚未撰写
 - **选项**：① L-C 数据在 HOCON（脚本只读）+ 行为在 Lua【建议】；② L-A 脚本载体；③ L-B 脚本 + 显式 schema（schema 取自 OpRegistry 则无重复描述成本）；④ 先修两个隐患（Kotlin `?: 0u` 零填充 / multicast 无调参资产）再定
 - **建议**：① + ④（隐患与形态无关，先修）
 
@@ -19,7 +23,7 @@
 
 > **状态**：**仍适用**（ADR-0010 亦为 A1 契约层输入；体积数字已复现：109 620 / 88 264 B）。
 
-- **参考**：[ADR-0008](../analysis/adr/0008-lua-runtime-sandbox.md)（体积数字已复现：109 620 B / 88 264 B，≈107 KB ≈ 2.2%；Berkeley 口径警告已写入）· [ADR-0009](../analysis/adr/0009-script-trust-and-hardline.md) · [ADR-0010](../analysis/adr/0010-lua-cpp-resource-model.md) · [P5 规格](../analysis/handoff-script-layer-p5-spec.md)（组件边界 + 判据 + 两证伪）
+- **参考**：[ADR-0008](../archive/20261017-1835-adr-0008-lua-runtime-sandbox.md)（体积数字已复现：109 620 B / 88 264 B，≈107 KB ≈ 2.2%；Berkeley 口径警告已写入）· [ADR-0009](../archive/20261017-1835-adr-0009-script-trust-and-hardline.md) · [ADR-0010](../archive/20261017-1835-adr-0010-lua-cpp-resource-model.md) · [P5 规格](../archive/20261017-1835-handoff-script-layer-p5-spec.md)（组件边界 + 判据 + 两证伪）
 - **选项**：① 三件一起批准【建议】；② 逐件批；③ 先批 P5 规格（R11 设计含 queue 退役）再批 ADR
 - **说明**：Lua 源码仓内没有，需**下载 vendored 到 `src/lib/lua/`**（lua.org 可达，lua-5.4.7.tar.gz 374 097 B，sha256 前 16 = `9fbf5e28ef86c698`）；ADR 要求登记来源与许可（I12）
 
@@ -37,7 +41,7 @@
 
 > **状态**：**仍适用**（A6 输入）。
 
-- **参考**：[script-plan-design.md](../analysis/script-plan-design.md)（决策五条 + 影响面 + 重冻清单 + 判据 + 批次）· 你已裁定选 C（queue 退役）
+- **参考**：[script-plan-design.md](../archive/20261017-1835-script-plan-design.md)（决策五条 + 影响面 + 重冻清单 + 判据 + 批次）· 你已裁定选 C（queue 退役）
 - **建议**：批准（它是 P5 的输入；内置计划脚本命名 `plan-<backend>-<route>.lua`）
 
 ### B2 确认两点前提：内置计划脚本随资产 / 保留 `backend.<id>.route`
@@ -49,9 +53,9 @@
 
 ### B3 确认「最小化时机重排」（Lead 已裁决，请追认）
 
-> **状态**：**作废** —— 其对象（P2 兼容面 + `.disabled` 参考件）已随 `core/src` **全量清空**（`b0e9f499`）消失；最小化路线不再是 v2 的一部分（[rewrite-plan-v2](rewrite-plan-v2.md) §0）。
+> **状态**：**作废** —— 其对象（P2 兼容面 + `.disabled` 参考件）已随 `core/src` **全量清空**（`b0e9f499`）消失；最小化路线不再是 v2 的一部分（[rewrite-plan-v2](../archive/20261017-1835-rewrite-plan-v2.md) §0）。
 
-- **参考**：[p2-minimisation-plan.md](../analysis/p2-minimisation-plan.md) §0（2026-10-08 重排）· [rewrite-plan.md](rewrite-plan.md) §8.1 U-4
+- **参考**：[p2-minimisation-plan.md](../analysis/p2-minimisation-plan.md) §0（2026-10-08 重排）· [rewrite-plan.md](../archive/20261017-1835-rewrite-plan.md) §8.1 U-4
 - **内容**：B-1..B-3（24 项）**曾执行 → 违反 R39 → 全部回退 → 净效果 0**；最小化**整体后移到 P3/P5 落地且 `.disabled` 参考件退役之后**；此前凡被 `.disabled`/`docs` 引用者 = **预留接口，不得删**
 - **建议**：追认（理由：参考件是新实现的输入规格；当前可删面 = 0）
 
@@ -133,7 +137,7 @@
 
 | 项 | 结论 |
 |---|---|
-| 设计开工（R1/R2） | ~~已入库~~ ⇒ **随全量重写清空**；P4 五文件按 **Q1 裁定**用 `git show 63a87af8/9b46d5b5` **恢复**（见 [rewrite-plan-v2](rewrite-plan-v2.md) §2 A0） |
+| 设计开工（R1/R2） | ~~已入库~~ ⇒ **随全量重写清空**；P4 五文件按 **Q1 裁定**用 `git show 63a87af8/9b46d5b5` **恢复**（见 [rewrite-plan-v2](../archive/20261017-1835-rewrite-plan-v2.md) §2 A0） |
 | R11 选型 | **选 C**：queue 退役、计划 = 脚本 |
 | 窗口内自定义 | **参数化不拆分**（P4 规格已落，`ParamSpec.max` 为上界） |
 | R5 窗口内 sched_setattr | **延期**（触发：B0.1→B3 完成后评审） |

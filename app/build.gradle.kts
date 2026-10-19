@@ -10,6 +10,8 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jetbrains.kotlin.plugin.serialization")
+    id("kotlin-parcelize")
 }
 
 // Keep this module's output under the repository-root build/ directory.
@@ -61,7 +63,6 @@ fun resolveNdkDir(): File {
 }
 
 val buildInfoSrc = layout.buildDirectory.dir("generated/source/buildInfo")
-val attackContractSrc = layout.buildDirectory.dir("generated/source/attackContract")
 
 val generateBuildInfo = tasks.register("generateBuildInfo") {
     description = "generateBuildInfo"
@@ -107,7 +108,7 @@ android {
         versionName = appVersionName
     }
     androidResources {
-        localeFilters += listOf("en", "zh")
+        localeFilters += listOf("en", "zh-rCN")
     }
     testOptions {
         unitTests.isIncludeAndroidResources = true
@@ -115,7 +116,6 @@ android {
     sourceSets {
         named("main") {
             kotlin.directories.add(buildInfoSrc.get().asFile.absolutePath)
-            kotlin.directories.add(attackContractSrc.get().asFile.absolutePath)
             /* LKM images are generated (never committed); AGP forbids Provider here. */
             assets.directories.add(lkmGeneratedAssets.get().asFile.absolutePath)
             /* A6-4 finishing script, copied from the repository source. */
@@ -155,6 +155,9 @@ android {
     buildFeatures {
         buildConfig = true
         aidl = true
+        /* 2026-10-17：模块必须声明 Compose，Android Studio 才会把 @Preview 当预览渲染
+         * （没有这一行，gutter 上的图标只会给出运行配置，预览面板不启动）。 */
+        compose = true
     }
     dependenciesInfo {
         includeInApk = false
@@ -196,6 +199,13 @@ base {
 
 kotlin {
     jvmToolchain(21)
+    /* KernelSU 移植界面用到的实验 API（上游 manager 模块级 opt-in 的等价物）。 */
+    compilerOptions {
+        optIn.addAll(
+            "androidx.compose.material3.ExperimentalMaterial3Api",
+            "androidx.compose.material3.ExperimentalMaterial3ExpressiveApi",
+        )
+    }
 }
 
 // The exporter-agreement test compares against the freshly exported .bin set.
@@ -212,7 +222,6 @@ tasks.withType<Test>().configureEach {
 
 tasks.named("preBuild") {
     dependsOn(generateBuildInfo)
-    dependsOn(rootProject.tasks.named("exportJniAttackContract"))
 }
 
 /* The arm64 native payload is only needed by the tasks that merge/package the
@@ -351,8 +360,19 @@ object LkmSupport {
      */
     fun detectEngine(execOps: ExecOperations, override: String?): String {
         override?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
-        for (candidate in listOf("podman", "docker")) {
-            val exes = listOf(candidate, "/opt/homebrew/bin/" + candidate, "/usr/local/bin/" + candidate)
+        /* 2026-10-18 用户裁定：**docker 优先**（兼容性），podman 作为回退。
+         * Docker Desktop 的 CLI 不在 PATH 里，所以把它的固定安装路径也列进来。 */
+        /* 2026-10-18：docker → Apple container → podman。Apple container 与 docker 参数兼容
+         * （--rm/--platform/--network/-v/-w 同名），所以同一套命令行直接可用。 */
+        for (candidate in listOf("docker", "container", "podman")) {
+            val exes = listOf(
+                candidate,
+                "/opt/homebrew/bin/" + candidate,
+                "/opt/homebrew/opt/container/bin/" + candidate,
+                "/usr/local/bin/" + candidate,
+                "/Applications/Docker.app/Contents/Resources/bin/" + candidate,
+                System.getProperty("user.home") + "/.docker/bin/" + candidate,
+            )
             for (exe in exes) {
                 val ok = runCatching {
                     execOps.exec {
@@ -365,8 +385,72 @@ object LkmSupport {
             }
         }
         throw GradleException(
-            "no container engine found: install podman or docker, or pass -PcontainerEngine=<exe>",
+            "no container engine found: install docker / Apple container / podman, or pass -PcontainerEngine=<exe>",
         )
+    }
+}
+
+/** 每个 KMI 一个 worker：容器 build + objcopy + 落到缓存。并行度由 Gradle --max-workers 决定。 */
+interface LkmBuildParams : WorkParameters {
+    val engine: Property<String>
+    val objcopy: Property<String>
+    val label: Property<String>
+    val image: Property<String>
+    val sourceDir: DirectoryProperty
+    val cacheDir: DirectoryProperty
+
+    /** 单个 LKM 内部 make 的并行度（-jN）。 */
+    val makeJobs: Property<Int>
+}
+
+abstract class LkmBuildWorkAction : WorkAction<LkmBuildParams> {
+    @get:Inject abstract val execOps: ExecOperations
+    @get:Inject abstract val fsOps: FileSystemOperations
+
+    override fun execute() {
+        val engine = parameters.engine.get()
+        val label = parameters.label.get()
+        val image = parameters.image.get()
+        val cache = parameters.cacheDir.get().asFile
+        /* 每个 label 的临时目录都在缓存下（源码目录保持干净）。 */
+        val startedAt = System.currentTimeMillis()
+        println("[lkm] start " + label + " t=" + startedAt)
+        val work = File(cache, "work-" + label)
+        work.mkdirs()
+        val source = parameters.sourceDir.get().asFile
+        fsOps.copy {
+            from(File(source, "Makefile"), File(source, "ghostlock.c"))
+            into(work)
+        }
+        execOps.exec {
+            commandLine(
+                engine, "run", "--rm",
+                "--platform", "linux/amd64",
+                "--network=none",
+                "-v", work.absolutePath + ":/work",
+                "-w", "/work",
+                image,
+                "make", "-j" + parameters.makeJobs.get(), "-C", "/opt/ddk/kdir/" + label,
+                "M=/work", "ARCH=arm64", "LLVM=1", "modules",
+            )
+        }
+        val built = File(work, "ghostlock.ko")
+        check(built.isFile) { "the container produced no ghostlock.ko for " + label }
+        execOps.exec {
+            commandLine(
+                parameters.objcopy.get(), "--strip-unneeded",
+                "-R", ".comment", "-R", ".note.gnu.build-id", "-R", ".note.gnu.property",
+                "-R", ".note.Linux", "-R", ".note.GNU-stack", "-R", ".BTF", "-R", ".BTF.base",
+                "-R", ".llvm_addrsig", "-R", ".hyp.text", "-R", ".hyp.bss", "-R", ".hyp.rodata",
+                "-R", ".hyp.event_ids", "-R", ".hyp.patchable_function_entries", "-R", ".hyp.data",
+                built.absolutePath,
+            )
+        }
+        val targetDir = File(cache, label)
+        targetDir.mkdirs()
+        fsOps.copy { from(built); into(targetDir) }
+        work.deleteRecursively()
+        println("[lkm] done " + label + " t=" + System.currentTimeMillis() + " ms=" + (System.currentTimeMillis() - startedAt))
     }
 }
 
@@ -374,6 +458,7 @@ object LkmSupport {
 abstract class BuildLkmImagesTask : DefaultTask() {
     @get:Inject abstract val execOps: ExecOperations
     @get:Inject abstract val fsOps: FileSystemOperations
+    @get:Inject abstract val workerExecutor: WorkerExecutor
 
     @get:InputFile abstract val manifestFile: RegularFileProperty
     /* NOT named lkmSourceDir: that script-level val would self-reference here. */
@@ -387,65 +472,72 @@ abstract class BuildLkmImagesTask : DefaultTask() {
     /** -PlkmLabel=<label> narrows the run; empty (the default) builds all 8. */
     @get:Input @get:Optional abstract val onlyLabel: Property<String>
 
+    /** -PlkmCacheOnly=true：只复用 build/lkm 里的镜像，不启动容器（UI 迭代用）。 */
+    @get:Input @get:Optional abstract val cacheOnly: Property<Boolean>
+
+    /** -PlkmMakeJobs=N：每个 LKM 内部 make 的 -jN（默认 2，用户裁定；LKM 之间的并行由 org.gradle.workers.max=4 给）。 */
+    @get:Input @get:Optional abstract val makeJobs: Property<Int>
+
     @TaskAction
     fun run() {
-        val engine = LkmSupport.detectEngine(execOps, containerEngine.orNull)
-        val objcopy = LkmSupport.objcopyIn(ndkDir.get().asFile)
+        val enginePath = LkmSupport.detectEngine(execOps, containerEngine.orNull)
+        val objcopyPath = LkmSupport.objcopyIn(ndkDir.get().asFile)
         val allRows = LkmSupport.readManifest(manifestFile.get().asFile)
         val rows = allRows.filter { onlyLabel.orNull.isNullOrBlank() || it.label == onlyLabel.orNull }
         check(rows.isNotEmpty()) { "-PlkmLabel=" + onlyLabel.orNull + " matches no KMI label" }
         val cache = cacheDir.get().asFile
         cache.mkdirs()
+
+        /* 2026-10-18：容器引擎没起时不要把整个 APK 构建拖死 —— 已有缓存就复用，并说清楚原因。
+         * 显式 -PlkmCacheOnly=true 时连引擎都不探。 */
+        val cachedAll = rows.all { File(cache, it.label + "/ghostlock.ko").isFile }
+        /* 健康探测按引擎分派：Apple container 没有 `info`，用 `system status`。 */
+        val probeArgs = if (enginePath.substringAfterLast('/') == "container") {
+            listOf("system", "status")
+        } else {
+            listOf("info")
+        }
+        val engineAlive = !cacheOnly.getOrElse(false) && runCatching {
+            execOps.exec {
+                commandLine(listOf(enginePath) + probeArgs)
+                standardOutput = ByteArrayOutputStream()
+                errorOutput = ByteArrayOutputStream()
+            }
+        }.isSuccess
+        if (cachedAll && !engineAlive) {
+            logger.warn(
+                "LKM: container engine 不可用（docker/podman 未运行），复用已有镜像 " +
+                    rows.size + " 个（build/lkm/<label>/ghostlock.ko）；要重建请先 podman machine start",
+            )
+            return
+        }
+        /* 并行：每个 KMI 一个 worker（--max-workers 控制并发；默认按 CPU 数）。 */
+        rows.forEach { row ->
+            workerExecutor.noIsolation().submit(LkmBuildWorkAction::class) {
+                engine.set(enginePath)
+                objcopy.set(objcopyPath.absolutePath)
+                label.set(row.label)
+                image.set("ghcr.io/ylarod/ddk-min:" + row.label)
+                sourceDir.set(moduleSourceDir)
+                cacheDir.set(this@BuildLkmImagesTask.cacheDir)
+                makeJobs.set(this@BuildLkmImagesTask.makeJobs.get())
+            }
+        }
+        workerExecutor.await()
+
+        /* 账本按 label 逐个写（顺序执行，避免并发写同一个 tsv）。 */
         for (row in rows) {
-            /* Per-label work dir inside the build root: the SOURCE directory stays clean. */
-            val work = File(cache, "work-" + row.label)
-            work.mkdirs()
-            fsOps.copy {
-                from(moduleSourceDir.file("Makefile"), moduleSourceDir.file("ghostlock.c"))
-                into(work)
-            }
             val image = "ghcr.io/ylarod/ddk-min:" + row.label
-            execOps.exec {
-                commandLine(
-                    engine, "run", "--rm",
-                    "--platform", "linux/amd64",
-                    "--network=none",
-                    /* Stable in-container mount point: no host-path quirks. */
-                    "-v", work.absolutePath + ":/work",
-                    "-w", "/work",
-                    image,
-                    "make", "-C", "/opt/ddk/kdir/" + row.label,
-                    "M=/work", "ARCH=arm64", "LLVM=1", "modules",
-                )
-            }
-            val built = File(work, "ghostlock.ko")
-            check(built.isFile) { "the container produced no ghostlock.ko for " + row.label }
-            execOps.exec {
-                commandLine(
-                    objcopy.absolutePath, "--strip-unneeded",
-                    "-R", ".comment", "-R", ".note.gnu.build-id", "-R", ".note.gnu.property",
-                    "-R", ".note.Linux", "-R", ".note.GNU-stack", "-R", ".BTF", "-R", ".BTF.base",
-                    "-R", ".llvm_addrsig", "-R", ".hyp.text", "-R", ".hyp.bss", "-R", ".hyp.rodata",
-                    "-R", ".hyp.event_ids", "-R", ".hyp.patchable_function_entries", "-R", ".hyp.data",
-                    built.absolutePath,
-                )
-            }
-            val targetDir = File(cache, row.label)
-            targetDir.mkdirs()
-            fsOps.copy { from(built); into(targetDir) }
-            val target = File(targetDir, "ghostlock.ko")
+            val target = File(cache, row.label + "/ghostlock.ko")
             check(target.isFile && target.length() > 0) { "empty LKM image for " + row.label }
-            work.deleteRecursively()
             val digestOut = ByteArrayOutputStream()
             runCatching {
                 execOps.exec {
-                    commandLine(engine, "image", "inspect", image, "--format", "{{.Digest}}")
+                    commandLine(enginePath, "image", "inspect", image, "--format", "{{.Digest}}")
                     standardOutput = digestOut
                     errorOutput = ByteArrayOutputStream()
                 }
             }
-            /* Rewrite the ledger after EVERY label so a partial run still leaves
-             * an accurate account of what the cache holds. */
             val ledger = File(cache, LkmSupport.LEDGER_NAME)
             val merged = LkmSupport.ledgerRows(allRows, cache, LkmSupport.readLedger(ledger))
             merged.firstOrNull { it[0] == row.label }?.let { entry ->
@@ -495,15 +587,30 @@ abstract class CopyLkmIntoAssetsTask : DefaultTask() {
 
 val buildLkmImages = tasks.register<BuildLkmImagesTask>("buildLkmImages") {
     group = "ghostlock"
-    description = "Builds the 8 DDK LKM images into build/lkm/<label> (needs podman/docker)"
+    description = "Builds the 8 DDK LKM images into build/lkm/<label> (needs docker, podman as fallback)"
     manifestFile.set(lkmManifestFile)
     moduleSourceDir.set(lkmSourceDir)
     cacheDir.set(lkmCacheDir)
     containerEngine.set((findProperty("containerEngine") as String?) ?: "")
     onlyLabel.set((findProperty("lkmLabel") as String?) ?: "")
+    cacheOnly.set((findProperty("lkmCacheOnly") as String?)?.toBoolean() ?: false)
+    makeJobs.set(((findProperty("lkmMakeJobs") as String?)?.toIntOrNull() ?: 2).coerceAtLeast(1))
     val ndkResolution = runCatching { resolveNdkDir() }
     ndkDir.set(ndkResolution.getOrElse { lkmManifestFile.parentFile })
     onlyIf { ndkResolution.isSuccess }
+}
+
+/** KernelSU 风格模块 zip：module/ + 8 个 KMI 镜像 -> build/ghostlock-module.zip。 */
+val buildModuleZip = tasks.register<Zip>("buildModuleZip") {
+    group = "ghostlock"
+    description = "Packages module/ and the 8 LKM images into a KernelSU-style module zip"
+    from(rootProject.file("module"))
+    into("lkm") {
+        from(lkmCacheDir) { include("*/ghostlock.ko") }
+    }
+    archiveFileName.set("ghostlock-module.zip")
+    destinationDirectory.set(rootProject.layout.buildDirectory)
+    dependsOn(buildLkmImages)
 }
 
 val copyLkmIntoAssets = tasks.register<CopyLkmIntoAssetsTask>("copyLkmIntoAssets") {
@@ -576,12 +683,39 @@ dependencies {
     /* Material3：新 UI 的默认套件（另一个是 miuix，见 app/ui/kit）；本仓无 BOM，版本显式写。
      * 1.5.0-alpha22 不是随手挑的：miuix 0.9.4 依赖的就是这一版，声明更低会被冲突解析顶上来，
      * 而"声明与实际不符"比版本标签难看更糟；miuix 升到稳定 material3 时这两行一起抬。 */
-    implementation("androidx.compose.material3:material3:1.5.0-alpha22")
+    implementation("androidx.compose.material3:material3:1.5.0-alpha28")
     implementation("androidx.compose.material:material-icons-extended:1.7.8")
+    /* @Preview 的注解与预览渲染器（2026-10-17 用户要求加入 tooling.preview）：注解在 ui-tooling-preview，
+     * 渲染器在 ui-tooling（只进 debug，不进 release APK）。 */
+    implementation("androidx.compose.ui:ui-tooling-preview:1.12.1")
+    debugImplementation("androidx.compose.ui:ui-tooling:1.12.1")
     implementation("com.typesafe:config:1.4.9")
     implementation("org.apache.commons:commons-compress:1.28.0")
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
+    /* KernelSU 管理器 UI 移植（2026-10-18）：依赖与上游 manager/app 对齐。 */
+    implementation("androidx.core:core-splashscreen:1.2.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
+    implementation("androidx.navigationevent:navigationevent-compose:1.1.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    implementation("com.github.topjohnwu.libsu:core:6.0.0")
+    implementation("com.github.topjohnwu.libsu:service:6.0.0")
+    implementation("com.github.topjohnwu.libsu:io:6.0.0")
+    implementation("dev.rikka.rikkax.parcelablelist:parcelablelist:2.0.1")
+    implementation("org.apache.commons:commons-compress:1.28.0")
+    implementation("org.tukaani:xz:1.12")
+    implementation("org.commonmark:commonmark:0.30.0")
+    implementation("org.commonmark:commonmark-ext-gfm-tables:0.30.0")
+    implementation("org.commonmark:commonmark-ext-gfm-strikethrough:0.30.0")
+    implementation("org.commonmark:commonmark-ext-autolink:0.30.0")
+    implementation("org.commonmark:commonmark-ext-task-list-items:0.30.0")
+    implementation("androidx.webkit:webkit:1.17.0")
+    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
+    implementation("me.zhanghai.android.appiconloader:appiconloader:1.5.0")
+    implementation("com.materialkolor:material-kolor:5.0.1")
+    implementation("top.yukonga.miuix.kmp:miuix-blur:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-nav:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.4")

@@ -36,7 +36,7 @@ namespace ghostlock::backend::cve_2026_43284::landing {
         void close() noexcept;
 
         [[nodiscard]] Status status() const noexcept { return status_; }
-        [[nodiscard]] int error() const noexcept { return error_; }
+        [[nodiscard]] int error_code() const noexcept { return error_; }
         [[nodiscard]] int fd() const noexcept { return fd_; }
         /** The name for a report line. */
         [[nodiscard]] static const char *status_name(Status status) noexcept;

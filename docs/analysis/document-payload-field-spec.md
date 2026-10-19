@@ -1,7 +1,7 @@
 # Document ③ 段（收尾 payload）字段口径定稿 · 2026-10-08
 
 > 分析类（≤8192 B）。**本件只记录已定稿条文，不含裁决**（裁决见 Lead；有疑问回报，不自行改判）。
-> 相关：[lua-surface-annex-document.md](lua-surface-annex-document.md) §B1 · [A6 待批单](../plan/A6-baseline-approval.md) §1 第 8 项 · `core/src/terminal/payload.hpp` · `core/src/terminal/execution.hpp`。
+> 相关：[lua-surface-annex-document.md](lua-surface-annex-document.md) §B1 · [A6 待批单](../archive/20261017-1835-A6-baseline-approval.md) §1 第 8 项 · `core/src/terminal/payload.hpp` · `core/src/terminal/execution.hpp`。
 
 ## §1 段名与键名
 

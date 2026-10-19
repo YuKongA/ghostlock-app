@@ -10,8 +10,8 @@
 #include <utility>
 #include <vector>
 
-#include "jni/attack_contract_model.hpp"
-#include "jni/attack_contract_values.hpp"
+#include "contract/attack_contract_model.hpp"
+#include "contract/attack_contract_values.hpp"
 
 namespace {
     /** 与 JNI 源同接口的宿主字段源；顺序/类型不一致立即具名失败。 */
@@ -302,7 +302,7 @@ int main() {
                    ghostlock::jni::contract::ReadError::FieldOrderMismatch); \
         } \
     }
-#include "jni/attack_contract_fields.def"
+#include "contract/attack_contract_fields.hpp"
 #undef GL_ATTACK_END_GROUP
 #undef GL_ATTACK_BYTES_FIELD
 #undef GL_ATTACK_FIELD

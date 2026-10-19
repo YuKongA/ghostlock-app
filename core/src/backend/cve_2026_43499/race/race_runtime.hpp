@@ -13,7 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "memory/target_profile.hpp"
+#include "platform/target_profile.hpp"
 
 namespace ghostlock::backend::cve_2026_43499::race {
     /** What the profile says about one attempt. */

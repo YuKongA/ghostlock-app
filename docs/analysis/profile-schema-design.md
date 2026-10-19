@@ -92,7 +92,7 @@
 
 ## 八、与活跃计划的关系
 
-- [config-wire-redesign-plan.md](config-wire-redesign-plan.md) §3 — 本文件是其 schema 细节（裁定不重复）
+- [config-wire-redesign-plan.md](../archive/20261017-1835-config-wire-redesign-plan.md) §3 — 本文件是其 schema 细节（裁定不重复）
 - [input-parameters-inventory.md](input-parameters-inventory.md) — 参数总清单（含尚未进 schema 的运行期/调用面）
 - `docs/profile/PROFILE_SCHEMA.md`（HOCON 时代权威）— 待退场（P3）
 - `core/src/profile/key_catalog.hpp`（C++ 键表）— 人工撰写进 schema 后删表（先建后删）

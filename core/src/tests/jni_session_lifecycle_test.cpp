@@ -14,9 +14,9 @@
 #include <span>
 
 #include "contract/kernel_access.hpp"
-#include "jni/session_handles.hpp"
-#include "jni/session_object.hpp"
-#include "jni/session_protocol.hpp"
+#include "boundary/protocol/session_handles.hpp"
+#include "boundary/protocol/session_object.hpp"
+#include "boundary/protocol/session_protocol.hpp"
 
 namespace {
     using ghostlock::contract::AccessCarrier;

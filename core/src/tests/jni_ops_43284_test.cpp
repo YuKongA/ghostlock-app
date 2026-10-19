@@ -11,9 +11,9 @@
 #include <string_view>
 #include <utility>
 
-#include "jni/ops_43284.hpp"
-#include "jni/session_object.hpp"
-#include "jni/session_protocol.hpp"
+#include "boundary/protocol/ops_43284.hpp"
+#include "boundary/protocol/session_object.hpp"
+#include "boundary/protocol/session_protocol.hpp"
 
 namespace {
     using ghostlock::contract::AccessCarrier;

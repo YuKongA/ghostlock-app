@@ -7,7 +7,7 @@
 #include <cstdio>
 #include <cstring>
 
-#include "jni/handle_registry.hpp"
+#include "boundary/protocol/handle_registry.hpp"
 
 namespace {
     using ghostlock::jni::CallCode;

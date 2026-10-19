@@ -11,7 +11,7 @@
 #include <cstdio>
 #include <string_view>
 
-#include "memory/target_profile.hpp"
+#include "platform/target_profile.hpp"
 #include "backend/cve_2026_43499/race/pi_race.hpp"
 #include "backend/cve_2026_43499/race/pi_window.hpp"
 #include "support/neutrals.hpp"

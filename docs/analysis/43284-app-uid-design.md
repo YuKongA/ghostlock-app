@@ -295,20 +295,20 @@ SELinux 不允许从 /data/local/tmp 加载内核模块，所以那里的文件�
 | 件 | 结果 |
 |---|---|
 | embed/splicehelper_blob.{cpp,hpp} | **本树已有** ✓（core/src/backend/cve_2026_43284/embed/splicehelper_blob.*） |
-| 引用 splicehelper 的地方 | core/src/tools/pagecache_load_lkm.cpp、**core/src/jni/ops_43284_device.cpp**、steps/pagecache_step_runner.cpp ⇒ 本树已有一条用到它的路 |
+| 引用 splicehelper 的地方 | core/src/tools/pagecache_load_lkm.cpp、**core/src/device/43284/ops.cpp**、steps/pagecache_step_runner.cpp ⇒ 本树已有一条用到它的路 |
 | contract::FileCacheWriteOps（退役树的注入面） | **本树没有** ✗ —— 注入面类型不在这里（contract/capabilities.hpp 也不存在） |
 
 **结论与下一步**：
 
 1. helper 的字节（splicehelper）本树有 ✓，patch#1 不需要重新生成载荷；
 2. 退役树的「注入面（FileCacheWriteOps）」在本树不存在 ⇒ 本树用自己的写法：
-   先看 **core/src/jni/ops_43284_device.cpp** 是怎么用 splicehelper 的（它就在 JNI 目录里，很可能已经是设备侧的接线），
+   先看 **core/src/device/43284/ops.cpp** 是怎么用 splicehelper 的（它就在 JNI 目录里，很可能已经是设备侧的接线），
    据此决定「patch#1 写成什么形态」：若 ops_43284_device.cpp 已经提供写路径，patch#1 只需一个薄原语；否则要先补一个注入面等价物。
 3. 域桥（exec crash_dump64 + 管道 + splice 读回）本树确实没有 ⇒ 仍是**需移植**的新原语。
 
 ### 9.5 移植面缩小：两个载荷都已经在边界上，patch#1 可能不需要新 native 代码（2026-10-15）
 
-读 core/src/jni/ops_43284_device.cpp：它已经通过 embeddedImage(role) 提供**两份真实内容**：
+读 core/src/device/43284/ops.cpp：它已经通过 embeddedImage(role) 提供**两份真实内容**：
 
     role=0（kRoleSpliceHelper）  → embed::splicehelper_bytes()（padded）      = patch#1 要写的那份 helper
     role=1（kRoleLandingPayload）→ hook::build_sentry_payload(device_sentry_plan()) = 钩子载荷（含两台参数已填）

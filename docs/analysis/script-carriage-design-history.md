@@ -1,7 +1,7 @@
 # 沿革：script-carriage-design v2 的逐条处置（**从主件迁出**，2026-10-08）
 
 > 分析类（≤8192 B）。**迁出理由** = 配额：主件 `script-carriage-design.md` 正文按评审 R1–R6 落条文后达 9243 B > 8192 ⇒ 按配额纪律把「**v2 对二审的逐条处置表**」移到本件（**内容未改**，仅位置迁移）。
-> 主件： [script-carriage-design.md](script-carriage-design.md)（正文保留结论）· 相关：[op-fall-rule.md](op-fall-rule.md) · [script-plan-design.md](script-plan-design.md)。
+> 主件： [script-carriage-design.md](script-carriage-design.md)（正文保留结论）· 相关：[op-fall-rule.md](op-fall-rule.md) · [script-plan-design.md](../archive/20261017-1835-script-plan-design.md)。
 
 ## 0 v2 改了什么（对二审的逐条处置）
 

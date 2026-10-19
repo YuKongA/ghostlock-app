@@ -2,7 +2,9 @@ import java.nio.file.Files
 import java.util.Properties
 
 plugins {
-    id("com.android.application") version "9.1.0" apply false
+    id("com.android.application") version "9.4.1" apply false
+    id("com.android.library") version "9.4.1" apply false
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.20" apply false
     id("org.jetbrains.kotlin.plugin.compose") version "2.4.20" apply false
     id("org.jetbrains.kotlin.jvm") version "2.4.20" apply false
 }
@@ -312,46 +314,10 @@ tasks.register("exportJniProtocolManifest") {
     }
 }
 
-/**
- * D1 跨端字段生成：唯一输入是 native attack_contract_fields.def；生成 Kotlin 参数类型与 TSV 清单。
- * 两个输出都在仓库根 build/app 下，源码树不接收生成物。
- */
-tasks.register("exportJniAttackContract") {
-    description = "从 D1 单表生成 Kotlin JNI 参数类型与字段清单"
-    group = "verification"
-    dependsOn("nativeBuildHost")
-    val tool = file("build/host/jni_attack_contract_codegen")
-    val kotlinOut = file(
-        "build/app/generated/source/attackContract/com/ghostlock/app/core/generated/AttackContractDtos.kt",
-    )
-    val manifestOut = file("build/app/jni-attack-contract-fields.tsv")
-    inputs.files(
-        file("core/src/jni/attack_contract_fields.def"),
-        file("core/src/jni/attack_contract_model.hpp"),
-        file("core/src/jni/attack_contract_codegen.cpp"),
-        tool,
-    )
-    outputs.files(kotlinOut, manifestOut)
-    doLast {
-        val process = ProcessBuilder(
-            tool.absolutePath,
-            kotlinOut.absolutePath,
-            manifestOut.absolutePath,
-        ).redirectErrorStream(true).start()
-        val text = process.inputStream.readBytes().toString(Charsets.UTF_8)
-        val code = process.waitFor()
-        check(code == 0) { "jni_attack_contract_codegen failed(" + code + "):\n" + text }
-        logger.lifecycle(text.trim())
-        logger.lifecycle(
-            "exportJniAttackContract: " + kotlinOut.path + " + " + manifestOut.path,
-        )
-    }
-}
-
+/* 2026-10-17 用户裁定：跨端字段表改为手写（.def + 生成器已删除），此任务一并移除。 */
 /* 应用单测必须先看到那份导出：协议表是跨端契约，测试不允许在缺它的前提下跑过。 */
 tasks.matching { it.name == "testDebugUnitTest" }.configureEach {
     dependsOn("exportJniProtocolManifest")
-    dependsOn("exportJniAttackContract")
 }
 /* ---------------------------------------------------------------------------
  * 设备门禁（J7）：把「在真机上跑一遍」变成一条 Gradle 命令，并**机器校验**关键行。
@@ -372,7 +338,9 @@ tasks.register("verifyJniLibs") {
     dependsOn("nativeBuildAndroid")
     val libDir = file("build/native")
     val ndkRoot = resolveNdkDir()
-    val sourceDir = file("core/src/jni")
+    /* 2026-10-18 重排：JNI 入口在 boundary/jni，设备侧编排在 device/<ver>；
+     * 符号仍按 backend 名归类，所以两个目录都要扫。 */
+    val sourceDirs = listOf(file("core/src/boundary/jni"), file("core/src/device"))
 
     doLast {
         val llvmNm = File(ndkRoot, "toolchains/llvm/prebuilt").listFiles()
@@ -391,8 +359,9 @@ tasks.register("verifyJniLibs") {
         /** 源码里声明的函数名（JNIEXPORT 后面那一段）。 */
         fun expectedFunctions(backend: String): Set<String> {
             val pattern = Regex("Java_com_ghostlock_app_jni_cve" + backend + "_([A-Za-z0-9_]+)")
-            return sourceDir.listFiles().orEmpty()
-                .filter { it.name.endsWith(".cpp") && it.name.contains(backend) }
+            return sourceDirs
+                .flatMap { dir -> dir.walkTopDown().filter { it.isFile && it.name.endsWith(".cpp") }.toList() }
+                .filter { it.name.contains(backend) }
                 .flatMap { file -> pattern.findAll(file.readText()).map { it.groupValues[1] }.toList() }
                 .toSet()
         }
@@ -490,7 +459,14 @@ tasks.register("deviceGate") {
         adb("logcat", "-c")
         adb("shell", "am", "start", "-n", "com.ghostlock.app/.tempui.TempUiActivity")
         Thread.sleep(7000L)
-        val log = adb("logcat", "-d", "-s", "GhostlockGate:I", "GhostlockPlan:I", "GhostlockUi:I", "GhostlockTyped:I", "GhostLockNative:I")
+        val logcatLog = adb("logcat", "-d", "-s", "GhostlockGate:I", "GhostlockPlan:I", "GhostlockUi:I", "GhostlockTyped:I", "GhostLockNative:I")
+        /* 2026-10-17：判据不再只依赖 logcat（环形缓冲会被挤掉、重启即空）。
+         * 磁盘那一份是 Application 启动时打开的同名文件：run-as 因为本包 debuggable 可直接读。
+         * 两段都写进门禁日志，logcat 那一段保留作为实时/次要通道。 */
+        val fileLog = runCatching {
+            adb("shell", "run-as", "com.ghostlock.app", "cat", "files/ghostlock-run.log")
+        }.getOrElse { problem -> "deviceGate: 读日志文件失败 " + problem.javaClass.simpleName }
+        val log = logcatLog + "\n# ---- files/ghostlock-run.log ----\n" + fileLog
         logFile.parentFile.mkdirs()
         logFile.writeText(log)
 
@@ -629,159 +605,6 @@ tasks.register<Copy>("prepareGhostlockExtractJniLibs") {
     from("build/extract/aarch64-linux-android/release/ghostlock-extract")
     into("app/src/main/jniLibs/arm64-v8a")
     rename { "libextract.so" }
-}
-
-/* ---------------------------------------------------------------------------
- * markdownlint（docs 渲染级检查）
- *
- * 目的：用 markdownlint-cli2 约束**渲染相关**的 Markdown 规则（表格列数/空行、
- * 列表与围栏空行、引用块空行等）。规则与范围见根目录 .markdownlint.jsonc 与
- * .markdownlint-cli2.jsonc（docs/archive 目录为历史快照，显式豁免）。
- *
- * 候选运行器（按序尝试；只用 JVM/进程 API，不依赖 shell）：
- *   1) 项目本地 node_modules/markdownlint-cli2 的 bin 入口（npm ci 后离线可用）；
- *   2) PATH 上的 npx --no-install markdownlint-cli2（npx 缓存命中时可用）；
- *   3) -PmarkdownlintAllowInstall=true 时先 npm install（需网络），再走 1)。
- *
- * 判定表（**防假绿**，不依赖易抖的 --version 预探针）：
- *   横幅出现 + exit 0      ⇒ 通过；
- *   横幅出现 + exit ≠ 0    ⇒ lint 命中问题 ⇒ 构建失败（红）；
- *   横幅缺失（无论 exit）  ⇒ 工具没跑起来或入口错（历史事故：库入口 .mjs 静默 exit 0）
- *                            ⇒ 显式 SKIP，任务状态 = SKIPPED（不是 SUCCESS）；
- *   -PmarkdownlintStrict=true ⇒ SKIP 直接失败（CI 硬门禁）。
- *
- * 用法：
- *   ./gradlew markdownlint        # 检查
- *   ./gradlew markdownlintFix     # 自动修复可修项（--fix）
- *   MARKDOWNLINT_NODE=<path>      # 指定 node 可执行文件
- *
- * 实现说明：写成**类型化 DefaultTask**（而非脚本闭包），以兼容
- * org.gradle.configuration-cache=true（脚本对象不可序列化）。
- */
-abstract class MarkdownlintCli2Task : DefaultTask() {
-    @get:Input
-    abstract val fixMode: Property<Boolean>
-
-    @get:Input
-    abstract val strictMode: Property<Boolean>
-
-    @get:Input
-    abstract val allowInstall: Property<Boolean>
-
-    @get:Optional
-    @get:Input
-    abstract val nodeExecutable: Property<String>
-
-    @get:Internal
-    abstract val repoDir: DirectoryProperty
-
-    @TaskAction
-    fun lint() {
-        val pin = "0.23.3"
-        val root = repoDir.get().asFile
-        val isWindows = System.getProperty("os.name").lowercase().contains("windows")
-        val node = nodeExecutable.orNull?.takeIf(String::isNotBlank) ?: "node"
-
-        data class Probe(val ok: Boolean, val output: String)
-
-        fun run(command: List<String>): Probe =
-            try {
-                val process = ProcessBuilder(command).directory(root).redirectErrorStream(true).start()
-                val text = process.inputStream.readBytes().toString(Charsets.UTF_8)
-                val code = process.waitFor()
-                logger.lifecycle(text.trimEnd())
-                Probe(code == 0, text.trim())
-            } catch (e: Exception) {
-                Probe(false, e.message ?: e.toString())
-            }
-
-        fun giveUp(reason: String): Nothing {
-            logger.lifecycle("SKIP markdownlint: " + reason)
-            logger.lifecycle(
-                "SKIP markdownlint: 本次没有执行任何 Markdown 检查 —— 任务结果为 SKIPPED，" +
-                    "不代表 lint 通过（不假绿）；需要硬门禁请加 -PmarkdownlintStrict=true",
-            )
-            if (strictMode.get()) throw GradleException("markdownlint SKIPPED: " + reason)
-            throw StopExecutionException("markdownlint skipped: " + reason)
-        }
-
-        val nodeProbe = run(listOf(node, "--version"))
-        if (!nodeProbe.ok) {
-            giveUp("找不到可用的 node（" + nodeProbe.output.take(200) + "）；设 MARKDOWNLINT_NODE=<path> 或安装 Node.js")
-        }
-
-        // 本地安装的 **bin** 入口（不是库入口 markdownlint-cli2.mjs —— 后者静默 exit 0）。
-        fun localBin(): File? {
-            val pkgDir = File(root, "node_modules/markdownlint-cli2")
-            val pkgJson = File(pkgDir, "package.json")
-            val fromPkg = if (pkgJson.isFile) {
-                val match = Regex("\"markdownlint-cli2\"\\s*:\\s*\"([^\"]+)\"").find(pkgJson.readText())
-                match?.groupValues?.get(1)?.let { File(pkgDir, it) }
-            } else {
-                null
-            }
-            val fallback = File(pkgDir, "markdownlint-cli2-bin.mjs")
-            return listOfNotNull(fromPkg, fallback).firstOrNull { it.isFile }
-        }
-
-        val npx = if (isWindows) "npx.cmd" else "npx"
-        val candidates = mutableListOf<List<String>>()
-        localBin()?.let { candidates += listOf(node, it.absolutePath) }
-        candidates += listOf(npx, "--no-install", "markdownlint-cli2")
-
-        if (allowInstall.get() && localBin() == null) {
-            val npm = if (isWindows) "npm.cmd" else "npm"
-            logger.lifecycle("markdownlint: 本地未安装，执行 npm install（需网络）")
-            run(listOf(npm, "install", "--no-audit", "--no-fund"))
-            localBin()?.let { candidates.add(0, listOf(node, it.absolutePath)) }
-        }
-
-        val args = mutableListOf("--config", ".markdownlint-cli2.jsonc")
-        if (fixMode.get()) args += "--fix"
-
-        var lastReason = "没有任何候选运行器"
-        var ran = false
-        for (candidate in candidates) {
-            val command = candidate + args
-            logger.lifecycle("markdownlint: " + command.joinToString(" "))
-            val result = run(command)
-            if (!result.output.contains("markdownlint-cli2", ignoreCase = true)) {
-                lastReason = "运行器未产出工具横幅（" + command.joinToString(" ") + "）：" + result.output.take(200)
-                continue
-            }
-            ran = true
-            if (!result.ok) {
-                throw GradleException("markdownlint 失败：见上方 file:line:rule 输出")
-            }
-            break
-        }
-        if (!ran) {
-            giveUp(
-                "markdownlint-cli2 未能运行（" + lastReason + "）；" +
-                    "修复：npm ci（或 -PmarkdownlintAllowInstall=true 联网安装 markdownlint-cli2@" + pin + "）",
-            )
-        }
-    }
-}
-
-tasks.register<MarkdownlintCli2Task>("markdownlint") {
-    group = "verification"
-    description = "markdownlint-cli2 检查 Markdown 渲染级问题；无法运行时显式 SKIP（不假绿）。"
-    fixMode.set(false)
-    strictMode.set(providers.gradleProperty("markdownlintStrict").map(String::toBoolean).orElse(false))
-    allowInstall.set(providers.gradleProperty("markdownlintAllowInstall").map(String::toBoolean).orElse(false))
-    nodeExecutable.set(providers.environmentVariable("MARKDOWNLINT_NODE"))
-    repoDir.set(layout.projectDirectory)
-}
-
-tasks.register<MarkdownlintCli2Task>("markdownlintFix") {
-    group = "verification"
-    description = "markdownlint-cli2 --fix（自动修复可修的渲染级问题）。"
-    fixMode.set(true)
-    strictMode.set(providers.gradleProperty("markdownlintStrict").map(String::toBoolean).orElse(false))
-    allowInstall.set(providers.gradleProperty("markdownlintAllowInstall").map(String::toBoolean).orElse(false))
-    nodeExecutable.set(providers.environmentVariable("MARKDOWNLINT_NODE"))
-    repoDir.set(layout.projectDirectory)
 }
 
 /**

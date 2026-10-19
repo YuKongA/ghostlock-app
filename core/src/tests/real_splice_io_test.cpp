@@ -10,6 +10,12 @@
  *  sampled rather than per block (and that the preimage still comes from the same source), and that
  *  the vector and the check are the primitives' answers rather than a second implementation.
  *
+ *  It also pins the one-run helper path: with a surface that can tee, a block this process cannot
+ *  read costs one helper run -- the page is teed for the preimage and then moved pipe to pipe into
+ *  the datagram, so it never stops being the carrier's page -- a failed or short tee fails the
+ *  block closed, a pending page for another offset fails it closed instead of falling back to the
+ *  frame's own bytes, and a surface with no tee keeps the two helper runs it had.
+ *
  *  It also pins the switch that turns the bridge from one exec per block into one session
  *  (bridge_session.hpp, default off): a normal answer, a short answer, a child that leaves, a child
  *  that goes quiet (the 200 ms deadline), an idempotent close, and -- the number the switch exists for
@@ -98,6 +104,30 @@ namespace {
         int datagram_fd = -1;
         std::size_t datagram_total = 0U;
 
+        Answer tee_answer = Answer::Full;
+        bool tee_short_pending = false;
+        bool tee_eintr_pending = false;
+        std::size_t tee_calls = 0U;
+        int tee_in_fd = -1;
+        int tee_out_fd = -1;
+        std::size_t tee_len = 0U;
+
+        Answer read_pipe_answer = Answer::Full;
+        bool read_pipe_short_pending = false;
+        bool read_pipe_eintr_pending = false;
+        std::size_t read_pipe_calls = 0U;
+        int read_pipe_fd = -1;
+        std::size_t read_pipe_len = 0U;
+
+        /* Every pipe this fake hands out, in order: a test can say which pipe a splice or a tee
+         * actually used instead of trusting a number. */
+        static constexpr std::size_t kPipePairs = 8U;
+        int pipe_pairs[kPipePairs][2] = {};
+        std::size_t pipe_pairs_made = 0U;
+        int next_pipe_fd = 41;
+
+        std::size_t span_in_fds[4] = {};
+
         Answer read_answer = Answer::Full;
         bool read_short_pending = false;
         bool read_eintr_pending = false;
@@ -116,9 +146,77 @@ namespace {
         if (g_fake.pipe2_result != 0) {
             return g_fake.pipe2_result;
         }
-        fds[0] = g_fake.pipe_fds[0];
-        fds[1] = g_fake.pipe_fds[1];
+        /* A fresh pair per call: read_at's page pipe, its copy pipe and the send pipe must be
+         * distinguishable, or the dispatch below would mistake one for another. */
+        fds[0] = g_fake.next_pipe_fd;
+        fds[1] = g_fake.next_pipe_fd + 1;
+        g_fake.next_pipe_fd += 2;
+        if (g_fake.pipe_pairs_made < Fake::kPipePairs) {
+            g_fake.pipe_pairs[g_fake.pipe_pairs_made][0] = fds[0];
+            g_fake.pipe_pairs[g_fake.pipe_pairs_made][1] = fds[1];
+        }
+        ++g_fake.pipe_pairs_made;
+        g_fake.pipe_fds[0] = fds[0];
+        g_fake.pipe_fds[1] = fds[1];
         return 0;
+    }
+
+    long fake_tee(int fd_in, int fd_out, std::size_t len, unsigned) noexcept {
+        ++g_fake.tee_calls;
+        g_fake.tee_in_fd = fd_in;
+        g_fake.tee_out_fd = fd_out;
+        g_fake.tee_len = len;
+        switch (g_fake.tee_answer) {
+        case Answer::Full:
+            return static_cast<long>(len);
+        case Answer::ShortOnce:
+            if (g_fake.tee_short_pending) {
+                g_fake.tee_short_pending = false;
+                return 8L;
+            }
+            return static_cast<long>(len);
+        case Answer::EintrOnce:
+            if (g_fake.tee_eintr_pending) {
+                g_fake.tee_eintr_pending = false;
+                return -EINTR;
+            }
+            return static_cast<long>(len);
+        case Answer::Fail:
+            return -EIO;
+        case Answer::Zero:
+            return 0L;
+        }
+        return -EIO;
+    }
+
+    long fake_read_pipe(int fd, std::uint8_t *out, std::size_t len) noexcept {
+        ++g_fake.read_pipe_calls;
+        g_fake.read_pipe_fd = fd;
+        g_fake.read_pipe_len = len;
+        switch (g_fake.read_pipe_answer) {
+        case Answer::Full:
+            for (std::size_t i = 0U; i < len; ++i) out[i] = 0x5aU;
+            return static_cast<long>(len);
+        case Answer::ShortOnce:
+            if (g_fake.read_pipe_short_pending) {
+                g_fake.read_pipe_short_pending = false;
+                for (std::size_t i = 0U; i < len; ++i) out[i] = 0x5aU;
+                return 8L; /* eight, then EOF: the teed pipe held less than a block */
+            }
+            return 0L;
+        case Answer::EintrOnce:
+            if (g_fake.read_pipe_eintr_pending) {
+                g_fake.read_pipe_eintr_pending = false;
+                return -EINTR;
+            }
+            for (std::size_t i = 0U; i < len; ++i) out[i] = 0x5aU;
+            return static_cast<long>(len);
+        case Answer::Fail:
+            return -EIO;
+        case Answer::Zero:
+            return 0L;
+        }
+        return -EIO;
     }
 
     long fake_vmsplice(int, const std::uint8_t *, std::size_t len, unsigned) noexcept {
@@ -177,6 +275,7 @@ namespace {
         }
         if (g_fake.span_calls < 4U) {
             g_fake.span_offsets[g_fake.span_calls] = (off_in != nullptr) ? *off_in : 0U;
+            g_fake.span_in_fds[g_fake.span_calls] = static_cast<std::size_t>(fd_in);
         }
         ++g_fake.span_calls;
         switch (g_fake.span_answer) {
@@ -251,6 +350,14 @@ namespace {
     SpliceIoOps fake_io() noexcept {
         return SpliceIoOps{&fake_pipe2, &fake_splice, &fake_vmsplice,
                            &fake_send_datagram, &fake_read_at, &fake_close_fd};
+    }
+
+    /** The same surface with the two entries the one-run helper path needs. */
+    SpliceIoOps fake_io_with_tee() noexcept {
+        SpliceIoOps ops = fake_io();
+        ops.tee = &fake_tee;
+        ops.read_pipe = &fake_read_pipe;
+        return ops;
     }
 
     /** The injected bridge's record. */
@@ -440,6 +547,152 @@ namespace {
                "the preimage still comes back without the per-block probe");
         expect(bridge.read_calls == 2U && old_block[0] == 0x5aU && old_block[kBlockBytes - 1U] == 0x5aU,
                "from one helper read, with the source's own bytes");
+    }
+
+    /** 载体不可直读时一块只 fork 一次：read_at 让 helper 把**目标页**切进管道，tee 复制十六字节
+     *  当 preimage（页不动），splice_one 再把同一页从管道移进发送管道。 */
+    void the_helper_page_is_teed_once_per_block() {
+        const auto frame = make_frame();
+        reset_fake();
+        Bridge bridge;
+        RealSpliceIo io(fake_io_with_tee(), -1, 0, OldPageSource{&bridge, &bridge_read16},
+                        HelperWriteSource{&bridge, &bridge_splice16});
+        std::uint8_t old_block[kBlockBytes] = {};
+        expect(io.read_at(-1, old_block, kBlockBytes, 0x40U) == static_cast<long>(kBlockBytes),
+               "the helper page comes back as the whole block");
+        expect(bridge.splice_calls == 1U && bridge.splice_offset == 0x40U,
+               "one helper run, for the page at the offset asked");
+        expect(bridge.splice_pipe_fd == g_fake.pipe_pairs[0][1],
+               "the helper wrote into the page pipe this side opened");
+        expect(bridge.read_calls == 0U, "and no second helper run to read the preimage");
+        expect(g_fake.tee_calls == 1U && g_fake.tee_len == kBlockBytes,
+               "the page was teed once, sixteen bytes");
+        expect(g_fake.tee_in_fd == g_fake.pipe_pairs[0][0] &&
+               g_fake.tee_out_fd == g_fake.pipe_pairs[1][1],
+               "from the page pipe into a copy pipe, not out of this process's memory");
+        expect(old_block[0] == 0x5aU && old_block[kBlockBytes - 1U] == 0x5aU,
+               "the preimage is the page's own bytes");
+
+        expect(io.splice_one(9, frame.data(), frame.size(), 0x40U), "the block still sends");
+        expect(bridge.splice_calls == 1U, "and the send ran no helper: one fork for the whole block");
+        expect(g_fake.span_calls == 1U &&
+               g_fake.span_in_fds[0] == static_cast<std::size_t>(g_fake.pipe_pairs[0][0]),
+               "the page moved from its pipe into the send pipe");
+        expect(g_fake.datagram_calls == 1U, "one datagram");
+        expect(g_fake.datagram_total == frame.size(), "of the whole frame length");
+        expect(g_fake.datagram_fd == 9, "on the socket it was given");
+
+        /* 页被消费掉之后 pending 槽必须清空：下一块没有 read_at 时只能由 helper 自己送页。 */
+        expect(io.splice_one(9, frame.data(), frame.size(), 0x50U),
+               "a later block with no pending page still sends");
+        expect(bridge.splice_calls == 2U, "through the helper itself: the pending page was consumed");
+    }
+
+    /** tee 失败或短读 ⇒ fail-closed：这一块没有 preimage，也就没有报文。 */
+    void a_failed_tee_fails_the_block_closed() {
+        const auto frame = make_frame();
+        std::uint8_t old_block[kBlockBytes] = {};
+
+        reset_fake();
+        g_fake.tee_answer = Answer::Fail;
+        Bridge bridge;
+        RealSpliceIo io(fake_io_with_tee(), -1, 0, OldPageSource{&bridge, &bridge_read16},
+                        HelperWriteSource{&bridge, &bridge_splice16});
+        expect(io.read_at(-1, old_block, kBlockBytes, 0x40U) < 0L, "a failed tee fails the read");
+        expect(g_fake.datagram_calls == 0U, "and no datagram is sent for that block");
+        expect(g_fake.close_calls == 4U, "every pipe the path opened is given back");
+        expect(io.splice_one(9, frame.data(), frame.size(), 0x40U),
+               "a block with no pending page still sends");
+        expect(bridge.splice_calls == 2U, "through a fresh helper run, not a stale page");
+
+        reset_fake();
+        g_fake.tee_answer = Answer::ShortOnce;
+        g_fake.tee_short_pending = true;
+        Bridge short_bridge;
+        RealSpliceIo short_io(fake_io_with_tee(), -1, 0,
+                              OldPageSource{&short_bridge, &bridge_read16},
+                              HelperWriteSource{&short_bridge, &bridge_splice16});
+        expect(short_io.read_at(-1, old_block, kBlockBytes, 0x40U) == 8L, "a short tee is a short read");
+        expect(g_fake.datagram_calls == 0U, "and nothing is sent");
+
+        reset_fake();
+        g_fake.read_pipe_answer = Answer::ShortOnce;
+        g_fake.read_pipe_short_pending = true;
+        Bridge eof_bridge;
+        RealSpliceIo eof_io(fake_io_with_tee(), -1, 0,
+                            OldPageSource{&eof_bridge, &bridge_read16},
+                            HelperWriteSource{&eof_bridge, &bridge_splice16});
+        expect(eof_io.read_at(-1, old_block, kBlockBytes, 0x40U) == 8L,
+               "a copy that ends after eight bytes is a short block, not data");
+        expect(g_fake.datagram_calls == 0U, "and it is not sent either");
+    }
+
+    /** pending 页的 offset 与要发的块不符 ⇒ fail-closed，绝不拿报文里的字节顶替页。 */
+    void a_pending_page_for_another_offset_fails_closed() {
+        const auto frame = make_frame();
+        reset_fake();
+        Bridge bridge;
+        RealSpliceIo io(fake_io_with_tee(), -1, 0, OldPageSource{&bridge, &bridge_read16},
+                        HelperWriteSource{&bridge, &bridge_splice16});
+        std::uint8_t old_block[kBlockBytes] = {};
+        expect(io.read_at(-1, old_block, kBlockBytes, 0x40U) == static_cast<long>(kBlockBytes),
+               "a block is read and its page is pending");
+        const std::size_t closes_before = g_fake.close_calls;
+        expect(!io.splice_one(9, frame.data(), frame.size(), 0x50U),
+               "a pending page for another offset fails the block closed");
+        expect(g_fake.datagram_calls == 0U, "and nothing is sent");
+        expect(bridge.splice_calls == 1U, "no fallback page is produced for the other offset");
+        expect(g_fake.close_calls == closes_before + 1U, "the pending pipe is given back");
+        expect(io.last_error() == 5, "and the refusal names the pending mismatch");
+        expect(io.splice_one(9, frame.data(), frame.size(), 0x50U),
+               "the next attempt has no pending page and sends");
+        expect(bridge.splice_calls == 2U, "through the helper");
+    }
+
+    /** fd >= 0 的路径不碰 tee：直读照旧，页仍从描述符切。 */
+    void the_descriptor_path_never_tees() {
+        const auto frame = make_frame();
+        reset_fake();
+        RealSpliceIo io(fake_io_with_tee(), 7);
+        std::uint8_t old_block[kBlockBytes] = {};
+        expect(io.read_at(7, old_block, kBlockBytes, 0x40U) == static_cast<long>(kBlockBytes),
+               "a readable descriptor still reads directly");
+        expect(g_fake.tee_calls == 0U && g_fake.read_pipe_calls == 0U,
+               "the tee path is not taken when the carrier can be read");
+        expect(io.splice_one(9, frame.data(), frame.size(), 0x40U), "the block still sends");
+        expect(g_fake.span_calls == 1U && g_fake.span_in_fds[0] == 7U,
+               "and the page still comes from the descriptor");
+        expect(g_fake.datagram_calls == 1U, "one datagram");
+    }
+
+    /** 面没有 tee：载体不可直读时仍是两次 helper（先读 preimage，再送页），行为不变。 */
+    void without_tee_the_two_helper_runs_stay() {
+        const auto frame = make_frame();
+        reset_fake();
+        Bridge bridge;
+        RealSpliceIo io(fake_io(), -1, 0, OldPageSource{&bridge, &bridge_read16},
+                        HelperWriteSource{&bridge, &bridge_splice16});
+        std::uint8_t old_block[kBlockBytes] = {};
+        expect(io.read_at(-1, old_block, kBlockBytes, 0x40U) == static_cast<long>(kBlockBytes),
+               "the preimage still comes from the source read");
+        expect(bridge.read_calls == 1U && bridge.splice_calls == 0U,
+               "one helper run for the read");
+        expect(g_fake.tee_calls == 0U && g_fake.read_pipe_calls == 0U,
+               "no tee entry is used on a surface that has none");
+        expect(io.splice_one(9, frame.data(), frame.size(), 0x40U), "and the block still sends");
+        expect(bridge.splice_calls == 1U, "with a second helper run for the page");
+        expect(g_fake.datagram_calls == 1U, "one datagram");
+
+        /* 面能 tee，但没有 helper（没有桥）：没有页管道可复制，仍走原来的 read16 来源。 */
+        reset_fake();
+        Bridge read_only;
+        RealSpliceIo io_read_only(fake_io_with_tee(), -1, 0,
+                                  OldPageSource{&read_only, &bridge_read16});
+        expect(io_read_only.read_at(-1, old_block, kBlockBytes, 0x40U) ==
+               static_cast<long>(kBlockBytes),
+               "without a helper the source read still serves the preimage");
+        expect(read_only.read_calls == 1U, "one source read");
+        expect(g_fake.tee_calls == 0U, "and no tee: there is no page pipe to copy");
     }
 
 
@@ -939,6 +1192,12 @@ int main(int argc, char **argv) {
     refusals();
     std::printf("real splice io: the sampled probe and the preimage\n");
     the_diagnostic_probe_is_sampled_not_per_block();
+    std::printf("real splice io: one helper run per block (tee)\n");
+    the_helper_page_is_teed_once_per_block();
+    a_failed_tee_fails_the_block_closed();
+    a_pending_page_for_another_offset_fails_closed();
+    the_descriptor_path_never_tees();
+    without_tee_the_two_helper_runs_stay();
     std::printf("real splice io: the persistent bridge session\n");
     the_session_carries_blocks_over_one_child();
     a_short_reply_fails_the_session_closed();

@@ -1,6 +1,6 @@
 # Handoff / Payload 同批动作清单（UML · ADR · 需求 · 测试 · 批次）
 
-> 分析类（≤8 KB）。配套 [plan](handoff-payload-plan.md) §10 与 **§9.1 配额策略**、[b0](handoff-payload-b0-contract.md)、[b1b2](handoff-payload-b1b2-runtime.md)、[kotlin](handoff-payload-kotlin.md)、[kotlin-io](handoff-payload-kotlin-io.md)、[params-dispatch](handoff-payload-params-dispatch.md)、[ops](handoff-payload-ops.md)、[plugin-lua](handoff-plugin-lua.md)、[ADR README](adr/README.md)。
+> 分析类（≤8 KB）。配套 [plan](handoff-payload-plan.md) §10 与 **§9.1 配额策略**、[b0](handoff-payload-b0-contract.md)、[b1b2](handoff-payload-b1b2-runtime.md)、[kotlin](handoff-payload-kotlin.md)、[kotlin-io](handoff-payload-kotlin-io.md)、[params-dispatch](handoff-payload-params-dispatch.md)、[ops](handoff-payload-ops.md)、[plugin-lua](../archive/20261017-1835-handoff-plugin-lua.md)、[ADR README](adr/README.md)。
 > **本文是「同批动作」的唯一权威**（B6 关闭件）：只给**目标文件/章节 + 一句话改什么**，不复述条文。**自包含，不引用任何外部计划**。
 
 ## 1. UML 同批（`docs/development/full-process-uml.md`，逐图）

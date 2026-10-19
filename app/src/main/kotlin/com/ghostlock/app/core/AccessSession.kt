@@ -7,7 +7,7 @@ enum class SessionPhase { INITIALIZING, READY, FAILED, CLOSED }
 enum class CleanupDisposition { CLEAN, DIRTY }
 
 /**
- * Owner of the session lifetime and its borrowed capability views.
+ * Owner of the session lifetime (capability views were removed on 2026-10-17: they were never wired).
  *
  * Implementations serialize operations with close. After CLOSED, no capability call may cross
  * into native code. A DIRTY session must not silently transition back to READY.
@@ -15,9 +15,6 @@ enum class CleanupDisposition { CLEAN, DIRTY }
 interface AccessSession : AutoCloseable {
     val phase: SessionPhase
     val cleanup: CleanupDisposition
-    val kernelMemory: KernelMemoryAccess?
-    val pageCache: PageCacheAccess?
-
     /** Stop access, disarm and release native resources in that order, then close the session. */
     override fun close()
 }

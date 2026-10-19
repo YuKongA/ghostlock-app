@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 终端导出：写到 cache/logs，再通过 FileProvider 交给分享面板。 -->
+    <cache-path name="logs" path="logs/" />
+</paths>

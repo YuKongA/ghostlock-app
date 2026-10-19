@@ -1,6 +1,6 @@
 # P2 设计规格：新契约层（兼容面 + 新架构面）
 
-> 分析类（≤8 KiB）。**自包含**。P2 唯一权威规格：目标 = **既有 `backend/**` 零改动可编译**（[rewrite-plan](../plan/rewrite-plan.md) §5 硬判据）。
+> 分析类（≤8 KiB）。**自包含**。P2 唯一权威规格：目标 = **既有 `backend/**` 零改动可编译**（[rewrite-plan](../archive/20261017-1835-rewrite-plan.md) §5 硬判据）。
 > 全量表 = [A1](contract-layer-p2-spec-annex-a1.md)（48 头 × 次数 × 职责）+ [A2](contract-layer-p2-spec-annex-a2.md)（符号使用点）。判据 = D1。
 
 ## §1 兼容契约（**实测**：48 个头 / 59 个 backend 文件）
@@ -43,7 +43,7 @@
 | **中性写面** | op token / `WriteOutcome` / 诊断 | 新名（`contract` 新面）；与兼容面的 `payload_builder` 等**单向依赖**：新面可 include 兼容面，**反之禁止** |
 | **OpRegistry** | 脚本唯一接口权威（R2） | 独立于兼容面；**不得**为兼容而复制 OpSpec 定义 |
 | **plan gate** | 十条例（`{ok,reason,path,index}`） | 复用兼容面的**具名拒绝风格**（`BindCode` 同义），但**不重复定义**其枚举 |
-| **句柄表** | `{kind,index,generation}`、有界 64、POD、**无 `__gc`**（[ADR-0010](adr/0010-lua-cpp-resource-model.md)） | 与兼容面无交集 |
+| **句柄表** | `{kind,index,generation}`、有界 64、POD、**无 `__gc`**（[ADR-0010](../archive/20261017-1835-adr-0010-lua-cpp-resource-model.md)） | 与兼容面无交集 |
 | **窗口宿主** | 窗口内零 Lua / 参数化 / 原子性（[pi-window-constraints](pi-window-constraints.md)） | 依赖兼容面的 state 类型（`PiRace`/`TargetProfile`），但**不得**把窗口逻辑写进兼容头 |
 
 - **判据（防重复定义）**：任何「同一事实两处定义」（如 `TargetProfile` 在兼容头与新面各写一份）**视为**违反单一权威（E5/AGENTS M5 教训）。

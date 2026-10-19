@@ -1,6 +1,6 @@
 # Kotlin 面：编解码边界 / 导入通道 / strings 登记（细则）
 
-> 分析类（≤8 KB）。配套 [kotlin](handoff-payload-kotlin.md)（设计主表）、[b1b2](handoff-payload-b1b2-runtime.md) §B2.5、[plan](handoff-payload-plan.md) §10 D22/D27/D29、[ADR-0008](adr/0008-lua-runtime-sandbox.md)。**自包含，不引用任何外部计划**。
+> 分析类（≤8 KB）。配套 [kotlin](handoff-payload-kotlin.md)（设计主表）、[b1b2](handoff-payload-b1b2-runtime.md) §B2.5、[plan](handoff-payload-plan.md) §10 D22/D27/D29、[ADR-0008](../archive/20261017-1835-adr-0008-lua-runtime-sandbox.md)。**自包含，不引用任何外部计划**。
 
 ## 1. 编解码边界（R5）
 

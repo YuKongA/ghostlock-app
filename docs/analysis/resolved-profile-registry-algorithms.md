@@ -1,7 +1,7 @@
 # 详细设计附录：算法与代码逻辑走查（配套 resolved-profile-registry-plan）
 
 > 分析类附录（≤8 KB）。补齐评审指出缺失的「算法 A1–A8 + 代码逻辑走查 T1–T8」半场。
-> 与 [计划](resolved-profile-registry-plan.md) 同批；走查不通过 = 设计缺陷，必须在设计阶段修。
+> 与 [计划](../archive/20261017-1835-resolved-profile-registry-plan.md) 同批；走查不通过 = 设计缺陷，必须在设计阶段修。
 
 ## A. 算法（前置 / 步骤 / 后置 / 不变量）
 

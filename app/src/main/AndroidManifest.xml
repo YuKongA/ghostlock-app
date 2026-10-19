@@ -2,6 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <uses-sdk tools:overrideLibrary="top.yukonga.miuix.kmp.blur" />
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.INTERNET" />
     <queries>
         <package android:name="moe.shizuku.privileged.api" />
@@ -12,12 +18,33 @@
         <package android:name="com.resukisu.resukisu" />
         <package android:name="com.kowx712.supermanager" />
     </queries>
+        <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
     <application
+        android:name=".GhostLockApp"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.GhostLock">
+        <service
+            android:name=".attack.AttackService"
+            android:process=":attack"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="ghostlock attack execution" />
+        </service>
+
+        <receiver
+            android:name=".attack.BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="${applicationId}.shizuku"
@@ -29,8 +56,10 @@
              组件清单从此只保留这一个 activity；恢复生产 UI 时另开批次。
              旧注释块（Shizuku service / TempLaunchActivity / ui.MainActivity）此前是**注释嵌套**，
              在 XML 里非法 ⇒ 解析在第 37 行失败 ⇒ :app:processDebugMainManifest 一直是红的。 -->
+        <!-- 正式 UI（2026-10-18 用户裁定）：整体使用移植的 KernelSU 管理器界面（未接线）。 -->
         <activity
-            android:name=".tempui.TempUiActivity"
+            android:name="com.ghostlock.app.ui.MainActivity"
+            android:theme="@style/Theme.KernelSU.Starting"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
@@ -38,5 +67,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.ghostlock.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 </manifest>

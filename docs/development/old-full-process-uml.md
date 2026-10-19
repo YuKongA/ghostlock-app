@@ -238,7 +238,7 @@ stateDiagram-v2
   Rejected --> Idle
 ```
 
-### 2.8 计划（脚本）生命周期：stage → 校验 → 按相位执行（A6 设计 · [lua-surface-design](../analysis/lua-surface-design.md)）
+### 2.8 计划（脚本）生命周期：stage → 校验 → 按相位执行（A6 设计 · [lua-surface-design](../archive/20261017-1835-lua-surface-design.md)）
 
 ```mermaid
 stateDiagram-v2

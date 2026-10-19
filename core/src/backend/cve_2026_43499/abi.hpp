@@ -19,7 +19,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "memory/target_profile.hpp"
+#include "platform/target_profile.hpp"
 
 namespace ghostlock::backend::cve_2026_43499 {
     /** The task_struct fields this backend reads an offset for. A field is added

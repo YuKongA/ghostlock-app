@@ -1,0 +1,70 @@
+package com.ghostlock.app.ui.screen.settings
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.Dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ghostlock.app.ui.LocalUiMode
+import com.ghostlock.app.ui.UiMode
+import com.ghostlock.app.ui.navigation3.Navigator
+import com.ghostlock.app.ui.navigation3.Route
+import com.ghostlock.app.ui.viewmodel.SettingsViewModel
+
+@Composable
+fun SettingPager(
+    navigator: Navigator,
+    bottomInnerPadding: Dp,
+    isCurrentPage: Boolean = true,
+) {
+    val viewModel = viewModel<SettingsViewModel>()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val latestIsCurrentPage by rememberUpdatedState(isCurrentPage)
+    val initialResumeHandled = rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(isCurrentPage) {
+        if (isCurrentPage) {
+            viewModel.refresh()
+        }
+    }
+
+    LifecycleResumeEffect(Unit) {
+        if (initialResumeHandled.value && latestIsCurrentPage) {
+            viewModel.refresh()
+        }
+        initialResumeHandled.value = true
+        onPauseOrDispose { }
+    }
+
+    val actions = SettingsScreenActions(
+        onSetCheckUpdate = viewModel::setCheckUpdate,
+        onSetCheckModuleUpdate = viewModel::setCheckModuleUpdate,
+        onOpenTheme = { navigator.push(Route.ColorPalette) },
+        onSetUiModeIndex = { index ->
+            viewModel.setUiMode(if (index == 0) UiMode.Miuix.value else UiMode.Material.value)
+        },
+        onOpenProfileTemplate = { navigator.push(Route.AppProfileTemplate) },
+        onSetSuCompatMode = viewModel::setSuCompatMode,
+        onSetKernelUmountEnabled = viewModel::setKernelUmountEnabled,
+        onSetSelinuxHideEnabled = viewModel::setSelinuxHideEnabled,
+        onSetSulogEnabled = viewModel::setSulogEnabled,
+        onSetAdbRootEnabled = viewModel::setAdbRootEnabled,
+        onSetShellSuAdbOnlyEnabled = viewModel::setShellSuAdbOnlyEnabled,
+        onSetDefaultUmountModules = viewModel::setDefaultUmountModules,
+        onSetEnableWebDebugging = viewModel::setEnableWebDebugging,
+        onSetAutoJailbreak = viewModel::setAutoJailbreak,
+        onSetUseSoftReboot = viewModel::setUseSoftReboot,
+        onOpenAbout = { navigator.push(Route.About) },
+    )
+
+    when (LocalUiMode.current) {
+        UiMode.Miuix -> SettingPagerMiuix(uiState, actions, bottomInnerPadding)
+        UiMode.Material -> SettingPagerMaterial(uiState, actions, bottomInnerPadding)
+    }
+}

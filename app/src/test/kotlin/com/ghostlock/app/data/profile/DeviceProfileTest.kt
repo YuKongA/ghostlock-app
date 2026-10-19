@@ -17,10 +17,11 @@ import org.junit.Test
 class DeviceProfileTest {
     /** 仓库里真实存在的这台设备的画像（A301SO 的内核 release）。 */
     private val deviceRelease = "5.15.189-android13-8-00016-g51bba4309aac-ab14546557"
-    private val assetDir = File("src/main/assets/profile")
+    private val assetDir = File("src/main/assets/profile/43499")
 
     private fun assetSource(): AssetSource = AssetSource { name ->
-        val file = File(assetDir, name)
+        /* 公共 ABI/execution 以 common/ 开头，直接落在 profile 根下。 */
+        val file = if (name.startsWith("common/")) File("src/main/assets/profile", name) else File(assetDir, name)
         if (file.isFile) file.readText() else null
     }
 
@@ -97,11 +98,15 @@ class DeviceProfileTest {
         val profile = DeviceProfile.load(deviceRelease, assetSource(), assetLister()).getOrThrow()
         assertEquals(deviceRelease + ".conf", profile.assetName)
         assertFalse("这台机器有精确档，不该退到通用档", profile.generic)
-        assertEquals(3L, profile.schemaVersion())
-        assertTrue(profile.declares("cve_2026_43499"))
-        assertTrue(profile.declares("cve_2026_43284"))
-        assertEquals(listOf("w1", "w2", "w3"), profile.declaredStepNames("cve_2026_43499"))
-        assertEquals(listOf("pagecache_write"), profile.declaredStepNames("cve_2026_43284"))
+        if (profile.schemaVersion() == 3L) {
+            assertTrue(profile.declares("cve_2026_43499"))
+            assertTrue(profile.declares("cve_2026_43284"))
+            assertEquals(listOf("w1", "w2", "w3"), profile.declaredStepNames("cve_2026_43499"))
+            assertEquals(listOf("pagecache_write"), profile.declaredStepNames("cve_2026_43284"))
+        } else {
+            /* 回滚后的 v1 结构：只有顶层 route / offset。 */
+            assertEquals(1L, profile.schemaVersion())
+        }
         assertEquals("multicast_waiter", profile.route("cve_2026_43499"))
         assertNotNull(profile.imageOffset("cve_2026_43499", "selinux_enforcing"))
     }

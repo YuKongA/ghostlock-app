@@ -7,6 +7,11 @@ package com.ghostlock.app.ui.kit
  * 这里只有"选择"这件事：读哪个套件、写到哪、怎么切。渲染在 [GhostlockKit] 的两个实现里，
  * 主题在 com.ghostlock.app.ui.theme.GhostlockTheme 里，三者各自只管一件。
  */
+/** 当前套件（语义组件面）：页面只读它，不 import 具体控件。 */
+val LocalUiKit = androidx.compose.runtime.staticCompositionLocalOf<GhostlockKit> {
+    error("UiKit not provided")
+}
+
 enum class UiKit {
     Material,
     Miuix,

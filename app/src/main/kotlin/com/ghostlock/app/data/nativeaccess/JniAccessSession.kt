@@ -6,8 +6,6 @@ import com.ghostlock.app.core.AccessSession
 import com.ghostlock.app.core.AccessSessionFactory
 import com.ghostlock.app.core.AccessSessionRequest
 import com.ghostlock.app.core.CleanupDisposition
-import com.ghostlock.app.core.KernelMemoryAccess
-import com.ghostlock.app.core.PageCacheAccess
 import com.ghostlock.app.core.SessionPhase
 import com.ghostlock.app.jni.Native
 
@@ -76,10 +74,6 @@ class JniAccessSession internal constructor(
     override val phase: SessionPhase get() = lastPhase
 
     override val cleanup: CleanupDisposition get() = cleanupState
-
-    override val kernelMemory: KernelMemoryAccess? get() = null
-
-    override val pageCache: PageCacheAccess? get() = null
 
     /**
      * Run one op.

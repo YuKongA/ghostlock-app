@@ -68,7 +68,7 @@ entry:         key u16 | kind u8 (0=u64, 1=bytes) | reserved u8 | length u32 | p
 
 - 全部 little-endian；`status` 只在回复帧有意义（请求帧置 0）。
 - 拒绝名：`frame-malformed`（截断/长度不符）、`frame-version`、`op-unknown:<n>`、`key-unknown:<n>`、`key-duplicate:<n>`、`key-missing:<n>`、`key-width:<n>`。
-- key 目录（唯一拼写点）在 `core/src/jni/session_protocol.hpp`；由 `make -C core manifest` 导出 `build/native/jni-protocol-manifest.tsv`（op / key / status 三张表）。Kotlin 侧**读该文件对拍**，不得手抄（AGENTS §4）。
+- key 目录（唯一拼写点）在 `core/src/boundary/protocol/session_protocol.hpp`；由 `make -C core manifest` 导出 `build/native/jni-protocol-manifest.tsv`（op / key / status 三张表）。Kotlin 侧**读该文件对拍**，不得手抄（AGENTS §4）。
 
 ### 3.3 op 表（每个 op 一笔 native 事务）
 
@@ -223,21 +223,21 @@ app/src/main/kotlin/com/ghostlock/app/data/nativeaccess/     # 新增：JNI 适�
 
 ### J1 协议层（native）
 
-- **写范围**：`core/src/jni/session_protocol.hpp/.cpp`（新）、`core/src/jni/jni_protocol_manifest.cpp`（新）、`core/src/tests/jni_protocol_test.cpp`（新）、`core/Makefile` 挂测试与 `manifest` 目标。
+- **写范围**：`core/src/boundary/protocol/session_protocol.hpp/.cpp`（新）、`core/src/tools/jni_protocol_manifest.cpp`（新）、`core/src/tests/jni_protocol_test.cpp`（新）、`core/Makefile` 挂测试与 `manifest` 目标。
 - **动作**：按 §3.2 实现编解码与 key 目录；`static_assert` 钉住 header 布局与 key 枚举；导出 manifest。
 - **判据**：`make -C core check` EXIT=0；覆盖 round-trip、截断、坏 magic、坏版本、未知 op、未知 key、重复 key、长度不符、空请求、`bytes` 上限、**secret entry 清零**；另做**一次证伪**（改一位 ⇒ 对应断言红、退出码非 0；撤回后无残留）。
 - **证据**：`check` 的 PASS/FAIL 计数（照抄）、manifest 首若干行、证伪前后的两条退出码。
 
 ### J2 会话对象与生命周期（native）
 
-- **写范围**：`core/src/jni/session_object.hpp/.cpp`、`core/src/jni/session_api.cpp`（四个 extern）、`core/src/tests/jni_session_lifecycle_test.cpp`（新）。
+- **写范围**：`core/src/boundary/protocol/session_object.hpp/.cpp`、`core/src/boundary/jni/session_api.cpp`（四个 extern）、`core/src/tests/jni_session_lifecycle_test.cpp`（新）。
 - **动作**：句柄 generation；phase 状态机（`declared/initializing/ready/failed/closed`）；串行化；`shutdown` 顺序；`busy`/`closed` 具名状态。
 - **判据**：宿主测试（假 backend 桩）覆盖：重复 create、close 后 `invoke` ⇒ `closed`、重复 shutdown 返回同一份回执、destroy 幂等、并发 invoke 串行化或 `busy`、未知写效果 ⇒ `indeterminate`、shutdown 顺序有日志标记；`make -C core check` EXIT=0。
 - **证据**：`check` 计数 + 一份关键测试的原始输出。
 
 ### J3 43499 ops（native）
 
-- **写范围**：`core/src/jni/ops_43499.cpp`（新）、`core/src/tests/jni_ops_43499_test.cpp`（新，假 landing 记录调用顺序与参数）。
+- **写范围**：`core/src/boundary/protocol/ops_43499.cpp`（新）、`core/src/tests/jni_ops_43499_test.cpp`（新，假 landing 记录调用顺序与参数）。
 - **动作**：实现 op 2/3/4/5/6/7；**复用**（不改写）`steps::run_prepare`/`run_discovery`、`victim::spawn_victim`、`KernelAccess43499`、`WordLanding::land_word`、`WindowGuard`；字/载荷页/守卫由**会话对象**持有（归属规则：要活过准备那一段的东西归调用方）。
 - **判据**：缺 facts ⇒ 具名拒绝且未进入 route；窗口守卫在成功/失败/超时三条路径都释放；`form` → `(mode, leaf)` 映射与 `memory::write_layout` 一致；`ReadWord` 在 `can_read()==false` 时返回 `unsupported`；`make -C core check` + `make -C core jni` EXIT=0。
 - **证据**：`check` 计数、.so 哈希、越界/缺项两条拒绝的原始日志。
@@ -259,7 +259,7 @@ J3 在执行时拆成两半，理由是**可验证性**：
 
 ### J4 43284 ops（native）
 
-- **写范围**：`core/src/jni/ops_43284.cpp`（新）、`core/src/tests/jni_ops_43284_test.cpp`（新）。
+- **写范围**：`core/src/boundary/protocol/ops_43284.cpp`（新）、`core/src/tests/jni_ops_43284_test.cpp`（新）。
 - **动作**：实现 op 8/9/10/11/12/13/14；复用 `PageCacheLanding`、`pagecache_door_linux`、`crash_dump_bridge`、`steps::trigger_orphan`、`steps::wait_for_module`、`embed::*`、`hook::*`。
 - **判据**：SA 帧坏 ⇒ `session-frame-invalid:<码>`；未 initialize 就写 ⇒ `not-ready`；非 16B 宽度 ⇒ `bad-width`；sequence 跨 op 递增；token 跨会话/跨 generation ⇒ `stale-target`；`make -C core check` + `make -C core jni` EXIT=0。
 - **证据**：同 J3。
@@ -335,7 +335,7 @@ J3 在执行时拆成两半，理由是**可验证性**：
 | 失败 | refusal(handle) 给名字（not-ready:prepare / op-not-wired:write_word / stale-target / inflight …） | 同左 |
 | 数组布局 | native 导出字符串表，Kotlin 对拍 | 同左 |
 
-调用码（core/src/jni/backend_api.hpp）：0 ok；负数是 not-ready / bad-parameters / unsupported / failed /
+调用码（core/src/boundary/protocol/backend_api.hpp）：0 ok；负数是 not-ready / bad-parameters / unsupported / failed /
 stale-handle / busy / stale-target / inflight。名字由 call_code_name 拼一次。
 
 ### §10.3 批次
@@ -709,7 +709,7 @@ Kotlin 要能自己完成拼装/写/收尾，接口至少需要这些**句柄式
 
 ### §11.18 违规点与可留点的精确位置（file:line，2026-10-15）
 
-文件：core/src/jni/api_43284_device.cpp
+文件：core/src/device/43284/chain.cpp
 
 | 行 | 判定 | 原文（截断） |
 |---|---|---|
@@ -795,7 +795,7 @@ D1 单表风格：GL_ATTACK_FIELD(GroupName, fieldName, TYPE)；已有先例是 
 按该函数自身的判定逐条核对（组必须在表里 ✓、名字非空 ✓、Bytes 字段 allocation_max_bytes > 0 且 ≥ fixed_bytes、组内名字不重复 ✓），
 我三次尝试都仍失败 —— 说明 kFields 的描述符生成还有一层我没读到（很可能是另一组宏参数或每个 backend 的分节约定）。
 
-**下一轮唯一入口（不许再盲试）**：完整读一遍 core/src/jni/attack_contract_model.hpp（约 180 行，一次读完），
+**下一轮唯一入口（不许再盲试）**：完整读一遍 core/src/contract/attack_contract_model.hpp（约 180 行，一次读完），
 确认 kFields 与 kGroups 两处宏定义各自期望的参数与分节规则，再照抄既有 43284 组块重做。
 
 三次尝试的残留都已回滚：契约表恢复原样（/tmp/contract.def.before53），模型文件从未被改动，构建与测试全绿。

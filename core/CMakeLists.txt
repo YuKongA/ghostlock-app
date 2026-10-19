@@ -5,7 +5,6 @@
 #   ghostlock            宿主/设备可执行体（src/main.cpp + 各层）
 #   libghostlock_jni.so  Kotlin 加载的 JNI 边界（src/jni/**）
 #   *_test               宿主测试二进制，全部经 CTest 注册（Gradle 驱动 ctest）
-#   *_probe              设备探针（GL_PROBES=ON 时才构建）
 #
 # 规则（与库无关的数字不进本文件）：几何/偏移/时序一律来自 profile，不在此定义。
 #
@@ -37,59 +36,39 @@ add_compile_options(-UNDEBUG -fconstexpr-steps=8000000)
 get_filename_component(GL_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 
 option(GL_TESTS "构建宿主测试并经 CTest 注册" ON)
-option(GL_PROBES "构建设备探针（需要设备/NDK）" OFF)
 option(GL_JNI "构建 JNI 边界库" ON)
 
 set(GL_WARNINGS -Wall -Wextra -Wconversion -Wsign-conversion)
-set(GL_MPACK_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lib/mpack)
-# spdlog 不再参与构建（用户裁定 2026-10-14：native 侧改用自己写的 printf 日志，见 src/support/log.hpp）。
-# 目录留在 lib/ 里只是不再被引用；删库另开批次（可能还有别的引用）。
-set(GL_NLOHMANN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lib/nlohmann)
-set(GL_LUA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lib/lua/src)
+# 2026-10-17 用户裁定：vendored mpack/lua/nlohmann 三个库全部删除，改为主仓手写：
+#   MessagePack 子集 -> profile/minimpack.hpp；JSON 解析 -> script/wire_doc.cpp 内的手写 Parser。
+# 因此不再有第三方库目标，也不再需要 lib/ 下的 include 目录。
 
-# ---------------------------------------------------------------------------
-# 第三方（vendored）：第三方标志与项目零告警线隔离（各自 -w）。
-# ---------------------------------------------------------------------------
-add_library(gl-mpack STATIC ${GL_MPACK_DIR}/mpack.c)
-target_include_directories(gl-mpack PUBLIC ${GL_MPACK_DIR})
-set_source_files_properties(${GL_MPACK_DIR}/mpack.c PROPERTIES COMPILE_OPTIONS "-w")
+# 覆盖率插桩（宿主）：clang 的 -fprofile-instr-generate -fcoverage-mapping。
+option(GL_COVERAGE "宿主构建插桩覆盖率（clang profile-instr）" OFF)
+if(GL_COVERAGE)
+  add_compile_options(-fprofile-instr-generate -fcoverage-mapping)
+  add_link_options(-fprofile-instr-generate -fcoverage-mapping)
+endif()
 
-file(GLOB GL_LUA_SOURCES CONFIGURE_DEPENDS ${GL_LUA_DIR}/*.c)
-list(FILTER GL_LUA_SOURCES EXCLUDE REGEX "/(lua|luac)\\.c$")   # 独立解释器/编译器的 main，不收
-add_library(gl-lua STATIC ${GL_LUA_SOURCES})
-target_include_directories(gl-lua PUBLIC ${GL_LUA_DIR})
-set_source_files_properties(${GL_LUA_SOURCES} PROPERTIES COMPILE_OPTIONS "-w")
 
 # ---------------------------------------------------------------------------
 # 源集合：与旧 Makefile 的四组一一对应（RUNTIME / DEVICE_EXTRA / SHARED / ANDROID_ONLY）。
 # ---------------------------------------------------------------------------
 set(GL_RUNTIME_SRCS
-  src/main.cpp
-  src/contract/kmi_catalog.cpp
-  src/contract/contract.cpp
-  src/memory/memory.cpp
+  src/support/gl_log.c
+  src/platform/access_factory.cpp
   src/backend/cve_2026_43499/leak/snitch_setup.cpp
   src/backend/cve_2026_43284/lkm/module_facts.cpp
-  src/profile/glkv3_document.cpp
-  src/profile/payload_keys.cpp
-  src/profile/document_pairs.cpp
-  src/profile/run_plan.cpp
-  src/profile/plan_delivery.cpp
   src/support/sha256.cpp
   src/backend/cve_2026_43284/session_frame.cpp
-  src/pipeline/access_factory.cpp
-  src/pipeline/run_pipeline_temp.cpp
   src/backend/cve_2026_43284/landing/real_splice_io.cpp
   src/backend/cve_2026_43284/landing/pagecache_door_linux.cpp
   src/backend/cve_2026_43284/ipsec/aes256.cpp
   src/backend/cve_2026_43499/abi.cpp
   src/support/hmac_sha256.cpp
-  src/terminal/execution.cpp
 )
 
 set(GL_DEVICE_EXTRA_SRCS
-  src/script/sandbox.cpp
-  src/script/wire_doc.cpp
   src/backend/cve_2026_43499/steps/prepare_mapping.cpp
   src/backend/cve_2026_43499/steps/window_steps.cpp
   src/backend/cve_2026_43284/steps/pagecache_step_runner.cpp
@@ -106,7 +85,6 @@ set(GL_DEVICE_EXTRA_SRCS
 set(GL_SHARED_SRCS
   src/backend/cve_2026_43499/steps/route_config.cpp
   src/backend/cve_2026_43499/access_factory_43499.cpp
-  src/backend/victim/victim_context.cpp
 )
 
 # 只有测试直接引用的实现（旧 Makefile 的逐条规则里链接的那些）。静态库只在被引用时取对象，
@@ -119,14 +97,10 @@ set(GL_TEST_SHARED_SRCS
   src/backend/cve_2026_43499/memory/shaping_plan.cpp
   src/backend/cve_2026_43499/memory/write_encoder.cpp
   src/backend/cve_2026_43499/memory/write_layout.cpp
-  src/script/plan_load.cpp
-  src/terminal/payload_store.cpp
 )
 
 # 仅设备需要：受害者进程与 43499 的准备/窗口/路由。
 set(GL_ANDROID_ONLY_SRCS
-  src/backend/victim/victim_process.cpp
-  src/backend/victim/victim_context.cpp
   src/backend/cve_2026_43499/steps/route_config.cpp
   src/backend/cve_2026_43499/steps/words_region.cpp
   src/backend/cve_2026_43499/steps/prepare_runner.cpp
@@ -152,20 +126,19 @@ endif()
 # ---------------------------------------------------------------------------
 # 项目库：宿主可编的全部层（RUNTIME - main + DEVICE_EXTRA + SHARED）。
 # ---------------------------------------------------------------------------
-list(REMOVE_ITEM GL_RUNTIME_SRCS src/main.cpp)
 # 边界的**协议/事务层**：JNI-free ⇒ 宿主也编、测试直接链它；JNI 入口（session_api.cpp）只是
 # 它的薄适配器，只在 Android 的共享库里出现（需要 jni.h）。
 set(GL_JNI_PORTABLE_SRCS
-  src/jni/api_43499.cpp
-  src/jni/api_43499_device.cpp
-  src/jni/api_43284.cpp
-  src/jni/api_43284_device.cpp
-  src/jni/session_protocol.cpp
-  src/jni/session_handles.cpp
-  src/jni/session_object.cpp
-  src/jni/ops_43499.cpp
-  src/jni/ops_43284.cpp
-  src/jni/ops_43284_device.cpp
+  src/boundary/jni/api_43499.cpp
+  src/device/43499/chain.cpp
+  src/boundary/jni/api_43284.cpp
+  src/device/43284/chain.cpp
+  src/boundary/protocol/session_protocol.cpp
+  src/boundary/protocol/session_handles.cpp
+  src/boundary/protocol/session_object.cpp
+  src/boundary/protocol/ops_43499.cpp
+  src/boundary/protocol/ops_43284.cpp
+  src/device/43284/ops.cpp
 )
 
 set(GL_CORE_SRCS ${GL_RUNTIME_SRCS} ${GL_DEVICE_EXTRA_SRCS} ${GL_SHARED_SRCS} ${GL_TEST_SHARED_SRCS} ${GL_JNI_PORTABLE_SRCS})
@@ -174,16 +147,13 @@ list(REMOVE_DUPLICATES GL_CORE_SRCS)
 add_library(ghostlock_core STATIC ${GL_CORE_SRCS})
 target_include_directories(ghostlock_core PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/src
-  ${GL_LUA_DIR}
-  ${GL_MPACK_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/boundary
 )
-target_include_directories(ghostlock_core SYSTEM PUBLIC ${GL_NLOHMANN_DIR})
+
 target_compile_options(ghostlock_core PRIVATE ${GL_WARNINGS})
 if(ANDROID)
   # 日志在目标侧走 __android_log_print（liblog）；宿主侧走 stderr，不需要它。
-  target_link_libraries(ghostlock_core PUBLIC gl-mpack gl-lua log)
-else()
-  target_link_libraries(ghostlock_core PUBLIC gl-mpack gl-lua)
+  target_link_libraries(ghostlock_core PUBLIC log)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -195,11 +165,6 @@ else()
   set(GL_BIN_DIR ${GL_REPO_ROOT}/build/host)
 endif()
 
-add_executable(ghostlock src/main.cpp)
-target_compile_options(ghostlock PRIVATE ${GL_WARNINGS})
-target_link_libraries(ghostlock PRIVATE ghostlock_core)
-set_target_properties(ghostlock PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${GL_BIN_DIR})
-
 # ---------------------------------------------------------------------------
 # JNI 边界（Kotlin 加载；见 docs/analysis/jni-two-backend-plan.md）。
 # 源集合＝src/jni/*.cpp 中**当前活着**的那部分；半成品的「6 目标移植实验」在
@@ -209,21 +174,22 @@ if(GL_JNI)
   # 三个库的源清单互斥（审查第 1 点）：同一个函数面不得同时出现在两个库里。
   # 以前这里是 GLOB，于是新旧两套东西一起编进旧库，同一函数面存在多份会话状态；现在改成显式清单。
   set(GL_JNI_LEGACY_SRCS
-    src/jni/session_protocol.cpp
-    src/jni/session_handles.cpp
-    src/jni/session_object.cpp
-    src/jni/session_api.cpp
-    src/jni/ops_43499.cpp
-    src/jni/ops_43284.cpp
-    src/jni/ops_43284_device.cpp
+    src/boundary/protocol/session_protocol.cpp
+    src/boundary/protocol/session_handles.cpp
+    src/boundary/protocol/session_object.cpp
+    src/boundary/jni/session_api.cpp
+    src/boundary/jni/native_finish.cpp
+    src/boundary/protocol/ops_43499.cpp
+    src/boundary/protocol/ops_43284.cpp
+    src/device/43284/ops.cpp
   )
-  set(GL_JNI_43499_SRCS src/jni/api_43499.cpp src/jni/api_43499_device.cpp src/jni/native_43499.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/jni/api_43499_ops.cpp)
-  set(GL_JNI_43284_SRCS src/jni/api_43284.cpp src/jni/api_43284_device.cpp src/jni/native_43284.cpp)
+  set(GL_JNI_43499_SRCS src/boundary/jni/api_43499.cpp src/device/43499/chain.cpp src/boundary/jni/native_43499.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/boundary/protocol/api_43499_ops.cpp)
+  set(GL_JNI_43284_SRCS src/boundary/jni/api_43284.cpp src/device/43284/chain.cpp src/boundary/jni/native_43284.cpp)
 
   # D1 单表生成的读取器是两个 backend 的只读边界组件；OBJECT target 保证两库都真实编译它，
   # 又不把同一源文件伪装成任一 backend 的私有实现。
-  add_library(ghostlock_attack_contract OBJECT src/jni/attack_contract_reader.cpp)
+  add_library(ghostlock_attack_contract OBJECT src/contract/attack_contract_reader.cpp)
   target_compile_options(ghostlock_attack_contract PRIVATE ${GL_WARNINGS})
   target_link_libraries(ghostlock_attack_contract PRIVATE ghostlock_core)
 
@@ -239,7 +205,7 @@ if(GL_JNI)
   endforeach()
   set(GL_JNI_SOURCES ${GL_JNI_LEGACY_SRCS})
   # 工具而不是库的一部分：协议表导出器只做宿主工具（它有自己的 main）。
-  list(REMOVE_ITEM GL_JNI_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/jni/jni_protocol_manifest.cpp)
+  list(REMOVE_ITEM GL_JNI_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/tools/jni_protocol_manifest.cpp)
   if(GL_JNI_SOURCES)
     add_library(ghostlock_jni SHARED ${GL_JNI_SOURCES})
     target_compile_options(ghostlock_jni PRIVATE ${GL_WARNINGS})
@@ -264,18 +230,9 @@ if(GL_JNI)
 endif()
 
 # ---------------------------------------------------------------------------
-# 设备探针（需要设备；默认关）。
+# 2026-10-17 用户裁定「只留 JNI 调用」：设备探针（src/tools/*.cpp，GL_PROBES）不是 JNI 调用路径，
+# 连同 GL_PROBES 选项一并删除；历史实现见 git 历史。
 # ---------------------------------------------------------------------------
-if(GL_PROBES)
-  file(GLOB GL_PROBE_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/tools/*.cpp)
-  foreach(probe ${GL_PROBE_SOURCES})
-    get_filename_component(probe_name ${probe} NAME_WE)
-    add_executable(${probe_name} ${probe})
-    target_compile_options(${probe_name} PRIVATE ${GL_WARNINGS})
-    target_link_libraries(${probe_name} PRIVATE ghostlock_core)
-    set_target_properties(${probe_name} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${GL_BIN_DIR})
-  endforeach()
-endif()
 
 # ---------------------------------------------------------------------------
 # 宿主测试：src/tests/*_test.cpp + src/pipeline/tests/*_test.cpp ⇒ 逐个可执行体 + CTest。
@@ -288,35 +245,22 @@ endif()
 # 引用已被删除的符号 ⇒ 直接编译不过；它们不在本清单里，逐个评估另开批次。
 set(GL_TEST_NAMES
   a2_test
-  abi_offsets_test
   abi_payload_offsets_test
   access_chain_test
-  access_factory_test
   access_route_subclass_test
-  address_discovery_test
   aes256_cbc_test
   aes256_test
-  argument_names_test
   candidate_match_test
-  capability_agreement_test
-  chain_catalog_test
   collision_buckets_test
   collision_count_test
   collision_wait_test
-  combination_manifest_test
-  component_catalog_test
   credential_image_test
   cve43284_access_params_test
   cve43499_kernel_access_test
-  device_facts_test
   discovery_result_test
-  document_pairs_test
-  document_reader_test
   esp_crypto_test
   esp_icv_test
-  executors_test
   futex_hash_test
-  handle_generation_test
   heap_geometry_test
   api_43499_test
   attack_contract_model_test
@@ -325,12 +269,10 @@ set(GL_TEST_NAMES
   api_43284_test
   hmac_sha256_test
   jni_protocol_test
-  log_test
   jni_session_lifecycle_test
   jni_ops_43499_test
   jni_ops_43284_test
   kernel_access_test
-  kmi_catalog_test
   leak_search_test
   leak_walk_test
   module_facts_test
@@ -346,22 +288,15 @@ set(GL_TEST_NAMES
   pagecache_landing_test
   pagecache_steps_test
   pagecache_write_test
-  payload_keys_test
-  payload_manifest_test
   perf_ring_test
   perf_vote_test
-  plan_delivery_test
-  plan_gate_test
-  plan_load_test
   policy_dispatch_test
   prepare_mapping_test
   prepare_page_test
   prepare_plan_test
   prepare_steps_test
-  procedure_load_test
   race_action_test
   race_runtime_test
-  real_document_test
   real_splice_io_test
   reclaim_plan_test
   route_config_test
@@ -369,7 +304,6 @@ set(GL_TEST_NAMES
   route_lifecycle_test
   route_policy_test
   route_status_test
-  run_plan_test
   scan_bounds_test
   scan_geometry_test
   select_stack_route_test
@@ -377,7 +311,6 @@ set(GL_TEST_NAMES
   shaping_plan_test
   snitch_child_test
   snitch_discovery_test
-  snitch_owner_test
   snitch_policy_test
   snitch_region_test
   snitch_run_test
@@ -385,26 +318,11 @@ set(GL_TEST_NAMES
   snitch_ops_test
   snitch_setup_test
   snitch_tuning_test
-  stage_result_test
-  staged_plan_test
-  step_action_test
-  step_catalog_test
   step_runner_test
   step_targets_test
-  stepset_steps_manifest_test
-  surface_manifest_test
-  surface_sandbox_test
-  surface_stage_test
-  surface_test
   target_state_test
-  terminal_execution_test
-  terminal_payload_test
-  terminal_store_test
-  victim_context_test
   window_attempt_test
-  window_exit_paths_test
   window_steps_test
-  wire_doc_test
   write_encoder_test
   write_layout_test
   write_request_test
@@ -465,20 +383,13 @@ if(GL_TESTS)
   add_test(NAME structural_support_neutral
     COMMAND sh -c "c=$(sed -e 's://.*::' $(find src/support -name '*.hpp' -o -name '*.cpp') | grep -vE '^[[:space:]]*\\*'); n=$(echo \"$c\" | grep -ciE 'spray|payload|route|kernel|exploit|attack|futex' || true); if [ \"$n\" -ne 0 ]; then echo SUPPORT-IMPURE: $n; exit 1; fi"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-  add_test(NAME structural_plan_check
-    COMMAND sh -c "python3 -c \"import sys;h=open('../profile-core/src/test/resources/device-document-fixture.hex').read().strip();b=bytes.fromhex(h);sys.stdout.buffer.write(len(b).to_bytes(4,'big')+b)\" > ../build/host/plan-check.stdin && (../build/host/ghostlock --ghostlock-app-call < ../build/host/plan-check.stdin > ../build/host/plan-check.out 2>&1 || true); grep -q queue-removed ../build/host/plan-check.out && echo 'plan-check: the device document is refused for the queue it still carries' || { echo 'plan-check: FAIL'; cat ../build/host/plan-check.out; exit 1; }"
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-  add_executable(profile_manifest_dump ${CMAKE_CURRENT_SOURCE_DIR}/src/tools/profile_manifest_dump.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/profile/key_catalog.cpp)
-  target_compile_options(profile_manifest_dump PRIVATE ${GL_WARNINGS})
-  target_link_libraries(profile_manifest_dump PRIVATE ghostlock_core)
-  set_target_properties(profile_manifest_dump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${GL_BIN_DIR})
-  add_test(NAME structural_profile_manifest_v3
-    COMMAND sh -c "../build/host/profile_manifest_dump > ../build/host/profile-manifest-v3.tsv && cmp -s ../build/host/profile-manifest-v3.tsv ../app/src/test/resources/profile-manifest-v3.tsv && cmp -s ../build/host/profile-manifest-v3.tsv ../profile-core/src/main/resources/profile-manifest-v3.tsv && echo 'profile-manifest-v3-check: both copies are the table' || { echo 'profile-manifest-v3-check: FAIL'; diff ../build/host/profile-manifest-v3.tsv ../app/src/test/resources/profile-manifest-v3.tsv | head -20; exit 1; }"
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+  # 2026-10-17：structural_plan_check 跑的是 build/host/ghostlock（Lua 启动器，已随 Lua 依赖删除），
+  # 主体不在了 ⇒ 该检查一并移除（不是跳过）。
+  # 2026-10-17：profile_manifest_dump 与 structural_profile_manifest_v3 检查基于 src/profile/key_catalog.cpp
+  # （旧 GLKv3 键表），该键表已随文档路径删除 ⇒ 工具与检查一并移除。
   # JNI 边界协议表：由 native 导出 TSV，作为跨端唯一权威（Kotlin 侧测试读它，不手抄清单）。
-  add_executable(jni_protocol_manifest ${CMAKE_CURRENT_SOURCE_DIR}/src/jni/jni_protocol_manifest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/jni/session_protocol.cpp)
+  add_executable(jni_protocol_manifest ${CMAKE_CURRENT_SOURCE_DIR}/src/tools/jni_protocol_manifest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/boundary/protocol/session_protocol.cpp)
   target_compile_options(jni_protocol_manifest PRIVATE ${GL_WARNINGS})
   target_link_libraries(jni_protocol_manifest PRIVATE ghostlock_core)
   set_target_properties(jni_protocol_manifest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${GL_BIN_DIR})
@@ -488,10 +399,6 @@ if(GL_TESTS)
       -DOUT=${GL_REPO_ROOT}/build/native/jni-protocol-manifest.tsv
       -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/checks/jni_protocol_manifest.cmake)
 
-  # D1 跨端定义生成器：只在宿主运行，输出位置由 Gradle 统一传入 build/。
-  add_executable(jni_attack_contract_codegen
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/jni/attack_contract_codegen.cpp)
-  target_compile_options(jni_attack_contract_codegen PRIVATE ${GL_WARNINGS})
-  target_link_libraries(jni_attack_contract_codegen PRIVATE ghostlock_core)
-  set_target_properties(jni_attack_contract_codegen PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${GL_BIN_DIR})
+  # 2026-10-17 用户裁定：跨端字段表改为手写（core/src/contract/attack_contract_fields.hpp +
+  # app/.../core/generated/AttackContractDtos.kt），不再有构建期生成器。
 endif()

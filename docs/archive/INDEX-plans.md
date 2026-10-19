@@ -106,7 +106,44 @@
 
 **悬空引用（实测更正）**：源内 **10 处**注释原指向**从未存在**的 `docs/analysis/<plan>.md`（countermeasure-plugin ×3 · minimal-lkm ×1 · 43284-refactor ×4 · branch-plan ×2，file:line 见 git 历史）。**本批已全部修正**（见 `docs/plan/MASTER-PLAN.md` §7 R-8）：现状 = **0**，16 处改 archive 路径；仅 `libextract.so` 二进制串残留（不作判据）。
 
-## 七、UML 归档（**1 件**，2026-10-08）
+## 七、2026-10-17 批次：Lua / GLKv3 文档 / CLI / script 面删除（**30 件**）
+
+> 裁定见 `docs/plan/MASTER-PLAN.md` §0.1：vendored lua/mpack/nlohmann 删除、JNI 不可达的旧代码删除；下列设计与工作包随之归档（历史不删）。
+
+| 原路径 | 归档路径 | 归档原因 | 日期 |
+|---|---|---|---|
+| `docs/analysis/profile-lua-bridge-plan.md` | `docs/archive/20261017-1835-profile-lua-bridge-plan.md` | **Lua 中转载体删除**（2026-10-17 裁定，见 MASTER-PLAN §0.1） | 2026-10-17 |
+| `docs/analysis/lua-order-design.md` | `docs/archive/20261017-1835-lua-order-design.md` | **Lua 执行顺序载体删除**（2026-10-17 裁定，见 MASTER-PLAN §0.1） | 2026-10-17 |
+| `docs/analysis/script-layer-precedents.md` | `docs/archive/20261017-1835-script-layer-precedents.md` | **脚本层删除**（2026-10-17 裁定，见 MASTER-PLAN §0.1） | 2026-10-17 |
+| `docs/analysis/lua-surface-design.md` | `docs/archive/20261017-1835-lua-surface-design.md` | **Lua 暴露面删除**（2026-10-17 裁定，见 MASTER-PLAN §0.1） | 2026-10-17 |
+| `docs/analysis/handoff-plugin-lua.md` | `docs/archive/20261017-1835-handoff-plugin-lua.md` | **Lua 插件控制面删除**（2026-10-17 裁定，见 MASTER-PLAN §0.1） | 2026-10-17 |
+| `docs/analysis/script-plan-design.md` | `docs/archive/20261017-1835-script-plan-design.md` | **计划脚本删除**（2026-10-17 裁定，见 MASTER-PLAN §0.1） | 2026-10-17 |
+| `docs/analysis/handoff-script-layer-p5-spec.md` | `docs/archive/20261017-1835-handoff-script-layer-p5-spec.md` | **P5 脚本层工作包作废**（2026-10-17 裁定，见 MASTER-PLAN §0.1） | 2026-10-17 |
+| `docs/analysis/lua-batch-slice-plan.md` | `docs/archive/20261017-1835-lua-batch-slice-plan.md` | **Lua 批次切页作废**（2026-10-17 裁定，见 MASTER-PLAN §0.1） | 2026-10-17 |
+| `docs/analysis/lua-config-structure-options.md` | `docs/archive/20261017-1835-lua-config-structure-options.md` | **Lua 配置结构选定作废**（2026-10-17 裁定，见 MASTER-PLAN §0.1） | 2026-10-17 |
+| `docs/analysis/profile-pipeline-flow.md` | `docs/archive/20261017-1835-profile-pipeline-flow.md` | **wire/profile 流水线删除**（2026-10-17 裁定，见 MASTER-PLAN §0.1） | 2026-10-17 |
+| `docs/analysis/terminal-steps-redesign.md` | `docs/archive/20261017-1835-terminal-steps-redesign.md` | **terminal/pipeline 删除**（2026-10-17 裁定，见 MASTER-PLAN §0.1） | 2026-10-17 |
+| `docs/analysis/43499-nlohmann-swap-acceptance.md` | `docs/archive/20261017-1835-43499-nlohmann-swap-acceptance.md` | **nlohmann 已删除，换库验收作废**（2026-10-17 裁定，见 MASTER-PLAN §0.1） | 2026-10-17 |
+| `docs/analysis/config-wire-redesign-plan.md` | `docs/archive/20261017-1835-config-wire-redesign-plan.md` | **config/wire 重设计作废**（2026-10-17 裁定，见 MASTER-PLAN §0.1） | 2026-10-17 |
+| `docs/analysis/resolved-profile-registry-plan.md` | `docs/archive/20261017-1835-resolved-profile-registry-plan.md` | **profile 注册套件作废**（2026-10-17 裁定，见 MASTER-PLAN §0.1） | 2026-10-17 |
+| `docs/analysis/composition-layer-p4-spec.md` | `docs/archive/20261017-1835-composition-layer-p4-spec.md` | **composition_root 删除**（2026-10-17 裁定，见 MASTER-PLAN §0.1） | 2026-10-17 |
+| `docs/analysis/wire-transport-model.md` | `docs/archive/20261017-1835-wire-transport-model.md` | **GLKv3 wire（mpack）删除**（2026-10-17 裁定，见 MASTER-PLAN §0.1） | 2026-10-17 |
+| `docs/analysis/script-plan-migration.md` | `docs/archive/20261017-1835-script-plan-migration.md` | **脚本计划迁移作废**（2026-10-17 裁定，见 MASTER-PLAN §0.1） | 2026-10-17 |
+| `docs/analysis/43499-plan-lua-log-verb.md` | `docs/archive/20261017-1835-43499-plan-lua-log-verb.md` | **Lua 日志面删除**（2026-10-17 裁定，见 MASTER-PLAN §0.1） | 2026-10-17 |
+| `docs/analysis/access-capability-layering.md` | `docs/archive/20261017-1835-access-capability-layering.md` | **访问能力层从未接线，已撤销**（2026-10-17 裁定，见 MASTER-PLAN §0.1） | 2026-10-17 |
+| `docs/analysis/adr/0008-lua-runtime-sandbox.md` | `docs/archive/20261017-1835-adr-0008-lua-runtime-sandbox.md` | **ADR 废除**（Lua / script / JCS 载体删除） | 2026-10-17 |
+| `docs/analysis/adr/0009-script-trust-and-hardline.md` | `docs/archive/20261017-1835-adr-0009-script-trust-and-hardline.md` | **ADR 废除**（Lua / script / JCS 载体删除） | 2026-10-17 |
+| `docs/analysis/adr/0010-lua-cpp-resource-model.md` | `docs/archive/20261017-1835-adr-0010-lua-cpp-resource-model.md` | **ADR 废除**（Lua / script / JCS 载体删除） | 2026-10-17 |
+| `docs/analysis/adr/0011-lua-execution-order-authority.md` | `docs/archive/20261017-1835-adr-0011-lua-execution-order-authority.md` | **ADR 废除**（Lua / script / JCS 载体删除） | 2026-10-17 |
+| `docs/analysis/adr/0015-profile-through-lua.md` | `docs/archive/20261017-1835-adr-0015-profile-through-lua.md` | **ADR 废除**（Lua / script / JCS 载体删除） | 2026-10-17 |
+| `docs/analysis/adr/0016-script-argument-crossing.md` | `docs/archive/20261017-1835-adr-0016-script-argument-crossing.md` | **ADR 废除**（Lua / script / JCS 载体删除） | 2026-10-17 |
+| `docs/analysis/adr/0017-jcs-canonical-form.md` | `docs/archive/20261017-1835-adr-0017-jcs-canonical-form.md` | **ADR 废除**（Lua / script / JCS 载体删除） | 2026-10-17 |
+| `docs/plan/rewrite-plan.md` | `docs/archive/20261017-1835-rewrite-plan.md` | **工作包作废**（Lua / GLKv3 文档 / CLI / script 面删除） | 2026-10-17 |
+| `docs/plan/rewrite-plan-v2.md` | `docs/archive/20261017-1835-rewrite-plan-v2.md` | **工作包作废**（Lua / GLKv3 文档 / CLI / script 面删除） | 2026-10-17 |
+| `docs/plan/B0.0-REVISION.md` | `docs/archive/20261017-1835-B0.0-REVISION.md` | **工作包作废**（Lua / GLKv3 文档 / CLI / script 面删除） | 2026-10-17 |
+| `docs/plan/A6-baseline-approval.md` | `docs/archive/20261017-1835-A6-baseline-approval.md` | **工作包作废**（Lua / GLKv3 文档 / CLI / script 面删除） | 2026-10-17 |
+
+## 八、UML 归档（**1 件**，2026-10-08）
 
 | 原路径 | 归档路径 | 原因 | 日期 |
 |---|---|---|---|

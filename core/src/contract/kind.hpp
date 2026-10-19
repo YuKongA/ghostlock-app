@@ -27,7 +27,7 @@
 #include <cstddef>
 #include <string_view>
 
-#include "profile/route_catalog.hpp"
+#include "platform/route_catalog.hpp"
 
 namespace ghostlock::contract {
     /** The four component kinds of the design family. */

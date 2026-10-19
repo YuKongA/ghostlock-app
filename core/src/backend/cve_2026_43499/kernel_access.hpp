@@ -27,7 +27,7 @@
 #include "backend/cve_2026_43499/access_params.hpp"
 #include "backend/cve_2026_43499/session.hpp"
 #include "contract/kernel_access.hpp"
-#include "profile/route_catalog.hpp"
+#include "platform/route_catalog.hpp"
 
 namespace ghostlock::backend::cve_2026_43499 {
     /** What a route implementation provides to the access. One word at a time, because that is

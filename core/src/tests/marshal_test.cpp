@@ -8,8 +8,8 @@
 #include <cstdio>
 #include <cstring>
 
-#include "jni/marshal_43284.hpp"
-#include "jni/marshal_43499.hpp"
+#include "boundary/protocol/marshal_43284.hpp"
+#include "boundary/protocol/marshal_43499.hpp"
 
 namespace {
     using ghostlock::jni::field_names_unique;

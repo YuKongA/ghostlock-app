@@ -9,8 +9,8 @@
 #include <span>
 #include <vector>
 
-#include "jni/api_43284.hpp"
-#include "jni/api_43284_device.hpp"
+#include "boundary/jni/api_43284.hpp"
+#include "device/43284/chain.hpp"
 
 namespace {
     using namespace ghostlock::jni;

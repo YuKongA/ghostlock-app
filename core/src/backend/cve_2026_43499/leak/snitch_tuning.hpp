@@ -22,7 +22,7 @@
 #include <string_view>
 
 #include "backend/cve_2026_43499/leak/snitch_scan.hpp"
-#include "memory/target_profile.hpp"
+#include "platform/target_profile.hpp"
 
 namespace ghostlock::backend::cve_2026_43499::leak {
     using ghostlock::memory::KeyView;

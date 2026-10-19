@@ -1,6 +1,6 @@
 # Kotlin 面：handoff plan / 脚本通道 / gate 镜像（设计）
 
-> 分析类（≤8 KB）。配套 [plan](handoff-payload-plan.md)、[b1b2](handoff-payload-b1b2-runtime.md)、[ops](handoff-payload-ops.md)、[**kotlin-io**](handoff-payload-kotlin-io.md)（编解码/导入通道/strings）、[plugin-lua](handoff-plugin-lua.md)。**自包含，不引用任何外部计划**。
+> 分析类（≤8 KB）。配套 [plan](handoff-payload-plan.md)、[b1b2](handoff-payload-b1b2-runtime.md)、[ops](handoff-payload-ops.md)、[**kotlin-io**](handoff-payload-kotlin-io.md)（编解码/导入通道/strings）、[plugin-lua](../archive/20261017-1835-handoff-plugin-lua.md)。**自包含，不引用任何外部计划**。
 
 ## 1. 类型与签名
 

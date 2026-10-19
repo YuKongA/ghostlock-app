@@ -4,6 +4,27 @@
 > 使 `AGENTS.md` 只留**流程、纪律、判据**。判据与沿革见 `docs/plan/B0.0-REVISION.md` R9。
 > 本文只写**可从代码读出**的内容；每条都可就地核验（给出路径）。
 
+## 零、目录结构（2026-10-18 重排）
+
+**代码侧的目录按职责分，不按文件多少分**（重排前 `jni/` 36 个文件、单文件 93 KB，而 `memory/` `pipeline/` `profile/` 各只剩 1 个）：
+
+```text
+core/src/
+  boundary/jni/        Java_* 导出（薄壳：DTO ↔ 值，再调 device 层）
+  boundary/protocol/   会话协议 / 句柄 / 编组 / op 表（与 JNI 无关）
+  contract/            契约与跨端字段表：attack_contract_{fields,model,reader,values} + kernel_access/kind/…
+  device/43284/        43284 设备侧编排（chain.cpp 原 jni/api_43284_device.cpp，93 KB）
+  device/43499/        43499 设备侧编排
+  platform/            跨层单件：access_factory.cpp（KernelAccess::create）、target_profile.hpp、route_catalog.hpp
+  support/             sha256 / hmac / gl_log.hpp
+  backend/             cve_2026_43284 / cve_2026_43499（按漏洞分，内部再分 landing/steps/leak/…）
+  tests/               宿主测试（92 个）
+  tools/               构建期工具（jni_protocol_manifest）
+```
+
+- 旧路径（`core/src/jni/…`、`memory/`、`pipeline/`、`profile/`）**已不存在**；文档与 Gradle 任务同批改到新路径。
+- 名字与职责一一对应：`boundary/jni` 里不应再出现设备编排；跨端字段表与它的 reader/values 放在同一目录。
+
 ## 一、三层结构
 
 | 层 | 位置 | 产物 | 说明 |

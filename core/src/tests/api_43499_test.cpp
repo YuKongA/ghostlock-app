@@ -9,7 +9,7 @@
 #include <cstdio>
 #include <cstring>
 
-#include "jni/api_43499.hpp"
+#include "boundary/jni/api_43499.hpp"
 
 namespace {
     using ghostlock::jni::api::Phase;

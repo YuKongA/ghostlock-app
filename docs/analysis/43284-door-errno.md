@@ -3,7 +3,7 @@
 ## 勘察结果
 
 - native 侧**没有** `device_open_target` 这个原语 ✗；门是在**构建拼接面时**打开的：
-  `core/src/jni/api_43284_device.cpp:124` → `io(backend::cve_2026_43284::landing::real_splice_io(), door.open_target())`；
+  `core/src/device/43284/chain.cpp:124` → `io(backend::cve_2026_43284::landing::real_splice_io(), door.open_target())`；
 - `open_target()` 只是把缓存好的 fd 返回（`api_43284_device.cpp:409` 一带的 door 类实现）；
 - 因此**失败原因（errno）必须在 `door.open_target()` 调用之后立刻捕获**，
   在 `device_resolve_target`（或构建拼接面那个函数）里把它带出去 —— 否则 errno 会被后续调用覆盖。

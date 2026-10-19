@@ -13,7 +13,7 @@ import android.system.Os
  *
  * 分工（用户裁定）：**路径、轮转、开关都在这里**（Kotlin），native 只按格式写一次并 flush。
  *
- * @note 追加写（O_APPEND）+ 一次 write(2) 写完一行：读者（[LogTail]）立刻可见，不需要 fsync。
+ * @note 追加写（O_APPEND）+ 一次 write(2) 写完一行：读者（adb 的 tail 或文件管理器）立刻可见，不需要 fsync。
  */
 internal object LogFile {
     /*
@@ -114,6 +114,21 @@ internal object LogFile {
         }
     }
 
+    /**
+     *  追加一行 Kotlin 日志（老逻辑：首次写时挑候选路径，写失败静默）。
+     *
+     *  行形状与 native 侧一致：`HH:mm:ss.mmm K <级别字母>/<标签>: <正文>`。
+     *
+     *  @param line 已格式化的级别 + 标签 + 正文（[log] 给的 line）。
+     *  @return true 表示这一行已经交给内核。
+     */
+    fun appendLine(line: String): Boolean {
+        if (!opened) {
+            open()
+        }
+        return append(line)
+    }
+
     /** 从零重来（清屏按键）：轮转的第二种触发方式，仍由 Kotlin 决定。 */
     fun truncate() {
         synchronized(lock) {
@@ -126,109 +141,4 @@ internal object LogFile {
         }
     }
 
-}
-
-/**
- * 日志文件的增量读者：只读新增的字节，永远握着**最后 [maxLines] 行**与总行数。
- *
- * 为什么不每次全文读：界面 300 ms 一帧，2 MB 的文件每帧重读既慢又会被写者撕行。
- *
- * @param maxLines 环里保留的行数（界面默认只显示其中最后 200 行）。
- */
-internal class LogTail(private val maxLines: Int) {
-    private val lock = Any()
-    private var offset = 0L
-    private var total = 0
-    private var bytes = 0L
-    private val pending = java.io.ByteArrayOutputStream()
-    private val window = ArrayDeque<String>()
-
-    /** 已经数到的整行数（含被挤出窗口的）。 */
-    val lineCount: Int get() = synchronized(lock) { total }
-
-    /** 文件当前字节数。 */
-    val byteCount: Long get() = synchronized(lock) { bytes }
-
-    /** 读一次新增内容；文件被轮转（变小）时从头重数。 */
-    fun refresh() {
-        val path = LogFile.path ?: return
-        try {
-            java.io.RandomAccessFile(path, "r").use { file ->
-                val size = file.length()
-                synchronized(lock) {
-                    if (size < offset) {
-                        reset()
-                    }
-                }
-                if (size == synchronized(lock) { offset }) {
-                    synchronized(lock) { bytes = size }
-                    return
-                }
-                file.seek(synchronized(lock) { offset })
-                val chunk = ByteArray(64 * 1024)
-                while (true) {
-                    val got = file.read(chunk)
-                    if (got <= 0) {
-                        break
-                    }
-                    synchronized(lock) {
-                        feed(chunk, got)
-                        offset += got
-                        bytes = offset
-                    }
-                }
-            }
-        } catch (_: Throwable) {
-            /* 读不动就保持上一帧（文件可能刚好在被轮转）。 */
-        }
-    }
-
-    /** 窗口里的行（最旧在前）。 */
-    fun snapshot(): List<String> = synchronized(lock) { window.toList() }
-
-    private fun reset() {
-        offset = 0L
-        total = 0
-        bytes = 0L
-        pending.reset()
-        window.clear()
-    }
-
-    private fun feed(chunk: ByteArray, count: Int) {
-        var start = 0
-        for (index in 0 until count) {
-            if (chunk[index].toInt() == 10) {
-                push(complete(chunk, start, index))
-                start = index + 1
-            }
-        }
-        if (start < count) {
-            pending.write(chunk, start, count - start)
-        }
-    }
-
-    /** 一行的字节（跨块的多字节字符只在这里解码一次，不会在块边界被撕开）。 */
-    private fun complete(chunk: ByteArray, from: Int, to: Int): String {
-        val bytes = if (pending.size() == 0) {
-            java.util.Arrays.copyOfRange(chunk, from, to)
-        } else {
-            pending.write(chunk, from, to - from)
-            val joined = pending.toByteArray()
-            pending.reset()
-            joined
-        }
-        var line = String(bytes, Charsets.UTF_8)
-        if (line.endsWith("\r")) {
-            line = line.dropLast(1)
-        }
-        return line
-    }
-
-    private fun push(line: String) {
-        total += 1
-        window.addLast(line)
-        while (window.size > maxLines) {
-            window.removeFirst()
-        }
-    }
 }

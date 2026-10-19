@@ -2,36 +2,92 @@ package com.ghostlock.app.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme as materialDarkColorScheme
-import androidx.compose.material3.lightColorScheme as materialLightColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import com.ghostlock.app.ui.kit.UiKit
+import com.materialkolor.dynamiccolor.ColorSpec
+import com.materialkolor.rememberDynamicColorScheme
+import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.theme.darkColorScheme as miuixDarkColorScheme
-import top.yukonga.miuix.kmp.theme.lightColorScheme as miuixLightColorScheme
+import top.yukonga.miuix.kmp.theme.ThemeColorSpec
+import top.yukonga.miuix.kmp.theme.ThemeController
+import top.yukonga.miuix.kmp.theme.ThemePaletteStyle
 
 /**
- * 按套件包一层主题：Material 走 Material3 的配色方案，Miuix 走 MiuixTheme。
+ *  主题（2026-10-18 起按 KernelSU 的“自定义主题”模型实现）。
  *
- * 为什么在这里分派而不是在两个界面里各写一遍：主题是**一处**的事，界面只声明自己是哪个套件。
- * 生产 UI 落地时，新增一个套件 = 这里加一个分支 + GhostlockKit 加一个实现，界面代码不动。
+ *  - Material：material-kolor 的 [rememberDynamicColorScheme]（种子色 + paletteStyle），
+ *    动态取色时种子色取系统壁纸色；
+ *  - miuix：用它的 [ThemeController]（模式 / 种子色 / paletteStyle）包一层；
+ *  - 主题模式来自 [ThemeSettings]（跟随系统 / 浅色 / 深色）。
  *
- * 说明：miuix 的 monetSystemColors 是 internal（2026-10-14 编译期实测：Kotlin 报 "it is internal
- * in file"），所以这里用它的公开工厂 light/darkColorScheme()，与本仓锁定的 miuix 版本配套；
- * 系统取色要等 ThemeController 那条路公开化，或改用 MiuixTheme(controller = ...) 时再接。
+ *  @param kit 套件（Material / miuix）。
+ *  @param settings 主题设置。
+ *  @param content 界面内容。
  */
 @Composable
-fun GhostlockTheme(kit: UiKit, content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
-    when (kit) {
-        UiKit.Material -> MaterialTheme(
-            colorScheme = if (dark) materialDarkColorScheme() else materialLightColorScheme(),
-            content = content,
-        )
+fun GhostlockTheme(
+    kit: UiKit,
+    settings: ThemeSettings,
+    content: @Composable () -> Unit,
+) {
+    val context = LocalContext.current
+    val systemDark = isSystemInDarkTheme()
+    val dark = when (settings.colorMode) {
+        ThemeMode.SYSTEM -> systemDark
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
 
-        UiKit.Miuix -> MiuixTheme(
-            colors = if (dark) miuixDarkColorScheme() else miuixLightColorScheme(),
-            content = content,
-        )
+    when (kit) {
+        UiKit.Material -> {
+            val seed = when {
+                settings.dynamic -> {
+                    val primary = if (dark) dynamicDarkColorScheme(context).primary
+                    else dynamicLightColorScheme(context).primary
+                    primary
+                }
+                else -> Color(settings.keyColor)
+            }
+            val scheme = rememberDynamicColorScheme(
+                seedColor = seed,
+                isDark = dark,
+                isAmoled = false,
+                style = settings.paletteStyle,
+                specVersion = ColorSpec.SpecVersion.SPEC_2021,
+            )
+            MaterialTheme(colorScheme = scheme, content = content)
+        }
+
+        UiKit.Miuix -> {
+            val style = runCatching { ThemePaletteStyle.valueOf(settings.paletteStyle.name) }
+                .getOrDefault(ThemePaletteStyle.TonalSpot)
+            val keyColor = when {
+                !settings.dynamic -> Color(settings.keyColor)
+                else -> null
+            }
+            val controller = ThemeController(
+                when (settings.colorMode) {
+                    ThemeMode.SYSTEM -> ColorSchemeMode.System
+                    ThemeMode.LIGHT -> ColorSchemeMode.Light
+                    ThemeMode.DARK -> ColorSchemeMode.Dark
+                },
+                keyColor = keyColor,
+                isDark = dark,
+                paletteStyle = style,
+                colorSpec = ThemeColorSpec.Spec2021,
+            )
+            MiuixTheme(controller = controller) {
+                CompositionLocalProvider(
+                    LocalContentColor provides top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground,
+                    content = content,
+                )
+            }
+        }
     }
 }

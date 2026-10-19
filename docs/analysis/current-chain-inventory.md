@@ -10,7 +10,7 @@
 | 项 | 值 | 证据 |
 |---|---|---|
 | 修订 / 分支 | `08b08cd3` · dev-nocpp（工作树有用户既有改动 + 未跟踪的 procedures/、profile/） | `git log -1`；`git status --short` |
-| 链的四个入口 | ① JNI 薄原语（35 导出）② Kotlin 装配线 `Assembled43284` ③ 封装步骤 `steps::run_pagecache_step`（5 个名字）④ 工作示例工具 + Lua | `core/src/jni/native_43284.cpp` 导出名清单；`app/src/main/kotlin/com/ghostlock/app/jni/cve43284/Assembled43284.kt:30-33`；`core/src/backend/cve_2026_43284/steps/pagecache_steps.hpp:26-39`；`core/src/tools/pagecache_load_lkm.cpp:15-30`；`procedures/pagecache_load_lkm.lua:6-7` |
+| 链的四个入口 | ① JNI 薄原语（35 导出）② Kotlin 装配线 `Assembled43284` ③ 封装步骤 `steps::run_pagecache_step`（5 个名字）④ 工作示例工具 + Lua | `core/src/boundary/jni/native_43284.cpp` 导出名清单；`app/src/main/kotlin/com/ghostlock/app/jni/cve43284/Assembled43284.kt:30-33`；`core/src/backend/cve_2026_43284/steps/pagecache_steps.hpp:26-39`；`core/src/tools/pagecache_load_lkm.cpp:15-30`；`procedures/pagecache_load_lkm.lua:6-7` |
 | 真机链路当前由谁驱动 | **探针** `TypedBackendProbe.runOnce → probe43284 → probeAssembled43284`（屏幕上/设备门禁按钮），不是生产入口 | `app/src/main/kotlin/com/ghostlock/app/tempui/TempUiActivity.kt`（接线）→ `TypedBackendProbe.kt:94-231`、`:582-1042` |
 | 生产入口状态 | profile 键已存在（`execution.write.block_bytes / trigger.delay_ms / wait.budget_ms / wait.poll_ms`），但**执行路径不读它们**：探针用 Kotlin 常量 | `profile/profile-schema.json:127-146`；`TypedBackendProbe.kt:985-999` |
 | 工作示例工具的阶段 | `credentials → module → patch1 → hook → write → trigger → wait`（7 phase，内部顺序 = patch1 → write → hook → trigger → wait） | `core/src/tools/pagecache_load_lkm.cpp:15-30`、`:465/:474/:527/:589/:633` |
@@ -44,7 +44,7 @@
 | 常量 | 值 | 证据 |
 |---|---|---|
 | 块宽 `BLOCK` | 16 B | `Assembled43284.kt:593` |
-| 目标角色 | `PATCH1=1 / CARRIER=2 / HOOK=3 / REMOTE_BRIDGE=4` | `Assembled43284.kt:596-599`；native 同序 `core/src/jni/api_43284.hpp:37-43` |
+| 目标角色 | `PATCH1=1 / CARRIER=2 / HOOK=3 / REMOTE_BRIDGE=4` | `Assembled43284.kt:596-599`；native 同序 `core/src/boundary/jni/api_43284.hpp:37-43` |
 | 自带镜像角色 | `0=splice helper / 1=landing payload` | `Assembled43284.kt:602-603`；`api_43284.hpp:97-98` |
 | 固定目标 | patch1 `/apex/com.android.runtime/bin/crash_dump64`；hook `/system/lib64/libc++.so` | `Assembled43284.kt:556`、`:559` |
 | 会话材料（探针哨兵） | `spi=0x1234 / encap=4500 / sender=0 / icv=16 / aes=0xA5×32 / hmac=0x5A×32 / seq=1(present)` | `TypedBackendProbe.kt:502-512` |
@@ -78,10 +78,10 @@
 | 序号 | `open_doors` 重置为 1；发送成功后 +1；`adopt_sequence(0)→1` | `pagecache_write.hpp:116`、`:178-181`、`:237-239` |
 | splice 失败码 | 1 参数 / 2 面不可用 / 3 太短 / 4 无页源 / 10 pipe / 20 头 / 21 页 / 22 helper 页 / 23 ICV / 24 短发；负值=-errno | `core/src/backend/cve_2026_43284/landing/real_splice_io.cpp:210-262` |
 | 桥 | helper argv=`{crashdump64, offset, path}`、stderr/stdout 用管道、要求退出码 0 且整 16 B；路径上限 256 B、禁空白/控制符 | `core/src/backend/cve_2026_43284/landing/crash_dump_bridge.hpp:34`；`crash_dump_bridge.cpp:34-42`、`:86-99`、`:104-152` |
-| 门/socket/面/落地/access 表 | 8 / 8 / 4 / 4 / 4；ticket=`slot+1`，打包票据 `(handle<<32) \| gen` | `core/src/jni/api_43284_device.cpp:55`、`:455`、`:500-502`、`:812`、`:561` |
+| 门/socket/面/落地/access 表 | 8 / 8 / 4 / 4 / 4；ticket=`slot+1`，打包票据 `(handle<<32) \| gen` | `core/src/device/43284/chain.cpp:55`、`:455`、`:500-502`、`:812`、`:561` |
 | socket 失败码 | -1 无材料 / -2 socket / -3 bind / -4 connect / -9 表满 | `api_43284_device.cpp:392-440`、`:509-525` |
 | resolve 打开方式 | `O_RDONLY \| O_CLOEXEC`；EACCES/EPERM ⇒ remote(fd=-1) 占槽 | `:320-331` |
-| 块宽（JNI 层） | `kBlockWidth=16`；状态 `Empty/Dispatched/Applied/Verified` | `core/src/jni/api_43284.hpp:34`、`:63-68` |
+| 块宽（JNI 层） | `kBlockWidth=16`；状态 `Empty/Dispatched/Applied/Verified` | `core/src/boundary/jni/api_43284.hpp:34`、`:63-68` |
 | 逐块校验重试间隔 | `usleep(2000)`（2 ms）+ 每回合重发 | `core/src/backend/cve_2026_43284/steps/pagecache_steps.cpp:251-291` |
 | 触发/wait 步的默认 | trigger 无 exec 路径；wait 轮询 `poll_ms \|\| 1`、模块路径 `/sys/module/<name>`（空则 dirtyfrag） | `pagecache_steps.cpp:152-175`、`:186-189` |
 
@@ -129,7 +129,7 @@
 |---|---|---|---|
 | M1 | **无自动回滚/恢复**：没有 journal（128 块、"新→旧"）、没有 `restore_hook_patch`、没有"每条终结点"顺序 | `6f7ded87:steps/chain.hpp:32-58`、`steps/chain.cpp:136-153`、`:273-293`、`steps/hook_patch.cpp:193-220` | 链内无任何 restore 代码；只有探针的 marker 门控手动恢复（`TypedBackendProbe.kt:938-950`），且只在载荷写成功分支 |
 | M2 | **hook 计划不是运行期推导**：无 ELF 解析/符号查找/落位计算，换镜像就失效 | `6f7ded87:steps/elf_hook.cpp:249-331`、`:412-414` | `sentry_hook.cpp:47-78` 常量声明；写-pass 记录自认"未移植"（`docs/analysis/device-gates/43284-native-access-20261010-write-pass.md:77`） |
-| M3 | **序号参数通路断了**：`device_access_initialize` 只拷 `params.sequence`，**没拷 `params.sequence_set`** ⇒ `has_sequence()` 假 ⇒ `Access::initialize` 不 adopt | `6f7ded87:real_ops.cpp:303-307/321-325/336-342`；修法记录 `docs/analysis/device-gates/43284-hook-write-verified.md:1` | `api_43284_device.cpp:895`（只有 sequence 一行）；`access_params.hpp:161`；`kernel_access.hpp:76-82`。该行在 `893fce97` 的重排里被吃掉（`git show 893fce97 -- core/src/jni/api_43284_device.cpp`：旧行 `params.sequence_set = sa_source.sequencePresent;` 随替换块消失） |
+| M3 | **序号参数通路断了**：`device_access_initialize` 只拷 `params.sequence`，**没拷 `params.sequence_set`** ⇒ `has_sequence()` 假 ⇒ `Access::initialize` 不 adopt | `6f7ded87:real_ops.cpp:303-307/321-325/336-342`；修法记录 `docs/analysis/device-gates/43284-hook-write-verified.md:1` | `api_43284_device.cpp:895`（只有 sequence 一行）；`access_params.hpp:161`；`kernel_access.hpp:76-82`。该行在 `893fce97` 的重排里被吃掉（`git show 893fce97 -- core/src/device/43284/chain.cpp`：旧行 `params.sequence_set = sa_source.sequencePresent;` 随替换块消失） |
 | M4 | **载体回退表缺失**：只有写死的 `/vendor/lib64/libbinderdebug.so`，没有 4 载体按上游顺序的尝试/去重/vendor 前缀校验/dev 旁路 | `6f7ded87:steps/chain.hpp:70-75`、`steps/chain.cpp:19-46/48-77` | `TypedBackendProbe.kt:909`、`:973`；`Assembled43284.kt:567-591` 只带一个路径 |
 | M5 | **模块预检没进链**：真实 `.ko` 的 vermagic/KMI 预检只在工具里做；探针喂假镜像，链上不做 | `6f7ded87:stage_runner.cpp:98-146`、`backend_terminal.cpp:114-127` | `api_43284_device.cpp:148-160`（能力在）＋`TypedBackendProbe.kt:318-323`（假字节）；`Assembled43284.kt:580-582` 三个保守标志 |
 | M6 | **生产/终局契约缺失**：设备事实采集、KMI 选择、UMH late-load 命令、secrets 借出、root 判据（uid=0 / Enforcing / modules 含 kernelsu）都没进执行路径 | `6f7ded87:backend_terminal.cpp:38-156`；判据 `docs/analysis/device-gates/43284-terminal-criteria-verified.md:1` | 只有 `deployUmhPayload` + ksud 只读状态（`TypedBackendProbe.kt:556-569`、`:1002-1027`） |
@@ -149,11 +149,11 @@
 
 | 现象（现场行） | 产生该行的代码 | 入库记录 / 判读 |
 |---|---|---|
-| `image-write:step-verify-failed` | `core/src/jni/native_43284.cpp:564`（`"image-write:"+why`）× `steps/pagecache_steps.cpp:25`（`kVerifyFailed`）／`:286` | `docs/analysis/j7-5-handoff.md:31`（`patch1 wrote=false refusal=image-write:step-verify-failed`）——第 ⑤ 步回读比较没过 |
+| `image-write:step-verify-failed` | `core/src/boundary/jni/native_43284.cpp:564`（`"image-write:"+why`）× `steps/pagecache_steps.cpp:25`（`kVerifyFailed`）／`:286` | `docs/analysis/j7-5-handoff.md:31`（`patch1 wrote=false refusal=image-write:step-verify-failed`）——第 ⑤ 步回读比较没过 |
 | `want 0100b700 got 0300b700` | `steps/pagecache_steps.cpp:274-278`（`block[%zu] verify failed: want … got …`） | 真因口径：`0100`=ET_REL（模块）、`0300`=ET_DYN（动态库）；**offset 0 的比较是假阳性**，真判据在 `0x10` 的 `e_type` — `docs/analysis/device-gates/43284-native-access-20261010-write-pass.md:48` |
 | `helper splice spliced=16 head=0300b700` | `core/src/backend/cve_2026_43284/landing/real_splice_io.cpp:246-250`（helper 送进管道的块数 + 同一来源读回的前 4 B） | 读到的头 4 B=`0300b700` ⇒ 该偏移处是 **ET_DYN**（`.so`），即"目标/偏移指到了动态库那侧"；helper 侧 splice 本身返回了整 16 B（spliced=16） |
 | `read_block fd=-1 pread=-1` | `core/src/backend/cve_2026_43284/landing/pagecache_write.hpp:204-217`（诊断：`pread` 与 `fcntl/readlink`） | 语义：remote 载体（vendor）本进程无 fd，直接 pread 必然 `-1/EBADF`；**这一行不是失败判据**，是"读法/来源"的分辨器（`api_43284_device.cpp:321-331` 同源说明） |
-| `landing_of_door` 命中面（hit/ambiguous/miss） | `core/src/jni/api_43284_device.cpp:686`(hit) / `:692`(ambiguous) / `:695`(miss) | 命错面的真实代价：Access 落到载体的 landing ⇒ 读零/写错目标/verify 必败 — `TypedBackendProbe.kt:694-695`；修法（打包票据优先 + 槽值唯一命中）在 `fff339d0`/`70d33798` 系提交 |
+| `landing_of_door` 命中面（hit/ambiguous/miss） | `core/src/device/43284/chain.cpp:686`(hit) / `:692`(ambiguous) / `:695`(miss) | 命错面的真实代价：Access 落到载体的 landing ⇒ 读零/写错目标/verify 必败 — `TypedBackendProbe.kt:694-695`；修法（打包票据优先 + 槽值唯一命中）在 `fff339d0`/`70d33798` 系提交 |
 | 两条 seq 链**现已连续** `91→…` | `TypedBackendProbe.kt:813`、`:897`（`adoptSequence(stepwise.nextSequence())`）/`:819`；native `api_43284_device.cpp:765-775`；窗口 `pagecache_write.hpp:237-239` | `docs/analysis/device-gates/43284-hook-write-verified.md:1`（`nextSequence before hook=91` → `adopt seq=91 present=1` → `hook wrote=true`）；历史失败形是"hook 窗口从 seq=1 起 ⇒ 报文被防重放丢弃"（同文件 `:1`） |
 | 站点块 `verified=true` | `TypedBackendProbe.kt:958`（`hook site block wrote=… afterWord=0x… verified=(afterWord==word2)`） | 与它成对的是同段的 `site block before=`（`:932`）与"分支词取 `plan[0]`"（`:928-929`）；成功历史的同形证据 `docs/analysis/device-gates/43284-native-access-20261010-write-pass.md:62`（`phase 5 site ok, 0x14012d83 at 0xb30ac`） |
 

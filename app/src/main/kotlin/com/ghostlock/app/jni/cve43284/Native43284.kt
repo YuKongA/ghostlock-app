@@ -215,4 +215,160 @@ object Native43284 {
 
     /** @return snapshot 结果数组每一位的名字（由 native 导出）。 */
     external fun snapshotFields(): Array<String>
+
+    /* ------------------------------------------------------------------
+     * 2026-10-17（用户指令）：装配层不再 import 生成类型 —— 生成 DTO 只活在本文件里。
+     * 下面这组「平参数」入口把 DTO 的构造收进本类，[Assembled43284] 只调用它们。
+     * ------------------------------------------------------------------ */
+
+    /**
+     *  43284 的会话材料：与生成的 Init43284 同形，但不把生成类型暴露给装配层。
+     *
+     *  @property spi 安全关联的 SPI。
+     *  @property encapPort ESP-in-UDP 封装端口。
+     *  @property senderPort 发送端口（0 = 由内核挑临时端口）。
+     *  @property icvLength 完整性校验长度。
+     *  @property aesKey 加密密钥（32 字节；native 读完会清零，请传副本）。
+     *  @property hmacKey 认证密钥（32 字节；同上）。
+     *  @property initialSequence 初始序号。
+     *  @property sequencePresent 是否携带序号（同一 SA 的后续会话必须为 true）。
+     */
+    class SessionParams43284(
+        val spi: Int,
+        val encapPort: Int,
+        val senderPort: Int,
+        val icvLength: Int,
+        val aesKey: ByteArray,
+        val hmacKey: ByteArray,
+        val initialSequence: Int,
+        val sequencePresent: Boolean,
+    )
+
+    /** 会话材料 → 生成 DTO（唯一转换处）。 */
+    private fun initDto(params: SessionParams43284): Init43284 = Init43284(
+        spi = params.spi,
+        encapPort = params.encapPort,
+        senderPort = params.senderPort,
+        icvLength = params.icvLength,
+        aesKey = params.aesKey,
+        hmacKey = params.hmacKey,
+        initialSequence = params.initialSequence,
+        sequencePresent = params.sequencePresent,
+    )
+
+    fun initialize(handle: Long, params: SessionParams43284, refusalOut: Array<String>): Int =
+        initialize(handle, initDto(params), refusalOut)
+
+    fun bringUp(handle: Long, landingId: Long, params: SessionParams43284, refusalOut: Array<String>): Int =
+        bringUp(handle, landingId, initDto(params), refusalOut)
+
+    fun espSocketId(handle: Long, params: SessionParams43284, out: LongArray, refusalOut: Array<String>): Int =
+        espSocketId(handle, initDto(params), out, refusalOut)
+
+    fun connectEsp(handle: Long, params: SessionParams43284, refusalOut: Array<String>): Int =
+        connectEsp(handle, initDto(params), refusalOut)
+
+    fun accessInitialize(
+        handle: Long,
+        accessId: Long,
+        params: com.ghostlock.app.core.generated.AccessParams43284,
+        init: SessionParams43284,
+        refusalOut: Array<String>,
+    ): Int = accessInitialize(handle, accessId, params, initDto(init), refusalOut)
+
+    fun writeHook(
+        handle: Long,
+        params: com.ghostlock.app.core.generated.AccessParams43284,
+        hook: com.ghostlock.app.core.generated.WriteHook43284,
+        init: SessionParams43284,
+        refusalOut: Array<String>,
+    ): Int = writeHook(handle, params, hook, initDto(init), refusalOut)
+
+    fun restoreHook(
+        handle: Long,
+        params: com.ghostlock.app.core.generated.AccessParams43284,
+        hook: com.ghostlock.app.core.generated.WriteHook43284,
+        plan: com.ghostlock.app.core.generated.HookPlan43284,
+        init: SessionParams43284,
+        refusalOut: Array<String>,
+    ): Int = restoreHook(handle, params, hook, plan, initDto(init), refusalOut)
+
+    fun writeImage(
+        handle: Long,
+        params: com.ghostlock.app.core.generated.AccessParams43284,
+        image: com.ghostlock.app.core.generated.WriteImage43284,
+        init: SessionParams43284,
+        refusalOut: Array<String>,
+        outcomeOut: LongArray?,
+    ): Int = writeImage(handle, params, image, initDto(init), refusalOut, outcomeOut)
+
+    fun resolveTarget(
+        handle: Long,
+        role: Int,
+        path: ByteArray,
+        accessMode: Int,
+        out: LongArray,
+        refusalOut: Array<String>,
+    ): Int = resolveTarget(handle, ResolveTarget43284(role = role, path = path, accessMode = accessMode), out, refusalOut)
+
+    fun writeBlock(
+        handle: Long,
+        ticket: Long,
+        offset: Long,
+        block: ByteArray,
+        refusalOut: Array<String>,
+    ): Int = writeBlock(handle, WriteBlock43284(ticket = ticket, offset = offset, block = block), refusalOut)
+
+    fun readBlock(
+        handle: Long,
+        ticket: Long,
+        offset: Long,
+        out: ByteArray,
+        refusalOut: Array<String>,
+    ): Int = readBlock(handle, ReadBlock43284(ticket = ticket, offset = offset), out, refusalOut)
+
+    fun moduleCheck(
+        handle: Long,
+        moduleImage: ByteArray,
+        kernelVermagic: ByteArray,
+        refusalOut: Array<String>,
+    ): Int = moduleCheck(handle, ModuleCheck43284(moduleImage = moduleImage, kernelVermagic = kernelVermagic), refusalOut)
+
+    fun hookPlan(
+        handle: Long,
+        pattern: ByteArray,
+        symbol: ByteArray,
+        guardPolicy: Int,
+        out: LongArray,
+        refusalOut: Array<String>,
+    ): Int = hookPlan(handle, HookPlanRequest43284(pattern, symbol, guardPolicy), out, refusalOut)
+
+    fun trigger(handle: Long, delayMs: Long, refusalOut: Array<String>): Int =
+        trigger(handle, Trigger43284(delayMs), refusalOut)
+
+    fun waitTerminal(
+        handle: Long,
+        budgetMs: Long,
+        pollMs: Long,
+        successMarker: ByteArray,
+        failureMarker: ByteArray,
+        inFlightMarker: ByteArray,
+        moduleMarker: ByteArray,
+        moduleName: ByteArray,
+        out: LongArray,
+        refusalOut: Array<String>,
+    ): Int = waitTerminal(
+        handle,
+        Wait43284(
+            budgetMs = budgetMs,
+            pollMs = pollMs,
+            successMarker = successMarker,
+            failureMarker = failureMarker,
+            inFlightMarker = inFlightMarker,
+            moduleMarker = moduleMarker,
+            moduleName = moduleName,
+        ),
+        out,
+        refusalOut,
+    )
 }

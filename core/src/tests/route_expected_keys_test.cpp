@@ -12,7 +12,7 @@
 #include <string_view>
 
 #include "backend/cve_2026_43499/route/expected_keys.hpp"
-#include "profile/route_catalog.hpp"
+#include "platform/route_catalog.hpp"
 
 namespace {
     using ghostlock::backend::cve_2026_43499::route::ExpectedKey;

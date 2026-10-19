@@ -1,6 +1,6 @@
 # A3 前置：GAP-2 / GAP-3 调参迁移进 profile（**只出设计**）
 
-> 分析类（≤8 KiB）。**只出设计，不动代码**。依据：task-124 考古（GAP-2 硬编码清单）· `core/src/contract/op_registry.hpp`（GAP-3 限值）· `app/src/main/assets/profile/execution-*.conf`（现役键布局）· [rewrite-plan-v2](../plan/rewrite-plan-v2.md) §4.1/§4.2。
+> 分析类（≤8 KiB）。**只出设计，不动代码**。依据：task-124 考古（GAP-2 硬编码清单）· `core/src/contract/op_registry.hpp`（GAP-3 限值）· `app/src/main/assets/profile/execution-*.conf`（现役键布局）· [rewrite-plan-v2](../archive/20261017-1835-rewrite-plan-v2.md) §4.1/§4.2。
 
 ## §1 键命名方案
 
@@ -33,7 +33,7 @@
 
 ## §3 缺省语义（**缺键 ⇒ 具名拒绝**）
 
-- **规则**：延续 [rewrite-plan-v2](../plan/rewrite-plan-v2.md) §3 / Q2「**数值不入 C++、不兜底**」⇒ **缺键即拒绝**，不得使用 C++ 缺省值；`op_registry.hpp` 的 `ParamSpec.default_value` **仅作文档/对拍基线**，不作为运行期兜底（其 `required=false` 的项允许**在脚本层**省略，由 profile 提供值）。
+- **规则**：延续 [rewrite-plan-v2](../archive/20261017-1835-rewrite-plan-v2.md) §3 / Q2「**数值不入 C++、不兜底**」⇒ **缺键即拒绝**，不得使用 C++ 缺省值；`op_registry.hpp` 的 `ParamSpec.default_value` **仅作文档/对拍基线**，不作为运行期兜底（其 `required=false` 的项允许**在脚本层**省略，由 profile 提供值）。
 - **建议拒绝码**：**`tuning-missing`**（附 `path=backend.<b>.execution.<scope>.<name>` 与 hint）；与既有码分工：`geometry-missing` = 几何/偏移缺失 · **`tuning-missing` = 调参键缺失** · `param-invalid` = 值越界 · `param-missing` = **脚本调用**缺参。
 - **判据（可失败）**：① 删掉 `retry_backoff_ms` ⇒ 43499 链在 steps 首步即 **`tuning-missing`**（不是 0/默认值）；② 键值越界（如 `0`/`1e9`）⇒ `param-invalid`；③ 在 `routes.tcp_zerocopy` 下缺 `arm_hold` ⇒ 仅 tcp 拒（其他 route 不受影响）。
 

@@ -5,7 +5,7 @@
 
 #include <cstring>
 
-#include "jni/gl_log.hpp"
+#include "support/gl_log.h"
 
 #include "backend/cve_2026_43284/embed/libcxx_blob.hpp"
 
@@ -26,20 +26,20 @@ namespace ghostlock::backend::cve_2026_43284::hook {
          *  the +/-128 MiB the field can express. */
         bool encode_branch(std::uint64_t from, std::uint64_t to, std::uint32_t &out) noexcept {
             if (((from | to) & 0x3U) != 0U) {
-                GL_LOGI("branch refused: unaligned from=0x%llx to=0x%llx",
+                debug("branch refused: unaligned from=0x%llx to=0x%llx",
                         static_cast<unsigned long long>(from), static_cast<unsigned long long>(to));
                 return false;
             }
             const std::int64_t delta = static_cast<std::int64_t>(to - from);
             if ((delta & 0x3) != 0) {
-                GL_LOGI("branch refused: delta not a word multiple from=0x%llx to=0x%llx delta=%lld",
+                debug("branch refused: delta not a word multiple from=0x%llx to=0x%llx delta=%lld",
                         static_cast<unsigned long long>(from), static_cast<unsigned long long>(to),
                         static_cast<long long>(delta));
                 return false;
             }
             const std::int64_t words = delta / 4;
             if (words < -kBranchWordLimit || words >= kBranchWordLimit) {
-                GL_LOGI("branch refused: out of range from=0x%llx to=0x%llx words=%lld",
+                debug("branch refused: out of range from=0x%llx to=0x%llx words=%lld",
                         static_cast<unsigned long long>(from), static_cast<unsigned long long>(to),
                         static_cast<long long>(words));
                 return false;
@@ -48,7 +48,7 @@ namespace ghostlock::backend::cve_2026_43284::hook {
             out = kBranchOpcode | imm;
             /* 分支编码字（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/hook_patch.cpp:153
              *  —— 那边把 hook.branch_instruction 原样 store_u32 进站点块，就是这个词）。 */
-            GL_LOGI("branch: from=0x%llx to=0x%llx delta=%lld words=%lld word=0x%08x",
+            verbose("branch: from=0x%llx to=0x%llx delta=%lld words=%lld word=0x%08x",
                     static_cast<unsigned long long>(from), static_cast<unsigned long long>(to),
                     static_cast<long long>(delta), static_cast<long long>(words),
                     static_cast<unsigned>(out));
@@ -93,12 +93,12 @@ namespace ghostlock::backend::cve_2026_43284::hook {
         /* 计划本身（成功历史：git show 6f7ded87:src/core/backend/cve_2026_43284/steps/elf_hook.cpp:341-414
          *  —— 那边这些数字是从镜像里算出来的：站点字、guard、displaced、载荷起址与余量；
          *  这里如实打出声明值，供真机与历史对拍）。 */
-        GL_LOGI("plan: site_file=0x%llx site_vaddr=0x%llx guard=0x%08x guard_skipped=%d displaced=0x%08x",
+        debug("plan: site_file=0x%llx site_vaddr=0x%llx guard=0x%08x guard_skipped=%d displaced=0x%08x",
                 static_cast<unsigned long long>(plan.hook_file_offset),
                 static_cast<unsigned long long>(plan.hook_vaddr),
                 static_cast<unsigned>(plan.guard_instruction), plan.guard_skipped ? 1 : 0,
                 static_cast<unsigned>(plan.displaced_instruction));
-        GL_LOGI("plan: payload_file=0x%llx payload_vaddr=0x%llx max=%llu entry=0x%zx displaced_off=0x%zx jump_back_off=0x%zx",
+        debug("plan: payload_file=0x%llx payload_vaddr=0x%llx max=%llu entry=0x%zx displaced_off=0x%zx jump_back_off=0x%zx",
                 static_cast<unsigned long long>(plan.payload_file_offset),
                 static_cast<unsigned long long>(plan.payload_vaddr),
                 static_cast<unsigned long long>(plan.payload_max_bytes),
@@ -114,13 +114,13 @@ namespace ghostlock::backend::cve_2026_43284::hook {
          * 我曾误加 +12U，使目标变成 entry+12，载荷从 prologue 之后开始跑 ⇒ 崩 ⇒（init 调用则）内核重启。
          */
         if (!encode_branch(plan.hook_vaddr, entry, out)) {
-            GL_LOGI("hook_branch refused: site=0x%llx entry=0x%llx",
+            debug("hook_branch refused: site=0x%llx entry=0x%llx",
                     static_cast<unsigned long long>(plan.hook_vaddr),
                     static_cast<unsigned long long>(entry));
             return SentryError::BranchOutOfRange;
         }
         /* 站点字（成功历史：同上 hook_patch.cpp:153；站点 = hook_vaddr，目标 = payload_vaddr + entry_offset）。 */
-        GL_LOGI("hook_branch: site=0x%llx entry=0x%llx word=0x%08x",
+        verbose("hook_branch: site=0x%llx entry=0x%llx word=0x%08x",
                 static_cast<unsigned long long>(plan.hook_vaddr),
                 static_cast<unsigned long long>(entry), static_cast<unsigned>(out));
         return SentryError::Ok;
@@ -171,12 +171,12 @@ namespace ghostlock::backend::cve_2026_43284::hook {
         }
         displaced_ascii[4] = '\0';
         jump_ascii[4] = '\0';
-        GL_LOGI("payload: blob=%zu padded=%zu capacity=%zu max=%llu entry=0x%zx displaced=0x%zx jump_back=0x%zx",
+        debug("payload: blob=%zu padded=%zu capacity=%zu max=%llu entry=0x%zx displaced=0x%zx jump_back=0x%zx",
                 blob, padded, capacity, static_cast<unsigned long long>(plan.payload_max_bytes),
                 plan.entry_offset, plan.displaced_offset, plan.jump_back_offset);
-        GL_LOGI("payload: displaced slot off=0x%zx len=4 word=0x%08x ascii=%s",
+        verbose("payload: displaced slot off=0x%zx len=4 word=0x%08x ascii=%s",
                 plan.displaced_offset, static_cast<unsigned>(plan.displaced_instruction), displaced_ascii);
-        GL_LOGI("payload: jump_back slot off=0x%zx len=4 word=0x%08x ascii=%s",
+        verbose("payload: jump_back slot off=0x%zx len=4 word=0x%08x ascii=%s",
                 plan.jump_back_offset, static_cast<unsigned>(jump_back), jump_ascii);
         return SentryError::Ok;
     }

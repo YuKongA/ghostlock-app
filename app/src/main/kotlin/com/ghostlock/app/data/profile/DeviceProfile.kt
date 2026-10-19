@@ -32,6 +32,7 @@ class DeviceProfile private constructor(
 ) {
     /** available.<backend>.queue[].step 的名字（顺序即声明顺序）。 */
     fun declaredStepNames(backend: String): List<String> {
+        /* v1（回滚后的结构）没有 available.queue；返回空表，由调用方按 v1 处理。 */
         val queue = config.arr("ghostlock.available." + backend + ".queue") ?: return emptyList()
         val names = mutableListOf<String>()
         for (item in queue.items) {
@@ -41,19 +42,34 @@ class DeviceProfile private constructor(
         return names
     }
 
-    /** available.<backend>.route（路由名），缺失则 null。 */
-    fun route(backend: String): String? = config.string("ghostlock.available." + backend + ".route")
+    /** route 列表里的路由名（顺序即优先级），v1 与 v3 都支持。 */
+    fun routeNames(): List<String> {
+        val list = config.arr("route")
+        if (list != null) {
+            return list.items.mapNotNull { item ->
+                (item as? HoconValue.Obj)?.entries?.keys?.firstOrNull()
+            }
+        }
+        return listOfNotNull(config.obj("route")?.entries?.keys?.firstOrNull())
+    }
+
+    /** available.<backend>.route（路由名）；v1 取 route 列表第一项。 */
+    fun route(backend: String): String? =
+        config.string("ghostlock.available." + backend + ".route") ?: routeNames().firstOrNull()
 
     /** 该 backend 在 available 里声明了没有。 */
-    fun declares(backend: String): Boolean = config.has("ghostlock.available." + backend)
+    fun declares(backend: String): Boolean =
+        config.has("ghostlock.available." + backend) || schemaVersion() == 1L
 
     /** backend.<backend>.abi.offset.<name>：内核镜像偏移。 */
     fun imageOffset(backend: String, name: String): Long? =
         config.long("ghostlock.backend." + backend + ".abi.offset." + name)
+            ?: config.long("offset." + name)
 
     /** backend.<backend>.abi.task_struct.<name>：结构体字段偏移。 */
     fun structOffset(backend: String, name: String): Long? =
         config.long("ghostlock.backend." + backend + ".abi.task_struct." + name)
+            ?: config.long("task_struct." + name)
 
     /** 任意点路径（供证据与后续批次取用）。 */
     fun long(path: String): Long? = config.long(path)
@@ -61,7 +77,8 @@ class DeviceProfile private constructor(
     fun string(path: String): String? = config.string(path)
 
     /** 该画像里的 schema 版本（唯一在用的是 3）。 */
-    fun schemaVersion(): Long? = config.long("ghostlock.schema_version")
+    fun schemaVersion(): Long? =
+        config.long("ghostlock.schema_version") ?: config.long("schema_version")
 
     companion object {
         /**
@@ -102,9 +119,11 @@ class DeviceProfile private constructor(
             } catch (bad: HoconException) {
                 return Result.failure(bad)
             }
-            val declaredRelease = config.string("ghostlock.release") ?: chosen.first.removeSuffix(".conf")
-            val schema = config.long("ghostlock.schema_version")
-            if (schema != 3L) {
+            val declaredRelease = config.string("ghostlock.release")
+                ?: config.string("release")
+                ?: chosen.first.removeSuffix(".conf")
+            val schema = config.long("ghostlock.schema_version") ?: config.long("schema_version")
+            if (schema != 3L && schema != 1L) {
                 return Result.failure(HoconException("profile-schema:" + schema))
             }
             return Result.success(

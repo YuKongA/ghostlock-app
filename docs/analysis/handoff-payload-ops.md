@@ -53,7 +53,7 @@
 - 原语类型**唯一权威 = b1b2 §B1.1**（`OpSpec`/`OpRegistry`；`OpPolicy` **已删**）；执行顺序由 `run_plan(StepContext&)` 展开（无虚表）。
 - **插入点**：`state_from` 之后、`Backend::run` 之前（`pipeline.hpp:71-83`）；被拒 plan **不触碰攻击路径**。
 - **去重**：`selection_supported`（**`main.cpp:184`**）与 `combination_available` 并入同一次 `plan_gate`。
-- **沿革（D22 已关闭）**：条件表达式原为「受限文法 vs Lua」二选一；2026-10-07 裁决**采用 Lua 5.4**（见 [ADR-0008](adr/0008-lua-runtime-sandbox.md)），受限文法不再作为运行期方案。
+- **沿革（D22 已关闭）**：条件表达式原为「受限文法 vs Lua」二选一；2026-10-07 裁决**采用 Lua 5.4**（见 [ADR-0008](../archive/20261017-1835-adr-0008-lua-runtime-sandbox.md)），受限文法不再作为运行期方案。
 
 ## 6. 破坏面清单
 

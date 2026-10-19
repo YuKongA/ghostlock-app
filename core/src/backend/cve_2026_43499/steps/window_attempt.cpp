@@ -8,7 +8,7 @@
  *  记录：docs/analysis/43499-route-execution-batch-plan.md 步骤 3。
  */
 #include "backend/cve_2026_43499/steps/window_attempt.hpp"
-#include "support/log.hpp"   /* 出 PI 的打印（2026-10-12 裁定：PI 内只落字段，PI 之后才打印 ✓） */
+#include "support/gl_log.h"   /* 出 PI 的打印（2026-10-12 裁定：PI 内只落字段，PI 之后才打印 ✓） */
 /* 设备侧的具体路由类型：本单元为它显式实例化门面模板（见文件末尾）。 */
 #include "backend/cve_2026_43499/landing/multicast_route.hpp"
 #include "backend/cve_2026_43499/landing/multicast_route_linux.hpp"
@@ -41,7 +41,7 @@ namespace ghostlock::backend::cve_2026_43499::steps {
                             : attempt->route->execute(attempt->payload_target,
                                                       attempt->payload_value, 0U);
         attempt->outcome = ok ? race::RaceOutcome::Running : race::RaceOutcome::Refused;
-        ghostlock::support::log("info", "attempt-door", by_landing ? 1 : 0, 0);
+        debug("attempt-door %d", by_landing ? 1 : 0);
         return ok;
     }
 

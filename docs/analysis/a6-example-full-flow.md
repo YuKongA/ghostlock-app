@@ -1,7 +1,7 @@
 # 全流程攻击配置 · 虚拟示例（Lua 计划 + HOCON 数据）
 
 > **虚拟示例**（不是任何真实机型的数据）：几何/偏移/调参都是编造的占位值，只为让你看清**形态与流程**。
-> 依据设计：[lua-surface-design](lua-surface-design.md)（暴露面 6 条）· [A6-baseline-approval](../plan/A6-baseline-approval.md)。
+> 依据设计：[lua-surface-design](../archive/20261017-1835-lua-surface-design.md)（暴露面 6 条）· [A6-baseline-approval](../archive/20261017-1835-A6-baseline-approval.md)。
 
 ## §1 整份 profile（一个资产档的样子）
 

@@ -1,6 +1,6 @@
 # 队列元素 schema · 成员表 · 窗口 TU 判据（第四轮修订细则）
 
-> 分析类（≤8 KB）。⚠ **已退役（2026-10-08）**：`queue` 由用户裁定**移除** ⇒ **现行权威 = [script-plan-design](script-plan-design.md)**（计划载体改为脚本）；**原文保留作沿革**（下文为退役时快照，仅成员表/窗口 TU 判据仍可复用）。配套 [plan](handoff-payload-plan.md)、[b1b2](handoff-payload-b1b2-runtime.md)。**自包含，不引用任何外部计划**。
+> 分析类（≤8 KB）。⚠ **已退役（2026-10-08）**：`queue` 由用户裁定**移除** ⇒ **现行权威 = [script-plan-design](../archive/20261017-1835-script-plan-design.md)**（计划载体改为脚本）；**原文保留作沿革**（下文为退役时快照，仅成员表/窗口 TU 判据仍可复用）。配套 [plan](handoff-payload-plan.md)、[b1b2](handoff-payload-b1b2-runtime.md)。**自包含，不引用任何外部计划**。
 > **代码引用约定**：`document.hpp`/`glkv3_*.hpp`/`glkv3_parse.cpp`/`schema.hpp` ⇒ `core/src/profile/`；`step_plan.hpp`/`capability*.hpp` ⇒ `core/src/contract/`；`route_lifecycle.hpp`/`primitives.cpp`/`capability_adapters.hpp` ⇒ `core/src/backend/cve_2026_43499/`。
 
 ## 1. 元素键集合（7 键）

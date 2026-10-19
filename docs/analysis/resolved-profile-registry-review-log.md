@@ -1,7 +1,7 @@
 # 评审与不符合项关闭记录（配套 resolved-profile-registry-plan v2.4）
 
 > 分析类文档。记录三轮非作者评审的不符合项、关闭位置、门禁状态与遗留未验证项。
-> 评审对象：[resolved-profile-registry-plan.md](resolved-profile-registry-plan.md)（**v2.4**，自包含）。
+> 评审对象：[resolved-profile-registry-plan.md](../archive/20261017-1835-resolved-profile-registry-plan.md)（**v2.4**，自包含）。
 > **2026-10-07 新裁决**：terminal 轴取消（改由 step 执行器表达）⇒ **ADR-0006 归属需修订**；document 按 **plan 的 backend 集合**发射（旧单 backend `.bin` 仍可解析）；与「双读取路径废止」同批、判据共用（§3.4/§5.1）。
 > **复验（非作者）**：A/B/C 28 条 = **23 全关 / 5 部分 / 0 未关**；G1–G13 = 6 ✅ / 4 ◐ / 3 ⏳；另发现 2 条 P0。5 部分 + 2 P0 已关闭（§6）。
 

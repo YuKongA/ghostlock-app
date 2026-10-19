@@ -1,6 +1,6 @@
 # AccessParams 补齐补丁（待落，2026-10-15）
 
-目标：把工具（tools/pagecache_load_lkm.cpp）那半「调用方清单」的其余字段，在 core/src/jni/api_43284_device.cpp 的
+目标：把工具（tools/pagecache_load_lkm.cpp）那半「调用方清单」的其余字段，在 core/src/device/43284/chain.cpp 的
 device_access_initialize 里逐行补进 AccessParams。契约侧已就绪（AccessParams43284 = 18 字段，见提交 857f8696）。
 
 ## 补丁（插在 `params.sa = sa_material_of(sa_source);` 这一行之后）

@@ -1,6 +1,6 @@
 # 附件：target/copyop 的目标形态与「禁止名字→值表」（2026-10-08）
 
-> 分析类（≤8192 B）。**配套**：[lua-surface-design](lua-surface-design.md)（§1 表 · 开头规则句）· [示例](a6-example-full-flow.md) · [A6 待批单](../plan/A6-baseline-approval.md)。来源：用户裁定「**至于 `target = "selinux_enforcing"` 中 `selinux_enforcing` 代表什么？是不是要 C++ 里解析成别的参数？禁止这样**」。
+> 分析类（≤8192 B）。**配套**：[lua-surface-design](../archive/20261017-1835-lua-surface-design.md)（§1 表 · 开头规则句）· [示例](a6-example-full-flow.md) · [A6 待批单](../archive/20261017-1835-A6-baseline-approval.md)。来源：用户裁定「**至于 `target = "selinux_enforcing"` 中 `selinux_enforcing` 代表什么？是不是要 C++ 里解析成别的参数？禁止这样**」。
 
 ## §C1 规则（完整表述）
 
@@ -42,7 +42,7 @@
 
 ## §C7 参数归属（完整清单）
 
-- **驱动器参数**（attempts / settle_us / verify / 退避）⇒ **profile 阶段策略** —— 旧实现 **30 个访问器**：`w1/w2/w3_attempts` · `w1/w2/w3_settle_us` · `w1_scratch_repair_attempts` · `w3_chain_rounds` · `heap_prepare_max_attempts` · `heap_prepare_timeout_ms` · `heap_kernelsnitch_timeout_ms` · `race_state_poll_interval_us` · `race_setup_settle_us` · `race_route_wait_ms` · `race_route_done_timeout_ms` · `select_*` · `tcp_*` · `multicast_*` · `handoff_*`（完整表格见 [rewrite-plan-v2](../plan/rewrite-plan-v2.md) §4.2）。
+- **驱动器参数**（attempts / settle_us / verify / 退避）⇒ **profile 阶段策略** —— 旧实现 **30 个访问器**：`w1/w2/w3_attempts` · `w1/w2/w3_settle_us` · `w1_scratch_repair_attempts` · `w3_chain_rounds` · `heap_prepare_max_attempts` · `heap_prepare_timeout_ms` · `heap_kernelsnitch_timeout_ms` · `race_state_poll_interval_us` · `race_setup_settle_us` · `race_route_wait_ms` · `race_route_done_timeout_ms` · `select_*` · `tcp_*` · `multicast_*` · `handoff_*`（完整表格见 [rewrite-plan-v2](../archive/20261017-1835-rewrite-plan-v2.md) §4.2）。
 - **route 几何**（`tcp_*`/`select_*`/`multicast_*` 的布局与调参）⇒ **profile 数据面**。
 - **机制常量留 C++**：`WriteMode` 枚举 · kind 枚举 · waiter `0x30` · 页 `4096` · direct-map 守卫 · futex 码 · 字段偏移（**须注释「为何属机制」**）。
 - **运行期量不可配置**：目标绝对地址 · 喷溅命中页 · 泄漏 task · waiter 地址 · pid。

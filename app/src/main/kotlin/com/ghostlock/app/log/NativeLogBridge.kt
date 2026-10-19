@@ -11,13 +11,13 @@ package com.ghostlock.app.log
  */
 object NativeLogBridge {
     /** 旧的帧边界库（libghostlock_jni.so）的注册入口。 */
-    external fun attachFdLegacy(fd: Int): Int
+    external fun attachFdLegacy(fd: Int, debug: Boolean): Int
 
     /** 43499 backend 库（libghostlock43499.so）的注册入口。 */
-    external fun attachFd43499(fd: Int): Int
+    external fun attachFd43499(fd: Int, debug: Boolean): Int
 
     /** 43284 backend 库（libghostlock43284.so）的注册入口。 */
-    external fun attachFd43284(fd: Int): Int
+    external fun attachFd43284(fd: Int, debug: Boolean): Int
 
     /** 三个库的名字（与各自 Kotlin 包装类里的 LIBRARY 一致；这里只用名字，不借用那些类）。 */
     private val LIBRARIES = listOf("ghostlock_jni", "ghostlock43499", "ghostlock43284")
@@ -36,10 +36,12 @@ object NativeLogBridge {
         for (library in LIBRARIES) {
             val outcome = runCatching {
                 System.loadLibrary(library)
+                /* debug 构建才在行里带“启动后毫秒数”（release 不显示），native 侧同一开关。 */
+                val debug = com.ghostlock.app.BuildConfig.DEBUG
                 when (library) {
-                    "ghostlock_jni" -> attachFdLegacy(fd)
-                    "ghostlock43499" -> attachFd43499(fd)
-                    else -> attachFd43284(fd)
+                    "ghostlock_jni" -> attachFdLegacy(fd, debug)
+                    "ghostlock43499" -> attachFd43499(fd, debug)
+                    else -> attachFd43284(fd, debug)
                 }
             }
             /* 三条 JNI 入口返回的是**上一次**注册的 fd（首次必为 -1），所以状态行报「接上没有」，

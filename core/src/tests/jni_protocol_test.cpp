@@ -11,7 +11,7 @@
 #include <cstring>
 #include <span>
 
-#include "jni/session_protocol.hpp"
+#include "boundary/protocol/session_protocol.hpp"
 
 namespace {
     using ghostlock::jni::FrameKey;

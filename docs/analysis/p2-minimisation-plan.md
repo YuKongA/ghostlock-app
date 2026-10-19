@@ -1,6 +1,6 @@
 # P2 逐符号最小化计划（487 未用符号的五类处置）
 
-> 分析类（≤8192 B）。**只出计划、不动代码**。判据 = D1；上位 = [P2 规格](contract-layer-p2-spec.md) §7 步 4 · [gate doc](p2-compat-gate-20261008.md) §7 **U-4** · [rewrite-plan](../plan/rewrite-plan.md) §8.1。
+> 分析类（≤8192 B）。**只出计划、不动代码**。判据 = D1；上位 = [P2 规格](contract-layer-p2-spec.md) §7 步 4 · [gate doc](p2-compat-gate-20261008.md) §7 **U-4** · [rewrite-plan](../archive/20261017-1835-rewrite-plan.md) §8.1。
 
 ## §0 执行时机（**2026-10-08 重排**）
 

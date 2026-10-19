@@ -1,6 +1,6 @@
 # 附件：中途切换 route 的写法（待裁 · 2026-10-08）
 
-> 分析类（≤8192 B）。**配套**：[lua-surface-design](lua-surface-design.md)（§1 暴露面表 · §6 待裁）。来源：用户提问「**中途切换 route 怎么办，新建 backend 吗**」+ Lead 答复框架。
+> 分析类（≤8192 B）。**配套**：[lua-surface-design](../archive/20261017-1835-lua-surface-design.md)（§1 暴露面表 · §6 待裁）。来源：用户提问「**中途切换 route 怎么办，新建 backend 吗**」+ Lead 答复框架。
 
 ## §A1 结论（一句话）
 

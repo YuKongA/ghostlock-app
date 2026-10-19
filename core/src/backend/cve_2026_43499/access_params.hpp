@@ -20,8 +20,7 @@
 #include <string_view>
 
 #include "contract/kernel_access.hpp"
-#include "profile/glkv3_document.hpp"
-#include "profile/route_catalog.hpp"
+#include "platform/route_catalog.hpp"
 
 namespace ghostlock::backend::cve_2026_43499 {
     /** Parameters for this backend. The route is what initialize reads; the offset is what an
@@ -40,10 +39,8 @@ namespace ghostlock::backend::cve_2026_43499 {
         std::uint64_t offset = 0U;
         /** Whether the offset has been given at all, since zero is legitimate. */
         bool offset_set = false;
-        /** The parsed document the access reads its facts from: which route, the geometry, the tuning
-         *  counts and the three field offsets all live in it. A null one is refused by name, because
-         *  an access that guessed at any of those would be a different run. */
-        const profile::Document *document = nullptr;
+        /* 2026-10-17：原来的 `const profile::Document *document` 成员已删 —— 它是旧 CLI 读 GLKv3 文档
+         * 的入口，JNI 从不设置它（同文件下方 2026-10-12 的注释也记着「document 需求试过又撤回」）。 */
 
         /* ---- What the route assembly needs from outside (named in the sample cpps) ----
          *

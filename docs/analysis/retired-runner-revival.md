@@ -51,7 +51,7 @@ adb shell "cd /data/local/tmp && GHOSTLOCK_HOME=/data/local/tmp ./glk-ref \
 | 5 | 设备上疑似已有退役 runner 二进制：`glk-b59h1`（10-04 18:51）、`glk-plan2`、`glk-fix2`，三者都含 `run-cve-2026-43284` 与 `cve43284-hook-guard` 字样 | 本次设备 `grep -a` 实测 | 可省重建，但**构建修订未验**：先与 A 路重建物比对大小/sha256/关键字符串再采信 |
 | 6 | 退役侧写路径**无逐块日志** ⇒ 逐行对齐缺一半数据 | `6f7ded87:src/core/backend/cve_2026_43284/steps/chain.cpp:243-267`（只有计数与错误枚举） | 见 §四：先做聚合对齐；要逐块则在**对比专用副本**里加打印（不改本仓库） |
 
-**替代方案（不复活旧树）**：现树自带同形夹具 `core/src/tools/pagecache_load_lkm.cpp`——GL_PROBES 探针（`core/CMakeLists.txt:40`、`:268-272`），帧来自 `/data/local/tmp/ghostlock-sa.frame` 或 `--frame-stdin`（`:116`、`:122-126`），设备上已有现成二进制 `/data/local/tmp/pagecache_load_lkm`。它就是「把退役链 write/trigger/wait 段搬进探针」的现成版本；若要上 Kotlin 侧，现实现 JNI 已给 `write_image`/`hook`/`wait` 三个口（`core/src/jni/api_43284_device.cpp:1021-1042`、`:1128`、`:196-198`）。
+**替代方案（不复活旧树）**：现树自带同形夹具 `core/src/tools/pagecache_load_lkm.cpp`——GL_PROBES 探针（`core/CMakeLists.txt:40`、`:268-272`），帧来自 `/data/local/tmp/ghostlock-sa.frame` 或 `--frame-stdin`（`:116`、`:122-126`），设备上已有现成二进制 `/data/local/tmp/pagecache_load_lkm`。它就是「把退役链 write/trigger/wait 段搬进探针」的现成版本；若要上 Kotlin 侧，现实现 JNI 已给 `write_image`/`hook`/`wait` 三个口（`core/src/device/43284/chain.cpp:1021-1042`、`:1128`、`:196-198`）。
 
 ## 四、双跑日志对比方案（逐行对齐字段）
 

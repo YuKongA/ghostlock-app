@@ -125,7 +125,7 @@
 | D19 | **跨 backend 的顺序/依赖必须在 plan 里显式声明**，gate 校验；**未声明即拒绝** |
 | D20 | **handoff 数据槽不进队列元素**（R1 = 7 键扁平 schema）：数据槽为 **op 级**声明（`OpSpec.produces/consumes`，b1b2 §B1.1）或由脚本 `slot.*` 承担；gate 静态校验，未声明即拒绝（见 queue-schema §6） |
 | D21 | 条件表达式**受限文法**（固定产生式、无循环/递归、无 I/O）；**不引入通用脚本**（脚本层另见 D27） |
-| D22 | **已采用 Lua 5.4.7 作为运行期脚本引擎**（**保留源码解析**；vendor 见 b1b2 §B2.1）。实测：核心 `.text = 109 532 B ≈ 107 KB`；仅字节码 86 KB；相对现有二进制 4.84 MB ≈ **2.2%**（详见 ADR-0008）。**结论：保留源码解析**；**不引入 luac**。**选型对照与依据**见 [ADR-0008](adr/0008-lua-runtime-sandbox.md) |
+| D22 | **已采用 Lua 5.4.7 作为运行期脚本引擎**（**保留源码解析**；vendor 见 b1b2 §B2.1）。实测：核心 `.text = 109 532 B ≈ 107 KB`；仅字节码 86 KB；相对现有二进制 4.84 MB ≈ **2.2%**（详见 ADR-0008）。**结论：保留源码解析**；**不引入 luac**。**选型对照与依据**见 [ADR-0008](../archive/20261017-1835-adr-0008-lua-runtime-sandbox.md) |
 | D23 | D14 的正式表述：op 边界 = **一次 `do_something(route)`**；写类 op 必须可单独重试，**seccomp 两枚视为同一重试块** |
 | D24 | `probe.leaf` 的 `attempts=4`/`settle_us=50000` 由硬编码（`steps.cpp:215`）**迁入 Owner Schema** |
 | D25 | `geometry-missing` 由**静默回落**改为**具名拒绝**（复用 `MissingRequired` 诊断） |
@@ -134,5 +134,5 @@
 | D28 | **约定/诊断（非门禁）**：鼓励 op 名用**字面量或声明常量表**（便于工具列出与展示）；**「禁止动态拼接」不作为导入门禁**，仅产诊断 |
 | D29 | **硬线（能力面收窄）**：op 白名单内**不得存在块设备或任意路径文件写原语**，脚本在能力面上**无法触达 AVB/分区**；现有 op 中仅 `payload script` 的产物写**固定路径**（`GHOSTLOCK_HOME`，攻击前，由 App/native 控制）。**新增任何含文件或块设备副作用的 op，必须列入「受限副作用清单」并单独评审** |
 | D30 | **类型化句柄**：脚本对 native 资源只能持 **`{kind, index, generation}`** 句柄（**有界 64**，见 b1b2 §B2.3），**不暴露裸指针/裸地址**；句柄由探针产生，使用时按 kind 校验 ⇒ 恶意脚本**无法伪造地址**去驱动写原语 |
-| D31 | **插件控制面用 Lua**：与 payload 脚本**共用同一个 Lua 5.4 VM、同一套沙箱与预算、同一套 manifest 校验**；不注册 `debug/load/dofile/require/io/os/package`；**每插件一个 `_ENV` 沙箱 + 独立预算账户**（指令/内存分开计；单插件超限**不影响其他插件**）；**插件描述符 = 脚本返回的 manifest 表**（能力位、stage、params schema、版本、哈希）；宿主 API 面全体插件可达，**任何扩展必须过受限副作用清单（复用 D29）**。细则见 [handoff-plugin-lua.md](handoff-plugin-lua.md) |
+| D31 | **插件控制面用 Lua**：与 payload 脚本**共用同一个 Lua 5.4 VM、同一套沙箱与预算、同一套 manifest 校验**；不注册 `debug/load/dofile/require/io/os/package`；**每插件一个 `_ENV` 沙箱 + 独立预算账户**（指令/内存分开计；单插件超限**不影响其他插件**）；**插件描述符 = 脚本返回的 manifest 表**（能力位、stage、params schema、版本、哈希）；宿主 API 面全体插件可达，**任何扩展必须过受限副作用清单（复用 D29）**。细则见 [handoff-plugin-lua.md](../archive/20261017-1835-handoff-plugin-lua.md) |
 | D32 | **解冻形态与保留通道**：插件**仍处于冻结状态**；解冻时按 **D31 形态**实现（**不再恢复旧 `.so` 单一插件路径**）；现有 **`.so` 通道 + 探针 + `kernel_channel` + host 生命周期**保留给**内核型插件**（内核热点 / 需直接内核交互的对策模块） |

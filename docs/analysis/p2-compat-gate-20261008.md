@@ -86,7 +86,7 @@ git diff --stat  -- core/src/backend     # 输出为空
 
 ## §8 受控第二定义面与判据适用范围
 
-- **F10（判据挂对象）**：**P2 无新 `.cpp`（新增 TU = 0）** ⇒ [rewrite-plan](../plan/rewrite-plan.md) §4 的「新子树编译 **0 警告**」判据**本批 N/A**（无适用对象）；compat-check 只做 `-fsyntax-only`（不带 `-Wall`），**不得**被读作已满足 0 警告。该判据**自首个新 TU 批次起生效**。
+- **F10（判据挂对象）**：**P2 无新 `.cpp`（新增 TU = 0）** ⇒ [rewrite-plan](../archive/20261017-1835-rewrite-plan.md) §4 的「新子树编译 **0 警告**」判据**本批 N/A**（无适用对象）；compat-check 只做 `-fsyntax-only`（不带 `-Wall`），**不得**被读作已满足 0 警告。该判据**自首个新 TU 批次起生效**。
 - **F8（受控的 Linux ABI 常量第二定义面）**：`core/src/tests/host/include/` 的 **3 个 host shim**（`linux/futex.h` / `sched.h` / `sys/prctl.h`）定义以下常量 —— 均为**内核 uapi / glibc 的对照值**，实测一致：
 
   | 常量 | 值 | 来源 |

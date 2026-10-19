@@ -9,7 +9,7 @@
 #include <memory>
 
 #include "backend/cve_2026_43499/kernel_access.hpp"
-#include "profile/route_catalog.hpp"
+#include "platform/route_catalog.hpp"
 
 namespace ghostlock::backend::cve_2026_43499 {
     /** The access for a route, or null when the route is Unset or unknown.

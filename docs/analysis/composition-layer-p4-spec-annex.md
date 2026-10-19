@@ -1,6 +1,6 @@
 # 附件：P4 `plan_gate` 优先级与里程碑 B 登记
 
-> 分析类（≤8192 B）。**配套**：[P4 规格](composition-layer-p4-spec.md) §3（指针指向本件）· [rewrite-plan](../plan/rewrite-plan.md) §8.1（偏差台账）。判据形式 = D1。
+> 分析类（≤8192 B）。**配套**：[P4 规格](../archive/20261017-1835-composition-layer-p4-spec.md) §3（指针指向本件）· [rewrite-plan](../archive/20261017-1835-rewrite-plan.md) §8.1（偏差台账）。判据形式 = D1。
 
 ## §A1 `plan_gate` 判定优先级（**单一权威表**；测试按表断言，**不改代码顺序**）
 
@@ -35,7 +35,7 @@
 
 ## §A4 D-6（保持）
 
-- **D-1（R1 层表登记挂账）保持**：owner = native-core，时机 = R1 批次（防火墙测试恢复时同批）；详见 [rewrite-plan](../plan/rewrite-plan.md) §8.1。
+- **D-1（R1 层表登记挂账）保持**：owner = native-core，时机 = R1 批次（防火墙测试恢复时同批）；详见 [rewrite-plan](../archive/20261017-1835-rewrite-plan.md) §8.1。
 
 ## §A5 D-7：`contract::StepExecution` 的取代关系只在新层注释里划掉
 

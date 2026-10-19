@@ -8,7 +8,7 @@
  */
 #include "backend/cve_2026_43284/landing/bridge_session.hpp"
 
-#include "jni/gl_log.hpp"
+#include "support/gl_log.h"
 
 #include <cerrno>
 #include <csignal>
@@ -156,7 +156,7 @@ namespace ghostlock::backend::cve_2026_43284::landing {
         int request_pair[2] = {-1, -1};
         if (::socketpair(AF_UNIX, SOCK_DGRAM, 0, request_pair) != 0) {
             outcome_ = Outcome::PipeFailed;
-            GL_LOGI("bridge: session refused socketpair errno=%d", errno);
+            warn("bridge: session refused socketpair errno=%d", errno);
             return false;
         }
         int reply_pair[2] = {-1, -1};
@@ -164,7 +164,7 @@ namespace ghostlock::backend::cve_2026_43284::landing {
             outcome_ = Outcome::PipeFailed;
             (void) ::close(request_pair[0]);
             (void) ::close(request_pair[1]);
-            GL_LOGI("bridge: session refused pipe errno=%d", errno);
+            warn("bridge: session refused pipe errno=%d", errno);
             return false;
         }
 #if defined(SO_NOSIGPIPE)
@@ -181,7 +181,7 @@ namespace ghostlock::backend::cve_2026_43284::landing {
             (void) ::close(request_pair[1]);
             (void) ::close(reply_pair[0]);
             (void) ::close(reply_pair[1]);
-            GL_LOGI("bridge: session refused fork errno=%d", errno);
+            warn("bridge: session refused fork errno=%d", errno);
             return false;
         }
         if (child == 0) {
@@ -210,16 +210,16 @@ namespace ghostlock::backend::cve_2026_43284::landing {
         reply_fd_ = reply_pair[0];
         child_ = child;
         open_ = true;
-        GL_LOGI("bridge: opened pid=%d mode=session", static_cast<int>(child));
+        verbose("bridge: opened pid=%d mode=session", static_cast<int>(child));
         if (!handshake()) {
-            GL_LOGI("bridge: refused session pid=%d outcome=%d (a helper that is not a session helper must not be believed)",
+            error("bridge: refused session pid=%d outcome=%d (a helper that is not a session helper must not be believed)",
                     static_cast<int>(child), static_cast<int>(outcome_));
             dead_ = true;
             close();
             return false;
         }
         outcome_ = Outcome::Ok;
-        GL_LOGI("bridge: session ready pid=%d helper=%s carrier=%s",
+        verbose("bridge: session ready pid=%d helper=%s carrier=%s",
                 static_cast<int>(child), helper_, carrier_);
         return true;
     }
@@ -281,7 +281,7 @@ namespace ghostlock::backend::cve_2026_43284::landing {
             last_status_ = reaped ? status : -1;
             child_ = -1;
         }
-        GL_LOGI("bridge: closed pid=%d wait=%d fds=%d", static_cast<int>(pid), wait, closed);
+        verbose("bridge: closed pid=%d wait=%d fds=%d", static_cast<int>(pid), wait, closed);
     }
 
     int BridgeSession::close_channels() noexcept {
@@ -427,11 +427,11 @@ namespace ghostlock::backend::cve_2026_43284::landing {
         }
         const char letter = op == Op::Read ? 'r' : (op == Op::Splice ? 's' : 'h');
         if (!ok || (requests_ % kBridgeLogEveryRequests) == 0U) {
-            GL_LOGI("bridge: request op=%c off=0x%llx us=%lld", letter,
+            verbose("bridge: request op=%c off=0x%llx us=%lld", letter,
                     static_cast<unsigned long long>(offset), static_cast<long long>(took));
         }
         if (!ok) {
-            GL_LOGI("bridge: request failed op=%c off=0x%llx outcome=%d requests=%zu failed=%zu", letter,
+            error("bridge: request failed op=%c off=0x%llx outcome=%d requests=%zu failed=%zu", letter,
                     static_cast<unsigned long long>(offset), static_cast<int>(outcome_), requests_,
                     failed_);
             return -1;

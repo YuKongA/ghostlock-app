@@ -6,7 +6,7 @@
 RealSpliceIo::last_error() —— 20/21/22/23 表示**组帧/发送**各步骤失败；为 0 表示报文发出去了。
 这一条读数能一次分辨「报文没发出去 ✗」与「发出去但内核没处理 ✗」，是整条链最后一处未具名的地方。
 
-## 现状（相关结构，都在 core/src/jni/api_43284_device.cpp）
+## 现状（相关结构，都在 core/src/device/43284/chain.cpp）
 
 - struct Landing43284 { PageCacheDoorLinux door; RealSpliceIo io; PageCacheWrite window; PageCacheLanding landing; bool up; }
 - 表：g_surfaces / g_landings（落地对象与拼接面）

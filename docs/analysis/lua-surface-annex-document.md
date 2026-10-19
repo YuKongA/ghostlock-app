@@ -1,6 +1,6 @@
 # 附件：Document 的定义与执行规则（2026-10-08）
 
-> 分析类（≤8192 B）。**配套**：[lua-surface-design](lua-surface-design.md) §1.2（摘要）· [route 切换附件](lua-surface-annex-route-switch.md) · [A6 待批单](../plan/A6-baseline-approval.md)。来源：用户澄清「**现在的 document 不就是 lua 吗**」。
+> 分析类（≤8192 B）。**配套**：[lua-surface-design](../archive/20261017-1835-lua-surface-design.md) §1.2（摘要）· [route 切换附件](lua-surface-annex-route-switch.md) · [A6 待批单](../archive/20261017-1835-A6-baseline-approval.md)。来源：用户澄清「**现在的 document 不就是 lua 吗**」。
 
 ## §B1 Document = Kotlin resolve 的产物（三段）
 

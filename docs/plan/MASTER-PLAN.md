@@ -1,5 +1,18 @@
 # MASTER-PLAN：GhostLock 主计划（唯一进度入口）
 
+## §0.1 2026-10-17 用户裁定：Lua / GLKv3 文档 / CLI / script 面删除（取代 §1 目标 1 与 3）
+
+- **裁定**：vendored `lua`、`mpack`、`nlohmann` 三个库从构建中删除，且不引入替代第三方库；「引用它们的都是旧代码」⇒ **不被 JNI 调用的部分直接删**，不重写。
+- **已删除**：`core/src/main.cpp`（`ghostlock` CLI）、`script/*`（wire_doc / staged_plan / sandbox 链）、`profile/*` 文档路径（glkv3_document / document_pairs / plan_delivery / run_plan / payload_keys / key_catalog）、`pipeline/run_pipeline_temp`、`terminal/*`、`backend/victim/*`、`contract/{script_surface,op_registry,chain_catalog,layer_scope,kmi_catalog,contract}`、`backend/cve_2026_43499/layout_from_document.hpp` 等；测试 127 → 92。
+- **保留**：`contract/kernel_access.hpp` 接口（两个 device JNI 都继承并逐调用透传）、`pipeline/access_factory.cpp`（`KernelAccess::create` 唯一实现）、`contract/{kind,resource_scope,step_catalog}.hpp`、`profile/route_catalog.hpp` 等仍被编译单元包含的部分。
+- **影响**：ADR-0008 / 0009 / 0010 / 0011 / 0015 / 0016 / 0017 全部废除（各自文首有废除横幅）；`docs/plan/PENDING-DECISIONS.md` 的 A1 / A2 / B1 / B2 / B4 失去对象。
+- **同批删除（只留 JNI 调用）**：`core/src/tools/*.cpp` 的 10 个设备探针与 `GL_PROBES` 选项（它们不在任何 JNI 调用路径上，也不进 APK）。
+- **严格归档（2026-10-17）**：30 份随之失效的设计稿 / ADR / 工作包已移到 `docs/archive/20261017-1835-*`，索引见 `docs/archive/INDEX-plans.md` §七；仓内指向它们的链接同批改写（悬空 0）。
+- **仍有效的判据**：AGENTS §8（host 测试 + Android 零告警 + 真机门禁）；覆盖率只作诊断（见 `docs/analysis/coverage-20261017.md`）。
+
+**收尾核验（2026-10-17 18:05）**：① 全部生产`.cpp/.hpp` 相对「已编译源 + 传递 include」的闭包，孤儿文件 **0**；
+② 三个 .so 的 JNI 导出与 Kotlin `external fun` 一一对应（43284: 36/36 · 43499: 20/20 · ghostlock_jni: 4/4），无死导出、无缺实现。
+
 ## §0 依据与权威
 
 - **权威顺序**：`docs/development/软件工程守则.md`（最高思想）> `AGENTS.md` > `engineering-standards.md` / `design-philosophy.md` / `engineering-rules.md` > `docs/analysis/**`。
@@ -8,7 +21,7 @@
 - **生命周期模型**（守则 §2.1）：**增量 + 阶段门**（每个批次一类事，上一批验收全绿再进下一批），阶段划分 = 立项 → 需求 → 概要设计 → 详细设计 → 编码 → 测试 → 运行/维护。
 - **需求基线状态**：`F21`–`F29` / `I13` / `I14` 已恢复（[确定]）；**`F1`–`F20`、`Q1`–`Q9` 原文在 2026-10-07 事故中丢失**（`requirements.md` 标 [缺失]，见 [incident](../analysis/incident-20261007-agents-requirements-revert.md)），**待用户补写后再据此批准**。
 - **待批事项**：`docs/analysis/pending-rulings.md` —— 一页列全当前**等待裁决**的事项，每项含实测依据与代价；相关计划的命令级清单各自指回该页。
-  - **当前状态（2026-10-09）**：两个 backend 的 kernel access 实现面与可达面均已完成；真机探针与它需要的会话帧已落地并通过门禁（探针为**临时件**，清理表在该页与 `device-probe-43284-checklist.md`）；**代码侧只差在设备上执行一次**。真正待批的只有两项：ADR-0016 与 Lua 里程碑。
+  - **当前状态（2026-10-17 修订）**：原始记录（2026-10-09）为「两个 backend 的 kernel access 实现面与可达面均已完成；真机探针与会话帧已落地并通过门禁；代码侧只差在设备上执行一次；待批 = ADR-0016 与 Lua 里程碑」。**其中 ADR-0016 与 Lua 里程碑已随 §0.1 作废**，现行待批项以 `pending-rulings.md` 去掉作废条目后的剩余部分为准。
 - **唯一性声明**：本文件是**唯一进度入口**；`docs/plan/**` 其余 28 份已归档到 `docs/archive/20261007-2237-*`（索引见 §11 与 [INDEX-plans](../archive/INDEX-plans.md)）。
 
 ## §1 目标与范围
@@ -68,7 +81,7 @@ flowchart LR
   R -. "验收触发（非写依赖）" .-> B2
 ```
 
-- **串行纪律**：**单写入流**（AGENTS）；批次 **B0.1 → B0.2 → B0.3 → B1 → B2 → B3**，上批未绿不进下批；**B0.0** 见 [B0.0-REVISION](B0.0-REVISION.md)；**重写**见 [rewrite-plan](rewrite-plan.md)。
+- **串行纪律**：**单写入流**（AGENTS）；批次 **B0.1 → B0.2 → B0.3 → B1 → B2 → B3**，上批未绿不进下批；**B0.0** 见 [B0.0-REVISION](../archive/20261017-1835-B0.0-REVISION.md)；**重写**见 [rewrite-plan](../archive/20261017-1835-rewrite-plan.md)。
 - **并行约束（M2 更正）**：**写入恒为单流**（同一时刻只有一个 writer 改被门禁覆盖的文件）；**并行仅限只读勘察与门禁**，且**共享 `build/**` 与容器缓存的门禁必须串行**。WP-7（registry 族）不得与 WP-2…WP-5 并行写入。
 - **依赖**：WP-4 依赖 WP-2（层归属）；WP-5 依赖 WP-4（registry/ParamSpec）；WP-6 依赖 WP-5（同一 VM/沙箱）；WP-3 必须先于 WP-4（选路是 gate 后执行面的前提）。**WP-7 = 独立族**：其验收在 **B2 批触发**（`../analysis/resolved-profile-registry-plan.md` §6 矩阵）；图中 R ⟶ B2 为**触发边**，非写依赖。
 
