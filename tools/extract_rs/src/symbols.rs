@@ -93,10 +93,9 @@ pub fn resolve_symbols(symbols: &BTreeMap<String, BTreeSet<u64>>, base: u64) -> 
     result
 }
 
-/// Layout selector for a release, or None when that kernel has no measured
-/// geometry. Only 6.1, 6.6 and 6.12 are verified; callers treat None as
-/// "use STRUCT_OFFSETS_6_6 as a testing starting point", and the extractor
-/// warns so nobody mistakes a fallback table for a verified one.
+/// Layout template selector for a release series. A returned template is not
+/// sufficient evidence to emit family-derived geometry; use
+/// `kernel_layout_verified` for that decision.
 pub fn kernel_struct_macro(release: Option<&str>) -> Option<&'static str> {
     let release = release?;
     let mut parts = release.split('.');
@@ -109,6 +108,38 @@ pub fn kernel_struct_macro(release: Option<&str>) -> Option<&'static str> {
         (6, 12) => Some("STRUCT_OFFSETS_6_12"),
         _ => None,
     }
+}
+
+/// Whether this release belongs to a layout family with retained verification
+/// evidence. Verification is per Android train, the same way the 6.x templates
+/// are keyed: `android14-6.1`, `android15-6.6`, `android16-6.12`, and
+/// `android13-5.15` (whose multicast layout was measured on the A301SO image).
+/// A mere `major.minor` match without the train suffix is not verified.
+pub fn kernel_layout_verified(release: Option<&str>) -> bool {
+    let Some(release) = release else {
+        return false;
+    };
+    let mut parts = release.split('.');
+    let major = parts.next().and_then(|part| part.parse::<u32>().ok());
+    let minor = parts.next().and_then(|part| part.parse::<u32>().ok());
+    match (major, minor) {
+        (Some(6), Some(1)) => release.contains("-android14-"),
+        (Some(6), Some(6)) => release.contains("-android15-"),
+        (Some(6), Some(12)) => release.contains("-android16-"),
+        (Some(5), Some(15)) => release.contains("-android13-"),
+        _ => false,
+    }
+}
+
+/// The exact release whose full multicast geometry (including the forged-object
+/// placement) was measured on hardware. Other releases on the same train
+/// inherit only the corroborated fields.
+pub const MULTICAST_DEVICE_RELEASE: &str = "5.15.189-android13-8-00016-g51bba4309aac-ab14546557";
+
+/// Whether the device-measured geometry may be emitted: only for the exact
+/// release whose forged-object placement was validated, never by train.
+pub fn kernel_device_geometry_verified(release: Option<&str>) -> bool {
+    release == Some(MULTICAST_DEVICE_RELEASE)
 }
 
 pub type ResolvedStructs = BTreeMap<String, Option<u32>>;
@@ -164,4 +195,32 @@ pub fn resolve_structs(btf: Option<&Btf>) -> ResolvedStructs {
     );
     result.insert("struct_mm_struct".to_string(), btf.size("mm_struct"));
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{kernel_layout_verified, kernel_struct_macro};
+
+    #[test]
+    fn layout_template_and_verification_are_separate() {
+        assert_eq!(
+            kernel_struct_macro(Some("6.1.162-android14-11-build")),
+            Some("STRUCT_OFFSETS_6_1")
+        );
+        assert!(kernel_layout_verified(Some("6.1.162-android14-11-build")));
+        assert!(!kernel_layout_verified(Some("6.1.162-generic")));
+        assert!(!kernel_layout_verified(Some("6.7.1-android16-1-build")));
+    }
+
+    #[test]
+    fn five_fifteen_layout_verification_follows_the_android13_train() {
+        assert!(kernel_layout_verified(Some(
+            "5.15.189-android13-8-00016-g51bba4309aac-ab14546557"
+        )));
+        assert!(kernel_layout_verified(Some("5.15.189-android13-8-other")));
+        assert!(!kernel_layout_verified(Some("5.15.189-generic")));
+        assert!(!kernel_layout_verified(Some(
+            "5.15.178-g3575c47dc7ce-dirty"
+        )));
+    }
 }

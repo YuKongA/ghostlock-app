@@ -51,8 +51,9 @@ pub fn open_payload_for(
 }
 
 /// Partitions the analysis needs: boot (kernel image; BTF/kallsyms source)
-/// plus xbl_config when present.  The GKI init_boot partition only carries
-/// the generic ramdisk and is not an analysis input.
+/// plus xbl_config (FDT memory map) and uefi (platform memory-map table) when
+/// present. The GKI init_boot partition only carries the generic ramdisk and is
+/// not an analysis input.
 pub fn analysis_partition_names(
     payload: &payload_extract::payload::PayloadView,
 ) -> anyhow::Result<Vec<String>> {
@@ -70,6 +71,9 @@ pub fn analysis_partition_names(
     let mut want: Vec<String> = vec!["boot".to_string()];
     if available.iter().any(|n| n == "xbl_config") {
         want.push("xbl_config".to_string());
+    }
+    if available.iter().any(|n| n == "uefi") {
+        want.push("uefi".to_string());
     }
     Ok(want)
 }
@@ -113,35 +117,31 @@ pub fn extract_partitions(
 }
 
 /// Pick the analysis inputs from a full OTA payload: the boot partition
-/// (kernel image; BTF/kallsyms source) plus xbl_config when present.  The
-/// GKI init_boot partition only carries the generic ramdisk and is not an
-/// analysis input.
+/// (kernel image; BTF/kallsyms source) plus xbl_config (FDT memory map) and
+/// uefi (platform memory-map table) when present. The GKI init_boot partition
+/// only carries the generic ramdisk and is not an analysis input.
 pub fn extract_analysis_inputs(
     payload: &payload_extract::payload::PayloadView,
     out_dir: &Path,
-) -> anyhow::Result<(PathBuf, Option<PathBuf>)> {
+) -> anyhow::Result<(PathBuf, Option<PathBuf>, Option<PathBuf>)> {
     let want = analysis_partition_names(payload)?;
     let produced = extract_partitions(payload, out_dir, &want)?;
-    let boot_name = "boot".to_string();
-    let boot_out = produced
-        .iter()
-        .find(|p| {
-            p.file_name()
-                .map(|n| {
-                    n.to_string_lossy() == boot_name
-                        || n.to_string_lossy() == format!("{boot_name}.img")
-                })
-                .unwrap_or(false)
-        })
-        .cloned()
-        .ok_or_else(|| anyhow::anyhow!("boot partition output not found"))?;
-    let xbl_out = produced
-        .iter()
-        .find(|p| {
-            p.file_name()
-                .map(|n| n.to_string_lossy().starts_with("xbl_config"))
-                .unwrap_or(false)
-        })
-        .cloned();
-    Ok((boot_out, xbl_out))
+    let pick = |prefix: &str| -> Option<PathBuf> {
+        produced
+            .iter()
+            .find(|p| {
+                p.file_name()
+                    .map(|n| {
+                        let n = n.to_string_lossy();
+                        n == prefix || n == format!("{prefix}.img")
+                    })
+                    .unwrap_or(false)
+            })
+            .cloned()
+    };
+    let boot_out =
+        pick("boot").ok_or_else(|| anyhow::anyhow!("boot partition output not found"))?;
+    let xbl_out = pick("xbl_config");
+    let uefi_out = pick("uefi");
+    Ok((boot_out, xbl_out, uefi_out))
 }

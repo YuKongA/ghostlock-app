@@ -8,68 +8,175 @@ import android.provider.MediaStore
 import android.system.Os
 import androidx.core.content.edit
 import androidx.core.net.toUri
+import com.ghostlock.app.BuildConfig
+import com.ghostlock.app.BuildInfo
 import com.ghostlock.app.domain.model.CpuPair
-import com.ghostlock.app.domain.model.KernelOffsets
+import com.ghostlock.app.domain.model.DebugSettings
 import com.ghostlock.app.domain.model.KernelSnapshot
 import com.ghostlock.app.domain.model.OffsetCandidate
+import com.ghostlock.app.data.ota.OtaPayloadExtractor
 import com.ghostlock.app.domain.model.OffsetImportResult
 import com.ghostlock.app.domain.model.ParseResult
-import com.ghostlock.app.domain.model.SupportedKernels
+import com.ghostlock.app.domain.model.ProfileConfig
+import com.ghostlock.app.domain.model.UserProfileFile
 import com.ghostlock.app.domain.repository.GhostlockRepository
-import com.ghostlock.app.domain.usecase.OffsetMatching
+import com.ghostlock.app.domain.repository.ProfileConfigController
+import com.ghostlock.app.shizuku.ShizukuExploitRunner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
-import org.json.JSONTokener
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.io.RandomAccessFile
 import java.nio.charset.StandardCharsets
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 
 /** Android implementation of the domain repository. All platform I/O lives here. */
 class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private companion object {
-        const val OffsetsFileName = "offsets.json"
-        const val KsuLogName = ".ghostlock_ksu.log"
+        const val OffsetsFileName = "offsets.conf"
+        const val LegacyOffsetsFileName = "offsets.json"
+        const val UserProfilesDirectoryName = "user_profiles"
+        const val EditSessionPreferences = "ghostlock_edit_session"
         const val ExtractBinaryName = "libextract.so"
+        const val DefaultDebugLocation = "Download/ghostlock-debug-log"
+        const val PrefForceAttackTest = "force_attack_test"
+        const val PrefDebugExportEnabled = "debug_export_enabled"
+        const val PrefDebugExportLocation = "debug_export_location"
+        const val PrefDebugKernelLogEnabled = "debug_kernel_log_enabled"
+        const val PrefDebugProfileOverrides = "debug_profile_overrides"
+
+        /* U01-S14: per-run KernelSU log name; the resolved path travels to
+         * the native process via GHOSTLOCK_KSU_LOG. */
+        fun ksuLogName(runStamp: Long) = "ghostlock-ksu-$runStamp.log"
+
+        /* Every run's stdout/stderr is redirected here (export or not), so the
+         * previous run can be inspected on the next start-up. */
+        const val NativeLogFileName = ".ghostlock_native.log"
+
+        /* Attack step status persisted by the app. The native process reports
+         * each step on stdout and waits for an ACK on stdin; the app owns the
+         * file so a kernel panic still leaves the last in_progress step for the
+         * next launch to read. HOCON/JSON. */
+        const val RunStateFileName = ".ghostlock_run_state.json"
+        const val StatusMarker = "\u001eGLK_STATUS"
+        const val StatusAck = "\u001eGLK_STATUS_ACK\n"
+        const val StatusDisabled = "\u001eGLK_STATUS_DISABLED"
     }
 
     private val appContext = context.applicationContext
     private val filesDir: File = appContext.filesDir
+    private val preferences get() =
+        appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE)
     private val offsetsFile get() = File(filesDir, OffsetsFileName)
+    private val builtinProfiles = BuiltinProfileCatalog(appContext)
+    private val assetConfigLoader = AssetConfigLoader(appContext)
+    private val userProfileStore = UserProfileStore(
+        directory = File(filesDir, UserProfilesDirectoryName),
+        assetLoader = assetConfigLoader,
+    )
+    private val profileController = AndroidProfileConfigController(
+        appContext,
+        filesDir,
+        userProfileStore,
+        preferences,
+    )
     private val cpuPairs = mutableListOf<CpuPair>()
     private val cpuPairLabels = mutableListOf<String>()
     private var selectedCpuPair = 0
     private var safeModeEnabled = false
-    private var pendingParsedEntries: JSONArray? = null
+    private var forceAttackTest = false
+    private var shizukuEnabled = false
+    /** True once the user flipped the toggle; only then does it override the
+     * profile suggestion (PROFILE-SUGGEST-01). */
+    private var shizukuPreferenceSet = false
+    private var pendingParsedDocument: PendingParsedDocument? = null
+    private val shizukuRunner = ShizukuExploitRunner(appContext)
 
     init {
         buildCpuPairs()
         restoreCpuPair()
+        restoreShizukuPreference()
+        restoreForceAttackTest()
+        dropLegacyOffsetsCache()
+        migrateLegacyOffsetsStore()
     }
 
-    override suspend fun snapshot(): KernelSnapshot = KernelSnapshot(
-        deviceName = resolveDeviceName(),
-        kernelRelease = System.getProperty("os.version", "unknown").orEmpty(),
-        socName = resolveSocName(),
-        kernelSupported = isKernelSupported(),
-        cpuPairs = cpuPairs.toList(),
-        cpuPairLabels = cpuPairLabels.toList(),
-        selectedCpuPair = selectedCpuPair,
-        safeModeEnabled = safeModeEnabled,
-    )
+    /** The old JSON offsets cache is not compatible and is discarded. */
+    private fun dropLegacyOffsetsCache() {
+        runCatching { File(filesDir, LegacyOffsetsFileName).delete() }
+    }
+
+    /**
+     * Old builds kept imported offsets and parameter overrides in one HOCON
+     * file. Split it: overrides move to preferences, the remaining entries
+     * become verbatim user documents, then the legacy file is dropped.
+     */
+    private fun migrateLegacyOffsetsStore() {
+        if (!offsetsFile.isFile) return
+        runCatching {
+            val entries = parseEntries(offsetsFile.readText()) ?: return@runCatching
+            for (raw in entries) {
+                val entry = raw.asValueMap() ?: continue
+                val release = (entry["release"] as? String).orEmpty()
+                if (release.isEmpty()) continue
+                val overrides = valueMapOf()
+                (entry.remove("execution") as? Map<*, *>)?.let { overrides["execution"] = it }
+                (entry.remove("route") as? Map<*, *>)?.let { overrides["route"] = it }
+                (entry.remove("fallback") as? Map<*, *>)?.let { overrides["fallback"] = it }
+                if (overrides.isNotEmpty()) mergeLegacyOverrides(release, overrides)
+                if (entry.size > 1) {
+                    userProfileStore.save("$release.conf", HoconSupport.render(entry))
+                }
+            }
+            offsetsFile.delete()
+        }.onFailure {
+            android.util.Log.e("GhostLock", "legacy offsets migration failed", it)
+        }
+    }
+
+    private fun mergeLegacyOverrides(release: String, overrides: ValueMap) {
+        val raw = preferences.getString(PrefDebugProfileOverrides, null)
+        val all = runCatching { HoconSupport.parseValue(raw ?: "") }
+            .getOrNull().asValueMap() ?: valueMapOf()
+        deepMergeValues(all.mutableChild(release), overrides)
+        preferences.edit { putString(PrefDebugProfileOverrides, HoconSupport.render(all)) }
+    }
+
+    override suspend fun snapshot(): KernelSnapshot {
+        val release = System.getProperty("os.version", "unknown").orEmpty()
+        /* PROFILE-SUGGEST-01: recommend_shizuku is a suggestion. It seeds the
+         * toggle until the user makes an explicit choice, which then overrides
+         * it in both directions. */
+        val recommendShizuku = release in builtinProfiles.recommendShizuku ||
+            importedOffsetsRecommendShizuku(release)
+        val shizukuActive = if (shizukuPreferenceSet) shizukuEnabled else recommendShizuku
+        return KernelSnapshot(
+            deviceName = resolveDeviceName(),
+            kernelRelease = release,
+            socName = resolveSocName(),
+            kernelSupported = isKernelSupported(),
+            cpuPairs = cpuPairs.toList(),
+            cpuPairLabels = cpuPairLabels.toList(),
+            selectedCpuPair = selectedCpuPair,
+            safeModeEnabled = safeModeEnabled,
+            forceAttackTest = forceAttackTest,
+            recommendShizuku = recommendShizuku,
+            shizukuEnabled = shizukuActive,
+            shizukuStatus = if (shizukuActive) shizukuRunner.status()
+            else com.ghostlock.app.domain.model.ShizukuStatus.NOT_REQUIRED,
+        )
+    }
 
     override fun selectCpuPair(index: Int) {
         if (index !in cpuPairs.indices) return
         selectedCpuPair = index
-        appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE)
-            .edit {
+        appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE).edit {
                 putString("cpu_pair", cpuPairs[index].toString())
             }
     }
@@ -78,93 +185,175 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         safeModeEnabled = enabled
     }
 
-    override suspend fun exportCandidates(): List<OffsetCandidate> {
-        val entries = readOffsetsFile(offsetsFile) ?: return emptyList()
-        val current = System.getProperty("os.version", "")
-        return (0 until entries.length()).asSequence()
-            .mapNotNull { entries.optJSONObject(it) }
-            .map { entry: JSONObject -> entry.optString("release", "") to entry }
-            .filter { (release, entry) ->
-                release.isNotEmpty() &&
-                        !(SupportedKernels.BUILTIN.containsKey(release) && matchesBuiltin(entry))
-            }
-            .distinctBy { it.first }
-            .sortedWith(compareBy<Pair<String, JSONObject>> { if (it.first == current) 0 else 1 }.thenBy { it.first })
-            .map { (release, entry) -> OffsetCandidate(release, entry.toString(2)) }
-            .toList()
+    override fun setForceAttackTest(enabled: Boolean) {
+        forceAttackTest = enabled
+        preferences.edit { putBoolean(PrefForceAttackTest, enabled) }
     }
 
-    override suspend fun importOffsets(json: String): OffsetImportResult = mergeImported(json, overwrite = false)
+    override fun setShizukuEnabled(enabled: Boolean) {
+        shizukuEnabled = enabled
+        shizukuPreferenceSet = true
+        appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE)
+            .edit {
+                putBoolean("shizuku_enabled", enabled)
+                putBoolean("shizuku_explicit", true)
+            }
+        if (enabled) shizukuRunner.requestPermission()
+    }
 
-    override suspend fun confirmImport(json: String): OffsetImportResult = mergeImported(json, overwrite = true)
+    override fun profileController(): ProfileConfigController = profileController
 
-    private fun mergeImported(json: String, overwrite: Boolean): OffsetImportResult {
+    /* debug-ui: preferences for the hidden debug screen. */
+    override suspend fun debugSettings(): DebugSettings = DebugSettings(
+        exportEnabled = preferences.getBoolean(PrefDebugExportEnabled, true),
+        exportLocation = normalizeDebugLocation(preferences.getString(PrefDebugExportLocation, null)),
+        kernelLogEnabled = preferences.getBoolean(PrefDebugKernelLogEnabled, true),
+    )
+
+    override fun setDebugExportEnabled(enabled: Boolean) {
+        preferences.edit { putBoolean(PrefDebugExportEnabled, enabled) }
+    }
+
+    override fun setDebugExportLocation(location: String) {
+        preferences.edit { putString(PrefDebugExportLocation, normalizeDebugLocation(location)) }
+    }
+
+    override fun setDebugKernelLogEnabled(enabled: Boolean) {
+        preferences.edit { putBoolean(PrefDebugKernelLogEnabled, enabled) }
+    }
+
+    private fun normalizeDebugLocation(value: String?): String {
+        val cleaned = value.orEmpty().trim().trim('/').replace(Regex("/{2,}"), "/")
+        val safe = cleaned.takeIf { candidate ->
+            candidate.isNotEmpty() && candidate.split('/').none { it == ".." || it == "." }
+        }
+        return safe ?: DefaultDebugLocation
+    }
+
+    /* Profile configuration now lives in AndroidProfileConfigController: the
+     * repository only wires it and forwards the native document. */
+
+    override suspend fun importOffsets(documents: Map<String, String>): OffsetImportResult =
+        mergeImported(documents, overwrite = false)
+
+    override suspend fun confirmImport(documents: Map<String, String>): OffsetImportResult =
+        mergeImported(documents, overwrite = true)
+
+    private fun mergeImported(documents: Map<String, String>, overwrite: Boolean): OffsetImportResult {
         return try {
-            val imported = parseEntries(json) ?: return OffsetImportResult.Failed("not a valid offsets.json")
-            val existing = readOffsetsFile(offsetsFile) ?: JSONArray()
-            val fresh = JSONArray()
-            val skipped = mutableListOf<String>()
-            val differingBuiltins = mutableListOf<String>()
-            for (index in 0 until imported.length()) {
-                val entry = imported.optJSONObject(index) ?: continue
-                val release = entry.optString("release", "")
-                if (release.isEmpty()) continue
-                if (release in SupportedKernels.BUILTIN) {
-                    if (matchesBuiltin(entry)) {
-                        skipped += release
-                    } else {
-                        differingBuiltins += release
-                        fresh.put(entry)
-                    }
-                } else {
-                    fresh.put(entry)
-                }
-            }
-            if (fresh.length() == 0) return OffsetImportResult.AlreadyPresent
+            val imported = parseImportDocuments(documents)
+                ?: return OffsetImportResult.Failed("not a valid profile document")
+            /* Unlike export candidates, imports are never compared against the
+             * bundled tables: whatever the user picked lands in the store. */
+            val fresh = imported.filter { (it["release"] as? String).orEmpty().isNotEmpty() }
+            if (fresh.isEmpty()) return OffsetImportResult.AlreadyPresent
 
-            val overlaps = overlappingReleases(existing, fresh)
-            val replaced = (overlaps + differingBuiltins).distinct()
-            if (!overwrite && replaced.isNotEmpty()) {
-                return OffsetImportResult.RequiresOverwrite(replaced)
+            val releases = freshReleases(fresh)
+            val overlaps = releases.filter { userProfileStore.containsRelease(it) }
+            if (!overwrite && overlaps.isNotEmpty()) {
+                return OffsetImportResult.RequiresOverwrite(overlaps)
             }
-            mergeAndSave(existing, fresh, overwrite)
-            OffsetImportResult.Imported(freshReleases(fresh))
+            if (overwrite) dropReplacedDocuments(releases)
+            for ((name, text) in documents) userProfileStore.save(name, text)
+            OffsetImportResult.Imported(releases)
         } catch (error: CancellationException) {
             throw error
+        } catch (error: UserProfileStore.MissingIncludes) {
+            OffsetImportResult.MissingIncludes(error.files)
         } catch (error: Exception) {
             OffsetImportResult.Failed(error.message ?: "import failed")
         }
     }
 
-    override suspend fun parseSource(input: String, xblPath: String?, overwrite: Boolean, onLog: (String) -> Unit): ParseResult {
+    /** Confirmed overwrite: drop old documents fully superseded by [releases]. */
+    private fun dropReplacedDocuments(releases: List<String>) {
+        val incoming = releases.toSet()
+        userProfileStore.list().forEach { stored ->
+            if (stored.releases.isNotEmpty() && stored.releases.all { it in incoming }) {
+                userProfileStore.delete(stored.name)
+            }
+        }
+    }
+
+    /**
+     * Parses every picked document, resolving includes against the picked
+     * files first (by full name or base name), then the bundled assets.
+     * Anything unresolvable is reported so the user can pick it too; only
+     * objects carrying a `release` become entries.
+     */
+    private fun parseImportDocuments(documents: Map<String, String>): List<ValueMap>? {
+        val entries = mutableListOf<ValueMap>()
+        documents.forEach { (_, text) ->
+            entries += userProfileStore.parseEntries(text, extraDocuments = documents)
+        }
+        return entries.takeIf { it.isNotEmpty() }
+    }
+
+    override suspend fun parseSource(
+        input: String,
+        xblPath: String?,
+        uefiPath: String?,
+        vendorBootPath: String?,
+        overwrite: Boolean,
+        onLog: (String) -> Unit,
+    ): ParseResult {
         val parsedFile = File(filesDir, "offsets_parse.tmp")
+        var tempBootFile: File? = null
+        var tempXblFile: File? = null
         return try {
             if (overwrite) {
-                val pending = pendingParsedEntries
+                val pending = pendingParsedDocument
                 if (pending != null) {
-                    pendingParsedEntries = null
-                    val existing = readOffsetsFile(offsetsFile) ?: JSONArray()
-                    mergeAndSave(existing, pending, overwrite = true)
-                    return ParseResult.Parsed(freshReleases(pending))
+                    pendingParsedDocument = null
+                    dropReplacedDocuments(pending.releases)
+                    userProfileStore.save(pending.name, pending.text)
+                    return ParseResult.Parsed(pending.releases, pending.missing, pending.name)
                 }
             }
             val binary = File(appContext.applicationInfo.nativeLibraryDir, ExtractBinaryName)
             if (!binary.isFile) return ParseResult.Failed(1, "missing native binary: ${binary.absolutePath}")
+
+            /* Remote OTA URLs are resolved by the pure-Kotlin extractor so the
+             * Android binary ships without the http stack; local files keep
+             * going straight to the Rust extractor. */
+            val isRemoteUrl = input.startsWith("http://", ignoreCase = true) ||
+                input.startsWith("https://", ignoreCase = true)
+            val (effectiveInput, effectiveXblPath) = if (isRemoteUrl) {
+                val extracted = OtaPayloadExtractor.extractPartitions(
+                    url = input,
+                    workDir = filesDir,
+                    onLog = onLog,
+                )
+                tempBootFile = extracted.bootFile
+                tempXblFile = extracted.xblConfigFile
+                Pair(extracted.bootFile.absolutePath, extracted.xblConfigFile?.absolutePath ?: xblPath)
+            } else {
+                Pair(input, xblPath)
+            }
+
             parsedFile.delete()
             val args = buildList {
-                add(input)
-                if (xblPath != null) {
+                add(effectiveInput)
+                if (effectiveXblPath != null) {
                     add("--xbl-config")
-                    add(xblPath)
+                    add(effectiveXblPath)
                 }
-                addAll(listOf("--format", "json", "--out", parsedFile.absolutePath, "--work-dir", filesDir.absolutePath))
+                if (uefiPath != null) {
+                    add("--uefi")
+                    add(uefiPath)
+                }
+                if (vendorBootPath != null) {
+                    add("--vendor-boot")
+                    add(vendorBootPath)
+                }
+                /* --format conf: the extractor output is already the flattened
+                 * profile (no includes, credential template inlined), so the
+                 * stored document needs no legacy conversion. */
+                addAll(listOf("--format", "conf", "--out", parsedFile.absolutePath, "--work-dir", filesDir.absolutePath))
             }
-            onLog("extract: $input")
+            onLog("<k> extract: $effectiveInput")
             val code = runProcess(
-                ProcessBuilder(listOf(binary.absolutePath) + args)
-                    .directory(filesDir)
-                    .redirectErrorStream(true)
-                    .apply {
+                ProcessBuilder(listOf(binary.absolutePath) + args).directory(filesDir).redirectErrorStream(true).apply {
                         environment()["GHOSTLOCK_HOME"] = filesDir.absolutePath
                         environment()["TMPDIR"] = filesDir.absolutePath
                         environment()["HOME"] = filesDir.absolutePath
@@ -172,60 +361,269 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 onLog = onLog,
                 timeoutSeconds = 1800,
             )
-            onLog("extract exit code=$code")
+            onLog("<k> extract exit code=$code")
             if (code != 0 || !parsedFile.isFile) return ParseResult.Failed(code)
-            val fresh = parseEntries(parsedFile.readText()) ?: return ParseResult.Failed(code, "invalid extractor output")
-            val existing = readOffsetsFile(offsetsFile) ?: JSONArray()
-            val filtered = JSONArray()
-            val skipped = mutableListOf<String>()
-            val differingBuiltins = mutableListOf<String>()
-            for (index in 0 until fresh.length()) {
-                val entry = fresh.optJSONObject(index) ?: continue
-                val release = entry.optString("release", "")
-                if (release in SupportedKernels.BUILTIN) {
-                    if (matchesBuiltin(entry)) skipped += release
-                    else {
-                        differingBuiltins += release
-                        filtered.put(entry)
-                    }
-                } else {
-                    filtered.put(entry)
-                }
+            val document = parsedFile.readText()
+            val fresh = parseEntries(document) ?: return ParseResult.Failed(code, "invalid extractor output")
+            /* Parsed reports are stored as-is, even when they match a bundled
+             * profile; loading decides whether they take effect. */
+            val filtered = fresh.mapNotNull { it.asValueMap() }
+                .filter { (it["release"] as? String).orEmpty().isNotEmpty() }
+            if (filtered.isEmpty()) return ParseResult.AlreadyPresent
+            val releases = freshReleases(filtered)
+            val missing = missingSidecarFields(filtered)
+            val overlaps = releases.filter { userProfileStore.containsRelease(it) }
+            val name = parsedDocumentName(releases)
+            if (!overwrite && overlaps.isNotEmpty()) {
+                pendingParsedDocument = PendingParsedDocument(name, document, releases, missing)
+                return ParseResult.RequiresOverwrite(overlaps, missing)
             }
-            if (filtered.length() == 0) return ParseResult.AlreadyPresent
-            val replaced = if (overwrite) emptyList() else differingBuiltins.distinct()
-            if (replaced.isNotEmpty()) {
-                pendingParsedEntries = filtered
-                return ParseResult.RequiresOverwrite(replaced)
-            }
-            mergeAndSave(existing, filtered, overwrite = true)
-            ParseResult.Parsed(freshReleases(filtered))
+            dropReplacedDocuments(releases)
+            userProfileStore.save(name, document)
+            ParseResult.Parsed(releases, missing, name)
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
             ParseResult.Failed(1, error.message)
         } finally {
             parsedFile.delete()
+            tempBootFile?.delete()
+            tempXblFile?.delete()
         }
     }
 
-    override suspend fun runExploit(pair: CpuPair, onLog: (String) -> Unit): Int {
+    override suspend fun runExploit(pair: CpuPair, onLog: (String) -> Unit): Int =
+        withDebugAttackLog("direct", onLog) { archivedLog, debugDir, writeSidecar ->
+            runExploitBinary(pair, "libghostlock.so", archivedLog, debugDir, writeSidecar)
+        }
+
+    override suspend fun runExploitWithShizuku(pair: CpuPair, onLog: (String) -> Unit): Int {
+        return withDebugAttackLog("shizuku", onLog) { archivedLog, debugDir, writeSidecar ->
+            archivedLog("<s> resolving profile")
+            val release = System.getProperty("os.version", "").orEmpty()
+            val config = profileController.load(release, pair)
+            val profileBlob = profileController.nativeDocument(config)
+            archivedLog(
+                "<s> profile resolved hasProfile=${config.hasProfile} " +
+                    "blob=${profileBlob?.size ?: 0} invalid=${config.invalidPaths.size}",
+            )
+            when {
+                !config.hasProfile || profileBlob == null -> {
+                    archivedLog("<s> error: profile is unavailable for $release")
+                    1
+                }
+
+                config.invalidPaths.isNotEmpty() -> {
+                    archivedLog(
+                        "<s> error: profile has ${config.invalidPaths.size} invalid field(s): " +
+                            config.invalidPaths.take(6).joinToString(),
+                    )
+                    1
+                }
+
+                else -> {
+                    /* Mirror the UserService patch so the dumped blob is the
+                     * effective one native will actually receive. */
+                    val runtimeBlob = if (safeModeEnabled) {
+                        NativeProfileDocument.patchSafeMode(profileBlob) ?: profileBlob
+                    } else {
+                        profileBlob
+                    }
+                    dumpRuntimeProfile(archivedLog, writeSidecar, release, pair, runtimeBlob)
+                    archivedLog("<b> starting UserService")
+                    resetRunState()
+                    shizukuRunner.run(
+                        pair, safeModeEnabled, forceAttackTest, profileBlob, debugDir, archivedLog,
+                    ) { step, status ->
+                        if (status == "disabled") clearRunState() else applyRunStatus(step, status)
+                    }
+                }
+            }
+        }
+    }
+
+    /* --- attack step status ------------------------------------------------
+     * The native process reports each step over stdout and waits for an ACK on
+     * stdin. The app persists the status here; a kernel panic leaves the last
+     * in_progress step on disk for the next launch to read. */
+
+    private val runStateLock = Any()
+    private var runSteps: LinkedHashMap<String, String> = LinkedHashMap()
+
+    private fun persistRunStateLocked() {
+        val json = RunStateCodec.encode(runSteps, System.currentTimeMillis())
+        runCatching {
+            FileOutputStream(File(filesDir, RunStateFileName)).use { out ->
+                out.write(json.toByteArray(StandardCharsets.UTF_8))
+                out.flush()
+                out.fd.sync()
+            }
+        }
+    }
+
+    private fun resetRunState() = synchronized(runStateLock) {
+        runSteps = LinkedHashMap<String, String>().apply {
+            RunStateCodec.Steps.forEach { put(it, RunStateCodec.NotStarted) }
+        }
+        persistRunStateLocked()
+    }
+
+    private fun applyRunStatus(step: String, status: String) = synchronized(runStateLock) {
+        if (!runSteps.containsKey(step)) return@synchronized
+        runSteps[step] = status
+        persistRunStateLocked()
+    }
+
+    private fun clearRunState() = runCatching { File(filesDir, RunStateFileName).delete() }
+
+    /** Handles one stdout line; true when it was a status event, not a log line. */
+    private fun handleStatusLine(line: String, process: AtomicReference<Process?>): Boolean {
+        if (!line.startsWith(StatusMarker)) return false
+        if (line.contains(StatusDisabled)) {
+            clearRunState()
+            return true
+        }
+        val parts = line.removePrefix(StatusMarker).trim().split(' ')
+        if (parts.size < 2) return true
+        applyRunStatus(parts[0], parts[1])
+        runCatching {
+            process.get()?.outputStream?.apply {
+                write(StatusAck.toByteArray(StandardCharsets.UTF_8))
+                flush()
+            }
+        }
+        return true
+    }
+
+    override suspend fun lastRunStuckStep(): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            val file = File(filesDir, RunStateFileName)
+            if (!file.isFile) return@runCatching null
+            RunStateCodec.parseStuckStep(file.readText())
+        }.getOrNull()
+    }
+
+    private suspend fun withDebugAttackLog(
+        entry: String,
+        onLog: (String) -> Unit,
+        run: suspend ((String) -> Unit, String?, (String, ByteArray) -> Boolean) -> Int,
+    ): Int {
+        val settings = debugSettings()
+        if (!settings.exportEnabled) return run(onLog, null) { _, _ -> false }
+        val archive = DebugAttackLog.open(appContext, entry, settings.exportLocation)
+        if (archive == null) {
+            onLog("<k> warning: cannot create ${settings.exportLocation} debug log")
+            return run(onLog, null) { _, _ -> false }
+        }
+        val archivedLog: (String) -> Unit = { line ->
+            runCatching { archive.append(line) }
+            onLog(line)
+        }
+        val writeSidecar: (String, ByteArray) -> Boolean = { name, bytes ->
+            runCatching { archive.writeSidecar(name, bytes) }.getOrDefault(false)
+        }
+        return try {
+            /* First line of every archived run log: which app build produced it. */
+            archivedLog(
+                "<k> GhostLock ${BuildConfig.VERSION_NAME}+${BuildConfig.VERSION_CODE} " +
+                    "build ${BuildInfo.BUILD_TIME_LABEL}",
+            )
+            archivedLog("<k> debug log: ${archive.folderPath}/${archive.displayName}")
+            archivedLog("<k> debug dump dir: ${archive.folderFile.absolutePath}")
+            run(
+                archivedLog,
+                if (settings.kernelLogEnabled) archive.folderFile.absolutePath else null,
+                writeSidecar,
+            )
+        } finally {
+            runCatching { archive.close() }
+        }
+    }
+
+    /**
+     * Writes the effective runtime profile into the attempt folder: the resolved
+     * HOCON (`profile.conf`) and the exact GLK1 v2 bytes handed to native
+     * (`profile.bin`). No-op when debug export is disabled.
+     */
+    private fun dumpRuntimeProfile(
+        log: (String) -> Unit,
+        writeSidecar: (String, ByteArray) -> Boolean,
+        release: String,
+        pair: CpuPair,
+        blob: ByteArray?,
+    ) {
+        val conf = runCatching { profileController.renderResolvedForDebug(release, pair) }.getOrNull()
+        val confWritten = conf?.let {
+            writeSidecar("profile.conf", it.toByteArray(StandardCharsets.UTF_8))
+        } ?: false
+        val blobWritten = blob?.let { writeSidecar("profile.bin", it) } ?: false
+        if (confWritten || blobWritten) {
+            log("<k> runtime profile written: profile.conf/profile.bin")
+        }
+    }
+
+    override fun requestShizukuPermission() = shizukuRunner.requestPermission()
+
+    override fun setShizukuStatusListener(listener: (() -> Unit)?) =
+        shizukuRunner.setStatusListener(listener)
+
+    private suspend fun runExploitBinary(
+        pair: CpuPair,
+        binaryName: String,
+        onLog: (String) -> Unit,
+        debugDir: String?,
+        writeSidecar: (String, ByteArray) -> Boolean,
+    ): Int {
         val workDir = filesDir
         return try {
-            val binary = File(appContext.applicationInfo.nativeLibraryDir, "libghostlock.so")
+            val binary = File(appContext.applicationInfo.nativeLibraryDir, binaryName)
             require(binary.isFile) { "missing native binary: ${binary.absolutePath}" }
-            if (prepareKsud(workDir, onLog) != null) onLog("ksud ready") else onLog("warning: ksud not found")
-            val ksuLog = File(workDir, KsuLogName)
-            ksuLog.delete()
-            val nativeLog = File(workDir, ".ghostlock_native.log")
+            if (prepareKsud(workDir, onLog) != null) onLog("<k> ksud ready") else onLog("<k> warning: ksud not found")
+            // U01-S14: a per-run KernelSU log path so a previous run's markers
+            // can never satisfy the handoff probe; passed to the native process.
+            val ksuLog = File(workDir, ksuLogName(System.currentTimeMillis()))
+            val nativeLog = File(workDir, NativeLogFileName)
             nativeLog.writeText("")
+            val release = System.getProperty("os.version", "").orEmpty()
+            val config = profileController.load(release, pair)
+            onLog(
+                "<k> profile: hasProfile=${config.hasProfile} " +
+                    "invalid=${config.invalidPaths.size} release=$release",
+            )
+            if (!config.hasProfile) {
+                error(
+                    "no profile matched $release; import its .conf and select it, " +
+                        "or pick a built-in release",
+                )
+            }
+            if (config.invalidPaths.isNotEmpty()) {
+                error(
+                    "profile has ${config.invalidPaths.size} invalid field(s): " +
+                        config.invalidPaths.take(6).joinToString(),
+                )
+            }
+            var profileBlob = profileController.nativeDocument(config)
+                ?: error("profile is unavailable for $release")
+            // v2: safe_mode lives in the meta section; there is no fixed slot
+            // offset, so the blob is rescanned and rewritten.
+            if (safeModeEnabled) {
+                profileBlob = NativeProfileDocument.patchSafeMode(profileBlob) ?: profileBlob
+            }
+            dumpRuntimeProfile(onLog, writeSidecar, release, pair, profileBlob)
             val ksuOffset = AtomicLong()
             val nativeOffset = AtomicLong()
+            val processRef = AtomicReference<Process?>(null)
+            // tag root-script lines so they cannot be read as the native stages'
+            val ksuSink: (String) -> Unit = { onLog("[ksu] $it") }
+            // status events are consumed here (persisted + ACKed); plain lines are logs
+            val nativeSink: (String) -> Unit = { line ->
+                if (!handleStatusLine(line, processRef)) onLog(line)
+            }
             val tailer = Thread {
                 try {
                     while (!Thread.currentThread().isInterrupted) {
-                        tailKsuLog(nativeLog, nativeOffset, onLog)
-                        tailKsuLog(ksuLog, ksuOffset, onLog)
+                        tailKsuLog(nativeLog, nativeOffset, nativeSink)
+                        tailKsuLog(ksuLog, ksuOffset, ksuSink)
                         Thread.sleep(200)
                     }
                 } catch (_: InterruptedException) {
@@ -236,7 +634,18 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 isDaemon = true
                 start()
             }
-            val command = ProcessBuilder(binary.absolutePath)
+            val argv = mutableListOf(
+                binary.absolutePath,
+                "--ghostlock-app-call",
+                "--enable-status-record",
+            )
+            if (forceAttackTest) {
+                argv += "--force-attack"
+            }
+            if (!debugDir.isNullOrEmpty()) {
+                argv += listOf("--dump-kernel-log", debugDir)
+            }
+            val command = ProcessBuilder(argv)
                 .directory(workDir)
                 .redirectErrorStream(true)
                 .redirectOutput(nativeLog)
@@ -244,35 +653,39 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                     environment()["GHOSTLOCK_HOME"] = workDir.absolutePath
                     environment()["TMPDIR"] = workDir.absolutePath
                     environment()["HOME"] = workDir.absolutePath
-                    if (pair.primary != 0 || pair.consumer != 1) {
-                        environment()["GHOSTLOCK_CORE"] = pair.primary.toString()
-                        environment()["GHOSTLOCK_CONSUMER_CORE"] = pair.consumer.toString()
-                    }
-                    if (safeModeEnabled) environment()["GHOSTLOCK_DISABLE_MODULES"] = "1"
+                    environment()["GHOSTLOCK_KSU_LOG"] = ksuLog.absolutePath
                 }
+            onLog("<b> starting native: ${binary.absolutePath}")
+            resetRunState()
             try {
-                runProcess(command, onLog = {}, captureOutput = false)
+                val nativeCode = runProcess(
+                    command,
+                    onLog = {},
+                    captureOutput = false,
+                    stdin = profileBlob,
+                    frameStdin = true,
+                    onProcess = { processRef.set(it) },
+                )
+                onLog("<b> native exited code=$nativeCode")
+                nativeCode
             } finally {
                 withContext(Dispatchers.IO) {
                     tailer.interrupt()
                     tailer.join(1000)
                     tailKsuLog(nativeLog, nativeOffset, onLog)
-                    tailKsuLog(ksuLog, ksuOffset, onLog)
+                    tailKsuLog(ksuLog, ksuOffset, ksuSink)
                 }
             }
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            onLog("error: ${error::class.simpleName}: ${error.message}")
+            onLog("<-> error: ${error::class.simpleName}: ${error.message}")
             1
         }
     }
 
-    override suspend fun readDocument(uri: String): String = appContext.contentResolver
-        .openInputStream(uri.toUri())
-        ?.bufferedReader()
-        ?.use { it.readText() }
-        ?: throw IOException("cannot open $uri")
+    override suspend fun readDocument(uri: String): String =
+        appContext.contentResolver.openInputStream(uri.toUri())?.bufferedReader()?.use { it.readText() } ?: throw IOException("cannot open $uri")
 
     override suspend fun cacheDocument(uri: String, fileName: String): String {
         val target = File(filesDir, fileName)
@@ -282,33 +695,190 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         return target.absolutePath
     }
 
+    override suspend fun userProfiles(): List<UserProfileFile> =
+        withContext(Dispatchers.IO) {
+            userProfileStore.list().map { stored ->
+                UserProfileFile(
+                    name = stored.name,
+                    releases = stored.releases,
+                    importedAt = stored.importedAt,
+                    sizeBytes = stored.sizeBytes,
+                    parseError = stored.parseError,
+                    version = stored.version,
+                )
+            }
+        }
+
+    override suspend fun deleteUserProfile(name: String): Boolean {
+        val deleted = withContext(Dispatchers.IO) { userProfileStore.delete(name) }
+        if (deleted) profileController.onUserProfileDeleted(name)
+        return deleted
+    }
+
+    override suspend fun renameUserProfile(name: String, newName: String): String? {
+        val renamed = withContext(Dispatchers.IO) { userProfileStore.rename(name, newName) }
+        if (renamed != null) profileController.onUserProfileRenamed(name, renamed)
+        return renamed
+    }
+
+    /** Renders a stored document as HOCON and shares it; returns the URI. */
+    override suspend fun exportUserProfile(name: String): String {
+        val hocon = withContext(Dispatchers.IO) { userProfileStore.exportHocon(name) }
+            ?: throw IOException("cannot export $name")
+        return publishOffsets(OffsetCandidate(name.substringBeforeLast('.'), hocon))
+    }
+
+    /**
+     * Converts a stored legacy document into the current layout and stores the
+     * result as a new user document; returns its name, or null on failure.
+     */
+    override suspend fun convertUserProfile(name: String): String? {
+        val hocon = withContext(Dispatchers.IO) { userProfileStore.exportHocon(name) }
+            ?: return null
+        val base = name.substringBeforeLast('.')
+        return withContext(Dispatchers.IO) {
+            userProfileStore.save("$base-converted.conf", hocon)
+        }
+    }
+
+    /* ---- editing session: isolated from the live attack controller ---- */
+
+    private var editSession: AndroidProfileConfigController? = null
+    private var editSessionTargetName: String? = null
+    private var editSessionTargetRelease: String? = null
+    private var editSessionLive = false
+
+    override suspend fun beginEditSession(name: String?): ProfileConfig? =
+        withContext(Dispatchers.IO) {
+            endEditSession()
+            val deviceRelease = System.getProperty("os.version", "").orEmpty()
+            val pair = cpuPairs.getOrNull(selectedCpuPair) ?: return@withContext null
+            /* A stored document is edited against its own release: the device
+             * release would resolve the bundled profile instead and hide the
+             * imported geometry. Only the live controller stays device-keyed. */
+            val targetRelease = name?.let { userProfileStore.releasesOf(it).firstOrNull() }
+                ?: deviceRelease
+            val sessionPreferences = appContext.getSharedPreferences(
+                EditSessionPreferences,
+                Context.MODE_PRIVATE,
+            )
+            sessionPreferences.edit { clear() }
+            editSessionLive = name != null && name == profileController.activeUserProfile()
+            if (editSessionLive) {
+                val overrides = profileController.overridesSnapshot(deviceRelease)
+                if (overrides.isNotEmpty()) {
+                    /* The store keeps one entry per release, so wrap it back. */
+                    sessionPreferences.edit(commit = true) {
+                        putString(
+                            AndroidProfileConfigController.PrefDebugProfileOverrides,
+                            HoconSupport.render(valueMapOf(deviceRelease to overrides)),
+                        )
+                    }
+                }
+            }
+            val session = AndroidProfileConfigController(
+                context = appContext,
+                filesDir = filesDir,
+                userProfiles = userProfileStore,
+                preferences = sessionPreferences,
+                forcedUserProfile = name,
+                forcedBuiltinRelease = profileController.activeBuiltinRelease(),
+            )
+            editSession = session
+            editSessionTargetName = name
+            editSessionTargetRelease = targetRelease
+            runCatching { session.load(targetRelease, pair) }.getOrNull()
+        }
+
+    override fun editSessionController(): ProfileConfigController? = editSession
+
+    override fun editSessionIsLive(): Boolean = editSessionLive
+
+    override fun editSessionTarget(): String? = editSessionTargetName
+
+    override fun editSessionRelease(): String? = editSessionTargetRelease
+
+    override suspend fun saveEditSessionInPlace(): Boolean = withContext(Dispatchers.IO) {
+        if (editSessionLive) return@withContext false
+        val session = editSession ?: return@withContext false
+        val target = editSessionTargetName ?: return@withContext false
+        val release = editSessionTargetRelease
+            ?: System.getProperty("os.version", "").orEmpty()
+        val pair = cpuPairs.getOrNull(selectedCpuPair) ?: return@withContext false
+        val document = session.renderResolved(release, pair) ?: return@withContext false
+        userProfileStore.overwrite(target, document)
+    }
+
+    override suspend fun commitEditSession(): Boolean = withContext(Dispatchers.IO) {
+        if (!editSessionLive) return@withContext false
+        val session = editSession ?: return@withContext false
+        val release = System.getProperty("os.version", "").orEmpty()
+        profileController.replaceOverrides(release, session.overridesSnapshot(release))
+        val pair = cpuPairs.getOrNull(selectedCpuPair) ?: return@withContext false
+        runCatching { profileController.load(release, pair) }.isSuccess
+    }
+
+    override suspend fun saveEditSessionAsNew(): String? = withContext(Dispatchers.IO) {
+        val session = editSession ?: return@withContext null
+        val release = editSessionTargetRelease
+            ?: System.getProperty("os.version", "").orEmpty()
+        val pair = cpuPairs.getOrNull(selectedCpuPair) ?: return@withContext null
+        val stem = (editSessionTargetName ?: release)
+            .substringBeforeLast('.')
+            .replace(Regex("[^A-Za-z0-9._-]"), "_")
+        val name = "${stem.ifEmpty { "profile" }}-edited.conf"
+        if (session.saveResolved(release, pair, name)) name else null
+    }
+
+    override suspend fun exportEditSession(): String = withContext(Dispatchers.IO) {
+        val session = editSession ?: throw IOException("no editing session")
+        val release = editSessionTargetRelease
+            ?: System.getProperty("os.version", "").orEmpty()
+        val pair = cpuPairs.getOrNull(selectedCpuPair) ?: throw IOException("no cpu pair")
+        val document = session.renderResolved(release, pair)
+            ?: throw IOException("cannot render the edited profile")
+        val stem = editSessionTargetName?.substringBeforeLast('.') ?: release
+        publishOffsets(OffsetCandidate(stem.ifEmpty { release }, document))
+    }
+
+    override fun endEditSession() {
+        editSession = null
+        editSessionTargetName = null
+        editSessionTargetRelease = null
+        editSessionLive = false
+    }
+
     override suspend fun publishOffsets(candidate: OffsetCandidate): String {
         val safeRelease = candidate.release.replace(Regex("[^A-Za-z0-9._-]"), "_")
         val values = ContentValues().apply {
-            put(MediaStore.Downloads.DISPLAY_NAME, "offsets-$safeRelease.json")
-            put(MediaStore.Downloads.MIME_TYPE, "application/json")
+            put(MediaStore.Downloads.DISPLAY_NAME, "offsets-$safeRelease.conf")
+            put(MediaStore.Downloads.MIME_TYPE, "text/plain")
         }
-        val uri = appContext.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-            ?: throw IOException("cannot create download entry")
+        val uri = appContext.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: throw IOException("cannot create download entry")
         appContext.contentResolver.openOutputStream(uri)?.use { output ->
-            output.write("[${candidate.json}]".toByteArray(StandardCharsets.UTF_8))
+            output.write(candidate.document.toByteArray(StandardCharsets.UTF_8))
         } ?: throw IOException("cannot open download entry")
         return uri.toString()
     }
 
     override fun close() {
+        shizukuRunner.close()
         synchronized(processes) {
             processes.forEach(Process::destroyForcibly)
             processes.clear()
         }
     }
 
-    private fun parseEntries(text: String): JSONArray? {
+    /**
+     * Legacy/parse helper: reads HOCON or JSON text into a list of entries.
+     * Stored user documents are parsed by [UserProfileStore] instead.
+     */
+    private fun parseEntries(text: String): ValueList? {
         if (text.isBlank()) return null
         return try {
-            when (val value = JSONTokener(text).nextValue()) {
-                is JSONArray -> value
-                is JSONObject -> JSONArray().put(value)
+            when (val value = HoconSupport.parseValue(text)) {
+                is List<*> -> value.asValueList()
+                is Map<*, *> -> ValueList().apply { value.asValueMap()?.let(::add) }
                 else -> null
             }
         } catch (_: Exception) {
@@ -316,70 +886,50 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         }
     }
 
-    private fun readOffsetsFile(file: File): JSONArray? = if (file.isFile) parseEntries(file.readText()) else null
-
-    private fun overlappingReleases(existing: JSONArray, imported: JSONArray): List<String> {
-        val known = (0 until existing.length()).mapNotNull { existing.optJSONObject(it)?.optString("release") }.toSet()
-        return (0 until imported.length()).mapNotNull { imported.optJSONObject(it)?.optString("release") }
-            .filter { it in known }
-            .distinct()
-    }
-
-    private fun mergeAndSave(existing: JSONArray, imported: JSONArray, overwrite: Boolean) {
-        val importedByRelease = (0 until imported.length()).mapNotNull { imported.optJSONObject(it) }
-            .associateBy { it.optString("release", "") }
-        val known = (0 until existing.length()).mapNotNull { existing.optJSONObject(it)?.optString("release") }.toSet()
-        val merged = JSONArray()
-        for (index in 0 until existing.length()) {
-            val entry = existing.optJSONObject(index) ?: continue
-            val release = entry.optString("release", "")
-            if (overwrite && release in importedByRelease) continue
-            merged.put(entry)
-        }
-        for (index in 0 until imported.length()) {
-            val entry = imported.optJSONObject(index) ?: continue
-            if (!overwrite && entry.optString("release", "") in known) continue
-            merged.put(entry)
-        }
-        offsetsFile.writeText(merged.toString(2), StandardCharsets.UTF_8)
-    }
-
-    private fun freshReleases(entries: JSONArray): List<String> =
-        (0 until entries.length()).mapNotNull { entries.optJSONObject(it)?.optString("release") }.distinct()
-
-    private fun matchesBuiltin(entry: JSONObject): Boolean = OffsetMatching.matchesBuiltin(toKernelOffsets(entry), SupportedKernels.BUILTIN)
-
-    private fun toKernelOffsets(entry: JSONObject): KernelOffsets = KernelOffsets(
-        release = entry.optString("release", ""),
-        scalars = scalarFields.associateWith { if (entry.has(it) && !entry.isNull(it)) entry.optLong(it) else null },
-        symbols = objectFields(entry.optJSONObject("symbols")),
-        structFields = objectFields(entry.optJSONObject("struct_fields")),
+    private class PendingParsedDocument(
+        val name: String,
+        val text: String,
+        val releases: List<String>,
+        val missing: Set<String>,
     )
 
-    private fun objectFields(value: JSONObject?): Map<String, Long?> = value?.keys()?.asSequence()
-        ?.associateWith { key -> if (value.isNull(key)) null else value.optLong(key) }
-        ?: emptyMap()
+    /**
+     * Fields a parsed profile still lacks that only an xbl_config FDT or uefi
+     * memory map can fill. Used to prompt for the optional sidecars.
+     */
+    private fun missingSidecarFields(entries: List<ValueMap>): Set<String> =
+        if (entries.isNotEmpty() && entries.all { it.getLongAt("kernel_phys_load") == null }) {
+            setOf("kernel_phys_load")
+        } else {
+            emptySet()
+        }
 
-    private val scalarFields = listOf("pselect_waiter_shift", "compact_waiter", "mm_struct_sz", "kernel_phys_load")
+    private fun parsedDocumentName(releases: List<String>): String {
+        val stem = releases.firstOrNull().orEmpty()
+            .replace(Regex("[^A-Za-z0-9._-]"), "_")
+            .ifEmpty { "parsed" }
+        return "$stem.conf"
+    }
+
+    private fun freshReleases(entries: List<*>): List<String> =
+        entries.mapNotNull { (it.asValueMap()?.get("release") as? String) }.distinct()
 
     private fun isKernelSupported(): Boolean {
         val version = System.getProperty("os.version", "").orEmpty()
-        return version in SupportedKernels.UNAMES || importedOffsetsMatch(version)
+        return version in builtinProfiles.unames || importedOffsetsMatch(version)
     }
 
-    private fun importedOffsetsMatch(version: String): Boolean {
-        val entries = readOffsetsFile(offsetsFile) ?: return false
-        return (0 until entries.length()).any { entries.optJSONObject(it)?.optString("release") == version }
-    }
+    private fun importedOffsetsMatch(version: String): Boolean =
+        userProfileStore.containsRelease(version)
+
+    private fun importedOffsetsRecommendShizuku(version: String): Boolean =
+        userProfileStore.recommendsShizuku(version)
 
     private fun buildCpuPairs() {
         cpuPairs.clear()
         cpuPairLabels.clear()
         val online = parseCpuList(readSysFile("/sys/devices/system/cpu/online"))
-        online.groupBy { readMaxFreq(it) }
-            .filterKeys { it > 0 }
-            .toSortedMap(compareByDescending { it })
-            .forEach { (freq, cluster) ->
+        online.groupBy { readMaxFreq(it) }.filterKeys { it > 0 }.toSortedMap(compareByDescending { it }).forEach { (freq, cluster) ->
                 cluster.sorted().chunked(2).filter { it.size == 2 }.forEach { pair ->
                     cpuPairs += CpuPair(pair[0], pair[1])
                     cpuPairLabels += "${pair[0]},${pair[1]} · ${formatFreq(freq)}"
@@ -390,43 +940,22 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             val freq = readMaxFreq(0)
             cpuPairLabels += "0,1" + if (freq > 0) " · ${formatFreq(freq)}" else ""
         }
-        // Prefer the two fastest online cores as the default pair, ranked by
-        // frequency with CPU ID as a tie-breaker. A plain maxByOrNull returns
-        // the first of several tied cores and pairing it with its ID sibling
-        // can produce a mixed little/big pair (e.g. (3,4) on a 4+4 layout
-        // where 4-7 tie); the ID-adjacent assumption also breaks when the
-        // neighbour is offline. On the Nothing 3a Pro (SM7635, cpus 4-7 big)
-        // this yields (6,7), the pair verified on-device. Move the pair to
-        // the front even when cluster chunking already added it, so the
-        // chunking cannot mask it.
-        val rankedTopTwo = online
-            .filter { readMaxFreq(it) > 0 }
-            .sortedWith(compareByDescending<Int> { readMaxFreq(it) }.thenByDescending { it })
-            .take(2)
-            .sorted()
-        if (rankedTopTwo.size == 2) {
-            val pair = CpuPair(rankedTopTwo[0], rankedTopTwo[1])
-            val pairFreqs = rankedTopTwo.map { readMaxFreq(it) }
-            val freqLabel = if (pairFreqs[0] == pairFreqs[1]) {
-                formatFreq(pairFreqs[0])
-            } else {
-                "${formatFreq(pairFreqs[0])}/${formatFreq(pairFreqs[1])}"
-            }
-            val existing = cpuPairs.indexOf(pair)
-            if (existing >= 0) {
-                cpuPairs.removeAt(existing)
-                cpuPairLabels.removeAt(existing)
-            }
-            cpuPairs.add(0, pair)
-            cpuPairLabels.add(0, "${pair.primary},${pair.consumer} · $freqLabel")
-        }
     }
 
     private fun restoreCpuPair() {
-        val saved = appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE)
-            .getString("cpu_pair", null) ?: return
+        val saved = appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE).getString("cpu_pair", null) ?: return
         val pair = saved.split(',').mapNotNull { it.trim().toIntOrNull() }
         if (pair.size == 2) cpuPairs.indexOf(CpuPair(pair[0], pair[1])).takeIf { it >= 0 }?.let { selectedCpuPair = it }
+    }
+
+    private fun restoreShizukuPreference() {
+        val prefs = appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE)
+        shizukuPreferenceSet = prefs.getBoolean("shizuku_explicit", false)
+        shizukuEnabled = prefs.getBoolean("shizuku_enabled", false)
+    }
+
+    private fun restoreForceAttackTest() {
+        forceAttackTest = preferences.getBoolean(PrefForceAttackTest, false)
     }
 
     private fun parseCpuList(value: String): List<Int> = value.split(',').flatMap { part ->
@@ -464,8 +993,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 val cn = Locale.getDefault().country.equals("CN", true)
                 firstValidProperty(
                     *(if (cn) arrayOf(
-                        "ro.vendor.oplus.market.name",
-                        "ro.vendor.oplus.market.enname"
+                        "ro.vendor.oplus.market.name", "ro.vendor.oplus.market.enname"
                     ) else arrayOf("ro.vendor.oplus.market.enname", "ro.vendor.oplus.market.name"))
                 )
             }
@@ -476,27 +1004,19 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             else -> null
         }
         return marketName ?: listOfNotNull(
-            manufacturer,
-            Build.BRAND.orEmpty().takeIf { !it.equals(manufacturer, true) },
-            Build.MODEL.orEmpty()
-        )
-            .filter { it.isNotBlank() }
-            .joinToString(" ")
+            manufacturer, Build.BRAND.orEmpty().takeIf { !it.equals(manufacturer, true) }, Build.MODEL.orEmpty()
+        ).filter { it.isNotBlank() }.joinToString(" ")
     }
 
     private fun resolveSocName(): String = listOf(
         systemProperty("ro.soc.manufacturer"),
         systemProperty("ro.soc.model"),
-    )
-        .mapNotNull(::validDeviceName)
-        .joinToString(" ")
-        .ifBlank { "unknown" }
+    ).mapNotNull(::validDeviceName).joinToString(" ").ifBlank { "unknown" }
 
-    private fun firstValidProperty(vararg keys: String): String? =
-        keys.asSequence().firstNotNullOfOrNull { validDeviceName(systemProperty(it)) }
+    private fun firstValidProperty(vararg keys: String): String? = keys.asSequence().firstNotNullOfOrNull { validDeviceName(systemProperty(it)) }
 
     private fun prepareKsud(workDir: File, onLog: (String) -> Unit): File? {
-        val packages = listOf("me.weishu.kernelsu.pr", "me.weishu.kernelsu", "com.resukisu.resukisu", "com.kowx712.supermanager")
+        val packages = listOf("me.weishu.kernelsu.pr", "me.weishu.kernelsu", "com.resukisu.resukisu", "org.bakasu.bakasu", "com.kowx712.supermanager")
         var installed = false
         for (packageName in packages) {
             val appInfo = runCatching { appContext.packageManager.getApplicationInfo(packageName, 0) }.getOrNull() ?: continue
@@ -508,9 +1028,9 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 source.inputStream().use { input -> output.outputStream().use { input.copyTo(it) } }
                 runCatching { Os.chmod(output.absolutePath, 448) }
                 return output
-            }.onFailure { onLog("copy ksud failed: ${it.message}") }
+            }.onFailure { onLog("<k> copy ksud failed: ${it.message}") }
         }
-        if (!installed) onLog("KernelSU/ReSukiSU/KowSU app not installed")
+        if (!installed) onLog("<k> KernelSU/ReSukiSU/BakaSU/KowSU app not installed")
         return null
     }
 
@@ -519,13 +1039,40 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         onLog: (String) -> Unit = {},
         timeoutSeconds: Long = 300,
         captureOutput: Boolean = true,
+        stdin: ByteArray? = null,
+        frameStdin: Boolean = false,
+        onProcess: ((Process) -> Unit)? = null,
     ): Int = runInterruptible {
         val process = builder.start()
         synchronized(processes) { processes += process }
+        if (stdin != null) {
+            if (frameStdin) {
+                /* 4-byte big-endian length + payload, stdin kept open for the
+                 * status-record ACK channel. */
+                runCatching {
+                    val out = process.outputStream
+                    val length = stdin.size
+                    out.write(
+                        byteArrayOf(
+                            (length ushr 24).toByte(),
+                            (length ushr 16).toByte(),
+                            (length ushr 8).toByte(),
+                            length.toByte(),
+                        ),
+                    )
+                    out.write(stdin)
+                    out.flush()
+                }
+            } else {
+                runCatching { process.outputStream.use { it.write(stdin) } }
+            }
+        }
+        onProcess?.invoke(process)
         val reader = if (captureOutput) Thread {
             try {
                 process.inputStream.bufferedReader(StandardCharsets.UTF_8).useLines { lines -> lines.forEach(onLog) }
-            } catch (_: IOException) { }
+            } catch (_: IOException) {
+            }
         }.apply {
             name = "process-output-reader"
             isDaemon = true

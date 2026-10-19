@@ -2,6 +2,8 @@
 
 use std::path::Path;
 
+use regex::Regex;
+
 use crate::boot::{PAGE_SIZE, align};
 use crate::error::{ExtractError, Result};
 
@@ -253,4 +255,70 @@ fn find_byte(data: &[u8], from: usize, to: usize) -> Option<usize> {
         .iter()
         .position(|b| *b == 0)
         .map(|i| from.min(data.len()) + i)
+}
+
+/// Recover the Kernel physical base from the bootloader's UEFI platform
+/// memory-map table. Some xbl_config images (e.g. PD2361) are ELFs with no FDT
+/// memory map; the `uefi` partition instead carries the human-readable table
+/// `0x<base>, 0x<size>, "<label>"` (the Kernel row is `0xA8000000, 0x10000000,
+/// "Kernel", AddMem, SYS_MEM, ...`). Static, no device or root.
+pub fn recover_kernel_phys_load_from_uefi(path: &Path) -> Result<u64> {
+    let data = std::fs::read(path)?;
+    find_kernel_memory_map_entry(&data)
+}
+
+fn find_kernel_memory_map_entry(data: &[u8]) -> Result<u64> {
+    let needle = b"\"Kernel\"";
+    // `0x<base>, 0x<size>,` immediately before the quoted label.
+    let entry = Regex::new(r"0x([0-9A-Fa-f]+)\s*,\s*0x[0-9A-Fa-f]+\s*,\s*$").unwrap();
+    let mut bases: Vec<u64> = Vec::new();
+    let mut cursor = 0usize;
+    while let Some(pos) = find_bytes(data, needle, cursor) {
+        cursor = pos + needle.len();
+        let window_start = pos.saturating_sub(64);
+        let window = String::from_utf8_lossy(&data[window_start..pos]);
+        if let Some(caps) = entry.captures(&window) {
+            if let Ok(base) = u64::from_str_radix(&caps[1], 16) {
+                bases.push(base);
+            }
+        }
+    }
+    bases.sort_unstable();
+    bases.dedup();
+    match bases.as_slice() {
+        [base] => Ok(*base),
+        [] => Err(ExtractError::new(
+            "uefi contains no Kernel memory-map entry",
+        )),
+        _ => Err(ExtractError::new(format!(
+            "uefi has conflicting Kernel bases: {bases:x?}"
+        ))),
+    }
+}
+
+fn find_bytes(data: &[u8], needle: &[u8], from: usize) -> Option<usize> {
+    if needle.is_empty() || data.len() < needle.len() {
+        return None;
+    }
+    let from = from.min(data.len() - needle.len());
+    (from..=data.len() - needle.len()).find(|&i| &data[i..i + needle.len()] == needle)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::find_kernel_memory_map_entry;
+
+    #[test]
+    fn uefi_memory_map_recovers_the_kernel_base() {
+        let mut blob = b"0x80000000, 0x011200000, \"NOMAP\", No Map, MEM_RES\n".to_vec();
+        blob.extend_from_slice(b"0xA8000000, 0x10000000, \"Kernel\", AddMem, SYS_MEM\n");
+        assert_eq!(find_kernel_memory_map_entry(&blob).unwrap(), 0xA800_0000);
+    }
+
+    #[test]
+    fn uefi_memory_map_rejects_conflicting_or_missing_kernel() {
+        assert!(find_kernel_memory_map_entry(b"no table here").is_err());
+        let two = b"0xA8000000, 0x10000000, \"Kernel\"\n0x90000000, 0x10000000, \"Kernel\"\n";
+        assert!(find_kernel_memory_map_entry(two).is_err());
+    }
 }

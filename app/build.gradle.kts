@@ -1,5 +1,8 @@
 @file:Suppress("UnstableApiUsage")
 
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.Properties
 
 plugins {
@@ -7,8 +10,11 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// Keep this module's output under the repository-root build/ directory.
+layout.buildDirectory.set(rootProject.layout.buildDirectory.dir("app"))
+
 val appName = "GhostLock"
-val appVersionName = "1.1"
+val appVersionName = "1.2"
 
 val gitVersionCode = runCatching {
     providers.exec {
@@ -19,67 +25,35 @@ val gitVersionCode = runCatching {
     1
 }
 
-val supportedKernelsSrc = layout.buildDirectory.dir("generated/source/supportedKernels")
-val sharedOffsetsHeader = rootProject.file("src/kernels/offsets.h")
-val offsetFieldRe = Regex("\\.([A-Za-z0-9_]+)\\s*=\\s*(0[xX][0-9A-Fa-f]+|-?\\d+)")
+val buildInfoSrc = layout.buildDirectory.dir("generated/source/buildInfo")
 
-fun parseOffsetValue(text: String): Long = if (text.length > 2 && text.startsWith("0x", ignoreCase = true)) {
-    text.substring(2).toLong(16)
-} else {
-    text.toLong()
-}
-
-fun formatOffsetValue(value: Long): String = if (value < 0) "${value}L" else "0x${value.toString(16)}L"
-
-fun escapeKotlinString(value: String): String = value.replace("\\", "\\\\").replace("\"", "\\\"")
-
-fun parseStructMacros(text: String): Map<String, Map<String, Long>> {
-    val macros = mutableMapOf<String, Map<String, Long>>()
-    val lines = text.lines()
-    var index = 0
-    while (index < lines.size) {
-        val match = Regex("#define\\s+(STRUCT_OFFSETS_[A-Za-z0-9_]+)\\s*(.*)").matchEntire(lines[index])
-        if (match == null) {
-            index++
-            continue
-        }
-        val name = match.groupValues[1]
-        var body = match.groupValues[2]
-        while (lines[index].trimEnd().endsWith("\\") && index + 1 < lines.size) {
-            index++
-            body += " ${lines[index]}"
-        }
-        macros[name] = offsetFieldRe.findAll(body).associate { it.groupValues[1] to parseOffsetValue(it.groupValues[2]) }
-        index++
+val generateBuildInfo = tasks.register("generateBuildInfo") {
+    description = "generateBuildInfo"
+    val outputDirectory = buildInfoSrc
+    outputs.dir(outputDirectory)
+    // Always rewrite so the debug UI shows the timestamp of the installed build.
+    outputs.upToDateWhen { false }
+    doLast {
+        val directory = outputDirectory.get().asFile.resolve("com/ghostlock/app")
+        directory.mkdirs()
+        // CPP-BUILD-02: this task is the only writer of the directory, so any
+        // other file is a stale duplicate that must not reach the Kotlin build.
+        directory.listFiles()?.forEach { stale -> if (stale.isFile) stale.delete() }
+        val timeMillis = System.currentTimeMillis()
+        val label = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT)
+            .format(Date(timeMillis))
+        directory.resolve("BuildInfo.kt").writeText(
+            buildString {
+                appendLine("package com.ghostlock.app")
+                appendLine()
+                appendLine("/** Generated per build; shown only by debug builds. */")
+                appendLine("object BuildInfo {")
+                appendLine("    const val BUILD_TIME_EPOCH_MILLIS: Long = ${timeMillis}L")
+                appendLine("    const val BUILD_TIME_LABEL: String = \"$label\"")
+                appendLine("}")
+            },
+        )
     }
-    return macros
-}
-
-data class ParsedKernelEntries(val names: List<String>, val entries: Map<String, Map<String, Long>>)
-
-fun parseKernelEntries(header: File, macros: Map<String, Map<String, Long>>): ParsedKernelEntries {
-    val text = header.readText()
-    val names = mutableListOf<String>()
-    val entries = linkedMapOf<String, Map<String, Long>>()
-    val matcher = Regex("OFFSETS_ENTRY\\(\\s*\"([^\"]+)\"").findAll(text)
-    for (match in matcher) {
-        val release = match.groupValues[1]
-        val tail = text.substring(match.range.last + 1)
-        val body = tail.substringBefore("\n),")
-        val fields = linkedMapOf<String, Long>()
-        Regex("STRUCT_OFFSETS_[A-Za-z0-9_]+").find(body)?.value?.let { macros[it]?.let(fields::putAll) }
-        offsetFieldRe.findAll(body).forEach { fields[it.groupValues[1]] = parseOffsetValue(it.groupValues[2]) }
-        names += release
-        entries[release] = fields
-    }
-    return ParsedKernelEntries(names, entries)
-}
-
-tasks.register<GenerateSupportedKernelsTask>("generateSupportedKernels") {
-    description = "generateSupportedKernels"
-    offsetHeaders.from(fileTree(rootProject.projectDir) { include("src/kernels/*/offsets.h") })
-    sharedHeader.set(rootProject.layout.projectDirectory.file("src/kernels/offsets.h"))
-    generatedFile.set(supportedKernelsSrc.map { it.file("com/ghostlock/app/domain/model/SupportedKernels.kt") })
 }
 
 android {
@@ -91,14 +65,20 @@ android {
     }
     defaultConfig {
         applicationId = "com.ghostlock.app"
-        minSdk = 34
+        minSdk = 31
         targetSdk = 37
         versionCode = gitVersionCode
         versionName = appVersionName
     }
+    androidResources {
+        localeFilters += listOf("en", "zh")
+    }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
     sourceSets {
         named("main") {
-            kotlin.directories.add(supportedKernelsSrc.get().asFile.absolutePath)
+            kotlin.directories.add(buildInfoSrc.get().asFile.absolutePath)
         }
     }
     val properties = Properties()
@@ -133,15 +113,23 @@ android {
     }
     buildFeatures {
         buildConfig = true
+        aidl = true
     }
     dependenciesInfo {
         includeInApk = false
         includeInBundle = false
     }
+    // The native exploit runtime is deliberately shipped only for arm64.
+    lint {
+        disable += "ChromeOsAbiSupport"
+    }
     packaging {
         jniLibs {
             useLegacyPackaging = true
             excludes += "lib/*/libandroidx.graphics.path.so"
+        }
+        dex {
+            useLegacyPackaging = true
         }
     }
     splits {
@@ -169,17 +157,41 @@ kotlin {
     jvmToolchain(21)
 }
 
+// The exporter-agreement test compares against the freshly exported .bin set.
+tasks.withType<Test>().configureEach {
+    dependsOn(":profile-core:exportKernelProfiles")
+}
+
 tasks.named("preBuild") {
+    dependsOn(generateBuildInfo)
+}
+
+/* The arm64 native payload is only needed by the tasks that merge/package the
+ * APK/AAB. Keeping it off preBuild means pure JVM unit tests
+ * (:app:testDebugUnitTest) no longer build the native binaries, so a developer
+ * machine without the NDK / aarch64 Rust target can still run them. */
+tasks.matching { task ->
+    (task.name.startsWith("merge") && task.name.endsWith("JniLibFolders")) ||
+        (task.name.startsWith("merge") && task.name.endsWith("NativeLibs"))
+}.configureEach {
     dependsOn(rootProject.tasks.named("prepareGhostlockJniLibs"))
     dependsOn(rootProject.tasks.named("prepareGhostlockExtractJniLibs"))
-    dependsOn(tasks.named("generateSupportedKernels"))
 }
 
 dependencies {
     implementation("androidx.activity:activity-compose:1.13.0")
-    implementation("androidx.compose.foundation:foundation:1.12.0")
+    implementation("androidx.compose.foundation:foundation:1.12.1")
     implementation("androidx.compose.material:material-icons-extended:1.7.8")
-    implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.4-rc01")
-    implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.4-rc01")
-    implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.4-rc01")
+    implementation("com.typesafe:config:1.4.9")
+    implementation("org.apache.commons:commons-compress:1.28.0")
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
+    implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-nav:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.4")
+    implementation(project(":profile-core"))
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.17")
 }

@@ -1,0 +1,415 @@
+# Kernel Profile Structure (Configuration System)
+
+> 中文: [PROFILE_SCHEMA_ZH.md](PROFILE_SCHEMA_ZH.md)
+
+This document describes the complete structure of the kernel profiles under
+`app/src/main/assets/kernel_profiles/`: what each field means, how routes work,
+how profiles are validated, and how configuration flows between Kotlin and
+native.
+
+> To add support for a new kernel, follow [README.md](README.md). For
+> execution-tuning defaults, see [defaults.md](defaults.md).
+
+> **Two version names** (do not conflate them):
+> - **Profile schema version**: the HOCON profile generation, carried by the
+>   `schema_version` field inside each profile (see section 2).
+> - **Binary wire version**: the GLK1 transport version after magic
+>   `0x0D000721`. The current writer emits wire version `2` (object sections,
+>   see section 9); it is the only version, and Kotlin/native are version-bound.
+>
+> Everything below describes the current v2 configuration. The legacy v1 JSON
+> import path is Kotlin-side only and is collected in section 11.
+
+## 0. File format (HOCON)
+
+Built-in profiles, `index.conf`, shared files, and imported offset files are all
+parsed as **HOCON**:
+
+- JSON is a subset of HOCON;
+- `#` / `//` comments, trailing commas, and `${var}` substitution (optional
+  `${?var}`) are supported;
+- `include "file.conf"` is supported (relative to the same directory, nestable,
+  loop-safe): `AssetConfigLoader` expands includes when reading assets, while
+  imports prefer a file selected alongside the profile and otherwise look in the
+  bundled shared files, failing loudly when missing so you can reselect;
+- parsing happens on the Kotlin side (`HoconSupport`), then the typed binary
+  struct crosses to native (section 9);
+- the app stores and exports HOCON; `ghostlock-extract --format conf` emits a
+  flattened, self-contained profile (credential/KernelSnitch constants inlined,
+  no `include` lines) that imports through the normal path (the v1 JSON import
+  path is section 11);
+- extractor output is a **candidate source**: it writes every field the image
+  actually yields and omits the rest, never borrowing a neighbouring kernel
+  family's guesses. A candidate may be incomplete; after import the app's field
+  validation fills `invalidPaths` and blocks execution, so a successful
+  generation never means the device is supported.
+
+## 1. Data flow
+
+```
+assets/kernel_profiles/<release>.conf     built-in profile (HOCON)
+assets/kernel_profiles/execution-tuning.conf   general execution tuning preset (all kernels)
+assets/kernel_profiles/execution-<route>.conf   per-route execution tuning preset (loaded by the resolver)
+assets/kernel_profiles/credential-6x.conf      6.x credential template
+assets/kernel_profiles/kernelsnitch-6x.conf    6.x KernelSnitch values
+assets/kernel_profiles/<major.minor>-template.conf  reference templates (registered in
+                                             index; loadable from the debug page,
+                                             never matched automatically)
+filesDir/offsets.conf                     parsed/imported offsets (imported, HOCON)
+internal overrides (sparse HOCON text)    written by the advanced override page
+        │
+        ▼  ProfileConfigController.resolve (Kotlin)
+   resolved profile (one object, every field merged)
+        │
+        ├──▶ runtime: typed binary (direct and Shizuku both write it to native's stdin)
+        │      native only parses and uses the geometry; it validates nothing
+        ├──▶ snapshot: filesDir/<release>.conf (HOCON; the source for exports)
+        └──▶ UI: override page / advanced override tree
+```
+
+Merge priority (low to high): `execution-tuning` (plus the per-route
+`execution-<route>.conf`) → built-in profile + imported offsets → advanced
+overrides. Finally `execution.selected_cpus` is forced in (from the manual
+selection or an explicit imported/override value).
+
+## 2. Top-level structure
+
+```hocon
+# GhostLock kernel profile (HOCON; JSON stays valid)
+release = "6.6.77-android15-8-gca30f3b4bef6-abogki440974771-4k"
+schema_version = 1
+kernel_major = 6
+route {
+  select_stack { waiter_shift = -2 }
+}
+fallback { to = "none" }
+kernelsnitch { collisions = 4, mm_struct_sz = 4096 }
+task_struct { prio = 132, cred = 2080, pi_lock = 2316 }
+cred { copy_size = 136, caps_offset = 48, caps_count = 5 }
+offset { init_task = 34464384, init_cred = 34538824 }
+# execution tuning is provided by the resolver from the preset files; write only differences
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `release` | string | Must match the device's `uname -r` exactly (case and suffix); template files never participate in matching |
+| `schema_version` | int | Always `1` |
+| `kernel_major` | int | `5` or `6`; used for address resolution and sanity checks, no longer selects the route |
+| `route` | object | Explicit route parent with exactly one branch; see section 3 |
+| `fallback` | object | Fallback declaration (`to` plus an optional `route` branch); see section 3 |
+| geometry | object/int | Grouped by namespace: `task_struct` / `cred` / `offset` / `kernelsnitch`. Omit unused route-specific fields entirely — don't write `0` or placeholders. `null` only appears in templates and in-progress edits |
+| `execution` | object | Advisory tuning. General values come from `execution-tuning.conf`, per-route values from `execution-<route>.conf`; the resolver loads both as presets, device profiles don't `include` them. Write only differences |
+
+## 3. Route mechanism
+
+The route is no longer inferred from the kernel version or from which fields
+exist: the profile declares it explicitly. `route` is a parent with **exactly
+one branch**:
+
+```hocon
+route { tcp_zerocopy { compact_waiter = 1 } }
+route { select_stack { waiter_shift = -2 } }
+route { multicast_waiter { waiter_off = 96, buffer_size = 264 } }
+```
+
+- Each route needs only its own branch; write no other branch, and never leave
+  two branches side by side (one config, one path).
+- `fallback` declares a fallback: `"to"` is `"none"` or a route name. When you
+  declare a target, also provide the `"route"` branch holding the fields the
+  fallback needs:
+  ```hocon
+  fallback {
+    to = "select_stack"
+    route { select_stack { waiter_shift = 1 } }
+  }
+  ```
+  The current implementation supports falling back from `tcp_zerocopy` to
+  `select_stack`; write `"to": "none"` to disable it.
+- Native's `RouteKind` enum maps one-to-one to the Kotlin values
+  (`profile.h` / `ProfileConfig.Routes`).
+
+### Required-field matrix
+
+| Field group | tcp_zerocopy | select_stack | multicast_waiter |
+|---|:---:|:---:|:---:|
+| `offset.init_task` / `offset.init_cred` / `offset.root_task_group` / `offset.selinux_enforcing` | required | required | required |
+| `task_struct.prio` / `task_struct.pi_lock` / `task_struct.pi_waiters` / `task_struct.pi_blocked_on` / `task_struct.cred` / `task_struct.seccomp` | required | required | required |
+| `kernel_major` ∈ {5,6}, `cred.copy_size`, `cred.caps_count`, and the credential-template bounds | required | required | required |
+| `route.tcp_zerocopy.compact_waiter` / `route.multicast_waiter.compact_waiter` | required | | required |
+| `route.select_stack.waiter_shift` | | required (0 is valid) | |
+| `route.multicast_waiter.waiter_off` (>0), `route.multicast_waiter.buffer_size`, `route.multicast_waiter.task_offset`, `route.multicast_waiter.lock_offset`, `offset.empty_zero_page`, `kernelsnitch.mm_struct_sz`, `cred.ref_count` (>0) | | | required |
+
+Credential-template bounds (general): `cred.usage_offset + 4 ≤ cred.copy_size`;
+`cred.caps_offset + cred.caps_count × 8 ≤ cred.copy_size`; `cred.ref_count ≤ 4`;
+each `cred.refN_image` must be non-zero and
+`cred.refN_offset + 8 ≤ cred.copy_size`. `multicast_waiter` additionally requires
+`cred.copy_size ≥ 0xa0` and
+`route.multicast_waiter.waiter_off + route.multicast_waiter.lock_offset + 8 ≤ route.multicast_waiter.buffer_size`.
+
+## 4. Geometry field groups
+
+### 4.0 Kernel objects and field mapping
+
+Configuration field names are the kernel struct member names (offsets inside the
+struct):
+
+```
+task_struct
+├── prio             → task_struct.prio
+├── normal_prio      → task_struct.normal_prio
+├── sched_task_group → task_struct.sched_task_group
+├── pi_lock          → task_struct.pi_lock
+├── pi_waiters       → task_struct.pi_waiters
+├── pi_top_task      → task_struct.pi_top_task
+├── pi_blocked_on    → task_struct.pi_blocked_on
+├── pid / tgid       → task_struct.pid / task_struct.tgid
+├── atomic_flags     → task_struct.atomic_flags
+├── real_cred        → task_struct.real_cred
+├── cred             → task_struct.cred
+├── comm / tasks     → task_struct.comm / task_struct.tasks
+└── seccomp          → task_struct.seccomp
+```
+
+```
+cred
+├── usage            → cred.usage_offset / cred.usage_value
+├── cap_*            → cred.caps_offset / cred.caps_count / cred.caps_value
+└── reference repairs → cred.ref_count + cred.refN_offset / cred.refN_image
+```
+
+```
+forged multicast object (multicast_waiter route)
+├── waiter start     → route.multicast_waiter.waiter_off
+└── task / lock      → route.multicast_waiter.task_offset / lock_offset
+```
+
+The `offset` namespace holds kernel-image symbol offsets (`init_task`,
+`init_cred`, `empty_zero_page`, …); `offset.slide_*` are the KASLR slide anchors.
+Together with `kernel_phys_load` they turn symbol addresses into runtime
+addresses.
+
+### 4.1 Task structure offsets (`task_struct`)
+
+| Field | Meaning |
+|---|---|
+| `task_struct.prio` / `task_struct.normal_prio` | Task priority / normal priority (PI boost check) |
+| `task_struct.sched_task_group` | `sched_task_group` offset |
+| `task_struct.pi_lock` / `task_struct.pi_waiters` / `task_struct.pi_top_task` / `task_struct.pi_blocked_on` | `pi_lock`, `pi_waiters`, `pi_top_task`, `pi_blocked_on` |
+| `task_struct.pid` / `task_struct.tgid` | PID / TGID |
+| `task_struct.atomic_flags` | `atomic_flags` (used to decide whether state was cleaned up) |
+| `task_struct.real_cred` / `task_struct.cred` | real cred / cred pointers |
+| `task_struct.comm` / `task_struct.tasks` / `task_struct.seccomp` | `comm`, task list, `seccomp` |
+
+### 4.2 Credential template (`cred`)
+
+| Field | Meaning |
+|---|---|
+| `cred.copy_size` | Total bytes copied from the credential struct |
+| `cred.usage_offset` / `cred.usage_value` | Refcount field offset / target value |
+| `cred.caps_offset` / `cred.caps_count` / `cred.caps_value` | Capability set offset / count / fill value |
+| `cred.ref_count` | Number of reference fields to repair (≤4) |
+| `cred.refN_offset` / `cred.refN_image` (N=0..3) | Offset of each reference field / image value to restore |
+
+### 4.3 Kernel symbols and slide anchors (`offset`)
+
+| Field | Meaning |
+|---|---|
+| `offset.init_task` / `offset.init_cred` | `init_task` / `init_cred` offsets relative to the kernel image base |
+| `offset.root_task_group` | `root_task_group` offset |
+| `offset.selinux_enforcing` | `selinux_state.enforcing` offset (W1 writes 0) |
+| `offset.selinux_blob_sizes` / `offset.security_hook_heads` | SELinux / security-hook offsets |
+| `offset.slide_nfulnl_logger` / `offset.slide_boot_id` / `offset.slide_loggers_0_1` | KASLR slide anchors |
+| `kernel_phys_load` | Kernel physical load address (0 falls back to the SoC formula) |
+| `kernel_phys_offset` | DRAM base / linear-map `PHYS_OFFSET` used for image→direct-map translation (default: compiled `P0_PHYS_OFFSET = 0x80000000`). Set it for devices whose DRAM base differs (e.g. MTK `0x40000000`); not derivable from `boot.img`, take it from `/proc/iomem` |
+| `recommend_shizuku` | Whether this kernel recommends the Shizuku path (0/1, required in every profile, default 0; advisory only). It is not shown in any editor: for recommended kernels the app **turns the home-screen "Run via Shizuku" switch on at every start**. You can turn it off for the session, and once off the app stops requiring Shizuku for that session |
+
+### 4.4 select_stack / tcp route fields
+
+| Field | Meaning |
+|---|---|
+| `route.select_stack.waiter_shift` | Relative shift of the select-route waiter on the stack (0 is valid); under a fallback declaration this is `fallback.route.select_stack.waiter_shift` |
+| `route.tcp_zerocopy.compact_waiter` | Compact-waiter layout flag for the tcp route; the multicast branch needs it too (`route.multicast_waiter.compact_waiter`) |
+
+### 4.5 multicast_waiter route fields (`route.multicast_waiter`)
+
+| Field | Meaning |
+|---|---|
+| `route.multicast_waiter.waiter_off` | Offset of the waiter in the multicast buffer (must be > 0) |
+| `route.multicast_waiter.buffer_size` | Forged buffer size |
+| `route.multicast_waiter.task_offset` / `route.multicast_waiter.lock_offset` | Task / lock field offsets in the buffer |
+| `offset.empty_zero_page` | `empty_zero_page` offset |
+
+### 4.6 KernelSnitch values (`kernelsnitch`)
+
+Shared by every route (KernelSnitch drives the `mm_struct` leak search), not
+affected by route choice:
+
+| Field | Meaning |
+|---|---|
+| `kernelsnitch.collisions` | Number of futex collisions needed |
+| `kernelsnitch.mm_struct_sz` | SLUB size of `mm_struct` (falls back to the built-in default when omitted) |
+
+## 5. execution tuning (advisory)
+
+Every `execution` value is advisory. The app merges them into the profile and
+passes the result to native; see [defaults.md](defaults.md) for semantics and
+defaults. The common groups come from `execution-tuning.conf` and the per-route
+groups from `execution-<route>.conf`; the app resolver (and the Gradle exporter)
+load these presets directly, so device profiles no longer `include` them:
+
+- `recommended_cpus` / `selected_cpus`: suggested and locally selected cores
+  (`selected_cpus` is maintained by the "general parameter override" page or the
+  home-screen CPU picker)
+- `heap`: KernelSnitch search attempt counts and timeouts
+- `race`: route race wait / settle / poll intervals
+- `stages`: W1/W2/W3 attempt counts and settle times
+- `routes.tcp_zerocopy` / `routes.select_stack` / `routes.multicast_waiter`:
+  per-route retry and wait parameters, in `execution-tcp-zerocopy.conf` /
+  `execution-select-stack.conf` / `execution-multicast-waiter.conf`. When
+  composing the native document, Kotlin fills in missing route groups with the
+  defaults, so native always receives a complete `routes` object
+- `handoff`: root handoff and KernelSU load polling
+
+## 6. Validation and feedback
+
+Validation happens in Kotlin (`AndroidProfileConfigController.validateProfileFields`):
+
+1. It checks the common fields and the selected route against the matrix in
+   section 3. Missing (`null`) or zero required fields and out-of-range
+   combinations (credential / multicast bounds) are recorded in
+   `ProfileConfig.invalidPaths`.
+2. On the override pages, invalid entries are shown with a red label (unfilled
+   counts as invalid); overridden and valid entries are yellow.
+3. `fallback.to` must be `"none"` or a valid route name. When a fallback is
+   declared, the target branch's required fields are validated as well (for
+   example, a `select_stack` fallback needs
+   `fallback.route.select_stack.waiter_shift`; 0 is valid).
+4. The home-screen **Run** button is disabled while `invalidPaths` is non-empty;
+   tapping it asks you to fix the red entries. Even if you bypass that,
+   `runExploit` blocks before starting native and writes to the log.
+5. Native no longer validates geometry; it only parses the v2 binary and
+   executes the component selection and fields it was given.
+
+## 7. Load layers and storage locations
+
+| Layer | Source | Location | Written by |
+|---|---|---|---|
+| shared | shared values; the resolver/exporter load the tuning presets, device profiles `include` the core ones | `execution-tuning.conf` / `execution-<route>.conf` / `credential-6x.conf` / `kernelsnitch-6x.conf` | shipped with the app |
+| builtin | exact `uname -r` match; no match means unsupported | `assets/kernel_profiles/*.conf` | shipped with the app |
+| imported | parsed/imported offsets (same release entry) | `filesDir/offsets.conf` | Parse OTA / import config |
+| general override | `execution.*` | the release entry in `filesDir/offsets.conf` | override page "general parameter override / reset" |
+| route override | `route` / `fallback.to` | the release entry in `filesDir/offsets.conf` | advanced override page "route / fallback" |
+| advanced override | any numeric path (sparse HOCON text) | internal `debug_profile_overrides` | advanced override (auto-saved) |
+| snapshot | the fully merged HOCON | `filesDir/<release>.conf` | after any override is saved, before export |
+| manual built-in source | another real release (dangerous) | internal `debug_builtin_release` | parameter page "load another built-in (dangerous)"; overrides stay bound to the device release |
+
+Export: writes the merged snapshot for that release (one HOCON file, includes
+already merged, tuning trimmed to the selected routes) into a folder you pick
+via SAF.
+
+## 8. Template profiles (`*-template`)
+
+- One per kernel family: `5.15-template` / `6.1-template` / `6.6-template` /
+  `6.12-template`, registered in `index.conf`, strictly for **development and
+  debugging reference**.
+- Every geometry/offset field is `null` (unfilled) and `route` / `fallback`
+  show the full branch structure; each field has a Chinese comment you can copy
+  from.
+- The built-in picker's "templates (reference, unfilled)" section can load them
+  to inspect the field structure. Templates **never participate in device
+  matching and never auto-fall-back**: a device with no exact match and no
+  imported offsets is treated as unsupported.
+- A template carries only core fields (plus the core `include`s); execution
+  tuning is provided by the resolver from `execution-*.conf`, so copying a
+  template needs no tuning `include`. Synchronized copies live in
+  `docs/kernel_profiles/templates/`; the originals under assets can be viewed
+  with adb.
+
+## 9. Native transport and parsing
+
+Runtime configuration crosses as a **typed binary struct** (v2, object sections),
+no longer JSON text. v2 is the only version: Kotlin and native are version-bound
+and there is no legacy decode.
+
+- Kotlin serializes it from `NativeProfileDocument` via `toBinary()`:
+  a 16-byte little-endian header
+  `u32 magic(0x0D000721) + u16 version(2) + u16 frontend + u16 backend + u16 middleware + u16 release_len + u16 reserved`,
+  then the `release` text, then `u16 section_count`, then per section
+  `u8 name_len + name + u32 entry_count`, then per entry `u8 key_len + key + u64 value`.
+  Presence is carried by key occurrence (an omitted field differs from a provided 0),
+  values are raw u64 bit patterns (signed values use two's complement) and are never
+  clamped, only the active route's `route.*` section is written or accepted, unknown
+  sections/keys are ignored and duplicate keys are last-wins. `middleware` carries the
+  route. The authoritative section/key tables are `profile/binary.cpp` (`kSections`);
+  the Kotlin object sections in `NativeProfile.kt` must follow them exactly.
+- Transport path: direct and Shizuku both hand the profile to native on
+  **stdin** (`--ghostlock-app-call`); nothing is written to `active-profile.bin`
+  and `--profile` no longer exists.
+- Native has exactly one decode path: `profile/entry.cpp` hands the stdin (or
+  file) bytes to `profile/binary.cpp::parse`; it detects no format other than
+  the magic and has no JSON fallback.
+- Internal storage and "export config" are HOCON (human-readable). The legacy
+  v1 `offsets.json` is converted to v2 only on the Kotlin side; see section 11.
+- Runtime route and capability decisions (`TargetProfile::route()`,
+  `TargetProfile::supports()`, `route_capability`) are all based on the decoded
+  route.
+
+## 10. Checklist for changing configuration
+
+1. Every profile carries every field of its active route plus the shared
+   geometry, and each such field must be present. A value the image or device
+   cannot supply is written as an explicit `null` (never `0` as a placeholder,
+   unless 0 is the real value). Fields of routes other than the active one (and
+   its declared fallback) are omitted. `ghostlock-extract --format conf` emits
+   this complete skeleton; `null` keeps the field visible and editable in the
+   app instead of silently absent.
+2. `route` has exactly one branch, and that branch must carry the route's
+   required fields. When `fallback.to` names a target, fill the
+   `fallback.route` branch the same way.
+   Pull shared core values in with `include` instead of copying:
+   `credential-6x.conf` (6.x credential template) and `kernelsnitch-6x.conf`
+   (6.x collisions). Execution tuning (`execution-tuning.conf` /
+   `execution-<route>.conf`) is loaded by the resolver as a preset; don't
+   `include` it in a device profile.
+3. Change `execution` only with device measurements; otherwise keep the
+   defaults.
+4. Verify locally: `make native-host-tests` (profile decode/validation vectors)
+   and `./gradlew :app:assembleDebug`.
+5. When renaming or regrouping fields, update `FieldLabels.kt` +
+   `values*/strings.xml` and, when relevant, `docs/kernel_profiles/defaults*.md`.
+
+## 11. Legacy v1 JSON import (compatibility)
+
+This section collects everything about the **v1 JSON** compatibility layer;
+sections 0–10 describe the current v2 configuration only. Native reads v2
+exclusively (section 9); the v1 path is Kotlin-side and self-contained.
+
+- **v1 = the old JSON format**: the `offsets.json` of the remote/main era — the
+  extractor report (`symbols` / `struct_fields`, four top-level scalars, and
+  metadata such as `kimage_text_base` / `btf_size` / `kallsyms`).
+  `ghostlock-extract --format json` still emits this shape for external tools.
+- `LegacyProfileConverter` normalizes a v1 document to v2 on load, idempotently:
+
+  | v1 content | Conversion result |
+  |---|---|
+  | `symbols` object (`off_*` keys) | `offset.*` namespace |
+  | `struct_fields` object (`task_*` keys) | `task_struct.*` namespace; a few fields (`rt_mutex_waiter`, `cred_uid`, `seccomp_*`, …) stay in place and take no part in validation/comparison |
+  | top-level `pselect_waiter_shift` | `route.select_stack.waiter_shift` (as `fallback.route.select_stack.waiter_shift` for a tcp profile) |
+  | top-level `compact_waiter` / `mm_struct_sz` | `route.tcp_zerocopy.compact_waiter` / `kernelsnitch.mm_struct_sz` |
+  | `kimage_text_base` / `btf_size` / `kallsyms` | dropped |
+  | no `route` field | inferred from 6.x geometry: `compact_waiter` → tcp, otherwise select |
+  | no cred template | seeds the bundled 6.x constants (`credential-6x.conf` / `kernelsnitch-6x.conf`); 5.x credential fields stay author-supplied |
+
+- Old flat keys (`kernelsnitch_collisions` / `mm_struct_sz` / `task_*` /
+  `cred_*` / `off_*` / `mcast_*`) are folded into the matching namespaces when
+  importing an old `offsets.json`, parsing extractor output, or reading advanced
+  overrides.
+- The same route inference applies to an old config with no `route`:
+  `kernel_major == 5 && mcast.waiter_off > 0` → `multicast_waiter`; otherwise
+  `compact_waiter != 0` → `tcp_zerocopy`; otherwise `select_stack`. A v1
+  document can never select the 5.x branch (`multicast_waiter` is retained only
+  as a guarded inference).
+- Old JSON caches are **not migrated and are discarded at startup**; internal
+  storage, snapshots, and exports are always HOCON.
+- Native has no v1 parser: the native `legacy/` JSON decoder was removed; a v1
+  document is converted to v2 on the Kotlin side before transport.

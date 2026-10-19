@@ -1,0 +1,12 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "clion",
+      "displayName": "CLion (Android aarch64, IDE analysis only)",
+      "description": "Points the IDE build directory at the repository-root build/cmake.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/../build/cmake"
+    }
+  ]
+}

@@ -1,240 +1,24 @@
-//! Output rendering and kernel-table registration.
+//! Output rendering for extracted kernel metadata.
 
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-
-use regex::Regex;
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 
+use crate::derive::Cred5x;
 use crate::error::{ExtractError, Result};
-use crate::symbols::{OPTIONAL_SYMBOLS, STRUCT_FIELDS, SYMBOLS};
+use crate::symbols::{OPTIONAL_SYMBOLS, kernel_layout_verified};
 
-pub const MTK_DEFAULT_PHYS_LOAD: u64 = 0x8000_0000;
-pub const QC_PHYS_LOAD_6_6: u64 = 0xA800_0000;
-pub const QC_PHYS_LOAD_6_1: u64 = 0xA800_0000;
-pub const QC_PHYS_LOAD_6_12: u64 = 0xC780_0000;
-
-/// Python insertion order of resolve_symbols(): header output matches the
-/// Python tool byte-for-byte.
-pub fn symbol_render_order() -> Vec<&'static str> {
-    let mut keys: Vec<&'static str> = Vec::new();
-    for (name, _) in SYMBOLS {
-        keys.push(*name);
+pub fn pselect_waiter_shift_for(release: Option<&str>) -> Option<i64> {
+    if !kernel_layout_verified(release) {
+        return None;
     }
-    keys.push("off_slide_loggers_0_1");
-    keys
-}
-
-/// Python insertion order of resolve_structs(): struct_fields output in the
-/// C header matches the Python tool byte-for-byte.
-fn struct_render_order() -> Vec<&'static str> {
-    let mut keys: Vec<&'static str> = Vec::new();
-    for (_, fields) in STRUCT_FIELDS {
-        for (macro_name, _) in *fields {
-            keys.push(*macro_name);
-        }
-    }
-    keys.push("struct_page_size");
-    keys.push("struct_page_compound_head");
-    keys.push("struct_page_type");
-    keys.push("struct_slab_cache");
-    keys.push("struct_mm_struct");
-    keys
-}
-
-pub fn kernel_key(release: &str) -> String {
-    let mut out = String::new();
-    for ch in release.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '.' || ch == '_' || ch == '-' {
-            out.push(ch);
-        } else {
-            out.push('_');
-        }
-    }
-    out
-}
-
-pub fn phys_needs_override(release: Option<&str>, phys: Option<u64>) -> bool {
-    let Some(phys) = phys else {
-        return false;
-    };
-    if phys == MTK_DEFAULT_PHYS_LOAD {
-        return false;
-    }
-    let default = match crate::symbols::kernel_struct_macro(release) {
-        Some("STRUCT_OFFSETS_6_12") => QC_PHYS_LOAD_6_12,
-        Some("STRUCT_OFFSETS_6_1") => QC_PHYS_LOAD_6_1,
-        _ => QC_PHYS_LOAD_6_6,
-    };
-    phys != default
-}
-
-pub fn pselect_waiter_shift_for(release: Option<&str>) -> i64 {
     match crate::symbols::kernel_struct_macro(release) {
-        Some("STRUCT_OFFSETS_6_12") => 0,
+        Some("STRUCT_OFFSETS_6_12") => Some(0),
         // android14-6.1 compiles its fd_set words one qword later than
         // 6.6; the committed tables all measure 1.
-        Some("STRUCT_OFFSETS_6_1") => 1,
-        _ => -2,
+        Some("STRUCT_OFFSETS_6_1") => Some(1),
+        Some("STRUCT_OFFSETS_6_6") => Some(-2),
+        _ => None,
     }
-}
-
-pub fn validate_kernel_phys_load(release: Option<&str>, phys: Option<u64>, mtk: bool) -> bool {
-    let Some(phys) = phys else {
-        return false;
-    };
-    let expected = if mtk {
-        MTK_DEFAULT_PHYS_LOAD
-    } else {
-        match crate::symbols::kernel_struct_macro(release) {
-            Some("STRUCT_OFFSETS_6_12") => QC_PHYS_LOAD_6_12,
-            Some("STRUCT_OFFSETS_6_1") => QC_PHYS_LOAD_6_1,
-            _ => QC_PHYS_LOAD_6_6,
-        }
-    };
-    if phys == expected {
-        return false;
-    }
-    let note = "the entry will carry it as an explicit override";
-    eprintln!(
-        "warning: kernel_phys_load=0x{phys:x} does not match the {} default 0x{expected:x}; {note}",
-        if mtk { "MediaTek" } else { "Qualcomm" }
-    );
-    true
-}
-
-pub fn render_device(
-    release: &str,
-    symbols: &BTreeMap<String, Option<u64>>,
-    structs: &BTreeMap<String, Option<u32>>,
-    phys: Option<u64>,
-    pselect_shift: i64,
-) -> String {
-    let mut lines = vec![format!("/* {release} */"), String::new()];
-    lines.push("OFFSETS_ENTRY(".to_string());
-    lines.push(format!("    \"{release}\","));
-    lines.push(format!(
-        "    {},",
-        // unverified kernels render with the 6.6 layout as a testing start;
-        // the extractor warns whenever it falls back
-        crate::symbols::kernel_struct_macro(Some(release)).unwrap_or("STRUCT_OFFSETS_6_6")
-    ));
-    if phys_needs_override(Some(release), phys) {
-        lines.push(format!("    .kernel_phys_load = 0x{:x},", phys.unwrap()));
-    }
-    // 6.1 entries get their mm_struct_sz=0x400 stride from the
-    // STRUCT_OFFSETS_6_1 macro itself; nothing extra to emit here.
-    lines.push(format!("    .pselect_waiter_shift = {pselect_shift},"));
-    for key in symbol_render_order() {
-        if let Some(value) = symbols.get(key).copied().flatten() {
-            lines.push(format!("    .{key} = 0x{value:08x},"));
-        }
-    }
-    lines.push("),".to_string());
-    let mut reference: Vec<(&str, u32)> = Vec::new();
-    for key in struct_render_order() {
-        if key.starts_with("struct_page") || key == "struct_slab_cache" || key == "struct_mm_struct"
-        {
-            if let Some(value) = structs.get(key).copied().flatten() {
-                reference.push((key, value));
-            }
-        }
-    }
-    if !reference.is_empty() {
-        lines.push(String::new());
-        lines.push("/* BTF reference (runtime uses target.h defaults): */".to_string());
-        for (key, value) in &reference {
-            lines.push(format!(
-                "/* #define {} 0x{:X} */",
-                key.to_uppercase(),
-                value
-            ));
-        }
-    }
-    lines.join("\n") + "\n"
-}
-
-pub fn render_c(
-    release: Option<&str>,
-    name: &str,
-    symbols: &BTreeMap<String, Option<u64>>,
-    structs: &BTreeMap<String, Option<u32>>,
-    phys: Option<u64>,
-    pselect_shift: i64,
-) -> String {
-    let label = release.unwrap_or(name);
-    let mut lines = vec![
-        format!("/* Generated offsets for {label}. */"),
-        String::new(),
-    ];
-    lines.push("#define STRUCT_OFFSETS_EXTRACTED \\".to_string());
-    let task_keys = [
-        "task_prio",
-        "task_normal_prio",
-        "task_sched_task_group",
-        "task_pi_lock",
-        "task_pi_waiters",
-        "task_pi_top_task",
-        "task_pi_blocked_on",
-        "task_pid",
-        "task_tgid",
-        "task_atomic_flags",
-        "task_real_cred",
-        "task_cred",
-        "task_comm",
-        "task_tasks",
-        "task_seccomp",
-    ];
-    let present: Vec<(String, u32)> = task_keys
-        .iter()
-        .filter_map(|key| {
-            structs
-                .get(*key)
-                .copied()
-                .flatten()
-                .map(|value| ((*key).to_string(), value))
-        })
-        .collect();
-    for (index, (key, value)) in present.iter().enumerate() {
-        let suffix = if index + 1 < present.len() { " \\" } else { "" };
-        lines.push(format!("  .{key} = 0x{value:X},{suffix}"));
-    }
-    lines.push(String::new());
-    let macro_name = crate::symbols::kernel_struct_macro(release);
-    lines.push(format!("OFFSETS_ENTRY(\"{label}\","));
-    lines.push(format!(
-        "  {},",
-        // unverified kernels render with the 6.6 layout as a testing start;
-        // the extractor warns whenever it falls back
-        macro_name.unwrap_or("STRUCT_OFFSETS_6_6")
-    ));
-    if phys_needs_override(release, phys) {
-        lines.push(format!("  .kernel_phys_load=0x{:X},", phys.unwrap()));
-    }
-    lines.push(format!("  .pselect_waiter_shift={pselect_shift},"));
-    if macro_name == Some("STRUCT_OFFSETS_6_1") {
-        // spell the layout fields out so a manually registered header does
-        // not depend on the selector macro carrying them
-        lines.push("  .compact_waiter=1,".to_string());
-        lines.push("  .mm_struct_sz=0x400,".to_string());
-    }
-    for key in symbol_render_order() {
-        if let Some(value) = symbols.get(key).copied().flatten() {
-            lines.push(format!("  .{key}=0x{value:08X},"));
-        }
-    }
-    lines.push("),".to_string());
-    lines.push(String::new());
-    lines.push("/* BTF fields not stored in kernel_offsets: */".to_string());
-    for key in struct_render_order() {
-        if key.starts_with("task_") {
-            continue;
-        }
-        if let Some(value) = structs.get(key).copied().flatten() {
-            lines.push(format!("#define {} 0x{:X}", key.to_uppercase(), value));
-        }
-    }
-    lines.join("\n")
 }
 
 pub fn build_report(
@@ -244,7 +28,7 @@ pub fn build_report(
     symbols: &BTreeMap<String, Option<u64>>,
     structs: &BTreeMap<String, Option<u32>>,
     btf_size: usize,
-    pselect_shift: i64,
+    pselect_shift: Option<i64>,
 ) -> Value {
     let symbol_json: BTreeMap<String, Value> = symbols
         .iter()
@@ -279,7 +63,9 @@ pub fn build_report(
         "struct_fields": struct_json,
         "btf_size": btf_size,
     });
-    if crate::symbols::kernel_struct_macro(release) == Some("STRUCT_OFFSETS_6_1") {
+    if kernel_layout_verified(release)
+        && crate::symbols::kernel_struct_macro(release) == Some("STRUCT_OFFSETS_6_1")
+    {
         // 0x400 is the device SLUB stride, not the BTF 0x3c0
         report["compact_waiter"] = json!(1);
         report["mm_struct_sz"] = json!(0x400);
@@ -287,158 +73,356 @@ pub fn build_report(
     report
 }
 
-/* Resolve the repo the extractor reads and writes kernel tables in.
- * The manifest dir baked in at build time goes stale the moment the
- * binary runs from another checkout or a linked worktree, so ask git
- * for the toplevel of the working directory first and only fall back
- * to the manifest path when there is no repo around (on-device runs). */
-fn repo_root() -> PathBuf {
-    if let Ok(out) = std::process::Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-    {
-        if out.status.success() {
-            let top = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if !top.is_empty() {
-                return PathBuf::from(top);
-            }
-        }
+/// `task_struct` keys in the bundled profiles' order.
+const CONF_TASK_FIELDS: &[(&str, &str)] = &[
+    ("task_prio", "prio"),
+    ("task_normal_prio", "normal_prio"),
+    ("task_sched_task_group", "sched_task_group"),
+    ("task_pi_lock", "pi_lock"),
+    ("task_pi_waiters", "pi_waiters"),
+    ("task_pi_top_task", "pi_top_task"),
+    ("task_pi_blocked_on", "pi_blocked_on"),
+    ("task_pid", "pid"),
+    ("task_tgid", "tgid"),
+    ("task_atomic_flags", "atomic_flags"),
+    ("task_real_cred", "real_cred"),
+    ("task_cred", "cred"),
+    ("task_comm", "comm"),
+    ("task_tasks", "tasks"),
+    ("task_seccomp", "seccomp"),
+];
+
+/// Full route field universe per branch (authoritative: Kotlin
+/// `RouteConfig.entries()` / native `kSections`). A missing value renders as
+/// `null` so every generated profile carries every field of its route.
+const CONF_ROUTE_FIELDS: &[(&str, &[&str])] = &[
+    ("tcp_zerocopy", &["compact_waiter"]),
+    ("select_stack", &["waiter_shift"]),
+    (
+        "multicast_waiter",
+        &[
+            "waiter_off",
+            "buffer_size",
+            "task_offset",
+            "lock_offset",
+            "compact_waiter",
+        ],
+    ),
+];
+
+/// Full credential field universe (native `kCred` / `credential-6x.conf`).
+const CONF_CRED_FIELDS: &[&str] = &[
+    "copy_size",
+    "usage_offset",
+    "usage_value",
+    "caps_offset",
+    "caps_count",
+    "caps_value",
+    "ref_count",
+    "ref0_offset",
+    "ref1_offset",
+    "ref2_offset",
+    "ref3_offset",
+    "ref0_image",
+    "ref1_image",
+    "ref2_image",
+    "ref3_image",
+];
+
+/// Full offset field universe (native `kOffset`).
+const CONF_OFFSET_FIELDS: &[&str] = &[
+    "init_task",
+    "init_cred",
+    "empty_zero_page",
+    "root_task_group",
+    "selinux_enforcing",
+    "selinux_blob_sizes",
+    "security_hook_heads",
+    "slide_nfulnl_logger",
+    "slide_loggers_0_1",
+    "slide_boot_id",
+];
+
+/// Looks up a key in `(key, value)` entries, or `"null"` when absent.
+fn conf_lookup(entries: &[(String, String)], key: &str) -> String {
+    entries
+        .iter()
+        .find(|(candidate, _)| candidate == key)
+        .map(|(_, value)| value.clone())
+        .unwrap_or_else(|| "null".to_string())
+}
+
+/// Extra `offset.*` keys the extractor resolves outside the `off_*` symbol
+/// table (kallsyms-only symbols). Kept in its bundled-profile position.
+#[derive(Debug, Clone, Default)]
+pub struct ConfExtraOffsets {
+    pub empty_zero_page: Option<u64>,
+}
+
+/// The shared 6.x credential template (`credential-6x.conf`), in the bundled
+/// order. The flatten rule inlines it instead of an include line; the values
+/// stay pinned to that asset by `BuiltinProfilesTest`.
+pub fn conf_cred_6x() -> Vec<(String, String)> {
+    [
+        ("caps_offset", 48),
+        ("copy_size", 136),
+        ("usage_value", 1),
+        ("caps_count", 5),
+        ("caps_value", -1),
+    ]
+    .into_iter()
+    .map(|(key, value)| (key.to_string(), value.to_string()))
+    .collect()
+}
+
+/// The 5.x credential template from the derived `init_cred` values, in the
+/// bundled profile order. Reference images are pre-KASLR kernel VAs rendered
+/// as signed decimals (the profile's spelling).
+pub fn conf_cred_5x(cred: &Cred5x, copy_size: u32) -> Vec<(String, String)> {
+    let mut entries: Vec<(String, String)> = vec![
+        ("caps_offset".to_string(), cred.caps_offset.to_string()),
+        ("copy_size".to_string(), copy_size.to_string()),
+        (
+            "usage_value".to_string(),
+            crate::derive::CRED_5X_USAGE_VALUE.to_string(),
+        ),
+        ("caps_count".to_string(), cred.caps_count.to_string()),
+        ("caps_value".to_string(), cred.caps_value.to_string()),
+    ];
+    for (index, (offset, _)) in cred.refs.iter().enumerate() {
+        entries.push((format!("ref{index}_offset"), offset.to_string()));
     }
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(Path::parent)
-        .unwrap_or_else(|| Path::new("."))
-        .to_path_buf()
-}
-
-pub fn kernels_root() -> PathBuf {
-    repo_root().join("src").join("kernels")
-}
-
-pub fn kernel_header_path(key: &str) -> PathBuf {
-    kernels_root().join(key).join("offsets.h")
-}
-
-pub type EntryFields = BTreeMap<String, i64>;
-
-fn parse_int(text: &str) -> i64 {
-    if let Some(hex) = text.strip_prefix("0x").or_else(|| text.strip_prefix("0X")) {
-        i64::from_str_radix(hex, 16).unwrap_or(0)
-    } else {
-        text.parse::<i64>().unwrap_or(0)
-    }
-}
-
-/// Map each registered release to its {field: value} from kernel headers.
-pub fn existing_entries() -> BTreeMap<String, EntryFields> {
-    let mut entries: BTreeMap<String, EntryFields> = BTreeMap::new();
-    let entry_re = Regex::new(r#"OFFSETS_ENTRY\(\s*"([^"]+)"#).unwrap();
-    let field_re = Regex::new(r"\.([A-Za-z0-9_]+)\s*=\s*(0x[0-9A-Fa-f]+|-?\d+)").unwrap();
-    let Ok(dir) = std::fs::read_dir(kernels_root()) else {
-        return entries;
-    };
-    for sub in dir.flatten() {
-        let header = sub.path().join("offsets.h");
-        let Ok(text) = std::fs::read_to_string(&header) else {
-            continue;
-        };
-        for entry_match in entry_re.captures_iter(&text) {
-            let release = entry_match[1].to_string();
-            let tail = &text[entry_match.get(0).unwrap().end()..];
-            let mut fields: EntryFields = BTreeMap::new();
-            for field_match in field_re.captures_iter(tail) {
-                fields.insert(field_match[1].to_string(), parse_int(&field_match[2]));
-            }
-            entries.entry(release).or_insert(fields);
-        }
+    entries.push(("ref_count".to_string(), cred.refs.len().to_string()));
+    for (index, (_, image)) in cred.refs.iter().enumerate() {
+        entries.push((format!("ref{index}_image"), (*image as i64).to_string()));
     }
     entries
 }
 
-pub fn warn_existing_mismatches(release: &str, symbols: &BTreeMap<String, Option<u64>>) {
-    let entries = existing_entries();
-    let Some(existing) = entries.get(release) else {
-        return;
+/// The selected route's branch geometry, or an empty list when the extractor
+/// cannot derive a layout for it (the built-in profile then supplies it).
+pub fn conf_route_geometry(
+    route: &str,
+    release: &str,
+    pselect_shift: Option<i64>,
+    structs: &BTreeMap<String, Option<u32>>,
+) -> Vec<(&'static str, i64)> {
+    let major = release
+        .split('.')
+        .next()
+        .and_then(|part| part.parse::<u32>().ok());
+    match route {
+        "select_stack" => pselect_shift
+            .map(|shift| vec![("waiter_shift", shift)])
+            .unwrap_or_default(),
+        // android14-6.1 is the compact-waiter family; no other family has a
+        // measured tcp layout.
+        "tcp_zerocopy"
+            if kernel_layout_verified(Some(release))
+                && crate::symbols::kernel_struct_macro(Some(release))
+                    == Some("STRUCT_OFFSETS_6_1") =>
+        {
+            vec![("compact_waiter", 1)]
+        }
+        // The 5.x one-shot multicast branch runs entirely from probe-derived
+        // constants (waiter_off / buffer_size), BTF-derived rt_mutex_waiter
+        // task/lock offsets and the fixed 5.x waiter-layout flag. Emit all of
+        // them for every 5.x kernel so the generated profile runs without
+        // manual edits; a kernel without BTF omits only the task/lock keys.
+        "multicast_waiter" if major == Some(5) => {
+            crate::derive::multicast_geometry_corroborated(structs)
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// `offset` keys in the bundled profiles' order; `empty_zero_page` comes from
+/// kallsyms instead of an `off_*` symbol.
+fn conf_offsets(
+    symbols: &BTreeMap<String, Option<u64>>,
+    extra: &ConfExtraOffsets,
+) -> Vec<(String, String)> {
+    let symbol = |key: &str| {
+        symbols
+            .get(key)
+            .copied()
+            .flatten()
+            .map(|value| value.to_string())
     };
-    for (key, value) in symbols {
-        let Some(value) = value else { continue };
-        if let Some(old) = existing.get(key) {
-            if *old != *value as i64 {
-                eprintln!(
-                    "warning: {release} is already registered with .{key}=\
-                     0x{old:08X}; this image extracts 0x{value:08X}"
-                );
-                if key == "off_slide_loggers_0_1" {
-                    eprintln!(
-                        "warning:   loggers[0][1] is loggers + NF_LOG_TYPE_ULOG*8 \
-                         (disassembly + BTF verified and confirmed on device for \
-                         findn5/17pm); the older heuristic loggers + 0x10 was wrong."
-                    );
+    [
+        ("init_task", symbol("off_init_task")),
+        ("init_cred", symbol("off_init_cred")),
+        (
+            "empty_zero_page",
+            extra.empty_zero_page.map(|v| v.to_string()),
+        ),
+        ("root_task_group", symbol("off_root_task_group")),
+        ("selinux_enforcing", symbol("off_selinux_enforcing")),
+        ("selinux_blob_sizes", symbol("off_selinux_blob_sizes")),
+        ("security_hook_heads", symbol("off_security_hook_heads")),
+        ("slide_nfulnl_logger", symbol("off_slide_nfulnl_logger")),
+        ("slide_boot_id", symbol("off_slide_boot_id")),
+        ("slide_loggers_0_1", symbol("off_slide_loggers_0_1")),
+    ]
+    .into_iter()
+    .filter_map(|(key, value)| value.map(|value| (key.to_string(), value)))
+    .collect()
+}
+
+fn push_conf_block(lines: &mut Vec<String>, name: &str, entries: &[(String, String)]) {
+    if entries.is_empty() {
+        return;
+    }
+    lines.push(format!("{name} {{"));
+    for (key, value) in entries {
+        lines.push(format!("  {key} = {value}"));
+    }
+    lines.push("}".to_string());
+}
+
+/// Everything `render_conf` writes, in one bundle.
+#[derive(Debug, Clone)]
+pub struct ConfInputs<'a> {
+    pub release: &'a str,
+    pub phys: Option<u64>,
+    /// DRAM base (linear-map PHYS_OFFSET); normally supplied by hand, so the
+    /// extractor writes an explicit `null` unless one is known.
+    pub phys_offset: Option<u64>,
+    pub symbols: &'a BTreeMap<String, Option<u64>>,
+    pub structs: &'a BTreeMap<String, Option<u32>>,
+    pub route: Option<&'a str>,
+    pub route_geometry: &'a [(&'static str, i64)],
+    pub cred: &'a [(String, String)],
+    pub extra_offsets: &'a ConfExtraOffsets,
+}
+
+/// Renders a flattened, self-contained GLK profile (`--format conf`): no
+/// `include` lines, the shared 6.x credential and KernelSnitch constants
+/// inlined, keys and nesting matching `app/src/main/assets/kernel_profiles/`.
+/// Fields without a derived value are omitted rather than written as `null`.
+pub fn render_conf(input: &ConfInputs<'_>) -> String {
+    let release = input.release;
+    let major = release
+        .split('.')
+        .next()
+        .and_then(|part| part.parse::<u32>().ok());
+    let mut lines = vec![
+        format!("# GhostLock kernel profile: {release} (HOCON, self-contained)."),
+        format!("release = \"{release}\""),
+        "schema_version = 1".to_string(),
+        format!("kernel_major = {}", major.unwrap_or(0)),
+        "recommend_shizuku = 0".to_string(),
+    ];
+    lines.push(match input.phys {
+        // Decimal only: HOCON has no `0x` literal, and the Kotlin reader
+        // (`getLongAt`) accepts a Number only, so a hex spelling would be
+        // silently dropped on import. An unknown phys is an explicit `null`.
+        Some(phys) => format!("kernel_phys_load = {phys}"),
+        None => "kernel_phys_load = null".to_string(),
+    });
+    lines.push(match input.phys_offset {
+        Some(offset) => format!("kernel_phys_offset = {offset}"),
+        None => "kernel_phys_offset = null".to_string(),
+    });
+    if let Some(route) = input.route {
+        // The chosen route keeps its whole field universe even when no
+        // geometry could be derived, so the import carries the recommendation
+        // and the missing fields surface as invalid paths on the Kotlin side.
+        lines.push("route {".to_string());
+        lines.push(format!("  {route} {{"));
+        match CONF_ROUTE_FIELDS.iter().find(|(name, _)| *name == route) {
+            Some((_, fields)) => {
+                for field in *fields {
+                    let value = input
+                        .route_geometry
+                        .iter()
+                        .find(|(key, _)| key == field)
+                        .map(|(_, value)| value.to_string())
+                        .unwrap_or_else(|| "null".to_string());
+                    lines.push(format!("    {field} = {value}"));
+                }
+            }
+            None => {
+                for (key, value) in input.route_geometry {
+                    lines.push(format!("    {key} = {value}"));
                 }
             }
         }
+        lines.push("  }".to_string());
+        lines.push("}".to_string());
     }
-}
+    push_conf_block(
+        &mut lines,
+        "fallback",
+        &[("to".to_string(), "\"none\"".to_string())],
+    );
 
-/// Natural sort key matching VSCode's folder order.
-fn kernel_include_sort_key(include: &str) -> Vec<(u8, SortPart)> {
-    let path = include
-        .trim_start_matches("#include \"")
-        .trim_end_matches("/offsets.h\"");
-    let mut key: Vec<(u8, SortPart)> = Vec::new();
-    let re = Regex::new(r"(\d+)").unwrap();
-    let mut cursor = 0;
-    for caps in re.captures_iter(path) {
-        let matched = caps.get(0).unwrap();
-        if matched.start() > cursor {
-            key.push((
-                1,
-                SortPart::Text(path[cursor..matched.start()].to_ascii_lowercase()),
-            ));
-        }
-        key.push((0, SortPart::Digit(matched.as_str().parse::<u64>().unwrap())));
-        cursor = matched.end();
-    }
-    if cursor < path.len() {
-        key.push((1, SortPart::Text(path[cursor..].to_ascii_lowercase())));
-    }
-    key
-}
-
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
-enum SortPart {
-    Digit(u64),
-    Text(String),
-}
-
-/// Add `#include "<key>/offsets.h"` to src/kernels/offsets.h if missing.
-pub fn register_kernel(key: &str) -> Result<PathBuf> {
-    let header = kernels_root().join("offsets.h");
-    let text = std::fs::read_to_string(&header)
-        .map_err(|err| ExtractError::new(format!("cannot read {}: {err}", header.display())))?;
-    let include = format!("#include \"{key}/offsets.h\"");
-    if text.contains(&include) {
-        return Ok(header);
-    }
-    let marker = Regex::new(r"(?m)^\s*\{\s*\.uname_r\s*=\s*NULL").unwrap();
-    let marker = marker
-        .find(&text)
-        .ok_or_else(|| ExtractError::new(format!("cannot locate NULL terminator in {header:?}")))?;
-    let block = &text[..marker.start()];
-    let key_order = kernel_include_sort_key(&include);
-    let mut insert_at = marker.start();
-    let include_re = Regex::new(r#"#include "[^"]+/offsets\.h""#).unwrap();
-    for existing in include_re.find_iter(block) {
-        if kernel_include_sort_key(existing.as_str()) > key_order {
-            insert_at = existing.start();
-            break;
+    // KernelSnitch: full universe. `collisions` is emitted for a verified
+    // train (and every 5.x kernel); `mm_struct_sz` only where it applies. An
+    // unverified release keeps both as `null` rather than omitting the block.
+    let mut snitch = Vec::new();
+    if kernel_layout_verified(Some(release)) || major == Some(5) {
+        match major {
+            Some(6) => {
+                // = kernelsnitch-6x.conf
+                snitch.push(("collisions".to_string(), "4".to_string()));
+                if crate::symbols::kernel_struct_macro(Some(release)) == Some("STRUCT_OFFSETS_6_1")
+                {
+                    // 0x400 is the device SLUB stride, not the BTF sizeof (0x3c0).
+                    snitch.push(("mm_struct_sz".to_string(), "1024".to_string()));
+                }
+            }
+            Some(5) => {
+                // android13-5.15 measured defaults (bundled 5.15 profile).
+                snitch.push(("collisions".to_string(), "8".to_string()));
+                snitch.push(("mm_struct_sz".to_string(), "1024".to_string()));
+            }
+            _ => {}
         }
     }
-    let mut out = text.clone();
-    out.insert_str(insert_at, &format!("{include}\n"));
-    std::fs::write(&header, out)
-        .map_err(|err| ExtractError::new(format!("cannot write {header:?}: {err}")))?;
-    Ok(header)
+    push_conf_block(
+        &mut lines,
+        "kernelsnitch",
+        &[
+            ("collisions".to_string(), conf_lookup(&snitch, "collisions")),
+            (
+                "mm_struct_sz".to_string(),
+                conf_lookup(&snitch, "mm_struct_sz"),
+            ),
+        ],
+    );
+
+    let task: Vec<(String, String)> = CONF_TASK_FIELDS
+        .iter()
+        .map(|(macro_name, key)| {
+            (
+                (*key).to_string(),
+                input
+                    .structs
+                    .get(*macro_name)
+                    .copied()
+                    .flatten()
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "null".to_string()),
+            )
+        })
+        .collect();
+    push_conf_block(&mut lines, "task_struct", &task);
+
+    let cred: Vec<(String, String)> = CONF_CRED_FIELDS
+        .iter()
+        .map(|key| ((*key).to_string(), conf_lookup(input.cred, key)))
+        .collect();
+    push_conf_block(&mut lines, "cred", &cred);
+
+    let offset_entries = conf_offsets(input.symbols, input.extra_offsets);
+    let offset: Vec<(String, String)> = CONF_OFFSET_FIELDS
+        .iter()
+        .map(|key| ((*key).to_string(), conf_lookup(&offset_entries, key)))
+        .collect();
+    push_conf_block(&mut lines, "offset", &offset);
+
+    lines.join("\n") + "\n"
 }
 
 pub fn require_fields(
@@ -465,72 +449,495 @@ pub fn optional_symbols() -> BTreeSet<&'static str> {
     OPTIONAL_SYMBOLS.iter().copied().collect()
 }
 
-pub fn task_keys_list() -> &'static [&'static str] {
-    &[
-        "task_prio",
-        "task_normal_prio",
-        "task_sched_task_group",
-        "task_pi_lock",
-        "task_pi_waiters",
-        "task_pi_top_task",
-        "task_pi_blocked_on",
-        "task_pid",
-        "task_tgid",
-        "task_atomic_flags",
-        "task_real_cred",
-        "task_cred",
-        "task_comm",
-        "task_tasks",
-        "task_seccomp",
-    ]
-}
+/// BTF struct fields a kernel may legitimately lack: the 5.15 GKI BTF has no
+/// `slab` type, so `struct_slab_cache` is missing there. Reported as missing,
+/// but not failing the extract.
+const OPTIONAL_STRUCT_FIELDS: &[&str] = &["struct_slab_cache"];
 
-pub fn struct_fields_reference()
--> &'static [(&'static str, &'static [(&'static str, &'static str)])] {
-    STRUCT_FIELDS
+pub fn optional_struct_fields() -> BTreeSet<&'static str> {
+    OPTIONAL_STRUCT_FIELDS.iter().copied().collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{pselect_waiter_shift_for, render_c};
+    use super::{
+        CONF_TASK_FIELDS, ConfExtraOffsets, ConfInputs, build_report, conf_cred_5x, conf_cred_6x,
+        conf_route_geometry, pselect_waiter_shift_for, render_conf,
+    };
+    use crate::derive::Cred5x;
     use std::collections::BTreeMap;
 
+    fn conf_fixture() -> (BTreeMap<String, Option<u64>>, BTreeMap<String, Option<u32>>) {
+        let mut symbols: BTreeMap<String, Option<u64>> = BTreeMap::new();
+        symbols.insert("off_init_task".to_string(), Some(34_595_456));
+        symbols.insert("off_security_hook_heads".to_string(), Some(0));
+        symbols.insert("off_absent".to_string(), None);
+        let mut structs: BTreeMap<String, Option<u32>> = BTreeMap::new();
+        structs.insert("task_prio".to_string(), Some(132));
+        structs.insert("waiter_task".to_string(), Some(48));
+        structs.insert("waiter_lock".to_string(), Some(56));
+        (symbols, structs)
+    }
+
+    fn no_extra_offsets() -> ConfExtraOffsets {
+        ConfExtraOffsets::default()
+    }
+
     #[test]
-    fn render_c_carries_the_layout_selector_and_6_1_scalars() {
+    fn conf_is_flattened_and_inlines_the_6x_shared_constants() {
+        let (symbols, structs) = conf_fixture();
+        let geometry: Vec<(&'static str, i64)> = vec![("waiter_shift", -2)];
+        let out = render_conf(&ConfInputs {
+            release: "6.6.89-android15-8-g0889fe95bb10-ab14402178-4k",
+            phys: Some(0x4000_0000),
+            phys_offset: None,
+            symbols: &symbols,
+            structs: &structs,
+            route: Some("select_stack"),
+            route_geometry: &geometry,
+            cred: &conf_cred_6x(),
+            extra_offsets: &no_extra_offsets(),
+        });
+        assert!(!out.contains("include"));
+        assert!(out.contains("kernel_phys_load = 1073741824"));
+        assert!(out.contains("route {\n  select_stack {\n    waiter_shift = -2\n  }\n}"));
+        assert!(out.contains("collisions = 4"));
+        assert!(out.contains("mm_struct_sz = null"));
+        assert!(!out.contains("task_prio"));
+        assert!(out.contains("  prio = 132"));
+        assert!(out.contains("cred {"));
+        assert!(out.contains("copy_size = 136"));
+        assert!(out.contains("caps_offset = 48"));
+        assert!(out.contains("caps_value = -1"));
+        assert!(out.contains("init_task = 34595456"));
+        assert!(out.contains("security_hook_heads = 0"));
+        assert!(!out.contains("off_absent"));
+    }
+
+    #[test]
+    fn conf_61_writes_the_compact_waiter_and_slub_stride() {
+        let (symbols, structs) = conf_fixture();
+        let geometry: Vec<(&'static str, i64)> = vec![("compact_waiter", 1)];
+        let out = render_conf(&ConfInputs {
+            release: "6.1.118-android14-11-gca0ef6d17716-ab13624819",
+            phys: None,
+            phys_offset: None,
+            symbols: &symbols,
+            structs: &structs,
+            route: Some("tcp_zerocopy"),
+            route_geometry: &geometry,
+            cred: &conf_cred_6x(),
+            extra_offsets: &no_extra_offsets(),
+        });
+        assert!(out.contains("tcp_zerocopy {\n    compact_waiter = 1"));
+        assert!(out.contains("mm_struct_sz = 1024"));
+        assert!(out.contains("kernel_phys_load = null"));
+    }
+
+    #[test]
+    fn conf_5x_carries_the_derived_credential_and_multicast_geometry() {
+        let (symbols, structs) = conf_fixture();
+        let cred = Cred5x {
+            caps_offset: 48,
+            caps_count: 3,
+            caps_value: 0x1ffffffffff,
+            refs: vec![
+                (0x80, 0xffffffc00ab23a80),
+                (0x88, 0xffffffc00acce110),
+                (0x90, 0xffffffc00ab23ff0),
+                (0x98, 0xffffffc00ab23b28),
+            ],
+        };
+        let geometry = conf_route_geometry(
+            "multicast_waiter",
+            "5.15.189-android13-8-00016-g51bba4309aac-ab14546557",
+            Some(-2),
+            &structs,
+        );
+        let out = render_conf(&ConfInputs {
+            release: "5.15.189-android13-8-00016-g51bba4309aac-ab14546557",
+            phys: None,
+            phys_offset: None,
+            symbols: &symbols,
+            structs: &structs,
+            route: Some("multicast_waiter"),
+            route_geometry: &geometry,
+            cred: &conf_cred_5x(&cred, 176),
+            extra_offsets: &ConfExtraOffsets {
+                empty_zero_page: Some(47_529_984),
+            },
+        });
+        assert!(out.contains("multicast_waiter {\n    waiter_off = 96"));
+        assert!(out.contains("buffer_size = 264"));
+        assert!(out.contains("task_offset = 48"));
+        assert!(out.contains("lock_offset = 56"));
+        assert!(out.contains("compact_waiter = 1"));
+        assert!(out.contains("collisions = 8"));
+        assert!(out.contains("mm_struct_sz = 1024"));
+        assert!(out.contains("cred {"));
+        assert!(out.contains("copy_size = 176"));
+        assert!(out.contains("usage_value = 256"));
+        assert!(out.contains("caps_count = 3"));
+        assert!(out.contains("caps_value = 2199023255551"));
+        assert!(out.contains("ref0_offset = 128"));
+        assert!(out.contains("ref3_offset = 152"));
+        assert!(out.contains("ref_count = 4"));
+        assert!(out.contains("ref0_image = -274698454400"));
+        assert!(out.contains("ref3_image = -274698454232"));
+        assert!(out.contains("empty_zero_page = 47529984"));
+    }
+
+    #[test]
+    fn conf_route_geometry_follows_the_measured_families() {
+        let (_, structs) = conf_fixture();
+        assert_eq!(
+            conf_route_geometry("select_stack", "6.6.89-android15-8", Some(-2), &structs),
+            vec![("waiter_shift", -2)]
+        );
+        assert!(
+            conf_route_geometry("select_stack", "6.6.89-android15-8", None, &structs).is_empty()
+        );
+        assert_eq!(
+            conf_route_geometry("tcp_zerocopy", "6.1.118-android14-11", Some(1), &structs),
+            vec![("compact_waiter", 1)]
+        );
+        assert!(
+            conf_route_geometry("tcp_zerocopy", "6.6.89-android15-8", Some(-2), &structs)
+                .is_empty()
+        );
+        assert_eq!(
+            conf_route_geometry(
+                "multicast_waiter",
+                "5.15.189-android13-8-00016-g51bba4309aac-ab14546557",
+                Some(-2),
+                &structs
+            ),
+            vec![
+                ("waiter_off", 96),
+                ("buffer_size", 264),
+                ("task_offset", 48),
+                ("lock_offset", 56),
+                ("compact_waiter", 1),
+            ]
+        );
+        assert!(
+            conf_route_geometry("multicast_waiter", "6.6.89-android15-8", Some(-2), &structs)
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn unverified_route_geometry_is_a_partial_candidate() {
+        let (_, structs) = conf_fixture();
+        // No image-derived shift: the route branch stays empty rather than
+        // borrowing the -2 family default.
+        assert!(conf_route_geometry("select_stack", "6.7.1-generic", None, &structs).is_empty());
+        // An image-derived shift is kept.
+        assert_eq!(
+            conf_route_geometry("select_stack", "6.7.1-generic", Some(-1), &structs),
+            vec![("waiter_shift", -1)]
+        );
+        // Every 5.x multicast profile carries the full one-shot geometry so it
+        // runs without manual edits, even when the release string carries no
+        // "-android13-" train tag.
+        assert_eq!(
+            conf_route_geometry(
+                "multicast_waiter",
+                "5.15.178-g3575c47dc7ce-dirty",
+                Some(-2),
+                &structs
+            ),
+            vec![
+                ("waiter_off", 96),
+                ("buffer_size", 264),
+                ("task_offset", 48),
+                ("lock_offset", 56),
+                ("compact_waiter", 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn verified_5x_train_without_device_evidence_omits_measured_placement() {
+        let (_, structs) = conf_fixture();
+        let geometry = conf_route_geometry(
+            "multicast_waiter",
+            "5.15.208-android13-9-gabcdef",
+            Some(-2),
+            &structs,
+        );
+        assert!(geometry.contains(&("waiter_off", 96)));
+        assert!(geometry.contains(&("buffer_size", 264)));
+        assert!(geometry.contains(&("task_offset", 48)));
+        assert!(geometry.contains(&("lock_offset", 56)));
+        assert!(geometry.contains(&("compact_waiter", 1)));
+        assert!(
+            !geometry.iter().any(|(key, _)| {
+                let key = *key;
+                key.starts_with("fake_") || key.starts_with("lock_slot")
+            }),
+            "device-measured placement must not be inherited by the train"
+        );
+    }
+
+    #[test]
+    fn candidate_conf_keeps_the_route_branch_when_geometry_is_empty() {
         let symbols: BTreeMap<String, Option<u64>> = BTreeMap::new();
         let structs: BTreeMap<String, Option<u32>> = BTreeMap::new();
-        let out = render_c(
-            Some("6.1.118-android14-11-gca0ef6d17716-ab13624819"),
-            "x",
-            &symbols,
-            &structs,
-            None,
-            1,
-        );
-        assert!(out.contains("STRUCT_OFFSETS_6_1"));
-        assert!(out.contains(".compact_waiter=1"));
-        assert!(out.contains(".mm_struct_sz=0x400"));
+        let out = render_conf(&ConfInputs {
+            release: "5.15.178-g3575c47dc7ce-dirty",
+            phys: None,
+            phys_offset: None,
+            symbols: &symbols,
+            structs: &structs,
+            route: Some("multicast_waiter"),
+            route_geometry: &[],
+            cred: &[],
+            extra_offsets: &ConfExtraOffsets {
+                empty_zero_page: None,
+            },
+        });
+        assert!(out.contains("route {"));
+        assert!(out.contains("multicast_waiter {"));
+        assert!(out.contains("release = \"5.15.178-g3575c47dc7ce-dirty\""));
+    }
 
-        let out66 = render_c(
-            Some("6.6.92-android15-8"),
-            "x",
-            &symbols,
+    #[test]
+    fn unverified_release_omits_kernelsnitch_defaults() {
+        let (symbols, structs) = conf_fixture();
+        let out = render_conf(&ConfInputs {
+            release: "6.7.1-generic",
+            phys: None,
+            phys_offset: None,
+            symbols: &symbols,
+            structs: &structs,
+            route: None,
+            route_geometry: &[],
+            cred: &[],
+            extra_offsets: &no_extra_offsets(),
+        });
+        assert!(out.contains("kernelsnitch {"));
+        assert!(out.contains("collisions = null"));
+        assert!(out.contains("mm_struct_sz = null"));
+    }
+
+    #[test]
+    fn unverified_5x_candidate_is_runnable() {
+        let (symbols, structs) = conf_fixture();
+        let geometry = conf_route_geometry(
+            "multicast_waiter",
+            "5.15.178-g3575c47dc7ce-dirty",
+            Some(-2),
             &structs,
-            None,
-            -2,
         );
-        assert!(out66.contains("STRUCT_OFFSETS_6_6"));
-        assert!(!out66.contains("compact_waiter"));
+        let out = render_conf(&ConfInputs {
+            release: "5.15.178-g3575c47dc7ce-dirty",
+            phys: None,
+            phys_offset: None,
+            symbols: &symbols,
+            structs: &structs,
+            route: Some("multicast_waiter"),
+            route_geometry: &geometry,
+            cred: &[],
+            extra_offsets: &no_extra_offsets(),
+        });
+        assert!(out.contains("multicast_waiter {\n    waiter_off = 96"));
+        assert!(out.contains("buffer_size = 264"));
+        assert!(out.contains("task_offset = 48"));
+        assert!(out.contains("lock_offset = 56"));
+        assert!(out.contains("compact_waiter = 1"));
+        // The 5.x KernelSnitch defaults are required to run and are emitted even
+        // without the "-android13-" train tag.
+        assert!(out.contains("kernelsnitch"));
+        assert!(out.contains("collisions = 8"));
+        assert!(out.contains("mm_struct_sz = 1024"));
     }
 
     #[test]
     fn pselect_waiter_shift_matches_the_committed_tables() {
         assert_eq!(
             pselect_waiter_shift_for(Some("6.1.118-android14-11-gca0ef6d17716-ab13624819")),
-            1
+            Some(1)
         );
-        assert_eq!(pselect_waiter_shift_for(Some("6.6.92-android15-8")), -2);
-        assert_eq!(pselect_waiter_shift_for(Some("6.12.30-android16-0")), 0);
-        assert_eq!(pselect_waiter_shift_for(None), -2);
+        assert_eq!(
+            pselect_waiter_shift_for(Some("6.6.92-android15-8")),
+            Some(-2)
+        );
+        assert_eq!(
+            pselect_waiter_shift_for(Some("6.12.30-android16-0")),
+            Some(0)
+        );
+        assert_eq!(pselect_waiter_shift_for(Some("6.7.1-android16-1")), None);
+        assert_eq!(pselect_waiter_shift_for(None), None);
+    }
+
+    #[test]
+    fn json_report_keeps_unverified_pselect_shift_null() {
+        let symbols = BTreeMap::new();
+        let structs = BTreeMap::new();
+        let report = build_report(
+            Some("6.7.1-generic"),
+            0,
+            None,
+            &symbols,
+            &structs,
+            0,
+            pselect_waiter_shift_for(Some("6.7.1-generic")),
+        );
+        assert!(report["pselect_waiter_shift"].is_null());
+    }
+
+    /// Flatten a HOCON-ish profile into `section.key` -> value, ignoring
+    /// comments and one level of brace nesting.
+    fn flatten_conf(text: &str) -> BTreeMap<String, String> {
+        let mut out = BTreeMap::new();
+        let mut stack: Vec<String> = Vec::new();
+        for raw in text.lines() {
+            let line = raw.split('#').next().unwrap_or("").trim();
+            if line.is_empty() {
+                continue;
+            }
+            if line.ends_with('{') {
+                stack.push(line[..line.len() - 1].trim().to_string());
+                continue;
+            }
+            if line == "}" {
+                stack.pop();
+                continue;
+            }
+            if let Some((key, value)) = line.split_once('=') {
+                let key = key.trim();
+                let value = value.trim();
+                let full = if stack.is_empty() {
+                    key.to_string()
+                } else {
+                    format!("{}.{}", stack.join("."), key)
+                };
+                out.insert(full, value.to_string());
+            }
+        }
+        out
+    }
+
+    /// The values the real extractor produces for the A301SO `5.15.189` boot
+    /// image, so the rendered conf can be compared field-for-field with the
+    /// bundled, hardware-validated profile.
+    fn a301so_inputs() -> (
+        String,
+        BTreeMap<String, Option<u64>>,
+        BTreeMap<String, Option<u32>>,
+        Vec<(String, String)>,
+        ConfExtraOffsets,
+    ) {
+        let release = "5.15.189-android13-8-00016-g51bba4309aac-ab14546557";
+        let mut symbols: BTreeMap<String, Option<u64>> = BTreeMap::new();
+        for (key, value) in [
+            ("off_init_task", 46_412_800u64),
+            ("off_init_cred", 46_126_472),
+            ("off_root_task_group", 47_549_120),
+            ("off_selinux_enforcing", 47_885_704),
+            ("off_selinux_blob_sizes", 35_027_656),
+            ("off_security_hook_heads", 35_018_304),
+            ("off_slide_nfulnl_logger", 45_096_488),
+            ("off_slide_boot_id", 47_999_001),
+            ("off_slide_loggers_0_1", 45_096_280),
+        ] {
+            symbols.insert(key.to_string(), Some(value));
+        }
+        let mut structs: BTreeMap<String, Option<u32>> = BTreeMap::new();
+        for (key, _) in CONF_TASK_FIELDS {
+            // Values from the A301SO image's BTF.
+            let v = match *key {
+                "task_prio" => 124,
+                "task_normal_prio" => 132,
+                "task_sched_task_group" => 1024,
+                "task_pi_lock" => 2180,
+                "task_pi_waiters" => 2200,
+                "task_pi_top_task" => 2216,
+                "task_pi_blocked_on" => 2224,
+                "task_pid" => 1496,
+                "task_tgid" => 1500,
+                "task_atomic_flags" => 1432,
+                "task_real_cred" => 1936,
+                "task_cred" => 1944,
+                "task_comm" => 1960,
+                "task_tasks" => 1232,
+                "task_seccomp" => 2144,
+                _ => continue,
+            };
+            structs.insert(key.to_string(), Some(v));
+        }
+        structs.insert("waiter_task".to_string(), Some(48));
+        structs.insert("waiter_lock".to_string(), Some(56));
+        let cred5x = Cred5x {
+            caps_offset: 48,
+            caps_count: 3,
+            caps_value: 2_199_023_255_551,
+            refs: vec![
+                (128, -274_698_454_400i64 as u64),
+                (136, -274_696_707_824i64 as u64),
+                (144, -274_698_453_008i64 as u64),
+                (152, -274_698_454_232i64 as u64),
+            ],
+        };
+        let cred = conf_cred_5x(&cred5x, 176);
+        let extra = ConfExtraOffsets {
+            empty_zero_page: Some(47_529_984),
+        };
+        (release.to_string(), symbols, structs, cred, extra)
+    }
+
+    #[test]
+    fn a301so_generated_conf_matches_the_bundled_profile() {
+        let (release, symbols, structs, cred, extra) = a301so_inputs();
+        let geometry = conf_route_geometry("multicast_waiter", &release, None, &structs);
+        let generated = render_conf(&ConfInputs {
+            release: &release,
+            phys: None,
+            phys_offset: None,
+            symbols: &symbols,
+            structs: &structs,
+            route: Some("multicast_waiter"),
+            route_geometry: &geometry,
+            cred: &cred,
+            extra_offsets: &extra,
+        });
+        let bundled = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../app/src/main/assets/kernel_profiles/5.15.189-android13-8-00016-g51bba4309aac-ab14546557.conf"
+        ))
+        .expect("bundled 5.15.189 profile");
+        let generated = flatten_conf(&generated);
+        let bundled = flatten_conf(&bundled);
+
+        assert!(generated.contains_key("route.multicast_waiter.waiter_off"));
+        // The one intentional difference: shizuku defaults to off in generated
+        // confs, the bundled profile recommends it.
+        assert_eq!(
+            generated.get("recommend_shizuku").map(String::as_str),
+            Some("0")
+        );
+        assert_eq!(
+            bundled.get("recommend_shizuku").map(String::as_str),
+            Some("1")
+        );
+
+        for key in bundled.keys() {
+            if key == "recommend_shizuku" {
+                continue;
+            }
+            assert_eq!(
+                generated.get(key),
+                bundled.get(key),
+                "field {key} differs between generated and bundled profile"
+            );
+        }
+        // And the generated profile carries no extra non-comment field.
+        for key in generated.keys() {
+            assert!(
+                bundled.contains_key(key),
+                "generated profile has unexpected field {key}"
+            );
+        }
     }
 }

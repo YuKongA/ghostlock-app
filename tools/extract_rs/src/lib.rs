@@ -1,11 +1,14 @@
+pub mod analysis;
 pub mod boot;
 pub mod btf;
 pub mod derive;
 pub mod disasm;
 pub mod error;
 pub mod fdt;
+pub mod iomem;
 pub mod kallsyms;
 pub mod kallsyms_finder;
 pub mod payload;
 pub mod report;
 pub mod symbols;
+pub mod vendor_boot;

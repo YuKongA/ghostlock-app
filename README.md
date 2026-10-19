@@ -2,69 +2,35 @@
 
 > 中文: [README_ZH.md](README_ZH.md)
 
-## Supported Devices
+## Documentation
 
-| Kernel                                                 | Devices                                                          |
-| ------------------------------------------------------ | ---------------------------------------------------------------- |
-| `6.1.115-android14-11-ga2521ca27699-ab13294383`        | POCO X6 Pro                                                      |
-| `6.1.118-android14-11-ga3b9c44908dd-ab13320413`        | Redmi Note 15 Pro+                                               |
-| `6.1.118-android14-11-gca0ef6d17716-ab13624819`        | Xiaomi 14                                                        |
-| `6.1.138-android14-11-g0c3d559bcd85-ab14529422`        | Xiaomi 14                                                        |
-| `6.1.138-android14-11-g6ab8c9a86a33-ab14396278`        | POCO X6 Pro                                                      |
-| `6.1.145-android14-11-g09f1c0074ad7-ab14226177`        | Infinix Note 50s 5G, Infinix GT 30 (X6876)                       |
-| `6.1.145-android14-11-g74d1702dab4d-ab14669069`        | vivo T4                                                          |
-| `6.1.145-android14-11-geaa643a2c0ee-ab14763719`        | Motorola Razr 50 Ultra / Motorola Razr+ 2024                     |
-| `6.1.162-android14-11-gce140c0e5bf5-ab15450923`        | Zenfone 11 Ultra                                                 |
-| `6.6.30-android15-8-g54dcbfbef792-ab12368803-4k`       | Red Magic Tablet 3 Pro                                           |
-| `6.6.77-android15-8-g4a507830d890-ab13636293-4k`       | Xiaomi Civi 5 Pro, REDMI K90 / 4 Turbo, POCO F7                  |
-| `6.6.77-android15-8-g63ce7556864c-ab13994517-4k`       | Xiaomi 15                                                        |
-| `6.6.77-android15-8-gca30f3b4bef6-abogki440974771-4k`  | Xiaomi 15 Pro, REDMI K80 Pro / K80 Ultra                         |
-| `6.6.89-android15-8-g096cdb6ecefc-ab14358676-4k`       | OPPO Pad 4 Pro                                                   |
-| `6.6.89-android15-8-g0889fe95bb10-ab14402178-4k`       | POCO X8 Pro Max                                                  |
-| `6.6.89-android15-8-g8e4be6b47e40-ab14134548-4k`       | POCO X8 Pro                                                      |
-| `6.6.89-android15-8-g42db9ecb036b-ab14487600-4k`       | Honor Magic V5 (10.0.0.164)                                      |
-| `6.6.89-android15-8-gb99b4586a3ee-ab13754593-4k`       | Honor Magic V5 (9.0.1.160)                                       |
-| `6.6.89-android15-8-gf4dc45704e54-abogki446052083-4k`  | OnePlus 13                                                       |
-| `6.6.92-android15-8-g3637f4904cf5-ab13944661-4k`       | Red Magic Tablet 3 Pro, Red Magic 10 Pro, Red Magic 11 Air       |
-| `6.6.102-android15-8-gab8eb70a71b8-ab14350911-4k`      | Nothing Phone 3                                                  |
-| `6.6.102-android15-8-gb01b41c2647c-ab15574720-4k`      | Xiaomi 17T                                                       |
-| `6.6.102-android15-8-gfe76d1bc97fd-ab14689815-4k`      | Xiaomi 17T                                                       |
-| `6.6.118-android15-8-g2e6b9c3812c5-ab15114928-4k`      | OPPO Find N5                                                     |
-| `6.6.118-android15-8-g93e223c276e7-abogki500782043-4k` | OPPO Find X8 Ultra, OnePlus 13 / ACE 5 Pro                       |
-| `6.6.118-android15-8-g608a629fedf7-ab15154340-4k`      | REDMI K90 Ultra                                                  |
-| `6.6.118-android15-8-gbf8cd367de7a-ab15314822-4k`      | Motorola Razr 60 Ultra                                           |
-| `6.6.118-android15-8-gc44b714366cc-abogki519650608-4k` | REDMI K80 Pro / Turbo 5 Max, POCO X8 Pro Max, Xiaomi Pad 7 Ultra |
-| `6.6.118-android15-8-ge56cf6b09cca-ab15511674-4k`      | REDMI K90 Ultra, POCO F7                                         |
-| `6.6.118-android15-8-ge58033dc8ea6-abogki498046332-4k` | OPPO Pad 5, OnePlus Pad 2, OPPO Find X8s                         |
-| `6.6.118-android15-8-gebdfad32d749-ab15099304-4k`      | OPPO Find X8 / Find X8 Pro                                       |
-| `6.12.23-android16-5-g16e473de48a3-abogki462654244-4k` | REDMI K90 Pro Max                                                |
-| `6.12.23-android16-5-g75e9b1c7ae7c-abogki463945075-4k` | Xiaomi 17 / 17 Pro / 17 Pro Max / 17 Ultra                       |
-| `6.12.23-android16-5-g82efd98459a2-ab14457512-4k`      | OPPO Find X9 / Find X9 Pro                                       |
-| `6.12.23-android16-5-ga8f88ad96df3-ab13929693-4k`      | OnePlus 15                                                       |
-| `6.12.23-android16-5-gb2a876903b49-ab14541642-4k`      | OnePlus 15                                                       |
-| `6.12.23-android16-5-gf1bdb13583da-ab13761046-4k`      | Red Magic 11 Pro, Tablet 5 Pro                                   |
-| `6.12.30-android16-5-g6e872b4863d6-ab13847919-4k`      | REDMI Note 15 4G, POCO M6 Pro 4G                                 |
-| `6.12.38-android16-5-g1d46253471dd-ab15048002-4k`      | Motorola Razr Fold                                               |
-| `6.12.38-android16-5-g3c4da6410bcb-ab13872285-4k`      | Xiaomi 13T                                                       |
-| `6.12.38-android16-5-g844001fb8721-ab14552068-4k`      | OnePlus 15T                                                      |
+- [Kernel Profile Porting Guide](docs/kernel_profiles/README.md) - add support for a new kernel. GhostLock matches kernels by exact `uname -r` and rejects unsupported builds, showing the status at the top. Built-in profiles live in `app/src/main/assets/kernel_profiles/`: one HOCON file per release, `index.conf` as the runtime index, and `<major.minor>-template.conf` version-family templates.
+- [Supported devices](docs/kernel_profiles/SUPPORTED_DEVICES.md) - the built-in kernel list.
+- [Shared execution defaults](docs/kernel_profiles/defaults.md) - every execution-tuning field, its default, and why.
+- [Profile schema](docs/kernel_profiles/PROFILE_SCHEMA.md) - full profile structure and data flow.
+- [Adding a component](docs/development/adding-a-component.md) - developer guide for a new native middleware / backend / frontend (Chinese).
 
-Kernels are matched by exact `uname -r`; unsupported builds are rejected and the app shows the status at the top. Offsets live in `src/kernels/<uname-release>/offsets.h` — add new builds with the extractor's `--register`.
+For the complete device-porting workflow, kernel-family template links, and tuning rationale, see the [Kernel Profile Porting Guide](docs/kernel_profiles/README.md).
+
+Rows explicitly marked **Shizuku required** run through a shell UserService. Start Shizuku with ADB and tap the status card to grant access; all other rows use the app's normal execution path.
 
 ## Quick Start
 
-Open **GhostLock** and tap **Run**. KernelSU (`me.weishu.kernelsu`), ReSukiSU (`com.resukisu.resukisu`), or KowSU (`com.kowx712.supermanager`) provides `ksud` for module loading; without it, W1/W2 still grant uid 0 but no module is loaded.
+Open **GhostLock** and tap **Run**. KernelSU (`me.weishu.kernelsu`), ReSukiSU (`com.resukisu.resukisu`), BakaSU (`org.bakasu.bakasu`), or KowSU (`com.kowx712.supermanager`) provides `ksud` for module loading; without it, W1/W2 still grant uid 0 but no module is loaded.
 
-The route races two cores. On the 6.6/6.12 tree-waiter kernels the main thread hammers `select` while a consumer thread perturbs the waiter's priority; on the 6.1 compact-waiter kernels the main thread drives `getsockopt(TCP_ZEROCOPY_RECEIVE)` through a punched-hole page instead (`GHOSTLOCK_TCP_ROUTE=0` forces the pselect route). The pair defaults to the big cores (fallback 0/1), overridable via `GHOSTLOCK_CORE` / `GHOSTLOCK_CONSUMER_CORE`.
+The execution chain is a pipeline of three components: a frontend (`root_child` startup/handoff), a backend (the CVE-2026-43499 futex primitive), and a middleware route. The catalogued combinations are instantiated at build time; the resolved profile selects which one runs. The route races two cores: on the 6.6/6.12 tree-waiter kernels the main thread hammers `select` while a consumer thread perturbs the waiter's priority; on the 6.1 compact-waiter kernels it drives `getsockopt(TCP_ZEROCOPY_RECEIVE)` through a punched-hole page; the 5.15 kernels use the multicast waiter. The CPU pair also comes from the resolved profile.
 
 ## Command-Line Debugging
 
 adb/shell has no seccomp filter, so W3 is skipped - handy for quick verification:
 
 ```powershell
-make ghostlock
-adb push ghostlock /data/local/tmp/ghostlock
+make -C src ghostlock
+./gradlew exportKernelProfiles
+adb push build/native/ghostlock /data/local/tmp/ghostlock
+adb push build/kernel-profiles/<release>.bin /data/local/tmp/profile.bin
 adb shell chmod 755 /data/local/tmp/ghostlock
-adb shell /data/local/tmp/ghostlock
+adb shell /data/local/tmp/ghostlock --load-prebuilt-profile /data/local/tmp/profile.bin
 ```
 
 ## Offset Extraction
@@ -72,12 +38,24 @@ adb shell /data/local/tmp/ghostlock
 `tools/extract_rs` derives offsets from a `boot.img` (plus optional `xbl_config.img`), a full OTA ZIP, or an `http(s)` URL pointing at one. kallsyms come from `--kallsyms` or are recovered from the image's embedded table. `pselect_waiter_shift` and `off_slide_loggers_0_1` are derived by the built-in arm64 disassembler. MediaTek images have no `xbl_config.img` and usually no BTF: the physical load address is derived from kallsyms `_text` (override with `--phys`).
 
 ```powershell
-cargo build --release --manifest-path tools/extract_rs/Cargo.toml
-tools/extract_rs/target/release/ghostlock-extract.exe boot.img --xbl-config xbl_config.img --register
-tools/extract_rs/target/release/ghostlock-extract.exe OTA.zip --format json --out offsets.json
+Push-Location tools/extract_rs
+cargo build --release
+Pop-Location
+build/extract/release/ghostlock-extract.exe boot.img --xbl-config xbl_config.img --format conf --out profile.conf
+build/extract/release/ghostlock-extract.exe OTA.zip --format conf --out profile.conf
 ```
 
-`--register` saves the table under `src/kernels/<uname-release>/offsets.h`; `--format c --out offsets.h` dumps a standalone header.
+`--format conf` is the extractor output: a flattened, self-contained profile (no `include` lines, the shared 6.x credential/KernelSnitch constants inlined, the route selected from `--analysis` evidence unless `--route` overrides it). The extractor emits every field the image actually yields and omits the rest; it never fills gaps from a neighbouring kernel family's guesses (unverified-family 6.6, the default `-2`, the 5.15 multicast constants, or a phys default). Every output is an **unverified candidate**: importable and parseable, with missing or invalid fields blocked by the app's pre-execution validation, so a successful run never implies device support. On 5.x it also derives the credential reference repair from `init_cred` and the multicast geometry from BTF (see `docs/analysis/extractor-5x-derivation-plan.md`). `--format json` stays for the v1 import path. To add a built-in profile, complete and validate the matching version-family template, save it as a standalone `.conf` profile, and add it to `kernel_profiles/index.conf`. The old C `offsets.h` registry is deprecated and removed.
+
+### MediaTek
+
+MediaTek images have no `xbl_config.img` and usually no embedded BTF, so the
+extractor cannot derive the two physical addresses (`kernel_phys_load`,
+`kernel_phys_offset`) from the image and leaves them `null`. The runtime then
+falls back to the SoC formula, which fails at W1 on MediaTek. Fill both by
+running the separate `tools/mtk-phys/` extractor on a rooted device (it reads
+`/proc/iomem`) and pasting the values into the app's advanced overrides. See
+[MEDIATEK.md](docs/kernel_profiles/MEDIATEK.md).
 
 ### Preflight
 
@@ -91,39 +69,65 @@ running inside the app sandbox. Cross-compile and push:
 
 ```powershell
 rustup target add aarch64-linux-android
-$ndk = "$env:ANDROID_HOME\ndk\29.0.14206865\toolchains\llvm\prebuilt\windows-x86_64\bin"
+$ndk = "$env:ANDROID_HOME\ndk\<version>\toolchains\llvm\prebuilt\windows-x86_64\bin"
 $env:CC_aarch64_linux_android = "$ndk\aarch64-linux-android35-clang.cmd"
 $env:AR_aarch64_linux_android = "$ndk\llvm-ar.exe"
 $env:CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = $env:CC_aarch64_linux_android
-cargo build --release --target aarch64-linux-android --manifest-path tools/extract_rs/Cargo.toml
-adb push tools/extract_rs/target/aarch64-linux-android/release/ghostlock-extract /data/local/tmp/
+Push-Location tools/extract_rs
+cargo build --release --target aarch64-linux-android
+Pop-Location
+adb push build/extract/aarch64-linux-android/release/ghostlock-extract /data/local/tmp/
 adb shell /data/local/tmp/ghostlock-extract /sdcard/OTA.zip
 ```
 
 ### Importing offsets without rebuilding the app
 
-New kernels no longer need an app rebuild: tap **Import offsets.json** and
-pick the extractor's JSON (single object or array), or push it to
-`<GHOSTLOCK_HOME>/offsets.json` (default `/data/local/tmp`). At startup native
-matches the current `uname -r` against imported entries before rejecting the
-kernel. Imports merge across files; a release already stored prompts before
-overwrite.
+New kernels no longer need an app rebuild: tap **Import offsets.conf (HOCON)**
+and pick the extractor's flattened `.conf`, or use **Import offsets.json (v1)**
+for an older JSON report. v1 JSON is converted in-app, so nothing has to be
+pushed to the device: native always starts from the GLK1 document the app sends
+on stdin, and matches the current `uname -r` against the resolved profile
+before rejecting the kernel. Imports merge across files; a release already
+stored prompts before overwrite.
 
-The app can also generate the JSON itself — **Parse OTA link** (full OTA ZIP
+The app can also generate the profile itself — **Parse OTA link** (full OTA ZIP
 URL) and **Parse image** (`boot.img` + optional `xbl_config.img`) run the
-extractor in-process and write `offsets.json` into the app data dir on
-success.
+extractor in-process and write a flattened `.conf` into the app data dir on
+success:
 
-```json
-[
-  {
-    "release": "6.12.38-android16-5-g844001fb8721-ab14552068-4k",
-    "kernel_phys_load": 3347054592,
-    "pselect_waiter_shift": 0,
-    "symbols": { "off_init_task": 37801728, "off_init_cred": 37891184 },
-    "struct_fields": { "task_prio": 148, "task_cred": 2304 }
+```hocon
+# GhostLock kernel profile: 6.12.38-android16-5-g844001fb8721-ab14552068-4k (HOCON, self-contained).
+release = "6.12.38-android16-5-g844001fb8721-ab14552068-4k"
+schema_version = 1
+kernel_major = 6
+recommend_shizuku = 0
+kernel_phys_load = 0xC7800000
+route {
+  select_stack {
+    waiter_shift = 0
   }
-]
+}
+fallback {
+  to = "none"
+}
+kernelsnitch {
+  collisions = 4
+}
+task_struct {
+  prio = 148
+  cred = 2304
+}
+cred {
+  caps_offset = 48
+  copy_size = 136
+  usage_value = 1
+  caps_count = 5
+  caps_value = -1
+}
+offset {
+  init_task = 37801728
+  init_cred = 37891184
+}
 ```
 
 ## Credits & License
