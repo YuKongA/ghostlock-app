@@ -100,6 +100,22 @@ class PlanClosureTest {
     }
 
     @Test
+    fun separateHookTargetStillChecksImageAgainstCarrier() {
+        val checked = PlanClosure.check(
+            carrierPath = "/carrier",
+            carrierSize = 8192L,
+            imageSize = 12304L,
+            imageOffset = 0L,
+            payloadOffset = 0x1000L,
+            payloadSize = 0x20L,
+            siteOffset = 0x1000L,
+            hookTargetSize = 1024L * 1024L,
+        )
+        assertFalse("image 超出 carrier ⇒ 拒绝", checked.ok)
+        assertEquals("plan:carrier-too-small:need=12304:have=8192", checked.refusal)
+    }
+
+    @Test
     fun aClosedPlanPrintsTheShapeLine() {
         val checked = plan()
         assertTrue("三区域都在 32 MiB 载体里且互不重叠 ⇒ 通过", checked.ok)

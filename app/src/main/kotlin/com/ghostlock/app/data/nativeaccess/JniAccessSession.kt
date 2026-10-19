@@ -59,7 +59,7 @@ class JniAccessSession internal constructor(
     private val handle: Long,
     /** The backend this session was opened for, as its id token. */
     val backendId: String,
-) : AccessSession {
+) : AccessSession, SessionInvoker {
     private val gate = Any()
 
     @Volatile
@@ -80,10 +80,10 @@ class JniAccessSession internal constructor(
      *
      * @param values u64 fields; @param blobs byte fields (a path, an image, a secret frame).
      */
-    fun invoke(
+    override fun invoke(
         op: NativeProtocol.Op,
-        values: Map<NativeProtocol.Key, ULong> = emptyMap(),
-        blobs: Map<NativeProtocol.Key, ByteArray> = emptyMap(),
+        values: Map<NativeProtocol.Key, ULong>,
+        blobs: Map<NativeProtocol.Key, ByteArray>,
     ): AccessResult<NativeReply> = synchronized(gate) {
         if (closed) {
             return@synchronized AccessResult.Failure(

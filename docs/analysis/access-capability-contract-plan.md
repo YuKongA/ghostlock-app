@@ -1,6 +1,6 @@
 # Kotlin AccessCapability 契约批次（2026-10-14）
 
-状态：用户已批准「计划关系与影响文件」；本批仅落地 Kotlin 契约，不宣称任何 backend 已接通。
+状态：契约批次已完成；2026-10-19 追加 JNI 能力包装与生产入口，仍未执行真机门禁。
 
 ## 计划关系
 
@@ -39,3 +39,51 @@
 | Kotlin 构建黑盒 | `:app:compileDebugKotlin` 退出码 | 0；契约源码编译 |
 | JNI 适配批次白盒 | 未就绪/关闭/跨会话 target、并发 close、native 描述符不匹配、未知写结果 | 不越过 native 入口或返回具名拒绝；未知写不得成功 |
 | 真机批次黑盒 | 单 backend、固定设备构建与 profile、冷机日志和实际写验证 | 仅设备证据可标 supported；本批不执行 |
+
+## 2026-10-19 实现状态（JNI 能力包装批次）
+
+本批完成“契约 → JNI 能力包装 → 生产入口”的第一条可编译链路。仍不跑真机。
+
+### 已落地
+
+- `data/nativeaccess/JniPageCacheOps.kt`：把 `PageCacheOps` 映射到既有四入口 JNI 会话（`Snapshot` / `ResolveTarget` / `ReadBlock` / `WriteBlock`）；宽度只认 native 发布的 16 字节，未解析到 token 时全部拒绝。
+- `data/nativeaccess/JniCapabilitySession.kt`：在 `JniAccessSession` 之上发布 `AccessCapabilities`；能力只在 `initialize()` 成功后出现，未就绪不发布 page-cache 视图。
+- `data/nativeaccess/JniCapabilitySessionFactory.kt`：按 backend token 打开能力会话；目标文件由调用方给出，不从内核版本推断。
+- `engine/PageCacheEngine.kt`：生产入口打开同一个能力会话，读取描述符后实际调用 `targets()`、`read()`、`writeImage()`，再执行页缓存控制链；能力不可用时只降级为 warn，不伪造 ready。
+- `ui/screen/run/RunCoordinator.kt`：不再直接调用临时 probe；只依赖 `PageCacheEngine`。
+- `engine/EngineLog.kt`：info 无参数；warn/error 恰好一个 reason；debug/verbose 参数用 `\t` 分隔。
+
+### 迁移
+
+- `tempui/` 已移到 `engine/pagecache/`；`RunCoordinator` 不再 import `tempui`。
+- 机械迁移不改移动文件的业务逻辑；控制面（hook/trigger/wait/LKM）仍留在页缓存链，只有数据面通过 `PageCacheAccess` 发布。
+
+### 离线验证
+
+```text
+./gradlew :app:compileDebugKotlin          BUILD SUCCESSFUL
+./gradlew :app:testDebugUnitTest           115 tests / 0 failures / 0 errors
+```
+
+新增测试：
+
+- `EngineLogTest`：info 无参数；warn/error 一个 reason；debug 参数用 `\t`。
+- `JniPageCacheOpsTest`：会话拒绝时 fail-closed，不发布 target、不读写。
+- `PageCacheWriteImageTest`：`PageCacheAccess.writeImage` 按 16 字节块拆分并调用 `write`；非对齐镜像拒绝。
+- `AssembledPageCacheAccess`：业务块读写与镜像写入的 PageCacheAccess 实现，底层仍复用同一个 Assembled43284 会话。
+
+### 未完成 / 边界
+
+- native `Snapshot` 目前只发布 phase/flags/width/generation，没有 target 路径列表；能力包装用调用方提供的 target 作为唯一目标，路径真实性仍由 backend 的 `ResolveTarget` 重验。
+- 43284 业务数据面的 `Assembled43284.readBlock/writeBlock/writeImage` 已通过 `AssembledPageCacheAccess` 转成 `PageCacheAccess` 调用；控制面（hook/trigger/wait/LKM）仍留在页缓存链。
+- 真机门禁未执行（按用户要求，生产级接线完成前不跑）。
+
+### 2026-10-19 业务数据面收口
+
+- `Assembled43284` 的 `readBlock` / `writeBlock` / `writeImage` 已改为 `AssembledPageCacheAccess` 的
+  `PageCacheAccess` 调用；`readBlockNative` / `writeBlockNative` / `writeImageNative` 只作为内部实现。
+- `AssembledPageCacheAccess` 复用同一个 accessId / sequence，不另开 native 会话。
+- 通用 `JniCapabilitySession` 的 43284 路径仍缺 `resolve/read/write` 设备 ops；生产引擎不再用它做
+  43284 预检，避免把 `resolve-unsupported` 当成数据面失败。
+- 真机冒烟：`Page cache engine started` / `finished`；该轮攻击 `hook=0`（carrier/hook 状态），
+  因此未产生模块写入，不能作为写效果证据。

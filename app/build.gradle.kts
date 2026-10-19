@@ -38,11 +38,6 @@ val lkmSourceDir = rootProject.file("tools/lkm/ghostlock")
  * still under $HOME, which is what the podman VM can mount. */
 val lkmCacheDir = layout.buildDirectory.dir("lkm").get().asFile
 val lkmGeneratedAssets = layout.buildDirectory.dir("generated/lkmAssets")
-/* A6-4: the finishing script is a DEVICE PAYLOAD (tools/lkm/ghostlock/root_cmd.sh -
- * the same file the module build ships). It is packaged as an asset so the
- * device-side resolve can read it; being a source file it needs no container and
- * never blocks a build, so the fail-closed rule stays on the LKM images alone. */
-val payloadGeneratedAssets = layout.buildDirectory.dir("generated/payloadAssets")
 
 /** The repository's SINGLE NDK authority (the root script resolves the same keys;
  *  AGP 8's ApplicationExtension exposes no ndkDirectory). */
@@ -106,6 +101,7 @@ android {
         targetSdk = 37
         versionCode = gitVersionCode
         versionName = appVersionName
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     androidResources {
         localeFilters += listOf("en", "zh-rCN")
@@ -119,7 +115,6 @@ android {
             /* LKM images are generated (never committed); AGP forbids Provider here. */
             assets.directories.add(lkmGeneratedAssets.get().asFile.absolutePath)
             /* A6-4 finishing script, copied from the repository source. */
-            assets.directories.add(payloadGeneratedAssets.get().asFile.absolutePath)
         }
     }
     val properties = Properties()
@@ -422,6 +417,16 @@ abstract class LkmBuildWorkAction : WorkAction<LkmBuildParams> {
             from(File(source, "Makefile"), File(source, "ghostlock.c"))
             into(work)
         }
+        /* 让 .modinfo 的 vermagic 字段有足够容量：运行时 retag 会把它改成设备的
+         * UTS_RELEASE（模拟器 5.15.119 需要 101B，默认 DDK 镜像只有 80B）。
+         * 占位串只影响构建，retag 在攻击前完成。 */
+        val vermagicSlack = "glk-vermagic-slack-" + "0".repeat(96)
+        val kdir = "/opt/ddk/kdir/" + label
+        val patchUts =
+            "printf '#define UTS_RELEASE \"" + vermagicSlack + "\"\\n' > " + kdir + "/include/generated/utsrelease.h" +
+                " && printf '%s\\n' '" + vermagicSlack + "' > " + kdir + "/include/config/kernel.release" +
+                " && make -j" + parameters.makeJobs.get() + " -C " + kdir +
+                " M=/work ARCH=arm64 LLVM=1 modules"
         execOps.exec {
             commandLine(
                 engine, "run", "--rm",
@@ -430,8 +435,7 @@ abstract class LkmBuildWorkAction : WorkAction<LkmBuildParams> {
                 "-v", work.absolutePath + ":/work",
                 "-w", "/work",
                 image,
-                "make", "-j" + parameters.makeJobs.get(), "-C", "/opt/ddk/kdir/" + label,
-                "M=/work", "ARCH=arm64", "LLVM=1", "modules",
+                "sh", "-c", patchUts,
             )
         }
         val built = File(work, "ghostlock.ko")
@@ -628,6 +632,73 @@ val copyLkmIntoAssets = tasks.register<CopyLkmIntoAssetsTask>("copyLkmIntoAssets
     generatedDir.set(lkmGeneratedAssets)
 }
 
+/** Fail-closed: every packaged LKM image carries the knob at the pinned layout. */
+abstract class VerifyLkmKnobTask : DefaultTask() {
+    @get:InputDirectory abstract val cacheDir: DirectoryProperty
+
+    @TaskAction
+    fun run() {
+        fun indexOf(bytes: ByteArray, needle: ByteArray, from: Int): Int {
+            if (needle.isEmpty()) return -1
+            for (index in from..(bytes.size - needle.size)) {
+                var hit = true
+                for (offset in needle.indices) {
+                    if (bytes[index + offset] != needle[offset]) {
+                        hit = false
+                        break
+                    }
+                }
+                if (hit) return index
+            }
+            return -1
+        }
+        fun readU32(bytes: ByteArray, at: Int): Int =
+            (bytes[at].toInt() and 0xFF) or
+                ((bytes[at + 1].toInt() and 0xFF) shl 8) or
+                ((bytes[at + 2].toInt() and 0xFF) shl 16) or
+                ((bytes[at + 3].toInt() and 0xFF) shl 24)
+
+        val magic = "GLKKNOB1".toByteArray(Charsets.US_ASCII)
+        val images = cacheDir.get().asFile.listFiles().orEmpty()
+            .filter { it.isDirectory }
+            .map { File(it, "ghostlock.ko") }
+            .filter { it.isFile }
+            .sortedBy { it.parentFile.name }
+        check(images.size == 8) {
+            "expected 8 LKM images, found " + images.size + "; run ./gradlew buildLkmImages"
+        }
+        images.forEach { file ->
+            val label = file.parentFile.name
+            val bytes = file.readBytes()
+            val at = indexOf(bytes, magic, 0)
+            check(at >= 0) {
+                label + ": knob magic missing (stale image); rebuild with buildLkmImages"
+            }
+            check(indexOf(bytes, magic, at + 1) < 0) { label + ": duplicate knob magic" }
+            check(readU32(bytes, at + 8) == 284) {
+                label + ": knob size " + readU32(bytes, at + 8) + " != 284"
+            }
+            val pathLength = readU32(bytes, at + 24)
+            check(pathLength in 0 until 256 && at + 28 + pathLength < bytes.size) {
+                label + ": invalid path length " + pathLength
+            }
+            check(bytes[at + 28 + pathLength] == 0.toByte()) { label + ": path is not NUL-terminated" }
+            val default = String(bytes, at + 28, pathLength, Charsets.UTF_8)
+            check(default == "/dev/null") { label + ": default path is " + default }
+            logger.lifecycle("LKM knob OK: " + label + " (" + bytes.size + " bytes)")
+        }
+    }
+}
+
+val verifyLkmKnob = tasks.register<VerifyLkmKnobTask>("verifyLkmKnob") {
+    group = "ghostlock"
+    description = "Fail-closed: the 8 LKM images carry exactly one knob sized 284 with /dev/null"
+    cacheDir.set(lkmCacheDir)
+    dependsOn(buildLkmImages)
+}
+
+tasks.named("copyLkmIntoAssets") { dependsOn(verifyLkmKnob) }
+
 /** Standalone: proves the digest ledger still describes the cache. */
 abstract class VerifyLkmLedgerTask : DefaultTask() {
     @get:InputFile abstract val manifestFile: RegularFileProperty
@@ -650,21 +721,6 @@ val verifyLkmLedger = tasks.register<VerifyLkmLedgerTask>("verifyLkmLedger") {
     manifestFile.set(lkmManifestFile)
     cacheDir.set(lkmCacheDir)
 }
-
-/* A6-4: package the finishing script as a device payload asset. Plain Copy with no
- * fail-closed gate: the source file is part of the repository, so a missing one is
- * a broken checkout, not a device/KMI condition. */
-val copyPayloadScriptIntoAssets = tasks.register<Copy>("copyPayloadScriptIntoAssets") {
-    group = "ghostlock"
-    description = "Copies the A6-4 finishing script into the APK assets (device payload)"
-    from(rootProject.layout.projectDirectory.file("tools/lkm/ghostlock/root_cmd.sh"))
-    into(payloadGeneratedAssets.map { it.dir("payload") })
-}
-tasks.matching { task -> task.name.startsWith("merge") && task.name.endsWith("Assets") }
-    .configureEach {
-        dependsOn(copyPayloadScriptIntoAssets)
-        mustRunAfter(copyPayloadScriptIntoAssets)
-    }
 
 /* Fail-closed ONLY on the packaging path: package/bundle depend on the copy and the
  * asset merge is ordered after it, so pure JVM unit tests never need a container
@@ -728,4 +784,6 @@ dependencies {
     /* Compose UI 测试（JVM/Robolectric）：版本与本仓 compose foundation 同源（1.12.1），
      * 无 BOM、无 version catalog ⇒ 必须显式版本。ui-test-manifest 未确认必需，暂不加。 */
     testImplementation("androidx.compose.ui:ui-test-junit4:1.12.1")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
 }

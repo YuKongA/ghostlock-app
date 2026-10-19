@@ -3,8 +3,48 @@
  */
 #include "boundary/protocol/session_object.hpp"
 
+#include <cstring>
+#include <optional>
+
+#include "backend/cve_2026_43284/access_params.hpp"
+
 namespace ghostlock::jni {
     namespace {
+        /** 43284 needs its SA material before it can come up; the generic empty set is not one. */
+        bool params_43284(const FrameReader &request,
+                          ghostlock::backend::cve_2026_43284::AccessParams &params) noexcept {
+            std::span<const std::byte> secret{};
+            std::span<const std::byte> path{};
+            if (!request.find_bytes(FrameKey::Secret, secret) || secret.size() < 73U) return false;
+            if (!request.find_bytes(FrameKey::Path, path) || path.empty()) return false;
+            const auto *raw = reinterpret_cast<const std::uint8_t *>(secret.data());
+            auto u16 = [raw](std::size_t at) {
+                return static_cast<std::uint16_t>(raw[at]) |
+                       (static_cast<std::uint16_t>(raw[at + 1U]) << 8U);
+            };
+            auto u32 = [raw](std::size_t at) {
+                return static_cast<std::uint32_t>(raw[at]) |
+                       (static_cast<std::uint32_t>(raw[at + 1U]) << 8U) |
+                       (static_cast<std::uint32_t>(raw[at + 2U]) << 16U) |
+                       (static_cast<std::uint32_t>(raw[at + 3U]) << 24U);
+            };
+            params.sa.spi = u32(0U);
+            params.sa.encap_port = u16(4U);
+            params.sa.sender_port = u16(6U);
+            params.sa.icv_len = raw[8U];
+            std::memcpy(params.sa.aes_key, raw + 9U, 32U);
+            std::memcpy(params.sa.hmac_key, raw + 41U, 32U);
+            params.sa.set = true;
+            params.carrier = {reinterpret_cast<const char *>(path.data()), path.size()};
+            params.patch_target = params.carrier;
+            params.dev_carrier = params.carrier;
+            std::uint64_t sequence = 0U;
+            if (request.find_u64(FrameKey::Sequence, sequence) && sequence > 0U) {
+                params.sequence = static_cast<std::uint32_t>(sequence);
+                params.sequence_set = true;
+            }
+            return true;
+        }
         /** Put a named refusal into the reply and answer the status it belongs to. */
         [[nodiscard]] const char *op_refusal_prefix() noexcept { return "op-not-wired:"; }
     }  // namespace
@@ -141,12 +181,24 @@ namespace ghostlock::jni {
                 refuse(reply, "closed");
                 return FrameStatus::Closed;
             }
-            /* The empty parameter set on purpose: a real backend refuses it by name until its own
-             *  batch wires the parameters the frame will carry. */
-            const contract::KernelAccess::NoMiscParameters none{};
-            const auto answer = access_->initialize(none);
-            const FrameStatus status = reflect_init_status(answer.status, reply);
-            phase_ = answer.ok() ? SessionPhase::Ready : SessionPhase::Failed;
+            FrameStatus status = FrameStatus::Failed;
+            bool initialized = false;
+            if (backend_id_ == 43284U) {
+                ghostlock::backend::cve_2026_43284::AccessParams params{};
+                if (params_43284(request, params)) {
+                    const auto answer = access_->initialize(params);
+                    status = reflect_init_status(answer.status, reply);
+                    initialized = answer.ok();
+                } else {
+                    refuse(reply, "bad-parameters");
+                }
+            } else {
+                const contract::KernelAccess::NoMiscParameters none{};
+                const auto answer = access_->initialize(none);
+                status = reflect_init_status(answer.status, reply);
+                initialized = answer.ok();
+            }
+            phase_ = initialized ? SessionPhase::Ready : SessionPhase::Failed;
             if (phase_ == SessionPhase::Ready) {
                 static_cast<void>(reply.put_u64(FrameKey::Phase,
                                                static_cast<std::uint64_t>(phase_)));

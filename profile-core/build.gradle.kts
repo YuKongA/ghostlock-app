@@ -71,15 +71,15 @@ tasks.register<JavaExec>("exportProfiles") {
         check(lkmLabel in labels) {
             "unknown KMI label '" + lkmLabel + "'; the manifest declares: " + labels.joinToString(", ")
         }
-        val script = rootProject.file("tools/lkm/ghostlock/root_cmd.sh")
-        check(script.isFile) { "missing finishing script: " + script }
         val module = rootProject.file("build/app/lkm/" + lkmLabel + "/ghostlock.ko")
         check(module.isFile) {
             "missing module for label " + lkmLabel + ": " + module +
                 " (run ./gradlew buildLkmImages)"
         }
-        inputs.file(script)
         inputs.file(module)
-        args(script.absolutePath, module.absolutePath)
+        /* The finishing script is generated at run time (v8), so the profile
+         * carries only the module; the empty script slot keeps the argument
+         * positions stable for ProfileExporter. */
+        args("", module.absolutePath)
     }
 }

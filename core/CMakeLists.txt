@@ -179,6 +179,9 @@ if(GL_JNI)
     src/boundary/protocol/session_object.cpp
     src/boundary/jni/session_api.cpp
     src/boundary/jni/native_finish.cpp
+    src/boundary/jni/native_memfd.cpp
+    src/boundary/jni/native_raw_esp.cpp
+    src/boundary/jni/native_payload_probe.cpp
     src/boundary/protocol/ops_43499.cpp
     src/boundary/protocol/ops_43284.cpp
     src/device/43284/ops.cpp

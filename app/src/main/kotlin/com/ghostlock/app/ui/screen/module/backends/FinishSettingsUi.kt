@@ -72,7 +72,8 @@ fun FinishSettingsPage(miuix: Boolean, bottomInnerPadding: Dp, onBack: () -> Uni
                         summary = stringResource(R.string.finish_restore_selinux_summary),
                         checked = state.restoreSelinux,
                         onCheckedChange = {
-                            FinishConfig.update(context, state.copy(restoreSelinux = it))
+                            val next = state.copy(restoreSelinux = it)
+                            FinishConfig.update(context, next)
                         },
                         startAction = { Icon(Icons.Filled.Security, null, tint = MiuixTheme.colorScheme.onBackground) },
                     )
@@ -81,7 +82,8 @@ fun FinishSettingsPage(miuix: Boolean, bottomInnerPadding: Dp, onBack: () -> Uni
                         summary = stringResource(R.string.finish_soft_reboot_summary),
                         checked = state.softRebootAfterFinish,
                         onCheckedChange = {
-                            FinishConfig.update(context, state.copy(softRebootAfterFinish = it))
+                            val next = state.copy(softRebootAfterFinish = it)
+                            FinishConfig.update(context, next)
                         },
                         startAction = { Icon(Icons.Filled.RestartAlt, null, tint = MiuixTheme.colorScheme.onBackground) },
                     )
@@ -123,7 +125,8 @@ fun FinishSettingsPage(miuix: Boolean, bottomInnerPadding: Dp, onBack: () -> Uni
                                 summary = stringResource(R.string.finish_restore_selinux_summary),
                                 checked = state.restoreSelinux,
                                 onCheckedChange = {
-                                    FinishConfig.update(context, state.copy(restoreSelinux = it))
+                                    val next = state.copy(restoreSelinux = it)
+                                    FinishConfig.update(context, next)
                                 },
                             )
                         }
@@ -134,7 +137,8 @@ fun FinishSettingsPage(miuix: Boolean, bottomInnerPadding: Dp, onBack: () -> Uni
                                 summary = stringResource(R.string.finish_soft_reboot_summary),
                                 checked = state.softRebootAfterFinish,
                                 onCheckedChange = {
-                                    FinishConfig.update(context, state.copy(softRebootAfterFinish = it))
+                                    val next = state.copy(softRebootAfterFinish = it)
+                                    FinishConfig.update(context, next)
                                 },
                             )
                         }

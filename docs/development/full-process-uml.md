@@ -601,3 +601,62 @@ classDiagram
 - **沿革（2026-10-14 · J1-J7）**：旧形状为四个 extern + GLKJ v1 帧；Round 13 已明确取代，历史实现仍在树中，删除归后续独立批次。
 - **沿革（2026-10-14 · typed JNI / D1）**：4.5 改为每 backend 一个 JNI 库与具名函数；`attack_contract_fields.def` 单表投影 C++ 读取器、Kotlin DTO、TSV manifest，宿主逐字段哨兵与字段交换负例锁定顺序。D1 不宣称真实 landing 已接线。
 - **历史**：旧实现 UML = [old-full-process-uml.md](old-full-process-uml.md)（归档头含理由与恢复来源；登记见 `docs/archive/INDEX-plans.md` §七）。
+
+## 7. Access capability wrapper（2026-10-19）
+
+```mermaid
+sequenceDiagram
+  participant UI as RunCoordinator
+  participant E as PageCacheEngine
+  participant F as JniCapabilitySessionFactory
+  participant S as JniCapabilitySession
+  participant O as JniPageCacheOps
+  participant N as JNI session
+
+  UI->>E: run(context)
+  E->>F: open(cve_2026_43284, target)
+  F-->>E: AccessSession
+  E->>S: initialize()
+  S->>N: Initialize
+  S->>O: up()
+  O->>N: Snapshot / ResolveTarget
+  O-->>S: token + width
+  S-->>E: capabilities.pageCache
+  E-->>UI: capability ready / unavailable
+  E->>E: page-cache chain (control plane)
+  E->>S: shutdown()
+```
+
+要点：描述符只从 native Snapshot 的 flags/width/generation 发布；没有 page-cache 标志时能力为 null；数据面 `PageCacheOps` 走 JNI 的
+`ReadBlock`/`WriteBlock`，控制面（hook/trigger/wait/LKM）仍留在 backend 链中。日志经 `EngineLog`：info 无参数，warn/error 一个 reason，
+debug/verbose 参数以 `\t` 分隔。
+## 8. Kotlin 直写 / DFRoot 路径（2026-10-19）
+
+```mermaid
+sequenceDiagram
+  participant K as KotlinElfPlanner
+  participant W as RawEspWriter
+  participant J as NativeRawEsp
+  participant L as libc++.so page cache
+  participant M as module / UMH
+  participant I as init (tid 1)
+
+  K->>K: plan(site=0x6eb54, landing=0x9a160)
+  K->>K: DfrootLibcxx 464B + first-inst(0x1C8) + jumpback(0x1CC)
+  W->>J: open(spi, encap, sender)
+  W->>J: writeImage(landing, 464B)
+  J->>L: vmsplice + splice + UDP
+  W->>J: writeBlock(site block 0x6eb50)
+  J->>L: branch b landing+0x90
+  W->>J: trigger orphan
+  I-->>L: hit sentry
+  L-->>I: DFRoot payload (clone/setcon/insmod)
+  I->>M: insmod carrier
+  M-->>M: /dev/df + UMH
+  W->>J: restore site block
+  W->>J: restore 464B stage
+  W->>J: close(handle)
+```
+
+要点：Kotlin 负责 plan、IV/分块、first-inst/jumpback、恢复顺序；JNI 只做 syscall；页缓存目标由 Kotlin 直接指定，不经过 `PageCacheLanding`。
+

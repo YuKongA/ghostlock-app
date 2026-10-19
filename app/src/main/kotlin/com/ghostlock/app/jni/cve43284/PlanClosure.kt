@@ -76,6 +76,7 @@ object PlanClosure {
         payloadSize: Long,
         siteOffset: Long,
         width: Long = BLOCK_BYTES,
+        hookTargetSize: Long = carrierSize,
     ): PlanCheck {
         val summary = shape(carrierSize, imageOffset, imageSize, payloadOffset, payloadSize, siteOffset)
         fun refuse(reason: String) = PlanCheck(false, reason, summary)
@@ -90,13 +91,20 @@ object PlanClosure {
             return refuse("plan:carrier-size-invalid:" + carrierSize)
         }
 
+        if (hookTargetSize < 0L) {
+            return refuse("plan:hook-target-size-invalid:" + hookTargetSize)
+        }
+        /* 镜像在 carrier，载荷/站点在 hook target；两者是不同文件时可同偏移。 */
+        val separateTargets = hookTargetSize != carrierSize
+        val payloadLimit = if (separateTargets) hookTargetSize else carrierSize
+
         val imageEnd = endOrNull(imageOffset, imageSize)
         if (imageEnd == null) {
             return refuse(outOfBounds("image", imageOffset, imageSize, carrierSize))
         }
         val payloadEnd = endOrNull(payloadOffset, payloadSize)
         if (payloadEnd == null) {
-            return refuse(outOfBounds("payload", payloadOffset, payloadSize, carrierSize))
+            return refuse(outOfBounds("payload", payloadOffset, payloadSize, payloadLimit))
         }
 
         /* 镜像区从 imageOffset 起整块铺开 ⇒ offset 与 len 都要 width 对齐。
@@ -113,34 +121,43 @@ object PlanClosure {
         if (imageSize > 0L && imageOffset >= carrierSize) {
             return refuse(outOfBounds("image", imageOffset, imageSize, carrierSize))
         }
-        if (payloadSize > 0L && payloadOffset >= carrierSize) {
-            return refuse(outOfBounds("payload", payloadOffset, payloadSize, carrierSize))
+        if (payloadSize > 0L && payloadOffset >= payloadLimit) {
+            return refuse(outOfBounds("payload", payloadOffset, payloadSize, payloadLimit))
         }
 
-        /* 容量：镜像区 / 载荷区的末端就是载体必须提供的跨度（站点块另有整块规则）。 */
-        val need = maxOf(if (imageSize > 0L) imageEnd else 0L, if (payloadSize > 0L) payloadEnd else 0L)
-        if (need > carrierSize) {
-            return refuse("plan:carrier-too-small:need=" + need + ":have=" + carrierSize)
+        /* 容量：镜像区对 carrier，载荷区对 hook target，分别校验。 */
+        if (imageSize > 0L && imageEnd > carrierSize) {
+            return refuse("plan:carrier-too-small:need=" + imageEnd + ":have=" + carrierSize)
+        }
+        if (payloadSize > 0L && payloadEnd > payloadLimit) {
+            return refuse("plan:carrier-too-small:payload:need=" + payloadEnd + ":have=" + payloadLimit)
         }
 
         /* 站点所在块必须整块落在载体里：整块读改写不能只写一半。 */
         val siteStart = siteOffset - Math.floorMod(siteOffset, width)
         val siteEnd = if (siteStart > Long.MAX_VALUE - width) -1L else siteStart + width
-        if (siteStart < 0L || siteEnd < 0L || siteEnd > carrierSize) {
+        if (siteStart < 0L || siteEnd < 0L || siteEnd > payloadLimit) {
             return refuse(
                 "plan:site-block-unwritable:block=0x" + siteStart.toString(16) +
                     ":end=0x" + siteEnd.toString(16) +
-                    ":carrier=0x" + carrierSize.toString(16),
+                    ":carrier=0x" + payloadLimit.toString(16),
             )
         }
 
-        /* 两两不重叠（ref :418-433 的 O(n^2) 走法；顺序固定 image -> payload -> site）。 */
-        val spans = arrayOf(
-            longArrayOf(imageOffset, imageEnd),
-            longArrayOf(payloadOffset, payloadEnd),
-            longArrayOf(siteStart, siteEnd),
-        )
-        val names = arrayOf("image", "payload", "site")
+        /* 两两不重叠（ref :418-433）；镜像与载荷在不同文件时只查载荷/站点。 */
+        val spans = if (separateTargets) {
+            arrayOf(
+                longArrayOf(payloadOffset, payloadEnd),
+                longArrayOf(siteStart, siteEnd),
+            )
+        } else {
+            arrayOf(
+                longArrayOf(imageOffset, imageEnd),
+                longArrayOf(payloadOffset, payloadEnd),
+                longArrayOf(siteStart, siteEnd),
+            )
+        }
+        val names = if (separateTargets) arrayOf("payload", "site") else arrayOf("image", "payload", "site")
         for (i in spans.indices) {
             for (j in i + 1 until spans.size) {
                 val first = spans[i]

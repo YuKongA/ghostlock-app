@@ -281,7 +281,7 @@ private fun FinishMain(
                         if (sortMode) {
                             sortMode = false
                         } else {
-                            val file = FinishParams.save(context, state)
+                            val file = FinishScriptStore.preview(context, state)
                             android.widget.Toast.makeText(context, context.getString(R.string.finish_saved, file.absolutePath), android.widget.Toast.LENGTH_LONG).show()
                         }
                     },
@@ -337,7 +337,7 @@ private fun FinishMain(
                         if (sortMode) {
                             sortMode = false
                         } else {
-                            val file = FinishParams.save(contextM, state)
+                            val file = FinishScriptStore.preview(contextM, state)
                             android.widget.Toast.makeText(contextM, contextM.getString(R.string.finish_saved, file.absolutePath), android.widget.Toast.LENGTH_LONG).show()
                         }
                     },

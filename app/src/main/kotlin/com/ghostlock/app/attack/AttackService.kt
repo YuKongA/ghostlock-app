@@ -9,13 +9,10 @@ import android.os.Bundle
 import android.os.IBinder
 import android.os.Process
 import android.os.ResultReceiver
-import com.ghostlock.app.BuildConfig
 import com.ghostlock.app.R
-import com.ghostlock.app.core.rootchannel.RootChannelClient
-import com.ghostlock.app.log.LogExport
+import com.ghostlock.app.engine.EngineLog
 import com.ghostlock.app.log.LogLevel
 import com.ghostlock.app.log.LogOrigin
-import com.ghostlock.app.log.originLabel
 import com.ghostlock.app.ui.screen.run.RunCoordinator
 
 /**
@@ -31,19 +28,18 @@ class AttackService : Service() {
         const val EXTRA_RECEIVER = "receiver"
         const val CODE_EVENT = 1
         const val CODE_DONE = 2
+        const val CODE_PID = 3
+        const val KEY_PID = "pid"
         const val KEY_ORIGIN = "origin"
         const val KEY_LEVEL = "level"
         const val KEY_LINE = "line"
         const val KEY_EXIT = "exit"
-        const val PID_FILE = "attack.pid"
         private const val CHANNEL_ID = "ghostlock-attack"
         private const val NOTIFICATION_ID = 0x4328
     }
 
     @Volatile
     private var worker: Thread? = null
-
-    private val pidFile: java.io.File get() = java.io.File(filesDir, PID_FILE)
 
 
     override fun onCreate() {
@@ -75,28 +71,20 @@ class AttackService : Service() {
         if (worker?.isAlive == true) return
         @Suppress("DEPRECATION")
         val receiver = intent.getParcelableExtra<ResultReceiver>(EXTRA_RECEIVER)
-        pidFile.writeText(Process.myPid().toString())
+        receiver?.send(CODE_PID, Bundle().apply { putInt(KEY_PID, Process.myPid()) })
         worker = Thread({
-            RootChannelClient.stageServer(applicationContext)
-            val export = LogExport.open(applicationContext, "run")
-            val stamp = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US)
+            com.ghostlock.app.ui.screen.module.backends.FinishExecution.cleanStale(applicationContext)
             fun record(origin: LogOrigin, level: LogLevel, line: String) {
-                export?.append(stamp.format(java.util.Date()) + " " + originLabel(origin, level) + line)
                 emit(receiver, origin, level, line)
             }
-            export?.append("# GhostLock " + BuildConfig.VERSION_NAME + "+" + BuildConfig.VERSION_CODE +
-                " build " + BuildConfig.BUILD_TYPE + " " + java.util.Date())
-            try {
-                runCatching {
-                    RunCoordinator.run(applicationContext) { origin, level, line -> record(origin, level, line) }
-                }.onFailure { error ->
-                    record(LogOrigin.KOTLIN, LogLevel.Error, "attack: " + (error.message ?: "failed"))
-                }
-            } finally {
-                export?.close()
+            val outcome = runCatching {
+                RunCoordinator.run(applicationContext) { origin, level, line -> record(origin, level, line) }
             }
-            pidFile.delete()
-            BootSettings.clearAttempts(this)
+            outcome.onFailure { error ->
+                record(LogOrigin.KOTLIN, LogLevel.Error, EngineLog.error("Attack failed", error.message ?: "failed"))
+            }
+            /* 开机重试计数属流程外状态：成功跑完才清零，panic 时保留。 */
+            if (outcome.isSuccess) BootSettings.clearAttempts(this)
             receiver?.send(CODE_DONE, Bundle.EMPTY)
             stopSelf()
         }, "ghostlock-attack").apply { start() }
@@ -105,13 +93,9 @@ class AttackService : Service() {
     private fun abort(intent: Intent) {
         @Suppress("DEPRECATION")
         val receiver = intent.getParcelableExtra<ResultReceiver>(EXTRA_RECEIVER)
-        val recorded = runCatching { pidFile.readText().trim().toInt() }.getOrNull() ?: -1
-        val target = if (recorded > 0) recorded else Process.myPid()
-        emit(receiver, LogOrigin.KOTLIN, LogLevel.Warn, "attack: abort requested; killing process " + target)
+        val target = Process.myPid()
+        emit(receiver, LogOrigin.KOTLIN, LogLevel.Warn, EngineLog.warn("Attack abort requested", target.toString()))
         PidRegistry.killDescendants(target)
-        if (target != Process.myPid()) {
-            runCatching { android.system.Os.kill(target, android.system.OsConstants.SIGKILL) }
-        }
         worker?.interrupt()
         stopForeground(STOP_FOREGROUND_REMOVE)
         Process.killProcess(Process.myPid())

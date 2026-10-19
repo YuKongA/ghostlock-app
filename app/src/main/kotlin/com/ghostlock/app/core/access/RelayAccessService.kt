@@ -12,10 +12,12 @@ import kotlinx.coroutines.runBlocking
 /**
  * 43284 relay 的内核内存访问窗口。
  *
- * 脚本在 insmod 中继 LKM 后创建 [READY_FILE]；本服务看到文件后打开 /dev/glk，
+ * 脚本 insmod 中继 LKM 后内核创建 [DEVICE]；本服务看到设备节点后打开它，
  * 在 [PORT] 上等待插件连接最多 [ACCEPT_TIMEOUT_MS] 毫秒：
- *  - 有连接：创建 [CONNECTED_FILE]，按帧协议服务，插件关闭后删除文件并结束窗口；
+ *  - 有连接：按帧协议服务，插件关闭后结束窗口；
  *  - 超时/无连接：直接结束窗口，脚本继续收尾。
+ *
+ * 不使用任何 marker 文件；设备节点的出现与消失就是窗口边界。
  *
  * 帧协议（大端）：
  *   请求 = op(1) | addr(8) | len(4) | [payload(len)]
@@ -24,20 +26,19 @@ import kotlinx.coroutines.runBlocking
  *     status: 0 = ok, 1 = failed
  */
 object RelayAccessService {
-    const val READY_FILE = "/data/local/tmp/ghostlock-lkm-ready"
-    const val CONNECTED_FILE = "/data/local/tmp/ghostlock-lkm-connected"
+    const val DEVICE = "/dev/glk"
     const val PORT = 39284
     const val ACCEPT_TIMEOUT_MS = 5000
     private const val READY_WAIT_MS = 10_000L
 
     fun serve(emit: (String) -> Unit = {}) {
-        val ready = File(READY_FILE)
+        val device = File(DEVICE)
         val deadline = System.currentTimeMillis() + READY_WAIT_MS
-        while (!ready.exists() && System.currentTimeMillis() < deadline) {
+        while (!device.exists() && System.currentTimeMillis() < deadline) {
             Thread.sleep(50)
         }
-        if (!ready.exists()) {
-            emit("relay access: ready marker missing; skip")
+        if (!device.exists()) {
+            emit("relay access: device missing; skip")
             return
         }
         runBlocking {
@@ -61,12 +62,10 @@ object RelayAccessService {
                     session.shutdown()
                     return@runBlocking
                 }
-                File(CONNECTED_FILE).writeText("1")
                 emit("relay access: connector accepted")
                 try {
                     serveClient(client, session, emit)
                 } finally {
-                    File(CONNECTED_FILE).delete()
                     emit("relay access: connector closed")
                     session.shutdown()
                 }

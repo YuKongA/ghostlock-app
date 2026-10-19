@@ -67,6 +67,17 @@ class Assembled43284(
 
     /** 读一块（十六字节）。读不到返回 null（具名原因在 lastRefusal）。 */
     fun readBlock(ticket: Long, offset: Long): ByteArray? {
+        val target = com.ghostlock.app.core.access.PageCacheTarget("assembled", "", true)
+        val access = AssembledPageCacheAccess(this, target, init = null)
+        return kotlinx.coroutines.runBlocking {
+            when (val answer = access.read(target, offset, BLOCK)) {
+                is com.ghostlock.app.core.AccessResult.Success -> answer.value
+                is com.ghostlock.app.core.AccessResult.Failure -> null
+            }
+        }
+    }
+
+    internal fun readBlockNative(ticket: Long, offset: Long): ByteArray? {
         val refusal = refusalSlot()
         val out = ByteArray(BLOCK)
         val code = Native43284.readBlock(handle, ticket, offset, out, refusal)
@@ -76,6 +87,17 @@ class Assembled43284(
 
     /** 写一块（十六字节）。成功只到 Dispatched —— 内容是否真的落上由 readBlock 比较判定。 */
     fun writeBlock(ticket: Long, offset: Long, block: ByteArray): Int {
+        val target = com.ghostlock.app.core.access.PageCacheTarget("assembled", "", true)
+        val access = AssembledPageCacheAccess(this, target, init = null)
+        return kotlinx.coroutines.runBlocking {
+            when (access.write(target, offset, block)) {
+                is com.ghostlock.app.core.AccessResult.Success -> 0
+                is com.ghostlock.app.core.AccessResult.Failure -> lastCode
+            }
+        }
+    }
+
+    internal fun writeBlockNative(ticket: Long, offset: Long, block: ByteArray): Int {
         require(block.size == BLOCK) { "一块就是十六字节" }
         val refusal = refusalSlot()
         return record(
@@ -178,7 +200,8 @@ class Assembled43284(
         attrExecPath: String = "/proc/self/attr/exec",
         displaced: Int? = null,
     ): Int {
-        if (blob.size < 0x1D4) {
+        /* 0x1D0/0x1D4 各写 4 字节，最后一个字节索引是 0x1D7。 */
+        if (blob.size < 0x1D8) {
             return -1
         }
         fun put(offset: Int, capacity: Int, value: String): Boolean {
@@ -525,6 +548,24 @@ class Assembled43284(
         init: Native43284.SessionParams43284,
         outcome: LongArray? = null,
     ): Boolean {
+        val target = com.ghostlock.app.core.access.PageCacheTarget("assembled", "", true)
+        val access = AssembledPageCacheAccess(this, target, init, outcome)
+        val result = kotlinx.coroutines.runBlocking {
+            access.writeImage(target, image, offset, width.toInt())
+        }
+        return result is com.ghostlock.app.core.AccessResult.Success
+    }
+
+    /** 当前序列号；镜像写入回执用它交给下一个窗口。 */
+    fun sequenceNow(): Long = sequence?.value ?: 0L
+
+    internal fun writeImageNative(
+        image: ByteArray,
+        offset: Long,
+        width: Long,
+        init: Native43284.SessionParams43284,
+        outcome: LongArray? = null,
+    ): Boolean {
         if (accessId == 0L) {
             lastCode = -1
             lastRefusal = "write:no-handle"
@@ -681,6 +722,7 @@ class Assembled43284(
         fun fullAccessParams(
             carrierPath: String,
             markerDir: String = "/data/local/tmp",
+            hookTargetPath: String = HOOK_TARGET,
         ): com.ghostlock.app.core.generated.AccessParams43284 =
             com.ghostlock.app.core.generated.AccessParams43284(
                 accessCarrierPath = carrierPath.toByteArray(),
@@ -689,7 +731,7 @@ class Assembled43284(
                 accessCarrierBase = 0L,
                 accessOffset = 0L,
                 accessOffsetSet = true,
-                accessHookImagePath = HOOK_TARGET.toByteArray(),
+                accessHookImagePath = hookTargetPath.toByteArray(),
                 accessKernelRelease = (System.getProperty("os.version") ?: "").toByteArray(),
                 accessKernelPreempt = false,
                 accessKernelModversions = false,

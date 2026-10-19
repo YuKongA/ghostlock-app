@@ -1,5 +1,6 @@
 package com.ghostlock.app.core.access
 
+import com.ghostlock.app.core.AccessFailure
 import com.ghostlock.app.core.AccessResult
 
 /**
@@ -67,6 +68,14 @@ data class WriteReceipt(
     val generation: UInt,
 )
 
+/** 镜像写入回执：块写入之外还带回 sequence，供同一 SA 的后续窗口接续。 */
+data class ImageWriteReceipt(
+    val bytes: Int,
+    val effect: EffectState,
+    val generation: UInt,
+    val sequence: Long = 0L,
+)
+
 /** 所有能力视图的公共面：只读描述符，不拥有生命周期。 */
 interface AccessCapability {
     val descriptor: CapabilityDescriptor
@@ -85,6 +94,36 @@ interface PageCacheAccess : AccessCapability {
     suspend fun targets(): AccessResult<List<PageCacheTarget>>
     suspend fun read(target: PageCacheTarget, offset: Long, bytes: Int): AccessResult<ByteArray>
     suspend fun write(target: PageCacheTarget, offset: Long, bytes: ByteArray): AccessResult<WriteReceipt>
+
+    /**
+     * 镜像写入：按块宽切分后逐块 [write]。
+     *
+     * 这是业务数据面（模块/载荷镜像）的唯一入口；具体 backend 可以覆盖成一次 native
+     * 镜像写入，但调用方只认这个契约。
+     */
+    suspend fun writeImage(
+        target: PageCacheTarget,
+        image: ByteArray,
+        offset: Long,
+        width: Int = 16,
+    ): AccessResult<ImageWriteReceipt> {
+        if (width <= 0 || image.isEmpty() || image.size % width != 0) {
+            return AccessResult.Failure(AccessFailure.INVALID_REQUEST, "image width or size is invalid")
+        }
+        var written = 0
+        var lastGeneration = descriptor.generation
+        var at = 0
+        while (at < image.size) {
+            val block = image.copyOfRange(at, at + width)
+            val receipt = write(target, offset + at, block)
+            if (receipt is AccessResult.Failure) return receipt
+            val ok = receipt as AccessResult.Success
+            written += ok.value.bytes
+            lastGeneration = ok.value.generation
+            at += width
+        }
+        return AccessResult.Success(ImageWriteReceipt(written, EffectState.CONFIRMED, lastGeneration))
+    }
 }
 
 /** 能力集合：没有的能力为 null，而不是抛异常。 */

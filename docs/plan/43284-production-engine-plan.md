@@ -1,5 +1,7 @@
 # 43284 生产级引擎接入计划（修订版，2026-10-18）
 
+> 子计划：[payload-finish-chain-plan.md](payload-finish-chain-plan.md)（P3/P4/P5 的载荷/收尾单向链、零落盘、marker 去除与 KernelSU 接线）。零落盘约束见 [payload-finish-chain-design.md](../analysis/payload-finish-chain-design.md) v2，与 P4 的通道形态冲突时以子计划为准。
+
 ## 0. 目标与决策
 
 **目标**：把 CVE-2026-43284 从临时探针（`TypedBackendProbe` + `tempui`）迁入正式 `ExecutionEngine`，让执行页、开机自动攻击、收尾都走同一套生产路径。
@@ -83,7 +85,7 @@ C++：api_43284（已有）、api_43499（已有）、session_api（已有）
 ### P4 收尾与 RootChannel
 
 - `FinishExecution` 已实现 RootChannel 优先、su 回退；补 root helper 服务端契约：
-  - socket 路径 `filesDir/root-channel.sock`；
+  - socket 用 abstract namespace（不落文件系统）；root helper 由 memfd 执行；
   - 帧协议（GLR1）；
   - peer uid 校验；
   - root helper 由攻击链 root 执行体拉起（LKM umh / root_child）。

@@ -57,7 +57,7 @@
 #include <linux/version.h>
 #include <linux/wait.h>
 
-#define GHOSTLOCK_CMD_MAX 512
+#define GLK_SCRIPT_MAX 256
 
 /* Mirror of core/src/contract/abi/glk_contract_abi.h (the native side is the
  * source of truth; the out-of-tree module cannot include the userspace tree).
@@ -93,28 +93,41 @@ struct glk_lkm_req {
     u32 status;
 };
 
-/* Default command: the chain prepends no insmod argv (the libcxx hook has six
- * value slots and none carries extra arguments), so the module must know what to
- * run by itself. The path is written by the host tooling before the run; it is
- * still overridable with the cmd= module parameter for manual tests. */
-static char *cmd = "/data/local/tmp/.ghostlock_lkm_cmd.sh";
-module_param(cmd, charp, 0400);
-MODULE_PARM_DESC(cmd, "Command string passed to /system/bin/sh -c");
+/* One data block carries the whole run-time contract. The app locates the magic
+ * in the `.ko` image it already writes into the page cache and fills the path;
+ * nothing is passed on the insmod command line (the libcxx hook has no argv
+ * slot), so this block is the only channel.
+ *
+ * Layout is part of the Kotlin contract (LkmImagePatch.KNOB_SIZE == 284):
+ *   magic[8] | size | permissive | defex | restore_enforce | path_len | path[256]
+ */
+struct glk_knob {
+    char magic[8];
+    u32 size;
+    u32 permissive;
+    u32 defex;
+    u32 restore_enforce;
+    u32 path_len;
+    char script_path[GLK_SCRIPT_MAX];
+};
 
-static int permissive = 1;
-module_param(permissive, int, 0400);
-MODULE_PARM_DESC(permissive, "Set SELinux permissive before running the command");
+static struct glk_knob knob = {
+    { 'G', 'L', 'K', 'K', 'N', 'O', 'B', '1' },
+    sizeof(struct glk_knob), 1, 0, 0, 9, "/dev/null"
+};
 
-static int defex = 0;
-module_param(defex, int, 0400);
+module_param_string(cmd, knob.script_path, sizeof(knob.script_path), 0400);
+MODULE_PARM_DESC(cmd, "Script path passed to /system/bin/sh");
+
+module_param_named(permissive, knob.permissive, uint, 0400);
+MODULE_PARM_DESC(permissive, "Set SELinux permissive before running the script");
+
+module_param_named(defex, knob.defex, uint, 0400);
 MODULE_PARM_DESC(defex, "Hook Samsung Defex entry points when present");
 
-/* Finish like the 43499 root script: once the command (KernelSU late-load) has
- * completed, put SELinux back to enforcing. Only acts when this module was the
- * one that turned it permissive, so permissive=0 stays a pure no-op. */
-static int restore_enforce = 1;
-module_param(restore_enforce, int, 0400);
-MODULE_PARM_DESC(restore_enforce, "Restore SELinux enforcing after the command");
+/* The chain writes 0 here: SELinux restore is the script's last section. */
+module_param_named(restore_enforce, knob.restore_enforce, uint, 0400);
+MODULE_PARM_DESC(restore_enforce, "Restore SELinux enforcing after the script");
 
 /* Delta batch: expose the versioned /dev/glk channel and keep the module
  * resident until UNLOAD. Default 1 because the insmod shellcode cannot append
@@ -335,7 +348,7 @@ static int __init ghostlock_init(void)
 {
     static const char sh[] = "/system/bin/sh";
     static char *envp[] = { "PATH=/system/bin", NULL };
-    static char *argv[] = { (char *)sh, "-c", NULL, NULL };
+    static char *argv[] = { (char *)sh, NULL, NULL };
     struct kprobe kln_kp;
     kallsyms_lookup_name_t get_addr;
     umh_setup_t umh_setup;
@@ -346,11 +359,13 @@ static int __init ghostlock_init(void)
     bool resident_ok = false;
     int ret;
 
-    if (cmd == NULL || *cmd == '\0' || strlen(cmd) >= GHOSTLOCK_CMD_MAX) {
-        pr_err("ghostlock: invalid cmd parameter\n");
+    if (knob.path_len >= sizeof(knob.script_path) ||
+        knob.script_path[knob.path_len] != '\0' ||
+        knob.script_path[0] != '/') {
+        pr_err("ghostlock: invalid script path (len=%u)\n", knob.path_len);
         return -EINVAL;
     }
-    argv[2] = cmd;
+    argv[1] = knob.script_path;
 
     /* 0. Register the resident channel BEFORE the UMH runs. Android's ueventd
      * creates /dev nodes from its own rules and ignores miscdevice.mode, so the
@@ -386,10 +401,10 @@ static int __init ghostlock_init(void)
     /* 2. SELinux permissive (opt out with permissive=0). The first byte of
      * selinux_state is the "enforcing" flag; we keep the pointer so the finish
      * step can put the flag back. */
-    if (permissive || restore_enforce) {
+    if (knob.permissive || knob.restore_enforce) {
         selinux_state = (bool *)get_addr("selinux_state");
     }
-    if (permissive) {
+    if (knob.permissive) {
         if (selinux_state == NULL) {
             pr_err("ghostlock: selinux_state not found; refusing to continue\n");
             return -EINVAL;
@@ -402,7 +417,7 @@ static int __init ghostlock_init(void)
     }
 
     /* 3. optional Samsung Defex bypass (best effort; absence is not fatal). */
-    if (defex) {
+    if (knob.defex) {
         struct kprobe kp;
         memset(&kp, 0, sizeof(kp));
         kp.addr = (kprobe_opcode_t *)get_addr("task_defex_enforce");
@@ -428,11 +443,11 @@ static int __init ghostlock_init(void)
     /* Defeat CONFIG_STATIC_USERMODEHELPER_PATH="" (which would blank the path). */
     info->path = sh;
     ret = umh_exec(info, UMH_WAIT_PROC);
-    pr_info("ghostlock: umh exec returned %d for cmd=%s\n", ret, cmd);
+    pr_info("ghostlock: umh exec returned %d for path=%s\n", ret, knob.script_path);
 
     /* Finish (43499-style): the command has returned, so KernelSU either loaded
      * or failed; put SELinux back to enforcing when this module relaxed it. */
-    if (selinux_touched && restore_enforce) {
+    if (selinux_touched && knob.restore_enforce) {
         WRITE_ONCE(*selinux_state, true);
         pr_info("ghostlock: selinux_state restored to enforcing\n");
     } else if (selinux_touched) {

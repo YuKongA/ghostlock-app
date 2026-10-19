@@ -1,56 +1,100 @@
 package com.ghostlock.app.ui.screen.run
 
 import android.content.Context
+import com.ghostlock.app.engine.EngineLog
+import com.ghostlock.app.engine.PageCacheEngine
+import com.ghostlock.app.log.LogFile
 import com.ghostlock.app.log.LogLevel
 import com.ghostlock.app.log.LogOrigin
-import com.ghostlock.app.log.LogFile
 import com.ghostlock.app.log.NativeLogTailer
-import com.ghostlock.app.tempui.TypedBackendProbe
 import com.ghostlock.app.ui.screen.module.backends.BackendSelection
 import com.ghostlock.app.ui.screen.module.backends.Backends
+import com.ghostlock.app.ui.screen.module.backends.EffectState
+import com.ghostlock.app.ui.screen.module.backends.FinishConfig
 import com.ghostlock.app.ui.screen.module.backends.FinishExecution
+import com.ghostlock.app.ui.screen.module.backends.PayloadEffects
 
 /**
  * 「执行」页的正式编排入口。
  *
- * 当前接线：43284 走 [TypedBackendProbe.run]（原 tempui 的完整链），
- * 随后若有收尾脚本则交给 [FinishExecution] 执行；其他 backend 暂只报未接线。
+ * 收尾在攻击之前准备（脚本文件 + 日志 memfd + knobs 补丁），攻击使用同一份补丁
+ * 镜像；攻击结束后停止 drainer、删除脚本，日志保留。
+ *
  * 调用方必须在 IO 线程运行本函数。
  */
 object RunCoordinator {
     fun run(context: Context, onEvent: (LogOrigin, LogLevel, String) -> Unit) {
-        fun emit(line: String) = onEvent(LogOrigin.KOTLIN, LogLevel.Info, line)
-        fun emitVerbose(line: String) = onEvent(LogOrigin.KOTLIN, LogLevel.Verbose, line)
-        fun emitShell(level: LogLevel, line: String) = onEvent(LogOrigin.SHELL, level, line)
+        fun info(message: String) = onEvent(LogOrigin.KOTLIN, LogLevel.Info, EngineLog.info(message))
+        fun warn(message: String, reason: String) = onEvent(LogOrigin.KOTLIN, LogLevel.Warn, EngineLog.warn(message, reason))
+        fun error(message: String, reason: String) = onEvent(LogOrigin.KOTLIN, LogLevel.Error, EngineLog.error(message, reason))
+        fun debug(message: String, vararg params: String) = onEvent(LogOrigin.KOTLIN, LogLevel.Debug, EngineLog.debug(message, *params))
+        fun verbose(message: String, vararg params: String) = onEvent(LogOrigin.KOTLIN, LogLevel.Verbose, EngineLog.verbose(message, *params))
+
         val backend = Backends.all.getOrNull(BackendSelection.index)
         val cve = backend?.cve ?: "none"
-        emitVerbose("[run] start backend=" + cve)
+        debug("Run backend selected", cve)
+
+        /* 收尾失败即中止：不带着未就绪的脚本触发攻击。 */
+        val finish = try {
+            FinishExecution.prepare(context)
+        } catch (failure: FinishExecution.PrepException) {
+            error("Finish preparation failed", failure.reason)
+            return
+        }
+        verbose("Finish script", finish?.script?.absolutePath ?: "none")
+
         val tailer = NativeLogTailer.start(LogFile.path) { level, line ->
             onEvent(LogOrigin.NATIVE, level, line)
         }
         try {
             if (cve == "CVE-2026-43284") {
-                runCatching { TypedBackendProbe.run(context) { level, line -> onEvent(LogOrigin.KOTLIN, level, line) } }
-                    .onFailure { emit("[run] failed: " + (it.message ?: "unknown")) }
+                runCatching {
+                    PageCacheEngine.run(
+                        context,
+                        { level, line -> onEvent(LogOrigin.KOTLIN, level, line) },
+                        finish?.patcher,
+                    )
+                }.onFailure { error("Run failed", it.message ?: "unknown") }
             } else {
-                emit("[run] orchestration not wired for " + cve)
+                error("Path is not wired", cve)
             }
         } finally {
             tailer.stop()
-        }
-        if (false) {
-            emit("[run] orchestration not wired for " + cve)
-        }
-        val script = FinishExecution.pendingScript(context)
-        if (script.isFile) {
-            emitVerbose("[finish] start " + script.absolutePath + " bytes=" + script.length())
-            /* 收尾脚本内容也进日志：只读文本，逐行以 verbose 输出（导出文件始终保留）。 */
-            runCatching { script.readLines() }.getOrDefault(emptyList()).forEach { line ->
-                emitVerbose("[finish] script| " + line)
+            finish?.let { session ->
+                when (runCatching { FinishExecution.awaitCompletion(5_000L) }.getOrNull()) {
+                    true -> debug("Finish completion", "module-gone")
+                    false -> warn("Finish completion unknown", "module-view")
+                    null -> warn("Finish completion unavailable", "proc-unreadable")
+                }
+                runCatching { session.finish() }
+                    .onFailure { warn("Finish cleanup failed", it.message ?: "failed") }
+                session.logError?.let { reason -> error("Finish log degraded", reason) }
+                verbose("Finish log", session.logFile.absolutePath)
             }
-            FinishExecution.run(context, ::emitShell)
-        } else {
-            emit("[finish] no pending script")
+        }
+
+        /* 效果探针只读内核视图与既有文件；没有观测到就记 unknown。 */
+        val effects = runCatching { PayloadEffects.evaluate(FinishConfig.state) }
+            .getOrDefault(emptyList())
+        effects.forEach { report ->
+            when (report.state) {
+                EffectState.Verified -> debug("Effect verified", report.item, report.detail)
+                EffectState.Unknown -> warn("Effect unknown", report.item)
+                EffectState.Failed -> error("Effect failed", report.item)
+            }
+        }
+        if (effects.isNotEmpty()) {
+            when (PayloadEffects.overall(effects)) {
+                EffectState.Verified -> info("Attack effects verified")
+                EffectState.Unknown -> warn(
+                    "Attack effects unknown",
+                    effects.count { it.state == EffectState.Unknown }.toString(),
+                )
+                EffectState.Failed -> error(
+                    "Attack effects failed",
+                    effects.first { it.state == EffectState.Failed }.item,
+                )
+            }
         }
     }
 }

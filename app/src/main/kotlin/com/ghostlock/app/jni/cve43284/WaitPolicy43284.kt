@@ -1,12 +1,13 @@
 package com.ghostlock.app.jni.cve43284
 
 /**
- * wait 的统一口径与双判据（Kotlin 侧唯一的权威）。
+ * wait 的统一口径。
  *
- * 参照 ghostlock-app-ref@5f184760：
- *  - cve_2026_43284_state.hpp:29-31：15000 / 40 / 5；
- *  - real_ops.cpp:400-420：**单循环**跑满预算，**先判失败**再判成功，主标记与备用标记**同一轮**都判，
- *    并把"模块存在"当作成功判据；/dev/df 只表示钩子起过火，不是终态。
+ * 不再使用固定 marker；成功只认实际效果：
+ *  - /system/bin/su 或 /system/xbin/su 存在
+ *  - /sys/module/kernelsu 或 /sys/module/dirtyfrag 存在
+ *
+ * 失败由上层退出码决定；本类不写、不读任何自定义 marker。
  */
 object WaitPolicy43284 {
     const val TIMEOUT_MS: Long = 15_000L
@@ -18,12 +19,11 @@ object WaitPolicy43284 {
     const val TERMINAL_SUCCESS: Long = 1L
     const val TERMINAL_INFLIGHT: Long = 2L
 
-    const val SUCCESS_MARKER: String = "/data/local/tmp/.ghostlock_lkm_ok"
-    const val SUCCESS_MARKER_ALT: String = "/dev/dfm0"
-    const val FAILURE_MARKER: String = "/data/local/tmp/.ghostlock_lkm_fail"
-    const val FAILURE_MARKER_ALT: String = "/dev/dfm1"
-    const val IN_FLIGHT_MARKER: String = "/dev/df"
-    const val MODULE_PATH: String = "/sys/module/dirtyfrag"
+    /** 实际效果，不是 marker。 */
+    const val SUCCESS_PATH: String = "/system/bin/su"
+    const val SUCCESS_PATH_ALT: String = "/system/xbin/su"
+    const val MODULE_PATH: String = "/sys/module/kernelsu"
+    const val MODULE_PATH_ALT: String = "/sys/module/dirtyfrag"
     const val MODULE_NAME: String = "kernelsu"
 
     fun interface TerminalProbe {
@@ -37,15 +37,6 @@ object WaitPolicy43284 {
         else -> "unknown(" + state + ")"
     }
 
-    /**
-     * 单循环终态等待，判据顺序照 ref real_ops.cpp:400-420。
-     *
-     * @param probe 调用缝
-     * @param log 逐行日志
-     * @param exists 存在性判据（模块目录用；单测注入假实现）
-     * @param maxTicks 最多轮数（默认按 15000 / (40×2) 折算；单测可给小值）
-     * @return 终态
-     */
     fun await(
         probe: TerminalProbe,
         log: (String) -> Unit = {},
@@ -55,28 +46,15 @@ object WaitPolicy43284 {
         var ticks = 0
         while (ticks < maxTicks) {
             ticks += 1
-            val primary = probe.await(POLL_MS, POLL_MS, SUCCESS_MARKER, FAILURE_MARKER)
-            if (primary == TERMINAL_FAILURE) {
-                log("wait: failure (primary) tick=" + ticks + " marker=" + FAILURE_MARKER)
-                return TERMINAL_FAILURE
-            }
-            val alternate = probe.await(POLL_MS, POLL_MS, SUCCESS_MARKER_ALT, FAILURE_MARKER_ALT)
-            if (alternate == TERMINAL_FAILURE) {
-                log("wait: failure (alternate) tick=" + ticks + " marker=" + FAILURE_MARKER_ALT)
-                return TERMINAL_FAILURE
-            }
-            if (primary == TERMINAL_SUCCESS) {
-                log("wait: success (primary) tick=" + ticks + " marker=" + SUCCESS_MARKER)
+            if (exists(SUCCESS_PATH) || exists(SUCCESS_PATH_ALT)) {
+                log("wait: success (su) tick=" + ticks)
                 return TERMINAL_SUCCESS
             }
-            if (alternate == TERMINAL_SUCCESS) {
-                log("wait: success (alternate) tick=" + ticks + " marker=" + SUCCESS_MARKER_ALT)
+            if (exists(MODULE_PATH) || exists(MODULE_PATH_ALT)) {
+                log("wait: success (module) tick=" + ticks)
                 return TERMINAL_SUCCESS
             }
-            if (exists(MODULE_PATH)) {
-                log("wait: success (module present) tick=" + ticks + " path=" + MODULE_PATH)
-                return TERMINAL_SUCCESS
-            }
+            probe.await(POLL_MS, POLL_MS, "", "")
         }
         log("wait: inflight after " + ticks + " ticks")
         return TERMINAL_INFLIGHT

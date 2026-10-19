@@ -57,7 +57,7 @@ class PayloadCarriageTest {
         val script = HandoffPayload.of(
             "root_child_script",
             "script",
-            File(repoRoot(), "tools/lkm/ghostlock/root_cmd.sh").readBytes(),
+            FIXTURE_SCRIPT.toByteArray(),
         )
         val module = HandoffPayload.of("root_child_module", "module", moduleBytes())
         val forwarded = HandoffPayload.of(

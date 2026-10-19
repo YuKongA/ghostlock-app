@@ -18,7 +18,12 @@ class FolkPatchKoTest {
     }
 
     @Test
-    fun rejectsNonGkiRelease() {
+    fun fallsBackForKernelWithoutAndroidToken() {
+        assertEquals("android12-5.10", FolkPatchKo.parseKmi("5.10.252-gki-gabcbe4b2bc10"))
+    }
+
+    @Test
+    fun rejectsUnknownKernel() {
         assertNull(FolkPatchKo.parseKmi("4.19.157-perf-g1234567"))
     }
 }

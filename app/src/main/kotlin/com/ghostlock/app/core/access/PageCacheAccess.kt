@@ -16,6 +16,9 @@ interface PageCacheOps {
     fun readBlock(target: PageCacheTarget, offset: Long, out: ByteArray): Boolean
     fun writeBlock(target: PageCacheTarget, offset: Long, block: ByteArray): Boolean
     fun tearDown(): Boolean
+
+    /** 最近一次拒绝的人类可读原因；能力实现可覆盖，默认空。 */
+    fun lastReason(): String = ""
 }
 
 /**
@@ -111,7 +114,10 @@ class PageCacheKernelAccess(
 
     override suspend fun initialize(): AccessResult<InitializationReceipt> = gate.withLock {
         if (!ops.up()) {
-            return@withLock AccessResult.Failure(AccessFailure.NOT_READY, "page-cache landing is not up")
+            return@withLock AccessResult.Failure(
+                AccessFailure.NOT_READY,
+                ops.lastReason().ifBlank { "page-cache landing is not up" },
+            )
         }
         ready = true
         generation += 1u

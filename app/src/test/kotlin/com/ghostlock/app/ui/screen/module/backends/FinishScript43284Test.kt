@@ -14,11 +14,12 @@ class FinishScript43284Test {
             stagedScript = null,
             stagedLkm = "/data/user/0/com.ghostlock.app/files/finish/custom.ko",
         )
-        assertTrue(script.contains("ACCESS_READY=/data/local/tmp/ghostlock-lkm-ready"))
-        assertTrue(script.contains("ACCESS_CONNECTED=/data/local/tmp/ghostlock-lkm-connected"))
+        assertTrue(script.contains("ACCESS_DEV=/dev/glk"))
         assertTrue(script.contains("sleep 0.1"))
         assertTrue(script.contains("kernel access timeout"))
         assertTrue(script.contains("wait for close"))
+        assertFalse(script.contains("ghostlock-lkm-ready"))
+        assertFalse(script.contains("ghostlock-lkm-connected"))
     }
 
     @Test
@@ -29,7 +30,7 @@ class FinishScript43284Test {
             stagedScript = null,
             stagedLkm = "/data/user/0/com.ghostlock.app/files/finish/custom.ko",
         )
-        assertFalse(script.contains("ghostlock-lkm-ready"))
+        assertFalse(script.contains("ACCESS_DEV=/dev/glk"))
         assertTrue(script.contains("insmod"))
     }
 

@@ -19,6 +19,10 @@ import com.ghostlock.app.log.LogOrigin
 object AttackClient {
     private var active: ResultReceiver? = null
 
+    /** `:attack` 进程的 pid；由服务启动时通过 [AttackService.CODE_PID] 送回，只驻内存。 */
+    @Volatile
+    private var activePid: Int = 0
+
     fun start(
         context: Context,
         onEvent: (LogOrigin, LogLevel, String) -> Unit,
@@ -36,10 +40,12 @@ object AttackClient {
                         }.getOrDefault(LogLevel.Info)
                         onEvent(origin, level, resultData?.getString(AttackService.KEY_LINE).orEmpty())
                     }
+                    AttackService.CODE_PID -> activePid = resultData?.getInt(AttackService.KEY_PID) ?: 0
                     AttackService.CODE_DONE -> onDone()
                 }
             }
         }
+        activePid = 0
         active = receiver
         val intent = Intent(context, AttackService::class.java)
             .setAction(AttackService.ACTION_START)
@@ -48,28 +54,23 @@ object AttackClient {
     }
 
     /**
-     * 中止：直接杀记录在 attack.pid 里的攻击进程（同 uid），并清理其后代。
+     * 中止：直接杀 `:attack` 进程（pid 由服务经 [AttackService.CODE_PID] 送回，只驻内存）。
      *
      * 不再拉起新的 :attack 进程来接收 abort，避免“abort requested 反复出现”。
      *
      * @param onAborted 确认进程消失（或超时）后在主线程回调。
      */
     fun abort(context: Context, onAborted: () -> Unit) {
-        val pid = readAttackPid(context)
+        val pid = activePid
         if (pid > 0) {
             PidRegistry.killDescendants(pid)
             runCatching { android.system.Os.kill(pid, android.system.OsConstants.SIGKILL) }
                 .onFailure { android.util.Log.w("GhostlockAttack", "kill " + pid + " failed", it) }
         }
-        runCatching { java.io.File(context.filesDir, AttackService.PID_FILE).delete() }
+        activePid = 0
         active = null
         awaitProcessGone(context, pid, System.currentTimeMillis() + 8_000L, onAborted)
     }
-
-    private fun readAttackPid(context: Context): Int =
-        runCatching {
-            java.io.File(context.filesDir, AttackService.PID_FILE).readText().trim().toInt()
-        }.getOrDefault(-1)
 
     private fun awaitProcessGone(context: Context, pid: Int, deadline: Long, onAborted: () -> Unit) {
         val handler = Handler(Looper.getMainLooper())
