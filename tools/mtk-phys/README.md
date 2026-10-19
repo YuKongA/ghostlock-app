@@ -4,12 +4,14 @@
 
 Derive the two physical addresses a profile needs, on a rooted device:
 
-- `kernel_phys_load` — the `_text` physical load address.
-- `kernel_phys_offset` — the DRAM base (linear-map `PHYS_OFFSET`).
+- `kernel_phys_load`: the `_text` physical load address.
+- `kernel_phys_offset`: the DRAM base (linear-map `PHYS_OFFSET`).
 
-The extractor cannot obtain these from the image (see
-[MEDIATEK.md](../../docs/kernel_profiles/MEDIATEK.md)); the script reads them
-from `/proc/iomem` and `/proc/kallsyms`.
+Use this rooted-device fallback when the main extractor's `--vendor-boot` or
+`--iomem` inputs do not supply the needed values. See the
+[MediaTek guide](../../docs/kernel_profiles/MEDIATEK.md) for those sources.
+This script reads `/proc/iomem` and `/proc/kallsyms`, so the values describe
+the device and kernel it runs on.
 
 ## Files
 
@@ -44,9 +46,12 @@ app's advanced override page.
 
 - A root shell: `adb root` on a userdebug/eng build, or an equivalent root. No
   manager app is needed.
-- A kernel **not patched with KernelSU** (loaded as a module or built into the
-  kernel). A KernelSU-patched kernel interferes with the exploit, so the script
-  refuses to run when it detects one.
+- A kernel not patched with KernelSU (loaded as a module or built into the
+  kernel). A KernelSU-patched kernel interferes with the exploit. The script
+  checks root and stops otherwise, but its KernelSU check is disabled
+  (`mtk-phys.sh:15-23`), so confirm this yourself.
+- To read the addresses the script sets `kernel.kptr_restrict` to 0 for the run
+  and restores the previous value on exit.
 
 ## Computation
 
@@ -55,4 +60,12 @@ kernel_phys_load   = Kernel code start - (_stext - _text)
 kernel_phys_offset = System RAM start
 ```
 
-The KASLR slide cancels in `_stext - _text`.
+The KASLR slide cancels in `_stext - _text`. Only the low 32 bits of the
+virtual `_stext`/`_text` are compared, and physical addresses are 32-bit.
+
+`kernel_phys_offset` starts at the lowest `System RAM` range. It is lowered to
+a `reserved` range below it when that range starts at or above 1 GiB, is
+64 MiB aligned, and lies within 64 MiB of the first `System RAM` range. Some
+devices reserve a carveout at the bottom of DRAM, so the first available
+`System RAM` starts above the real base. Check the printed value against
+`/proc/iomem` if your device uses a different layout.
