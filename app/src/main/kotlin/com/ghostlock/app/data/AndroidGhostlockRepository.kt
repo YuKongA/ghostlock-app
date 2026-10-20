@@ -5,11 +5,11 @@ import android.content.ContentValues
 import android.content.Context
 import android.os.Build
 import android.provider.MediaStore
-import android.system.Os
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import com.ghostlock.app.BuildConfig
 import com.ghostlock.app.BuildInfo
+import com.ghostlock.app.data.ManagerScanner
 import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.DebugSettings
 import com.ghostlock.app.domain.model.KernelSnapshot
@@ -200,6 +200,20 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             }
         if (enabled) shizukuRunner.requestPermission()
     }
+
+    override fun selectedManagerPackage(): String? =
+        preferences.getString(ManagerScanner.PREF_KEY, null)?.takeIf { it.isNotBlank() }
+
+    override fun setSelectedManagerPackage(pkg: String?) {
+        preferences.edit { putString(ManagerScanner.PREF_KEY, pkg) }
+    }
+
+    override suspend fun installedManagers(): List<ManagerScanner.Candidate> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                ManagerScanner.scan(appContext.packageManager, appContext.packageName)
+            }.getOrDefault(emptyList())
+        }
 
     override fun profileController(): ProfileConfigController = profileController
 
@@ -433,7 +447,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                     archivedLog("<b> starting UserService")
                     resetRunState()
                     shizukuRunner.run(
-                        pair, safeModeEnabled, forceAttackTest, profileBlob, debugDir, archivedLog,
+                        pair, safeModeEnabled, forceAttackTest, profileBlob, debugDir,
+                        selectedManagerPackage(), archivedLog,
                     ) { step, status ->
                         if (status == "disabled") clearRunState() else applyRunStatus(step, status)
                     }
@@ -578,7 +593,8 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         return try {
             val binary = File(appContext.applicationInfo.nativeLibraryDir, binaryName)
             require(binary.isFile) { "missing native binary: ${binary.absolutePath}" }
-            if (prepareKsud(workDir, onLog) != null) onLog("<k> ksud ready") else onLog("<k> warning: ksud not found")
+            val ksud = resolveKsudPath(onLog)
+            if (ksud != null) onLog("<k> ksud ready: ${ksud.absolutePath}") else onLog("<k> warning: ksud not found")
             // U01-S14: a per-run KernelSU log path so a previous run's markers
             // can never satisfy the handoff probe; passed to the native process.
             val ksuLog = File(workDir, ksuLogName(System.currentTimeMillis()))
@@ -654,6 +670,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                     environment()["TMPDIR"] = workDir.absolutePath
                     environment()["HOME"] = workDir.absolutePath
                     environment()["GHOSTLOCK_KSU_LOG"] = ksuLog.absolutePath
+                    if (ksud != null) environment()["GHOSTLOCK_KSUD"] = ksud.absolutePath
                 }
             onLog("<b> starting native: ${binary.absolutePath}")
             resetRunState()
@@ -1015,22 +1032,16 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
 
     private fun firstValidProperty(vararg keys: String): String? = keys.asSequence().firstNotNullOfOrNull { validDeviceName(systemProperty(it)) }
 
-    private fun prepareKsud(workDir: File, onLog: (String) -> Unit): File? {
-        val packages = listOf("me.weishu.kernelsu.pr", "me.weishu.kernelsu", "com.resukisu.resukisu", "org.bakasu.bakasu", "com.kowx712.supermanager")
-        var installed = false
+    /** First ksud binary in resolvePackages order, or null. */
+    private fun resolveKsudPath(onLog: (String) -> Unit): File? {
+        val packages = ManagerScanner.resolvePackages(selectedManagerPackage())
         for (packageName in packages) {
-            val appInfo = runCatching { appContext.packageManager.getApplicationInfo(packageName, 0) }.getOrNull() ?: continue
-            installed = true
-            val source = File(appInfo.nativeLibraryDir, "libksud.so")
-            if (!source.isFile) continue
-            val output = File(workDir, "ksud")
-            runCatching {
-                source.inputStream().use { input -> output.outputStream().use { input.copyTo(it) } }
-                runCatching { Os.chmod(output.absolutePath, 448) }
-                return output
-            }.onFailure { onLog("<k> copy ksud failed: ${it.message}") }
+            val source = runCatching {
+                File(appContext.packageManager.getApplicationInfo(packageName, 0).nativeLibraryDir, "libksud.so")
+            }.getOrNull()?.takeIf { it.isFile } ?: continue
+            return source
         }
-        if (!installed) onLog("<k> KernelSU/ReSukiSU/BakaSU/KowSU app not installed")
+        onLog("<k> no manager app with libksud.so found")
         return null
     }
 

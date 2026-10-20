@@ -239,7 +239,7 @@ namespace ghostlock::attack {
             "HOME_DIR='%s'\n"
             "LOG='%s'\n"
             "SAFE_MODE=%d\n"
-            "KSUD=\"$HOME_DIR/ksud\"\n"
+            "KSUD='%s'\n"
             "echo \"[*] root script start uid=$(id -u) euid=$(id -u)\" >\"$LOG\"\n"
             "chmod 644 \"$LOG\" 2>/dev/null\n"
             "echo \"[*] seccomp=$(grep Seccomp /proc/self/status 2>/dev/null | tr '\\n' ' ')\" >>\"$LOG\"\n"
@@ -415,6 +415,7 @@ namespace ghostlock::attack {
             (config::runtime_config_snapshot().home_dir.c_str()),
             (config::runtime_config_snapshot().ksu_log_path.c_str()),
             session::g_exploit_session.profile.safe_mode() ? 1 : 0,
+            (config::runtime_config_snapshot().ksud_path.c_str()),
             (config::runtime_config_snapshot().debug_dir.c_str()));
         if (n < 0 || n >= static_cast<int32_t>(script.size())) {
             pr_warning("root script too long\n");

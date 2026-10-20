@@ -1,8 +1,11 @@
 package com.ghostlock.app.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,12 +34,18 @@ import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.RemoveCircleOutline
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalUriHandler
@@ -44,11 +53,13 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ghostlock.app.R
+import com.ghostlock.app.data.ManagerScanner
 import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.ExecutionFieldValue
 import com.ghostlock.app.domain.model.ProfileFieldNode
@@ -163,6 +174,9 @@ data class GhostlockUiState(
     val userProfileDetail: String? = null,
     val userProfileRenameTarget: String? = null,
     val userProfileDeleteTarget: String? = null,
+    val managerCandidates: List<ManagerScanner.Candidate> = emptyList(),
+    val selectedManagerPackage: String? = null,
+    val managerPickerVisible: Boolean = false,
 )
 
 enum class DialogType { NONE, LIST, INPUT, CONFIRM, NOTICE }
@@ -184,6 +198,9 @@ interface GhostlockActions {
     fun onSafeModeChanged(enabled: Boolean)
     fun onForceAttackTestChanged(enabled: Boolean)
     fun onShizukuChanged(enabled: Boolean)
+    fun onOpenManagerPicker()
+    fun onCloseManagerPicker()
+    fun onManagerSelected(pkg: String?)
     fun onDialogItemSelected(index: Int)
     fun onDialogInputChange(value: String)
     fun onDialogConfirm(value: String)
@@ -367,6 +384,7 @@ internal fun GhostlockApp(
                 GhostlockDialog(state = state, actions = actions)
                 GhostlockOverwriteDialog(state = state, actions = actions)
                 GhostlockExecutionSheet(state = state, actions = actions)
+                GhostlockManagerPickerSheet(state = state, actions = actions)
             }
         }
     }
@@ -456,6 +474,154 @@ private fun GhostlockExecutionSheet(
             )
         },
     )
+}
+
+@Composable
+private fun GhostlockManagerPickerSheet(
+    state: GhostlockUiState,
+    actions: GhostlockActions,
+) {
+    OverlayBottomSheet(
+        show = state.managerPickerVisible,
+        title = stringResource(R.string.manager_picker_title),
+        onDismissRequest = actions::onCloseManagerPicker,
+        content = {
+            var showAll by remember { mutableStateOf(false) }
+            // Auto stays first so a saved selection can always be cleared,
+            // even when no manager app was found at all.
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 480.dp)
+                    .navigationBarsPadding()
+                    .selectableGroup(),
+            ) {
+                item {
+                    ManagerPickerRow(
+                        title = stringResource(R.string.manager_summary_auto),
+                        subtitle = null,
+                        icon = null,
+                        selected = state.selectedManagerPackage == null,
+                    ) { actions.onManagerSelected(null) }
+                }
+                if (state.managerCandidates.isEmpty()) {
+                    item {
+                        Text(
+                            text = stringResource(R.string.manager_picker_empty),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 24.dp),
+                            textAlign = TextAlign.Center,
+                            color = MiuixTheme.colorScheme.onBackgroundVariant,
+                        )
+                    }
+                } else {
+                    val compatible = state.managerCandidates.filter { it.hasKsud }
+                    val incompatible = state.managerCandidates.filterNot { it.hasKsud }
+                    val visibleIncompatible = if (showAll) incompatible else emptyList()
+                    items(compatible, key = { it.packageName }) { candidate ->
+                        ManagerPickerRow(
+                            title = candidate.label,
+                            subtitle = candidate.packageName,
+                            icon = candidate,
+                            selected = state.selectedManagerPackage == candidate.packageName,
+                        ) { actions.onManagerSelected(candidate.packageName) }
+                    }
+                    items(visibleIncompatible, key = { it.packageName }) { candidate ->
+                        ManagerPickerRow(
+                            title = candidate.label,
+                            subtitle = stringResource(R.string.manager_no_ksud),
+                            icon = candidate,
+                            selected = state.selectedManagerPackage == candidate.packageName,
+                            muted = true,
+                        ) { actions.onManagerSelected(candidate.packageName) }
+                    }
+                    if (incompatible.isNotEmpty()) {
+                        item {
+                            TextButton(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp, bottom = 4.dp),
+                                text = stringResource(
+                                    if (showAll) R.string.manager_hide_all else R.string.manager_show_all,
+                                ),
+                                onClick = { showAll = !showAll },
+                            )
+                        }
+                    }
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun ManagerPickerRow(
+    title: String,
+    subtitle: String?,
+    icon: ManagerScanner.Candidate?,
+    selected: Boolean,
+    muted: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val context = LocalContext.current
+    val pm = context.packageManager
+    val imageBitmap = remember(icon) {
+        icon?.let { candidate ->
+            runCatching {
+                val drawable = pm.getApplicationIcon(candidate.packageName)
+                val width = maxOf(drawable.intrinsicWidth, 1)
+                val height = maxOf(drawable.intrinsicHeight, 1)
+                android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888).also { bitmap ->
+                    drawable.setBounds(0, 0, width, height)
+                    drawable.draw(android.graphics.Canvas(bitmap))
+                }
+            }.getOrNull()
+        }?.asImageBitmap()
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                onClick = onClick,
+            )
+            .padding(horizontal = 24.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (imageBitmap != null) {
+            Image(
+                bitmap = imageBitmap,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(40.dp)
+                    .padding(end = 0.dp),
+            )
+            Spacer(Modifier.width(12.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = if (muted) MiuixTheme.colorScheme.onBackgroundVariant else MiuixTheme.colorScheme.onBackground,
+            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = MiuixTheme.colorScheme.onBackgroundVariant,
+                )
+            }
+        }
+        if (selected) {
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                imageVector = Icons.Rounded.CheckCircleOutline,
+                contentDescription = null,
+                tint = MiuixTheme.colorScheme.primary,
+            )
+        }
+    }
 }
 
 @Composable
@@ -681,6 +847,15 @@ private fun ControlPanel(
                 .padding(top = 12.dp),
         )
         Card(modifier = modifier.padding(top = 12.dp)) {
+            val chosenLabel = state.managerCandidates
+                .firstOrNull { it.packageName == state.selectedManagerPackage }
+                ?.label
+                ?: state.selectedManagerPackage
+            ArrowPreference(
+                title = stringResource(R.string.manager_label),
+                summary = chosenLabel ?: stringResource(R.string.manager_summary_auto),
+                onClick = actions::onOpenManagerPicker,
+            )
             if (state.cpuPairLabels.isNotEmpty()) {
                 val customPair = state.customCpuPair
                 val customSummary = customPair?.let {

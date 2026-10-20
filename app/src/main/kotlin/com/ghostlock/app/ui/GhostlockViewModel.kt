@@ -842,6 +842,28 @@ class GhostlockViewModel(
         viewModelScope.launch { refreshSnapshot() }
     }
 
+    fun onOpenManagerPicker() {
+        mutableState.update { it.copy(managerPickerVisible = true) }
+        viewModelScope.launch {
+            val candidates = repository.installedManagers()
+            mutableState.update {
+                it.copy(
+                    managerCandidates = candidates,
+                    selectedManagerPackage = repository.selectedManagerPackage(),
+                )
+            }
+        }
+    }
+
+    fun onCloseManagerPicker() {
+        mutableState.update { it.copy(managerPickerVisible = false) }
+    }
+
+    fun onManagerSelected(pkg: String?) {
+        repository.setSelectedManagerPackage(pkg)
+        mutableState.update { it.copy(selectedManagerPackage = pkg, managerPickerVisible = false) }
+    }
+
     fun onRun() = runExploit()
 
     /** Explains why the run button is greyed out. */
@@ -1067,6 +1089,7 @@ class GhostlockViewModel(
                 profileInvalidPaths = loaded?.invalidPaths ?: emptySet(),
                 executionHasProfile = loaded?.hasProfile ?: false,
                 customCpuPair = loaded?.let(::customCpuPairOf),
+                selectedManagerPackage = repository.selectedManagerPackage(),
             )
         }
     }

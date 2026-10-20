@@ -89,6 +89,13 @@
     <string name="shizuku_status_permission_required">Grant Shizuku access when asked</string>
     <string name="shizuku_status_ready">Shizuku ready</string>
     <string name="shizuku_status_checking">Checking Shizuku status</string>
+    <string name="manager_label">Root manager</string>
+    <string name="manager_summary_auto">Auto (recommended)</string>
+    <string name="manager_picker_title">Choose root manager</string>
+    <string name="manager_picker_empty">No apps found</string>
+    <string name="manager_no_ksud">No libksud.so detected, may not work</string>
+    <string name="manager_show_all">Show all apps</string>
+    <string name="manager_hide_all">Show compatible only</string>
     <string name="w3_shizuku_hint_title">Enable Shizuku?</string>
     <string name="w3_shizuku_hint_message">The last run failed at the W3 seccomp bypass stage. Running via Shizuku (shell uid, no seccomp) skips it.</string>
     <string name="w3_shizuku_hint_enable">Enable</string>
