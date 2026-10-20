@@ -65,7 +65,7 @@ fun BackendPageMaterial(bottomInnerPadding: Dp) {
     ExpressiveScaffold(
         topBar = {
             LargeFlexibleTopAppBar(
-                title = { Text("路径") },
+                title = { Text(stringResource(R.string.module)) },
                 colors = expressiveTopAppBarColors(),
                 windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
                 scrollBehavior = scrollBehavior,
@@ -128,7 +128,7 @@ fun BackendPageMiuix(bottomInnerPadding: Dp) {
     MiuixScaffold(
         topBar = {
             MiuixTopAppBar(
-                title = "路径",
+                title = stringResource(R.string.module),
                 scrollBehavior = scrollBehavior,
             )
         },

@@ -11,9 +11,9 @@ package com.ghostlock.app.ui.screen.module.backends
  */
 fun FinishState.toRootScript(
     managerBinary: String?,
-    stagedScript: String?,
-    stagedLkm: String?,
+    staged: Map<String, String>,
     logPath: String = "/dev/null",
+    folkPatchLkm: String? = null,
 ): String = buildString {
     appendLine("#!/system/bin/sh")
     appendLine("set -u")
@@ -22,7 +22,7 @@ fun FinishState.toRootScript(
     appendLine("log() { printf '%s\\n' \"\$*\" >&3; }")
     appendLine("log 'finish start'")
 
-    val context = PayloadContext(this@toRootScript, managerBinary, stagedScript, stagedLkm)
+    val context = PayloadContext(this@toRootScript, managerBinary, staged, folkPatchLkm)
     payloadRequests(context).forEach { payload ->
         payload.appendTo(::appendLine, context)
     }
@@ -36,6 +36,7 @@ fun FinishState.toRootScript(
         appendLine("setprop ctl.restart zygote")
     }
     appendLine("log 'finish done'")
+    appendLine("rm -f /dev/df /dev/dz 2>/dev/null || true")
 }
 
 /**

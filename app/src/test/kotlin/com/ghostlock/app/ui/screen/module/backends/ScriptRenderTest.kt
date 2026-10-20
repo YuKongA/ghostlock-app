@@ -11,7 +11,7 @@ class ScriptRenderTest {
 
     @Test
     fun rendersWholeScriptWithLogChannel() {
-        val script = FinishState().toRootScript(null, null, null, log)
+        val script = FinishState().toRootScript(null, emptyMap(), log)
         assertTrue(script.startsWith("#!/system/bin/sh"))
         assertTrue(script.contains("LOG='" + log + "'"))
         assertTrue(script.contains("exec 3>>\"\$LOG\""))
@@ -22,36 +22,50 @@ class ScriptRenderTest {
 
     @Test
     fun finishSwitchesAreScriptStatements() {
-        val quiet = FinishState().toRootScript(null, null, null, log)
+        val quiet = FinishState().toRootScript(null, emptyMap(), log)
         assertFalse(quiet.contains("setenforce 1"))
         assertFalse(quiet.contains("ctl.restart zygote"))
 
         val loud = FinishState(restoreSelinux = true, softRebootAfterFinish = true)
-            .toRootScript(null, null, null, log)
+            .toRootScript(null, emptyMap(), log)
         assertTrue(loud.contains("setenforce 1"))
         assertTrue(loud.contains("setprop ctl.restart zygote"))
         assertTrue("收尾在载荷之后", loud.indexOf("setenforce 1") > loud.indexOf("finish start"))
     }
 
     @Test
-    fun payloadOrderFollowsStateOrder() {
+    fun payloadOrderFollowsSlotOrder() {
         val state = FinishState(
-            rootManagerEnabled = true,
-            runAppEnabled = true,
-            appPackage = "com.example.app",
-            order = listOf("app", "root"),
+            payloads = listOf(
+                PayloadSlot("app", PayloadKind.App, appPackage = "com.example.app"),
+                PayloadSlot("root", PayloadKind.Root),
+            ),
         )
-        val script = state.toRootScript(null, null, null, log)
+        val script = state.toRootScript(null, emptyMap(), log)
         val app = script.indexOf("launch app: com.example.app")
         val root = script.indexOf("start root manager")
         assertTrue("app 在 root 之前", app in 0 until root)
     }
 
     @Test
+    fun rendersDuplicateCommandSlots() {
+        val state = FinishState(
+            payloads = listOf(
+                PayloadSlot("c1", PayloadKind.Command, command = "id"),
+                PayloadSlot("c2", PayloadKind.Command, command = "uname -a"),
+            ),
+        )
+        val script = state.toRootScript(null, emptyMap(), log)
+        assertTrue(script.contains("\nid\n"))
+        assertTrue(script.contains("\nuname -a\n"))
+    }
+
+    @Test
     fun quotesSingleQuotes() {
         assertTrue(shQuote("a'b").contains("'\\''"))
-        val script = FinishState(runAppEnabled = true, appPackage = "a'b")
-            .toRootScript(null, null, null, log)
+        val script = FinishState(
+            payloads = listOf(PayloadSlot("app", PayloadKind.App, appPackage = "a'b")),
+        ).toRootScript(null, emptyMap(), log)
         assertTrue(script.contains("a'b"))
     }
 }

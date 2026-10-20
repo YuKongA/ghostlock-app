@@ -8,11 +8,13 @@ class FinishScript43284Test {
 
     @Test
     fun relayAccessHandshakeIsEmittedWhenEnabled() {
-        val state = FinishState(lkmEnabled = true, lkmUri = "content://relay", kernelAccessAfterRelay = true)
+        val state = FinishState(
+            payloads = listOf(PayloadSlot("lkm", PayloadKind.Lkm, lkmUri = "content://relay")),
+            kernelAccessAfterRelay = true,
+        )
         val script = state.toRootScript(
             managerBinary = null,
-            stagedScript = null,
-            stagedLkm = "/data/user/0/com.ghostlock.app/files/finish/custom.ko",
+            staged = mapOf("lkm" to "/data/user/0/com.ghostlock.app/files/finish/custom.ko"),
         )
         assertTrue(script.contains("ACCESS_DEV=/dev/glk"))
         assertTrue(script.contains("sleep 0.1"))
@@ -24,48 +26,65 @@ class FinishScript43284Test {
 
     @Test
     fun relayAccessHandshakeIsAbsentWhenDisabled() {
-        val state = FinishState(lkmEnabled = true, lkmUri = "content://relay", kernelAccessAfterRelay = false)
+        val state = FinishState(
+            payloads = listOf(PayloadSlot("lkm", PayloadKind.Lkm, lkmUri = "content://relay")),
+            kernelAccessAfterRelay = false,
+        )
         val script = state.toRootScript(
             managerBinary = null,
-            stagedScript = null,
-            stagedLkm = "/data/user/0/com.ghostlock.app/files/finish/custom.ko",
+            staged = mapOf("lkm" to "/data/user/0/com.ghostlock.app/files/finish/custom.ko"),
         )
         assertFalse(script.contains("ACCESS_DEV=/dev/glk"))
         assertTrue(script.contains("insmod"))
     }
 
-
     @Test
     fun folkPatchUsesLaunchOnlyPath() {
-        val state = FinishState(rootManagerEnabled = true, rootManager = "FolkPatch")
+        val state = FinishState(
+            rootManager = "FolkPatch",
+            payloads = listOf(PayloadSlot("root", PayloadKind.Root)),
+        )
         val script = state.toRootScript(
             managerBinary = null,
-            stagedScript = null,
-            stagedLkm = null,
+            staged = emptyMap(),
         )
         assertTrue(script.contains("apd present"))
         assertTrue(script.contains("monkey -p me.yuki.folk"))
         assertFalse(script.contains("libksud.so"))
     }
 
-
     @Test
     fun folkPatchJailbreakLoadsKoAndWritesMarker() {
         val state = FinishState(
-            rootManagerEnabled = true,
             rootManager = "FolkPatch",
-            lkmEnabled = true,
-            lkmUri = "content://kernelpatch.ko",
+            payloads = listOf(
+                PayloadSlot("root", PayloadKind.Root),
+                PayloadSlot("lkm", PayloadKind.Lkm, lkmUri = "content://kernelpatch.ko"),
+            ),
         )
         val script = state.toRootScript(
             managerBinary = null,
-            stagedScript = null,
-            stagedLkm = "/data/user/0/com.ghostlock.app/files/finish/custom.ko",
+            staged = mapOf("lkm" to "/data/user/0/com.ghostlock.app/files/finish/custom.ko"),
         )
         assertTrue(script.contains("APD=/data/adb/apd"))
         assertTrue(script.contains("libapd.so"))
         assertTrue(script.contains("late-load --module"))
         assertTrue(script.contains("> /data/adb/ap/jailbreak"))
         assertTrue(script.contains("setenforce 0"))
+    }
+
+    @Test
+    fun folkPatchAutoModuleLoadsWhenNoLkmSlot() {
+        val state = FinishState(
+            rootManager = "FolkPatch",
+            payloads = listOf(PayloadSlot("root", PayloadKind.Root)),
+        )
+        val script = state.toRootScript(
+            managerBinary = null,
+            staged = emptyMap(),
+            folkPatchLkm = "/data/local/tmp/kernelpatch.ko",
+        )
+        assertTrue(script.contains("late-load --module"))
+        assertTrue(script.contains("/data/local/tmp/kernelpatch.ko"))
     }
 }

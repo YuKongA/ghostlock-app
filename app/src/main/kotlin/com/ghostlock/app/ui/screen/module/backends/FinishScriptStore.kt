@@ -36,5 +36,5 @@ object FinishScriptStore {
 
     /** 预览：写一份带 `LOG=/dev/null` 的脚本，不启动攻击。 */
     fun preview(context: Context, state: FinishState): File =
-        write(context, state.toRootScript(null, null, null, "/dev/null"))
+        write(context, state.toRootScript(null, emptyMap(), "/dev/null"))
 }

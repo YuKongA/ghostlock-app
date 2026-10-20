@@ -1,46 +1,51 @@
 package com.ghostlock.app.engine
 
 import android.content.Context
-import com.ghostlock.app.engine.pagecache.TypedBackendProbe
+import com.ghostlock.app.engine.pagecache.stage.StageConfigProvider
+import com.ghostlock.app.engine.pagecache.stage.StageLog
+import com.ghostlock.app.engine.pagecache.stage.StageResult
 import com.ghostlock.app.log.LogLevel
 
-/**
- * 43284 页缓存路径的生产入口。
- *
- * 43284 业务数据面由 Assembled43284 内部的 PageCacheAccess 适配器执行；控制面仍由页缓存链执行。
- */
 object PageCacheEngine {
-    /**
-     * @param context 应用上下文。
-     * @param onEvent 逐行事件回调。
-     * @param modulePatcher 写页缓存前对 `.ko` 镜像做的内存补丁（脚本路径）；null 表示不补丁。
-     */
     fun run(
         context: Context,
         onEvent: (LogLevel, String) -> Unit,
         modulePatcher: ((ByteArray) -> ByteArray)? = null,
     ): List<String> {
-        emit(onEvent, LogLevel.Info, EngineLog.info("Page cache engine started"))
-        val lines = TypedBackendProbe.run(context, { level, line ->
-            when (level) {
-                LogLevel.Info -> emit(onEvent, LogLevel.Debug, EngineLog.debug("Page cache detail", line))
-                LogLevel.Warn -> emit(onEvent, LogLevel.Warn, EngineLog.warn("Page cache step degraded", reasonOf(line)))
-                LogLevel.Error -> emit(onEvent, LogLevel.Error, EngineLog.error("Page cache step failed", reasonOf(line)))
-                LogLevel.Debug -> emit(onEvent, LogLevel.Debug, EngineLog.debug("Page cache detail", line))
-                LogLevel.Verbose -> emit(onEvent, LogLevel.Verbose, EngineLog.verbose("Page cache detail", line))
+        val log = StageLog { level, message -> onEvent(level, message) }
+        log.info("Page cache engine started")
+        log.verbose("PageCacheEngine.run", "hasPatcher" to (modulePatcher != null))
+        val session = StageConfigProvider.create(context, modulePatcher = modulePatcher, log = log)
+        if (session == null) {
+            log.error("page cache config unavailable", "config-unavailable")
+            return listOf("stage=ENV_MISSING reason=config-unavailable")
+        }
+        val results = kotlinx.coroutines.runBlocking {
+            session.use { runStages(it.config, onEvent) }
+        }
+        log.verbose("PageCacheEngine.run.result", "results" to results.size)
+        log.info("Page cache engine finished")
+        return results.map { result -> "stage=" + result.code + " reason=" + result.reason }
+    }
+
+    suspend fun runStages(
+        config: com.ghostlock.app.engine.pagecache.stage.StageConfig,
+        onEvent: (LogLevel, String) -> Unit,
+    ): List<StageResult> {
+        val log = config.log
+        log.info("Stage page cache engine started")
+        log.verbose("PageCacheEngine.runStages", "waitPaths" to config.waitPaths.joinToString(","),
+            "timeoutMs" to config.waitTimeoutMs)
+        val results = com.ghostlock.app.engine.pagecache.stage.StageFactory.build(config).run()
+        for (result in results) {
+            if (result.code == com.ghostlock.app.engine.pagecache.stage.StageCode.OK) {
+                log.debug("PageCacheEngine.runStages", "stage-ok", "reason" to result.reason)
+            } else {
+                log.warn("stage " + result.code, result.reason.ifBlank { "stage-failed" })
             }
-        }, modulePatcher)
-        emit(onEvent, LogLevel.Info, EngineLog.info("Page cache engine finished"))
-        return lines
-    }
-
-    private fun reasonOf(line: String): String {
-        val afterRefusal = line.substringAfter("refusal=", "").trim()
-        val candidate = if (afterRefusal.isNotEmpty()) afterRefusal else line.substringAfterLast(':').trim()
-        return candidate.substringBefore(' ').ifBlank { "unknown" }
-    }
-
-    private fun emit(onEvent: (LogLevel, String) -> Unit, level: LogLevel, message: String) {
-        onEvent(level, message)
+        }
+        log.verbose("PageCacheEngine.runStages.result", "results" to results.size)
+        log.info("Stage page cache engine finished")
+        return results
     }
 }

@@ -120,6 +120,12 @@ object log {
 
     fun warn(message: String): Boolean = invoke(LogLevel.Warn, message)
 
+    /** warn 的正式形态：一句人话 + 恰好一个理由。 */
+    fun warn(message: String, reason: String): Boolean {
+        require(reason.isNotBlank()) { "warn needs one reason" }
+        return warn(message + ": " + reason)
+    }
+
     /** 错误：可选带异常（堆栈逐帧进日志）。 */
     fun error(message: String, problem: Throwable? = null): Boolean {
         val wrote = invoke(LogLevel.Error, DEFAULT_TAG, message + (problem?.let { " | " + it::class.java.simpleName + ": " + it.message } ?: ""))
@@ -129,6 +135,12 @@ object log {
             }
         }
         return wrote
+    }
+
+    /** error 的正式形态：一句人话 + 恰好一个理由。 */
+    fun error(message: String, reason: String): Boolean {
+        require(reason.isNotBlank()) { "error needs one reason" }
+        return invoke(LogLevel.Error, message + ": " + reason)
     }
 
     /** 环里的内容（最旧在前）。 */

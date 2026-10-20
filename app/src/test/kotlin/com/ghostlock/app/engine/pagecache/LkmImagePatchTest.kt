@@ -47,7 +47,7 @@ class LkmImagePatchTest {
         assertEquals(LkmImagePatch.KNOB_SIZE, getU32(out, prefix + 8))
         assertEquals(1, getU32(out, prefix + 12))
         assertEquals(0, getU32(out, prefix + 16))
-        assertEquals("restore_enforce 归 0", 0, getU32(out, prefix + 20))
+        assertEquals("restore_enforce 保留 KO 默认值", 1, getU32(out, prefix + 20))
         assertEquals(path.toByteArray().size, getU32(out, prefix + 24))
         assertEquals(path, String(out.copyOfRange(prefix + 28, prefix + 28 + path.length)))
         assertEquals("NUL 结尾", 0, out[prefix + 28 + path.length].toInt())

@@ -38,10 +38,12 @@ import top.yukonga.miuix.kmp.window.WindowDialog
 /**
  *  权限状态（2026-10-18 接线）。
  *
- *  主页那一行显示当前执行体（app/shizuku/adb）与 uid；点箭头进子菜单：
- *   · 解释三种执行体各自的权限边界
+ *  主页那一行显示当前执行体（app/shizuku）与 uid；点箭头进子菜单：
+ *   · 解释两种执行体各自的权限边界
  *   · 向 Shizuku 请求授权（shell uid 2000）
- *   · 给出 adb 授权/验证步骤（adb shell 同样是 uid 2000）
+ *
+ *  手动 adb 授权入口已删除（2026-10-19 用户裁定）：Shizuku 未就绪时只提示安装/启动，
+ *  不再引导用户去电脑上跑 adb 脚本。
  */
 enum class ExecutorMode { App, Shizuku }
 
@@ -83,7 +85,6 @@ private fun executorRows(granted: Boolean): List<ExecutorRow> {
     return listOf(
         ExecutorRow("app", appUid, stringResource(R.string.privilege_state_available), stringResource(R.string.privilege_desc_app), true),
         ExecutorRow("shizuku", 2000, shizukuState, stringResource(R.string.privilege_desc_shizuku), granted),
-        ExecutorRow("adb", 2000, stringResource(R.string.privilege_state_adb_hint), stringResource(R.string.privilege_desc_adb), false),
     )
 }
 
@@ -198,11 +199,20 @@ private fun PrivilegeBody(
                 }
             }
         }
-        Text(
-            text = stringResource(R.string.privilege_select_hint),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        /* Miuix 模式没有 MaterialTheme：颜色必须取 Miuix 的色板，否则暗色下是深灰字。 */
+        if (miuix) {
+            MiuixText(
+                text = stringResource(R.string.privilege_select_hint),
+                style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.footnote2,
+                color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+        } else {
+            Text(
+                text = stringResource(R.string.privilege_select_hint),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -215,16 +225,7 @@ private fun requestShizuku(): Boolean = runCatching {
     true
 }.getOrDefault(false)
 
-private enum class PrivilegeMode { Overview, AdbSteps, ShizukuMissing }
-
-@Composable
-private fun PrivilegeBackButton(miuix: Boolean, onBack: () -> Unit) {
-    if (miuix) {
-        MiuixTextButton(text = stringResource(R.string.privilege_back), onClick = onBack)
-    } else {
-        TextButton(onClick = onBack) { Text(stringResource(R.string.privilege_back)) }
-    }
-}
+private enum class PrivilegeMode { Overview, ShizukuMissing }
 
 /** 权限状态子菜单；[miuix] 为 true 时用 miuix 的 WindowDialog。 */
 @Composable
@@ -266,23 +267,36 @@ fun PrivilegeDialog(show: Boolean, onDismiss: () -> Unit, miuix: Boolean) {
                         !shizukuAvailable -> mode = PrivilegeMode.ShizukuMissing
                         !requestShizuku() -> mode = PrivilegeMode.ShizukuMissing
                     }
-                    /* adb 未接线：点卡片直接看授权步骤（2026-10-18 用户裁定）。 */
-                    "adb" -> mode = PrivilegeMode.AdbSteps
                 }
             }
-            PrivilegeMode.AdbSteps -> Column {
-                Text(
-                    text = stringResource(R.string.privilege_adb_steps_full),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                PrivilegeBackButton(miuix) { mode = PrivilegeMode.Overview }
-            }
             PrivilegeMode.ShizukuMissing -> Column {
-                Text(
-                    text = stringResource(R.string.privilege_shizuku_missing),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                PrivilegeBackButton(miuix) { mode = PrivilegeMode.Overview }
+                if (miuix) {
+                    /* 与 ConfirmDialogMiuix 同一套排版：正文用 Miuix 默认正文样式，
+                     * 颜色由 MiuixTheme 的 LocalContentColor（onBackground）给（2026-10-19）。 */
+                    MiuixText(text = stringResource(R.string.privilege_shizuku_missing))
+                } else {
+                    Text(
+                        text = stringResource(R.string.privilege_shizuku_missing),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                /* 动作行：Miuix 弹窗是整行 TextButton；Material 是右下角文本按钮。 */
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    horizontalArrangement = if (miuix) Arrangement.SpaceBetween else Arrangement.End,
+                ) {
+                    if (miuix) {
+                        MiuixTextButton(
+                            text = stringResource(R.string.privilege_back),
+                            onClick = { mode = PrivilegeMode.Overview },
+                            modifier = Modifier.weight(1f),
+                        )
+                    } else {
+                        TextButton(onClick = { mode = PrivilegeMode.Overview }) {
+                            Text(stringResource(R.string.privilege_back))
+                        }
+                    }
+                }
             }
         }
     }
@@ -291,7 +305,6 @@ fun PrivilegeDialog(show: Boolean, onDismiss: () -> Unit, miuix: Boolean) {
         WindowDialog(
             show = true,
             title = when (mode) {
-                PrivilegeMode.AdbSteps -> stringResource(R.string.privilege_adb_title)
                 PrivilegeMode.ShizukuMissing -> "Shizuku"
                 else -> stringResource(R.string.home_privilege_status)
             },
@@ -312,7 +325,6 @@ fun PrivilegeDialog(show: Boolean, onDismiss: () -> Unit, miuix: Boolean) {
                 Column(modifier = Modifier.padding(24.dp)) {
                     Text(
                         text = when (mode) {
-                            PrivilegeMode.AdbSteps -> stringResource(R.string.privilege_adb_title)
                             PrivilegeMode.ShizukuMissing -> "Shizuku"
                             else -> stringResource(R.string.home_privilege_status)
                         },

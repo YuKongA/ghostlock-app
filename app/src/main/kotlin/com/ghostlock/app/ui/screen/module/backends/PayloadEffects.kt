@@ -28,28 +28,33 @@ object PayloadEffects {
             runCatching { File("/sys/fs/selinux/enforce").readText().trim() == "1" }.getOrNull()
         },
     ): List<EffectReport> = buildList {
-        if (state.rootManagerEnabled) {
-            val spec = FinishConfig.spec(state.rootManager)
-            if (spec?.launchOnly == true) {
-                val ok = exists("/data/adb/apd") || exists("/system/bin/su")
-                add(EffectReport("root", if (ok) EffectState.Verified else EffectState.Unknown, state.rootManager))
-            } else {
-                val ok = exists("/system/bin/su") || exists("/system/xbin/su") ||
-                    moduleLoaded(modules(), "kernelsu")
-                add(EffectReport("root", if (ok) EffectState.Verified else EffectState.Unknown, state.rootManager))
+        /* 载荷实例逐条判定：同类出现几次就有几条报告（2026-10-19）。 */
+        state.payloads.filter { it.enabled }.forEach { slot ->
+            when (slot.kind) {
+                PayloadKind.Root -> {
+                    val spec = FinishConfig.spec(state.rootManager)
+                    if (spec?.launchOnly == true) {
+                        val ok = exists("/data/adb/apd") || exists("/system/bin/su")
+                        add(EffectReport("root", if (ok) EffectState.Verified else EffectState.Unknown, state.rootManager))
+                    } else {
+                        val ok = exists("/system/bin/su") || exists("/system/xbin/su") ||
+                            moduleLoaded(modules(), "kernelsu")
+                        add(EffectReport("root", if (ok) EffectState.Verified else EffectState.Unknown, state.rootManager))
+                    }
+                }
+                PayloadKind.App -> {
+                    val detail = slot.appPackage.ifBlank { "blank" }
+                    add(EffectReport("app", if (slot.appPackage.isBlank()) EffectState.Failed else EffectState.Unknown, detail))
+                }
+                PayloadKind.Command -> {
+                    add(EffectReport("cmd", EffectState.Unknown, if (slot.scriptMode == 0) "inline" else "script"))
+                }
+                PayloadKind.Lkm -> {
+                    val name = moduleName(slot.lkmUri)
+                    val ok = name != null && (moduleLoaded(modules(), name) || exists("/sys/module/" + name))
+                    add(EffectReport("lkm", if (ok) EffectState.Verified else EffectState.Unknown, name ?: "path"))
+                }
             }
-        }
-        if (state.runAppEnabled) {
-            val detail = state.appPackage.ifBlank { "blank" }
-            add(EffectReport("app", if (state.appPackage.isBlank()) EffectState.Failed else EffectState.Unknown, detail))
-        }
-        if (state.scriptEnabled) {
-            add(EffectReport("cmd", EffectState.Unknown, if (state.scriptMode == 0) "inline" else "script"))
-        }
-        if (state.lkmEnabled) {
-            val name = moduleName(state.lkmUri)
-            val ok = name != null && (moduleLoaded(modules(), name) || exists("/sys/module/" + name))
-            add(EffectReport("lkm", if (ok) EffectState.Verified else EffectState.Unknown, name ?: "path"))
         }
         if (state.restoreSelinux) {
             val result = enforcing()

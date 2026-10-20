@@ -9,6 +9,7 @@ plugins {
     id("org.jetbrains.kotlin.jvm") version "2.4.20" apply false
 }
 
+
 /*
  * Gradle outputs stay INSIDE the repository, under each module build/
  * directory (the Gradle default: <module>/build/, plus the root build/).
@@ -73,11 +74,12 @@ private fun resolveCargoExecutable(): String {
         .orEmpty()
         .split(File.pathSeparator)
         .asSequence()
-        .map { File(it, "cargo") }
+        .map { File(it, if (System.getProperty("os.name").lowercase().contains("windows")) "cargo.exe" else "cargo") }
         .firstOrNull { it.isFile && it.canExecute() }
     if (cargoOnPath != null) return cargoOnPath.absolutePath
 
-    val cargoInRustupHome = File(System.getProperty("user.home"), ".cargo/bin/cargo")
+    val cargoName = if (System.getProperty("os.name").lowercase().contains("windows")) "cargo.exe" else "cargo"
+    val cargoInRustupHome = File(System.getProperty("user.home"), ".cargo/bin/" + cargoName)
     return if (cargoInRustupHome.isFile && cargoInRustupHome.canExecute()) {
         cargoInRustupHome.absolutePath
     } else {
@@ -94,8 +96,11 @@ private fun resolveCargoExecutable(): String {
 private fun resolveTool(name: String): String {
     providers.gradleProperty(name).orNull?.takeIf(String::isNotBlank)?.let { return it }
     System.getenv(name)?.takeIf(String::isNotBlank)?.let { return it }
+    val win = System.getProperty("os.name").lowercase().contains("windows")
+    val names = if (win) listOf(name + ".exe", name) else listOf(name)
     val onPath = System.getenv("PATH").orEmpty().split(File.pathSeparator)
-        .asSequence().map { File(it, name) }.firstOrNull { it.isFile && it.canExecute() }
+        .asSequence().flatMap { dir -> names.asSequence().map { File(dir, it) } }
+        .firstOrNull { it.isFile && it.canExecute() }
     if (onPath != null) return onPath.absolutePath
     for (dir in listOf("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin")) {
         val candidate = File(dir, name)
@@ -130,6 +135,7 @@ tasks.register<Delete>("clean") {
     delete(layout.buildDirectory)
     subprojects.forEach { delete(it.layout.buildDirectory) }
 }
+
 
 /**
  * 清理 build/ 下由文件同步工具（iCloud Drive / Finder）产生的污染副本。
@@ -302,7 +308,10 @@ tasks.register("exportJniProtocolManifest") {
     dependsOn("nativeBuildHost")
     val tool = File(rootDir, "build/host/jni_protocol_manifest")
     val out = File(rootDir, "app/build/jni-protocol-manifest.tsv")
-    inputs.file(tool)
+    /* The tool is produced by nativeBuildHost; declaring it as a file input
+     * makes Gradle validate it before that dependency has run. Track its path
+     * instead and fail in doLast with the native error. */
+    inputs.property("toolPath", tool.absolutePath)
     outputs.file(out)
     doLast {
         out.parentFile.mkdirs()

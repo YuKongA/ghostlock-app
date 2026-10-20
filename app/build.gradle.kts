@@ -338,7 +338,9 @@ object LkmSupport {
     /** llvm-objcopy from the NDK: the prebuilt host tag is globbed, never hardcoded. */
     fun objcopyIn(ndk: File): File {
         val matches = File(ndk, "toolchains/llvm/prebuilt").listFiles().orEmpty()
-            .map { File(it, "bin/llvm-objcopy") }
+            .flatMap { dir ->
+                listOf(File(dir, "bin/llvm-objcopy"), File(dir, "bin/llvm-objcopy.exe"))
+            }
             .filter { it.isFile }
         check(matches.isNotEmpty()) {
             "llvm-objcopy not found under " + ndk + "/toolchains/llvm/prebuilt/*/bin"
@@ -353,34 +355,147 @@ object LkmSupport {
      * /opt/homebrew/bin（本机 podman 就装在那里），只按名字找会得到 "no container engine found"，
      * 而工具其实装了 —— 2026-10-14 实测踩到。
      */
-    fun detectEngine(execOps: ExecOperations, override: String?): String {
-        override?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
-        /* 2026-10-18 用户裁定：**docker 优先**（兼容性），podman 作为回退。
-         * Docker Desktop 的 CLI 不在 PATH 里，所以把它的固定安装路径也列进来。 */
-        /* 2026-10-18：docker → Apple container → podman。Apple container 与 docker 参数兼容
-         * （--rm/--platform/--network/-v/-w 同名），所以同一套命令行直接可用。 */
-        for (candidate in listOf("docker", "container", "podman")) {
-            val exes = listOf(
-                candidate,
-                "/opt/homebrew/bin/" + candidate,
-                "/opt/homebrew/opt/container/bin/" + candidate,
-                "/usr/local/bin/" + candidate,
-                "/Applications/Docker.app/Contents/Resources/bin/" + candidate,
-                System.getProperty("user.home") + "/.docker/bin/" + candidate,
-            )
-            for (exe in exes) {
-                val ok = runCatching {
-                    execOps.exec {
-                        commandLine(exe, "--version")
-                        standardOutput = ByteArrayOutputStream()
-                        errorOutput = ByteArrayOutputStream()
-                    }
-                }.isSuccess
-                if (ok) return exe
+    /** An installed CLI plus the command that brings its service up. */
+    data class EngineCandidate(val exe: String, val kind: String)
+
+    private fun osName(): String = System.getProperty("os.name").lowercase()
+
+    private fun isWindowsHost(): Boolean = osName().contains("windows")
+
+    private fun isMacHost(): Boolean = osName().contains("mac")
+
+    private fun probeArgs(kind: String): List<String> =
+        if (kind == "container") listOf("system", "status") else listOf("info")
+
+    private fun serviceAlive(execOps: ExecOperations, candidate: EngineCandidate): Boolean =
+        runCatching {
+            execOps.exec {
+                commandLine(listOf(candidate.exe) + probeArgs(candidate.kind))
+                standardOutput = ByteArrayOutputStream()
+                errorOutput = ByteArrayOutputStream()
+            }
+        }.isSuccess
+
+    private fun startCommand(candidate: EngineCandidate): List<String> {
+        val win = isWindowsHost()
+        return when (candidate.kind) {
+            "container" -> listOf(candidate.exe, "system", "start")
+            "podman" -> when {
+                win || isMacHost() -> listOf(candidate.exe, "machine", "start")
+                else -> listOf("systemctl", "--user", "start", "podman.socket")
+            }
+            "docker" -> when {
+                isMacHost() -> listOf("open", "-a", "Docker")
+                win -> {
+                    val desktop = File(
+                        System.getenv("ProgramFiles").orEmpty(),
+                        "Docker/Docker/Docker Desktop.exe",
+                    )
+                    listOf("cmd", "/c", "start", "", desktop.absolutePath)
+                }
+                else -> listOf("systemctl", "start", "docker")
+            }
+            else -> emptyList()
+        }
+    }
+
+    /** Cross-platform install paths; missing entries are filtered by the probe. */
+    private fun engineCandidates(): List<EngineCandidate> {
+        val win = isWindowsHost()
+        val mac = isMacHost()
+        val home = System.getProperty("user.home")
+        val programFiles = System.getenv("ProgramFiles").orEmpty()
+        val localAppData = System.getenv("LOCALAPPDATA").orEmpty()
+        fun paths(base: String, extra: List<String>): List<String> {
+            val names = if (win) listOf(base + ".exe", base) else listOf(base)
+            return names + extra
+        }
+        return buildList {
+            paths(
+                "docker",
+                listOf(
+                    "/Applications/Docker.app/Contents/Resources/bin/docker",
+                    "/usr/local/bin/docker",
+                    "/usr/bin/docker",
+                    home + "/.docker/bin/docker",
+                    programFiles + "/Docker/Docker/resources/bin/docker.exe",
+                    localAppData + "/Docker/Docker/resources/bin/docker.exe",
+                ),
+            ).forEach { add(EngineCandidate(it, "docker")) }
+            paths(
+                "podman",
+                listOf(
+                    "/opt/homebrew/bin/podman",
+                    "/usr/local/bin/podman",
+                    "/usr/bin/podman",
+                    programFiles + "/RedHat/Podman/podman.exe",
+                    localAppData + "/Programs/Podman/podman.exe",
+                ),
+            ).forEach { add(EngineCandidate(it, "podman")) }
+            /* Apple container is the last resort: it reports a CLI version while
+             * its launchd service may be down, and its build filesystem has
+             * produced BTF/modfinal failures for the DDK images. */
+            if (mac) {
+                paths("container", listOf("/opt/homebrew/bin/container", "/usr/local/bin/container"))
+                    .forEach { add(EngineCandidate(it, "container")) }
             }
         }
+    }
+
+    /**
+     * Pick an engine, start its service when it is installed but down, then probe
+     * again. Fails with a staged reason instead of silently reusing an old cache.
+     */
+    fun ensureEngine(execOps: ExecOperations, override: String?): String {
+        val explicit = override?.trim()?.takeIf { it.isNotEmpty() }
+        val candidates = if (explicit != null) {
+            listOf(EngineCandidate(explicit, when {
+                explicit.contains("container") -> "container"
+                explicit.contains("podman") -> "podman"
+                else -> "docker"
+            }))
+        } else {
+            engineCandidates()
+        }
+        val failures = mutableListOf<String>()
+        for (candidate in candidates) {
+            if (!File(candidate.exe).isFile && !candidate.exe.contains(File.separator)) {
+                /* Bare PATH name: let the probe decide whether it exists. */
+            } else if (!File(candidate.exe).isFile) {
+                continue
+            }
+            if (serviceAlive(execOps, candidate)) return candidate.exe
+            val start = startCommand(candidate)
+            if (start.isEmpty()) {
+                failures += candidate.kind + ": no start command"
+                continue
+            }
+            val started = runCatching {
+                execOps.exec {
+                    commandLine(start)
+                    standardOutput = ByteArrayOutputStream()
+                    errorOutput = ByteArrayOutputStream()
+                }
+            }.isSuccess
+            if (!started) {
+                failures += candidate.kind + ": engine-start-failed (" + candidate.exe + ")"
+                continue
+            }
+            val deadline = System.currentTimeMillis() + 45_000L
+            while (System.currentTimeMillis() < deadline) {
+                if (serviceAlive(execOps, candidate)) return candidate.exe
+                try {
+                    Thread.sleep(1_000L)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    break
+                }
+            }
+            failures += candidate.kind + ": engine-timeout (" + candidate.exe + ")"
+        }
         throw GradleException(
-            "no container engine found: install docker / Apple container / podman, or pass -PcontainerEngine=<exe>",
+            "container engine unavailable: " + failures.joinToString("; ") +
+                "; install/start docker, Apple container or podman, or pass -PcontainerEngine=<exe>",
         )
     }
 }
@@ -412,6 +527,8 @@ abstract class LkmBuildWorkAction : WorkAction<LkmBuildParams> {
         println("[lkm] start " + label + " t=" + startedAt)
         val work = File(cache, "work-" + label)
         work.mkdirs()
+        /* Docker Desktop on Windows accepts C:/... but not a raw backslash path. */
+        val hostWork = work.absolutePath.replace('\\', '/')
         val source = parameters.sourceDir.get().asFile
         fsOps.copy {
             from(File(source, "Makefile"), File(source, "ghostlock.c"))
@@ -432,7 +549,7 @@ abstract class LkmBuildWorkAction : WorkAction<LkmBuildParams> {
                 engine, "run", "--rm",
                 "--platform", "linux/amd64",
                 "--network=none",
-                "-v", work.absolutePath + ":/work",
+                "-v", hostWork + ":/work",
                 "-w", "/work",
                 image,
                 "sh", "-c", patchUts,
@@ -484,37 +601,21 @@ abstract class BuildLkmImagesTask : DefaultTask() {
 
     @TaskAction
     fun run() {
-        val enginePath = LkmSupport.detectEngine(execOps, containerEngine.orNull)
-        val objcopyPath = LkmSupport.objcopyIn(ndkDir.get().asFile)
         val allRows = LkmSupport.readManifest(manifestFile.get().asFile)
         val rows = allRows.filter { onlyLabel.orNull.isNullOrBlank() || it.label == onlyLabel.orNull }
         check(rows.isNotEmpty()) { "-PlkmLabel=" + onlyLabel.orNull + " matches no KMI label" }
         val cache = cacheDir.get().asFile
         cache.mkdirs()
 
-        /* 2026-10-18：容器引擎没起时不要把整个 APK 构建拖死 —— 已有缓存就复用，并说清楚原因。
-         * 显式 -PlkmCacheOnly=true 时连引擎都不探。 */
-        val cachedAll = rows.all { File(cache, it.label + "/ghostlock.ko").isFile }
-        /* 健康探测按引擎分派：Apple container 没有 `info`，用 `system status`。 */
-        val probeArgs = if (enginePath.substringAfterLast('/') == "container") {
-            listOf("system", "status")
-        } else {
-            listOf("info")
-        }
-        val engineAlive = !cacheOnly.getOrElse(false) && runCatching {
-            execOps.exec {
-                commandLine(listOf(enginePath) + probeArgs)
-                standardOutput = ByteArrayOutputStream()
-                errorOutput = ByteArrayOutputStream()
-            }
-        }.isSuccess
-        if (cachedAll && !engineAlive) {
-            logger.warn(
-                "LKM: container engine 不可用（docker/podman 未运行），复用已有镜像 " +
-                    rows.size + " 个（build/lkm/<label>/ghostlock.ko）；要重建请先 podman machine start",
-            )
+        /* Explicit cache-only is the sole reuse path; it must still pass the
+         * ledger/hash check. The default path always starts/uses an engine. */
+        if (cacheOnly.getOrElse(false)) {
+            LkmSupport.verifyLedger(File(cache, LkmSupport.LEDGER_NAME), allRows, cache)
+            logger.lifecycle("LKM cache-only: " + rows.size + " image(s) verified")
             return
         }
+        val enginePath = LkmSupport.ensureEngine(execOps, containerEngine.orNull)
+        val objcopyPath = LkmSupport.objcopyIn(ndkDir.get().asFile)
         /* 并行：每个 KMI 一个 worker（--max-workers 控制并发；默认按 CPU 数）。 */
         rows.forEach { row ->
             workerExecutor.noIsolation().submit(LkmBuildWorkAction::class) {
@@ -720,7 +821,11 @@ val verifyLkmLedger = tasks.register<VerifyLkmLedgerTask>("verifyLkmLedger") {
     description = "Fails when kmis.tsv and build/lkm disagree (stale/deleted/replaced .ko)"
     manifestFile.set(lkmManifestFile)
     cacheDir.set(lkmCacheDir)
+    dependsOn(buildLkmImages)
 }
+
+/* Packaging consumes the ledger-verified cache, not merely eight files. */
+tasks.named("copyLkmIntoAssets") { dependsOn(verifyLkmLedger) }
 
 /* Fail-closed ONLY on the packaging path: package/bundle depend on the copy and the
  * asset merge is ordered after it, so pure JVM unit tests never need a container
@@ -731,7 +836,13 @@ val lkmPackagingTasks = setOf("packageDebug", "packageRelease", "bundleDebug", "
 tasks.matching { task -> task.name in lkmPackagingTasks }
     .configureEach { dependsOn(copyLkmIntoAssets) }
 tasks.matching { task -> task.name.startsWith("merge") && task.name.endsWith("Assets") }
-    .configureEach { mustRunAfter(copyLkmIntoAssets) }
+    .configureEach { dependsOn(copyLkmIntoAssets) }
+
+/* Release lint reads the generated LKM assets directory; declare the producer
+ * explicitly or Gradle 9 fails release builds with an implicit-dependency error. */
+tasks.matching { task ->
+    task.name.startsWith("lintVital") || task.name.startsWith("generateReleaseLintVital")
+}.configureEach { dependsOn(copyLkmIntoAssets) }
 
 dependencies {
     implementation("androidx.activity:activity-compose:1.13.0")

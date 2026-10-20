@@ -58,12 +58,8 @@ set(GL_RUNTIME_SRCS
   src/support/gl_log.c
   src/platform/access_factory.cpp
   src/backend/cve_2026_43499/leak/snitch_setup.cpp
-  src/backend/cve_2026_43284/lkm/module_facts.cpp
   src/support/sha256.cpp
-  src/backend/cve_2026_43284/session_frame.cpp
-  src/backend/cve_2026_43284/landing/real_splice_io.cpp
-  src/backend/cve_2026_43284/landing/pagecache_door_linux.cpp
-  src/backend/cve_2026_43284/ipsec/aes256.cpp
+  src/backend/cve_2026_43284/lib/helper.cpp
   src/backend/cve_2026_43499/abi.cpp
   src/support/hmac_sha256.cpp
 )
@@ -71,14 +67,6 @@ set(GL_RUNTIME_SRCS
 set(GL_DEVICE_EXTRA_SRCS
   src/backend/cve_2026_43499/steps/prepare_mapping.cpp
   src/backend/cve_2026_43499/steps/window_steps.cpp
-  src/backend/cve_2026_43284/steps/pagecache_step_runner.cpp
-  src/backend/cve_2026_43284/hook/sentry_hook.cpp
-  src/backend/cve_2026_43284/embed/libcxx_blob.cpp
-  src/backend/cve_2026_43284/steps/pagecache_steps.cpp
-  src/backend/cve_2026_43284/landing/crash_dump_bridge.cpp
-  src/backend/cve_2026_43284/landing/bridge_session.cpp
-  src/backend/cve_2026_43284/landing/encap_peer.cpp
-  src/backend/cve_2026_43284/embed/splicehelper_blob.cpp
 )
 
 # 两侧共享的实现（测试与运行时都要）。
@@ -131,14 +119,10 @@ endif()
 set(GL_JNI_PORTABLE_SRCS
   src/boundary/jni/api_43499.cpp
   src/device/43499/chain.cpp
-  src/boundary/jni/api_43284.cpp
-  src/device/43284/chain.cpp
   src/boundary/protocol/session_protocol.cpp
   src/boundary/protocol/session_handles.cpp
   src/boundary/protocol/session_object.cpp
   src/boundary/protocol/ops_43499.cpp
-  src/boundary/protocol/ops_43284.cpp
-  src/device/43284/ops.cpp
 )
 
 set(GL_CORE_SRCS ${GL_RUNTIME_SRCS} ${GL_DEVICE_EXTRA_SRCS} ${GL_SHARED_SRCS} ${GL_TEST_SHARED_SRCS} ${GL_JNI_PORTABLE_SRCS})
@@ -177,18 +161,15 @@ if(GL_JNI)
     src/boundary/protocol/session_protocol.cpp
     src/boundary/protocol/session_handles.cpp
     src/boundary/protocol/session_object.cpp
-    src/boundary/jni/session_api.cpp
     src/boundary/jni/native_finish.cpp
     src/boundary/jni/native_memfd.cpp
     src/boundary/jni/native_raw_esp.cpp
-    src/boundary/jni/native_payload_probe.cpp
+    src/boundary/jni/native_helper.cpp
+    src/backend/cve_2026_43284/lib/raw_esp.cpp
     src/boundary/protocol/ops_43499.cpp
-    src/boundary/protocol/ops_43284.cpp
-    src/device/43284/ops.cpp
   )
   set(GL_JNI_43499_SRCS src/boundary/jni/api_43499.cpp src/device/43499/chain.cpp src/boundary/jni/native_43499.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/boundary/protocol/api_43499_ops.cpp)
-  set(GL_JNI_43284_SRCS src/boundary/jni/api_43284.cpp src/device/43284/chain.cpp src/boundary/jni/native_43284.cpp)
 
   # D1 单表生成的读取器是两个 backend 的只读边界组件；OBJECT target 保证两库都真实编译它，
   # 又不把同一源文件伪装成任一 backend 的私有实现。
@@ -197,7 +178,7 @@ if(GL_JNI)
   target_link_libraries(ghostlock_attack_contract PRIVATE ghostlock_core)
 
   # 配置期硬断言：三份清单两两不相交（重叠即配置失败，不给编出来再说的机会）。
-  foreach(pair "GL_JNI_LEGACY_SRCS;GL_JNI_43499_SRCS" "GL_JNI_LEGACY_SRCS;GL_JNI_43284_SRCS" "GL_JNI_43499_SRCS;GL_JNI_43284_SRCS")
+  foreach(pair "GL_JNI_LEGACY_SRCS;GL_JNI_43499_SRCS")
     list(GET pair 0 gl_left)
     list(GET pair 1 gl_right)
     foreach(source ${gl_left})
@@ -222,11 +203,6 @@ if(GL_JNI)
     target_link_libraries(ghostlock43499 PRIVATE ghostlock_core log)
     set_target_properties(ghostlock43499 PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${GL_BIN_DIR})
 
-    add_library(ghostlock43284 SHARED ${GL_JNI_43284_SRCS})
-    target_sources(ghostlock43284 PRIVATE $<TARGET_OBJECTS:ghostlock_attack_contract>)
-    target_compile_options(ghostlock43284 PRIVATE ${GL_WARNINGS})
-    target_link_libraries(ghostlock43284 PRIVATE ghostlock_core log)
-    set_target_properties(ghostlock43284 PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${GL_BIN_DIR})
   else()
     message(STATUS "GL_JNI: src/jni 下暂无源文件 —— 边界库本次跳过")
   endif()
@@ -251,46 +227,32 @@ set(GL_TEST_NAMES
   abi_payload_offsets_test
   access_chain_test
   access_route_subclass_test
-  aes256_cbc_test
-  aes256_test
   candidate_match_test
   collision_buckets_test
   collision_count_test
   collision_wait_test
   credential_image_test
-  cve43284_access_params_test
   cve43499_kernel_access_test
+  include_firewall_test
   discovery_result_test
-  esp_crypto_test
-  esp_icv_test
   futex_hash_test
   heap_geometry_test
   api_43499_test
   attack_contract_model_test
   handle_registry_test
-  marshal_test
-  api_43284_test
   hmac_sha256_test
   jni_protocol_test
   jni_session_lifecycle_test
   jni_ops_43499_test
-  jni_ops_43284_test
   kernel_access_test
   leak_search_test
   leak_walk_test
-  module_facts_test
   multicast_arm_test
   multicast_policy_test
   multicast_landing_test
   multicast_window_test
   page_geometry_test
   page_slot_test
-  pagecache_chain_test
-  pagecache_door_linux_test
-  pagecache_doors_test
-  pagecache_landing_test
-  pagecache_steps_test
-  pagecache_write_test
   perf_ring_test
   perf_vote_test
   policy_dispatch_test
@@ -300,7 +262,6 @@ set(GL_TEST_NAMES
   prepare_steps_test
   race_action_test
   race_runtime_test
-  real_splice_io_test
   reclaim_plan_test
   route_config_test
   route_expected_keys_test
@@ -310,7 +271,6 @@ set(GL_TEST_NAMES
   scan_bounds_test
   scan_geometry_test
   select_stack_route_test
-  session_frame_test
   shaping_plan_test
   snitch_child_test
   snitch_discovery_test
@@ -390,17 +350,6 @@ if(GL_TESTS)
   # 主体不在了 ⇒ 该检查一并移除（不是跳过）。
   # 2026-10-17：profile_manifest_dump 与 structural_profile_manifest_v3 检查基于 src/profile/key_catalog.cpp
   # （旧 GLKv3 键表），该键表已随文档路径删除 ⇒ 工具与检查一并移除。
-  # JNI 边界协议表：由 native 导出 TSV，作为跨端唯一权威（Kotlin 侧测试读它，不手抄清单）。
-  add_executable(jni_protocol_manifest ${CMAKE_CURRENT_SOURCE_DIR}/src/tools/jni_protocol_manifest.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/boundary/protocol/session_protocol.cpp)
-  target_compile_options(jni_protocol_manifest PRIVATE ${GL_WARNINGS})
-  target_link_libraries(jni_protocol_manifest PRIVATE ghostlock_core)
-  set_target_properties(jni_protocol_manifest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${GL_BIN_DIR})
-  add_test(NAME structural_jni_protocol_manifest
-    COMMAND ${CMAKE_COMMAND}
-      -DTOOL=${GL_BIN_DIR}/jni_protocol_manifest
-      -DOUT=${GL_REPO_ROOT}/build/native/jni-protocol-manifest.tsv
-      -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/checks/jni_protocol_manifest.cmake)
 
   # 2026-10-17 用户裁定：跨端字段表改为手写（core/src/contract/attack_contract_fields.hpp +
   # app/.../core/generated/AttackContractDtos.kt），不再有构建期生成器。

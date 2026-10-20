@@ -77,18 +77,31 @@ object FinishExecution {
         }
 
         return try {
-            val stagedScript = resolveInput(state.scriptUri)
-            val manualLkm = resolveInput(state.lkmUri)
-            val autoLkm = if (state.rootManager == "FolkPatch" && manualLkm == null) {
+            /* 每条载荷各自解析输入：同类实例可以指向不同的脚本 / .ko（2026-10-19）。 */
+            val staged = buildMap {
+                state.payloads.filter { it.enabled }.forEach { slot ->
+                    when (slot.kind) {
+                        PayloadKind.Command -> if (slot.scriptMode == 1) {
+                            resolveInput(slot.scriptUri)?.let { put(slot.id, it) }
+                        }
+                        PayloadKind.Lkm -> resolveInput(slot.lkmUri)?.let { put(slot.id, it) }
+                        else -> Unit
+                    }
+                }
+            }
+            val autoLkm = if (state.rootManager == "FolkPatch" && state.payloads.none {
+                    it.enabled && it.kind == PayloadKind.Lkm && !it.lkmUri.isNullOrBlank()
+                }
+            ) {
                 FolkPatchKo.open(context)?.also { inputs += it }?.path
             } else {
                 null
             }
             val script = state.toRootScript(
                 managerBinary = null,
-                stagedScript = stagedScript,
-                stagedLkm = autoLkm ?: manualLkm,
+                staged = staged,
                 logPath = log.path,
+                folkPatchLkm = autoLkm,
             )
             FinishSession(context, FinishScriptStore.write(context, script), log, inputs.toList())
         } catch (failure: PrepException) {
@@ -141,6 +154,5 @@ object FinishExecution {
     }
 
     private fun FinishState.requestsFinish(): Boolean =
-        rootManagerEnabled || runAppEnabled || scriptEnabled || lkmEnabled ||
-            restoreSelinux || softRebootAfterFinish
+        payloads.any { it.enabled } || restoreSelinux || softRebootAfterFinish
 }

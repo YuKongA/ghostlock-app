@@ -9,7 +9,7 @@ class PayloadEffectsTest {
     @Test
     fun ksuVerifiedWhenSuExists() {
         val reports = PayloadEffects.evaluate(
-            FinishState(rootManagerEnabled = true, rootManager = "KernelSU"),
+            FinishState(payloads = listOf(PayloadSlot("root", PayloadKind.Root)), rootManager = "KernelSU"),
             exists = { it == "/system/bin/su" },
             modules = { "" },
         )
@@ -19,7 +19,7 @@ class PayloadEffectsTest {
     @Test
     fun ksuUnknownWhenNothingObservable() {
         val reports = PayloadEffects.evaluate(
-            FinishState(rootManagerEnabled = true, rootManager = "KernelSU"),
+            FinishState(payloads = listOf(PayloadSlot("root", PayloadKind.Root)), rootManager = "KernelSU"),
             exists = { false },
             modules = { "" },
         )
@@ -29,7 +29,7 @@ class PayloadEffectsTest {
     @Test
     fun lkmVerifiedFromProcModules() {
         val reports = PayloadEffects.evaluate(
-            FinishState(lkmEnabled = true, lkmUri = "file:///data/x/custom.ko"),
+            FinishState(payloads = listOf(PayloadSlot("lkm", PayloadKind.Lkm, lkmUri = "file:///data/x/custom.ko"))),
             exists = { false },
             modules = { "custom 12345 0 - Live 0x0000000000000000\n" },
         )
@@ -39,7 +39,12 @@ class PayloadEffectsTest {
     @Test
     fun appAndCommandStayUnknown() {
         val reports = PayloadEffects.evaluate(
-            FinishState(runAppEnabled = true, appPackage = "com.example", scriptEnabled = true),
+            FinishState(
+                payloads = listOf(
+                    PayloadSlot("app", PayloadKind.App, appPackage = "com.example"),
+                    PayloadSlot("cmd", PayloadKind.Command, command = "id"),
+                ),
+            ),
             exists = { false },
             modules = { "" },
         )
@@ -50,11 +55,36 @@ class PayloadEffectsTest {
     @Test
     fun blankAppPackageIsFailure() {
         val reports = PayloadEffects.evaluate(
-            FinishState(runAppEnabled = true, appPackage = ""),
+            FinishState(payloads = listOf(PayloadSlot("app", PayloadKind.App, appPackage = ""))),
             exists = { false },
             modules = { "" },
         )
         assertEquals(EffectState.Failed, reports.single { it.item == "app" }.state)
+    }
+
+    @Test
+    fun duplicateSlotsProduceOneReportEach() {
+        val reports = PayloadEffects.evaluate(
+            FinishState(
+                payloads = listOf(
+                    PayloadSlot("c1", PayloadKind.Command, command = "id"),
+                    PayloadSlot("c2", PayloadKind.Command, command = "uname -a"),
+                ),
+            ),
+            exists = { false },
+            modules = { "" },
+        )
+        assertEquals(2, reports.count { it.item == "cmd" })
+    }
+
+    @Test
+    fun disabledSlotsAreNotProbed() {
+        val reports = PayloadEffects.evaluate(
+            FinishState(payloads = listOf(PayloadSlot("cmd", PayloadKind.Command, enabled = false, command = "id"))),
+            exists = { false },
+            modules = { "" },
+        )
+        assertEquals(0, reports.count { it.item == "cmd" })
     }
 
     @Test

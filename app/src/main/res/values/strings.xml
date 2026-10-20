@@ -775,17 +775,10 @@
     <string name="privilege_state_granted">granted</string>
     <string name="privilege_state_denied">not granted</string>
     <string name="privilege_state_unavailable">unavailable</string>
-    <string name="privilege_state_adb_hint">run adb shell</string>
     <string name="privilege_request_shizuku">Request Shizuku</string>
-    <string name="privilege_adb_title">ADB steps</string>
-    <string name="privilege_adb_steps">1. Enable Developer options → USB debugging
-2. On PC: adb devices, confirm RSA
-3. adb shell runs as uid 2000; verify with: adb shell id</string>
     <string name="privilege_desc_app">App process, least privilege; public APIs only</string>
     <string name="privilege_desc_shizuku">Runs as shell (uid 2000) via Shizuku; can read SELinux and other protected state</string>
-    <string name="privilege_desc_adb">USB debugging channel (uid 2000); used only to hand shell access to GhostLock</string>
-    <string name="privilege_adb_steps_full">1. Settings -> About phone -> tap Build number 7x to enable Developer options\n2. Developer options -> enable USB debugging\n3. Connect USB, run adb devices on PC and allow debugging on the phone\n4. On PC: adb shell sh /data/local/tmp/ghostlock-adb-start.sh\n   (this script only hands the shell(uid 2000) channel to GhostLock)\n5. Back in GhostLock -> Privilege status shows adb · uid 2000 · connected</string>
-    <string name="privilege_shizuku_missing">Shizuku is not detected.\n\n1. Install Shizuku (Play Store or github.com/RikkaApps/Shizuku)\n2. Start its service: root, or via adb shell as described in the ADB steps\n3. Return here and tap Request Shizuku to grant access</string>
+    <string name="privilege_shizuku_missing">Shizuku is not detected.\n\n1. Install Shizuku (Play Store or github.com/RikkaApps/Shizuku)\n2. Start its service: root, or via adb shell (see Shizuku docs)\n3. Return here and tap Request Shizuku to grant access</string>
     <string name="privilege_back">Back</string>
     <string name="home_nav_run">Open Run</string>
     <string name="home_nav_paths">Configure Paths</string>
@@ -793,6 +786,14 @@
     <string name="privilege_select_hint">Tap a row to switch executor</string>
     <string name="finish_title">Finish</string>
     <string name="payload_title">Payload</string>
+    <string name="payload_edit">Edit payload</string>
+    <string name="payload_edit_done">Done</string>
+    <string name="payload_add">Add payload</string>
+    <string name="payload_delete">Delete payload</string>
+    <string name="payload_sort_handle">Drag to reorder</string>
+    <string name="payload_empty">No payload yet. Tap edit to add one.</string>
+    <string name="payload_not_configured">Not configured</string>
+    <string name="payload_incomplete">Incomplete</string>
     <string name="finish_settings_title">Finish</string>
     <string name="finish_none">No finish options</string>
     <string name="finish_open">Configure</string>
@@ -857,4 +858,17 @@
     <string name="settings_soft_reboot_after_summary">Restart zygote when the attack finishes</string>
     <string name="finish_soft_reboot">Soft reboot after finish</string>
     <string name="finish_soft_reboot_summary">Restart zygote at the end of the finish script</string>
+    <!-- Run page: app bar / button states / re-run confirm / share (2026-10-19 localization) -->
+    <string name="run_page_title">Run</string>
+    <string name="run_action_clear_log">Clear log</string>
+    <string name="run_action_share_log">Export log</string>
+    <string name="run_share_chooser_title">Export terminal log</string>
+    <string name="run_state_start">Start</string>
+    <string name="run_state_abort">Abort now</string>
+    <string name="run_state_aborting">Aborting…</string>
+    <string name="run_state_aborted">Aborted</string>
+    <string name="run_state_done">Done</string>
+    <string name="run_state_rerun">Run again</string>
+    <string name="run_rerun_title">Run again?</string>
+    <string name="run_rerun_message">This starts the attack again. Continue?</string>
 </resources>

@@ -1,6 +1,7 @@
 package com.ghostlock.app.engine.pagecache
 
 import android.system.ErrnoException
+import com.ghostlock.app.log.log
 import android.system.Os
 import android.system.OsConstants
 import java.io.File
@@ -33,7 +34,7 @@ import java.io.FileDescriptor
  */
 class LkmWindow43284(
     private val defaultPath: String = DEFAULT_PATH,
-    private val emit: (String) -> Unit = {},
+    private val emit: (String) -> Unit = { message -> log.info(message) },
     private val openFn: (String) -> FileDescriptor = ::openGlkDevice,
     private val closeFn: (FileDescriptor) -> Unit = ::closeGlkDevice,
 ) {

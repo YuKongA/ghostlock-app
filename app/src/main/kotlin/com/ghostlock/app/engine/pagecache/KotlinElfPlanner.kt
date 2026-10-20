@@ -1,5 +1,8 @@
 package com.ghostlock.app.engine.pagecache
 
+import com.ghostlock.app.engine.pagecache.stage.StageLog
+import com.ghostlock.app.engine.pagecache.stage.silentStageLog
+
 /** ELF64 区间；所有字段在返回前都做过越界校验。 */
 internal data class ElfRange(val fileOffset: Long, val size: Long, val vaddr: Long)
 
@@ -71,8 +74,13 @@ object KotlinElfPlanner {
     private const val SENTRY =
         "_ZNSt3__113basic_ostreamIcNS_11char_traitsIcEEE6sentryC1ERS3_"
 
-    fun plan(target: ElfTarget, payload: ByteArray): KotlinSentryPlan? {
-        val layout = parse(target.bytes) ?: return null
+    fun plan(target: ElfTarget, payload: ByteArray, log: StageLog = silentStageLog): KotlinSentryPlan? {
+        log.verbose("KotlinElfPlanner.plan", "target" to target.path, "payload" to payload.size)
+        val layout = parse(target.bytes)
+        if (layout == null) {
+            log.debug("KotlinElfPlanner.plan", "layout-null")
+            return null
+        }
         val exec = layout.exec ?: return null
         val symbol = findSymbol(target.bytes, layout, SENTRY) ?: return null
         val guard = readU32(target.bytes, symbol.fileOffset.toInt())?.toInt() ?: return null
@@ -85,8 +93,16 @@ object KotlinElfPlanner {
         val payloadMax = landingRoom(target.bytes, layout, landing) ?: return null
         if (padded > payloadMax) return null
         val entry = landing + 0x90L
-        val branch = encodeBranch(siteVaddr, entry) ?: return null
-        val jumpBack = encodeBranch(landing + 0x1D4L, siteVaddr + 4L) ?: return null
+        val branch = encodeBranch(siteVaddr, entry, log)
+        if (branch == null) {
+            log.debug("KotlinElfPlanner.plan", "branch-null", "site" to siteVaddr, "entry" to entry)
+            return null
+        }
+        val jumpBack = encodeBranch(landing + 0x1D4L, siteVaddr + 4L, log)
+        if (jumpBack == null) {
+            log.debug("KotlinElfPlanner.plan", "jump-null", "landing" to landing, "site" to siteVaddr)
+            return null
+        }
         return KotlinSentryPlan(
             siteFile = siteFile,
             siteVaddr = siteVaddr,
@@ -104,7 +120,8 @@ object KotlinElfPlanner {
      * 静态 ELF 的入口钩子：site = e_entry，landing = 可执行段末尾页尾/零填充。
      * 用于没有 libc++ sentry 可用的静态二进制（例如模拟器的 crash_dump64）。
      */
-    fun planEntry(target: ElfTarget, payload: ByteArray): KotlinSentryPlan? {
+    fun planEntry(target: ElfTarget, payload: ByteArray, log: StageLog = silentStageLog): KotlinSentryPlan? {
+        log.verbose("KotlinElfPlanner.planEntry", "target" to target.path, "payload" to payload.size)
         val layout = parse(target.bytes) ?: return null
         val exec = layout.exec ?: return null
         val entry = readU64(target.bytes, 0x18) ?: return null
@@ -115,8 +132,9 @@ object KotlinElfPlanner {
         val landing = findLanding(target.bytes, layout, entry, padded) ?: return null
         val payloadMax = landingRoom(target.bytes, layout, landing) ?: return null
         if (padded > payloadMax) return null
-        val branch = encodeBranch(entry, landing + 0x90L) ?: return null
-        val jumpBack = encodeBranch(landing + 0x1D4L, entry + 4L) ?: return null
+        val branch = encodeBranch(entry, landing + 0x90L, log) ?: return null
+        val jumpBack = encodeBranch(landing + 0x1D4L, entry + 4L, log) ?: return null
+        log.debug("KotlinElfPlanner.planEntry", "ok", "site" to entry, "landing" to landing)
         return KotlinSentryPlan(
             siteFile = siteFile,
             siteVaddr = entry,
@@ -225,13 +243,25 @@ object KotlinElfPlanner {
         return null
     }
 
-    fun encodeBranch(from: Long, to: Long): Int? {
-        if (((from or to) and 0x3L) != 0L) return null
+    fun encodeBranch(from: Long, to: Long, log: StageLog = silentStageLog): Int? {
+        log.verbose("KotlinElfPlanner.encodeBranch", "from" to from, "to" to to)
+        if (((from or to) and 0x3L) != 0L) {
+            log.debug("KotlinElfPlanner.encodeBranch", "unaligned", "from" to from, "to" to to)
+            return null
+        }
         val delta = to - from
-        if (delta % 4L != 0L) return null
+        if (delta % 4L != 0L) {
+            log.debug("KotlinElfPlanner.encodeBranch", "delta-unaligned", "delta" to delta)
+            return null
+        }
         val words = delta / 4L
-        if (words < -(1L shl 25) || words >= (1L shl 25)) return null
-        return 0x14000000.toInt() or (words.toInt() and 0x03FFFFFF)
+        if (words < -(1L shl 25) || words >= (1L shl 25)) {
+            log.debug("KotlinElfPlanner.encodeBranch", "out-of-range", "words" to words)
+            return null
+        }
+        val encoded = 0x14000000.toInt() or (words.toInt() and 0x03FFFFFF)
+        log.debug("KotlinElfPlanner.encodeBranch", "ok", "from" to from, "to" to to)
+        return encoded
     }
 
     /** 站点所在段末尾的页尾；容量按 payload 需求裁剪。 */

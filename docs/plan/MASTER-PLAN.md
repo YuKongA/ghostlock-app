@@ -1,5 +1,7 @@
 # MASTER-PLAN：GhostLock 主计划（唯一进度入口）
 
+> **2026-10-19 43284 重置**：旧 43284 后端/JNI 具体实现已删除；重构设计与批次见 `docs/analysis/43284-refactor-design-v4.md`、`docs/plan/43284-reset-batch.md`。该文件取代 DFRP P1/P2/P3 旧会话实现；KPLAN 用户裁定不变（Kotlin plan/write，C++ 仅 syscall）。
+
 ## §0.1 2026-10-17 用户裁定：Lua / GLKv3 文档 / CLI / script 面删除（取代 §1 目标 1 与 3）
 
 - **裁定**：vendored `lua`、`mpack`、`nlohmann` 三个库从构建中删除，且不引入替代第三方库；「引用它们的都是旧代码」⇒ **不被 JNI 调用的部分直接删**，不重写。

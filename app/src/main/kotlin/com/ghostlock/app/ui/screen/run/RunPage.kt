@@ -48,14 +48,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.ghostlock.app.R
 import com.ghostlock.app.attack.AttackClient
 import com.ghostlock.app.attack.AttackSettings
 import com.ghostlock.app.log.LogLevel
@@ -69,6 +72,7 @@ import com.ghostlock.app.ui.component.material.ExpressiveScaffold
 import com.ghostlock.app.ui.component.material.expressiveTopAppBarColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import androidx.compose.material3.BasicAlertDialog
@@ -122,14 +126,54 @@ private fun stateIcon(state: RunState) = when (state) {
     RunState.RerunReady -> Icons.Filled.Refresh
 }
 
-private fun runLabel(state: RunState): String = when (state) {
-    RunState.Idle -> "开始执行"
-    RunState.Running -> "紧急中止"
-    RunState.Aborting -> "正在中止"
-    RunState.Aborted -> "中止完成"
-    RunState.Done -> "已完成"
-    RunState.RerunReady -> "重新执行"
-}
+/**
+ * 执行页文案（2026-10-19 本地化）：两套 UI 共用一份，资源只在 Composable 里读。
+ *
+ * @property title 顶栏标题。
+ * @property clearLog 顶栏「清除日志」的无障碍描述。
+ * @property shareLog 顶栏「导出终端」的无障碍描述。
+ * @property shareChooser 系统分享菜单的标题。
+ * @property rerunTitle 二次执行确认框标题。
+ * @property rerunMessage 二次执行确认框正文。
+ * @property confirm 确认按钮。
+ * @property dismiss 取消按钮。
+ */
+private data class RunLabels(
+    val title: String,
+    val clearLog: String,
+    val shareLog: String,
+    val shareChooser: String,
+    val rerunTitle: String,
+    val rerunMessage: String,
+    val confirm: String,
+    val dismiss: String,
+)
+
+/** 读一次执行页资源；onClick 闭包里不再调用 stringResource。 */
+@Composable
+private fun runLabels(): RunLabels = RunLabels(
+    title = stringResource(R.string.run_page_title),
+    clearLog = stringResource(R.string.run_action_clear_log),
+    shareLog = stringResource(R.string.run_action_share_log),
+    shareChooser = stringResource(R.string.run_share_chooser_title),
+    rerunTitle = stringResource(R.string.run_rerun_title),
+    rerunMessage = stringResource(R.string.run_rerun_message),
+    confirm = stringResource(R.string.confirm),
+    dismiss = stringResource(android.R.string.cancel),
+)
+
+/** 按钮文案随状态走（资源见 values/strings.xml 与 values-zh-rCN/strings.xml）。 */
+@Composable
+private fun runLabel(state: RunState): String = stringResource(
+    when (state) {
+        RunState.Idle -> R.string.run_state_start
+        RunState.Running -> R.string.run_state_abort
+        RunState.Aborting -> R.string.run_state_aborting
+        RunState.Aborted -> R.string.run_state_aborted
+        RunState.Done -> R.string.run_state_done
+        RunState.RerunReady -> R.string.run_state_rerun
+    },
+)
 
 
 
@@ -162,22 +206,27 @@ fun RunPageMaterial(bottomInnerPadding: Dp) {
     }
     val confirmDialog = rememberConfirmDialog(onConfirm = { startAttack() })
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val labels = runLabels()
 
-    LaunchedEffect(entries.size) { scroll.animateScrollTo(scroll.maxValue) }
+    /* 终端跟随：内容高度一变就贴底。snapshotFlow 在布局后拿到新的 maxValue，
+       用即时 scrollTo 而不是 animateScrollTo —— 后者会被下一行打断成每几百毫秒一跳（2026-10-19）。 */
+    LaunchedEffect(scroll) {
+        snapshotFlow { scroll.maxValue }.collect { target -> scroll.scrollTo(target) }
+    }
 
     ExpressiveScaffold(
         topBar = {
             LargeFlexibleTopAppBar(
-                title = { Text("执行") },
+                title = { Text(labels.title) },
                 colors = expressiveTopAppBarColors(),
                 windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
                 scrollBehavior = scrollBehavior,
                 actions = {
                     IconButton(onClick = { entries.clear() }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "清除日志")
+                        Icon(Icons.Filled.Delete, contentDescription = labels.clearLog)
                     }
-                    IconButton(onClick = { shareTerminal(context, entries) }) {
-                        Icon(Icons.Filled.IosShare, contentDescription = "导出终端")
+                    IconButton(onClick = { shareTerminal(context, entries, labels.shareChooser) }) {
+                        Icon(Icons.Filled.IosShare, contentDescription = labels.shareLog)
                     }
                 },
             )
@@ -245,10 +294,10 @@ fun RunPageMaterial(bottomInnerPadding: Dp) {
                         RunState.RerunReady -> {
                             if (AttackSettings.warnOnRerun) {
                                 confirmDialog.showConfirm(
-                                    title = "重新执行？",
-                                    content = "将再次发起攻击，确认继续。",
-                                    confirm = "确认",
-                                    dismiss = "取消",
+                                    title = labels.rerunTitle,
+                                    content = labels.rerunMessage,
+                                    confirm = labels.confirm,
+                                    dismiss = labels.dismiss,
                                 )
                             } else {
                                 startAttack()
@@ -300,21 +349,36 @@ fun RunPageMiuix(bottomInnerPadding: Dp) {
     }
     val confirmDialog = rememberConfirmDialog(onConfirm = { startAttack() })
     val scrollBehavior = MiuixScrollBehavior()
+    val labels = runLabels()
 
-    LaunchedEffect(entries.size) { scroll.animateScrollTo(scroll.maxValue) }
+    /* 终端跟随：内容高度一变就贴底。snapshotFlow 在布局后拿到新的 maxValue，
+       用即时 scrollTo 而不是 animateScrollTo —— 后者会被下一行打断成每几百毫秒一跳（2026-10-19）。 */
+    LaunchedEffect(scroll) {
+        snapshotFlow { scroll.maxValue }.collect { target -> scroll.scrollTo(target) }
+    }
 
     MiuixScaffold(
         topBar = {
             MiuixTopAppBar(
-                title = "执行",
+                title = labels.title,
                 scrollBehavior = scrollBehavior,
                 actions = {
                     val context = LocalContext.current
                     IconButton(onClick = { entries.clear() }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "清除日志")
+                        /* Miuix 的 TopAppBar 不给 actions 注入 LocalContentColor，暗色下 Icon 默认取黑色；
+                         * 显式给 onBackground（与 AboutMiuix / FinishUi 同口径，2026-10-19）。 */
+                        Icon(
+                            Icons.Filled.Delete,
+                            contentDescription = labels.clearLog,
+                            tint = MiuixTheme.colorScheme.onBackground,
+                        )
                     }
-                    IconButton(onClick = { shareTerminal(context, entries) }) {
-                        Icon(Icons.Filled.IosShare, contentDescription = "导出终端")
+                    IconButton(onClick = { shareTerminal(context, entries, labels.shareChooser) }) {
+                        Icon(
+                            Icons.Filled.IosShare,
+                            contentDescription = labels.shareLog,
+                            tint = MiuixTheme.colorScheme.onBackground,
+                        )
                     }
                 },
             )
@@ -384,10 +448,10 @@ fun RunPageMiuix(bottomInnerPadding: Dp) {
                         RunState.RerunReady -> {
                             if (AttackSettings.warnOnRerun) {
                                 confirmDialog.showConfirm(
-                                    title = "重新执行？",
-                                    content = "将再次发起攻击，确认继续。",
-                                    confirm = "确认",
-                                    dismiss = "取消",
+                                    title = labels.rerunTitle,
+                                    content = labels.rerunMessage,
+                                    confirm = labels.confirm,
+                                    dismiss = labels.dismiss,
                                 )
                             } else {
                                 startAttack()
@@ -414,7 +478,7 @@ fun RunPageMiuix(bottomInnerPadding: Dp) {
 
 
 /** 把终端文本写成 .log 文件，再交给 Android 分享菜单。 */
-private fun shareTerminal(context: Context, entries: List<TerminalEntry>) {
+private fun shareTerminal(context: Context, entries: List<TerminalEntry>, chooserTitle: String) {
     val dir = File(context.cacheDir, "logs").apply { mkdirs() }
     val file = File(dir, "ghostlock-terminal-" + System.currentTimeMillis() + ".log")
     file.writeText(entries.joinToString("\n") { log.format(it.level, it.message) } + "\n")
@@ -425,5 +489,5 @@ private fun shareTerminal(context: Context, entries: List<TerminalEntry>) {
         putExtra(Intent.EXTRA_TITLE, file.name)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    context.startActivity(Intent.createChooser(send, "导出终端日志"))
+    context.startActivity(Intent.createChooser(send, chooserTitle))
 }

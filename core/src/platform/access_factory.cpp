@@ -12,7 +12,6 @@
  *  backends and four of them are headers only, so a caller that asks for one of those must be told
  *  no -- and then decide, rather than be handed something that fails later with a stranger error.
  */
-#include "backend/cve_2026_43284/kernel_access.hpp"
 #include "backend/cve_2026_43499/kernel_access.hpp"
 
 namespace ghostlock::contract {
@@ -29,7 +28,8 @@ namespace ghostlock::contract {
             case BackendId::Cve_2026_43499:
                 return std::make_unique<::ghostlock::backend::cve_2026_43499::KernelAccess43499>();
             case BackendId::Cve_2026_43284:
-                return std::make_unique<::ghostlock::backend::cve_2026_43284::Access>();
+                /* 43284 后端已重置；实现按上游源码逐步重写后再接线。 */
+                return nullptr;
             default:
                 /* The catalogue's other four are declarations without implementations. */
                 return nullptr;

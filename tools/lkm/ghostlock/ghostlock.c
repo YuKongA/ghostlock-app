@@ -67,9 +67,6 @@ MODULE_PARM_DESC(cmd, "Script path passed to /system/bin/sh");
 module_param_named(permissive, knob.permissive, uint, 0400);
 MODULE_PARM_DESC(permissive, "Set SELinux permissive before running the script");
 
-module_param_named(defex, knob.defex, uint, 0400);
-MODULE_PARM_DESC(defex, "Hook Samsung Defex entry points when present");
-
 /* The chain writes 0 here: SELinux restore is the script's last section. */
 module_param_named(restore_enforce, knob.restore_enforce, uint, 0400);
 MODULE_PARM_DESC(restore_enforce, "Restore SELinux enforcing after the script");
@@ -79,14 +76,6 @@ typedef void *(*umh_setup_t)(const char *, char **, char **, gfp_t,
                              int (*)(struct subprocess_info *, struct cred *),
                              void (*)(struct subprocess_info *), void *);
 typedef int (*umh_exec_t)(struct subprocess_info *, int);
-
-static int defex_pre_handler(struct kprobe *p, struct pt_regs *regs)
-{
-    (void)p;
-    regs->regs[0] = 0;         /* DEFEX_ALLOW */
-    regs->pc = regs->regs[30]; /* skip the body, return to the caller */
-    return 1;
-}
 
 static int __init ghostlock_init(void)
 {
@@ -137,18 +126,6 @@ static int __init ghostlock_init(void)
         pr_info("ghostlock: selinux_state set permissive\n");
     } else {
         pr_info("ghostlock: permissive=0, SELinux untouched\n");
-    }
-
-    /* 3. optional Samsung Defex bypass (best effort; absence is not fatal). */
-    if (knob.defex) {
-        struct kprobe kp;
-        memset(&kp, 0, sizeof(kp));
-        kp.addr = (kprobe_opcode_t *)get_addr("task_defex_enforce");
-        kp.pre_handler = defex_pre_handler;
-        if (kp.addr != NULL && register_kprobe(&kp) == 0)
-            pr_info("ghostlock: task_defex_enforce hooked\n");
-        else
-            pr_info("ghostlock: task_defex_enforce not hooked\n");
     }
 
     /* 4. run the userspace command through UMH. */

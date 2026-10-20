@@ -1,5 +1,7 @@
 # ROADMAP：排期视图（R9 三层拆分之三）
 
+> **2026-10-19 43284 重置**：旧实现已删除，重写按 `docs/plan/43284-reset-batch.md`；设计见 `docs/analysis/43284-refactor-design-v4.md`。
+
 > **角色**：本文件只回答「先做什么、后做什么、卡在哪、过什么门」。
 > **进度**的权威是 `docs/plan/MASTER-PLAN.md`（唯一进度入口）；**R 项全文与判据**见 `docs/plan/B0.0-REVISION.md`；
 > **待裁定**见 `docs/plan/PENDING-DECISIONS.md` 与本文件 §4；事实基线见 `docs/development/introduction.md`；纪律与门槛见 `AGENTS.md`。

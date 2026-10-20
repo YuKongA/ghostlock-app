@@ -1,5 +1,7 @@
 # 43284 生产级引擎接入计划（修订版，2026-10-18）
 
+> 2026-10-19：P1/P2/P3 的旧 `KotlinAttackSession`/`Backend43284Port`/`api_43284` 实现段被 `docs/analysis/43284-refactor-design-v4.md` 取代；用户约束与门禁条款保留。
+
 > 子计划：[payload-finish-chain-plan.md](payload-finish-chain-plan.md)（P3/P4/P5 的载荷/收尾单向链、零落盘、marker 去除与 KernelSU 接线）。零落盘约束见 [payload-finish-chain-design.md](../analysis/payload-finish-chain-design.md) v2，与 P4 的通道形态冲突时以子计划为准。
 
 ## 0. 目标与决策

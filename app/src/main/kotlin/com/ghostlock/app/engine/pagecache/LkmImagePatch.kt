@@ -1,5 +1,8 @@
 package com.ghostlock.app.engine.pagecache
 
+import com.ghostlock.app.engine.pagecache.stage.StageLog
+import com.ghostlock.app.engine.pagecache.stage.silentStageLog
+
 /**
  * 在内存中的 `.ko` 镜像里写入脚本路径。
  *
@@ -38,32 +41,34 @@ object LkmImagePatch {
      * @return 新的镜像字节。
      * @throws LkmPatchException magic 缺失/重复、尺寸不符或路径非法。
      */
-    fun apply(image: ByteArray, scriptPath: String): ByteArray {
+    fun apply(image: ByteArray, scriptPath: String, log: StageLog = silentStageLog): ByteArray {
+        log.verbose("LkmImagePatch.apply", "image" to image.size, "script" to scriptPath)
         if (image.size < KNOB_SIZE) {
+            log.debug("LkmImagePatch.apply", "image-too-small", "bytes" to image.size)
             throw LkmPatchException("knob-image-too-small")
         }
-        val at = locate(image)
+        val at = locate(image, log)
         if (readU32(image, at + 8) != KNOB_SIZE) {
             throw LkmPatchException("knob-size-mismatch")
         }
         val path = scriptPath.toByteArray(Charsets.UTF_8)
         if (!scriptPath.startsWith("/") || path.size >= PATH_CAPACITY || scriptPath.indexOf('\u0000') >= 0) {
+            log.debug("LkmImagePatch.apply", "path-invalid", "bytes" to path.size)
             throw LkmPatchException("knob-path-invalid")
         }
         val out = image.copyOf()
-        writeU32(out, at + 12, 1)   /* permissive */
-        writeU32(out, at + 16, 0)   /* defex */
-        writeU32(out, at + 20, 0)   /* restore_enforce：SELinux 恢复归脚本 */
+        /* permissive/defex/restore_enforce 保留 KO 默认值；B8 只写路径。 */
         writeU32(out, at + 24, path.size)
         for (index in 0 until PATH_CAPACITY) {
             out[at + 28 + index] = 0
         }
         path.copyInto(out, at + 28)
+        log.debug("LkmImagePatch.apply", "ok", "at" to at, "pathBytes" to path.size)
         return out
     }
 
     /** 定位唯一 magic；0 份或多份都抛具名异常。 */
-    private fun locate(image: ByteArray): Int {
+    private fun locate(image: ByteArray, log: StageLog = silentStageLog): Int {
         var found = -1
         var index = 0
         while (index <= image.size - MAGIC.size) {
@@ -76,6 +81,7 @@ object LkmImagePatch {
             }
             if (hit) {
                 if (found >= 0) {
+                    log.debug("LkmImagePatch.locate", "duplicate", "at" to index)
                     throw LkmPatchException("knob-magic-duplicate")
                 }
                 found = index
@@ -85,6 +91,7 @@ object LkmImagePatch {
             }
         }
         if (found < 0) {
+            log.debug("LkmImagePatch.locate", "missing")
             throw LkmPatchException("knob-magic-missing")
         }
         return found

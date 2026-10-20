@@ -2,6 +2,7 @@ package com.ghostlock.app.ui.screen.module.backends
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -65,6 +66,7 @@ private fun Backend43284Config(miuix: Boolean) {
         SegmentedColumn(modifier = Modifier.fillMaxWidth()) {
             item {
                 SegmentedListItem(
+                    leadingContent = { Icon(Icons.Filled.Security, contentDescription = null) },
                     headlineContent = { Text(title) },
                     supportingContent = { Text(summary) },
                     trailingContent = { Switch(checked = enabled, onCheckedChange = ::toggle) },

@@ -1,5 +1,7 @@
 package com.ghostlock.app.jni.cve43284
 
+import com.ghostlock.app.engine.pagecache.stage.StageLog
+import com.ghostlock.app.engine.pagecache.stage.silentStageLog
 import java.io.File
 
 /**
@@ -149,14 +151,24 @@ object CarrierCandidates {
         profileCarrierPath: String? = null,
         readable: (String) -> Boolean = ::isReadableAt,
         exists: (String) -> Boolean = ::existsAt,
+        log: StageLog = silentStageLog,
     ): CarrierChoice {
+        log.verbose("CarrierCandidates.select", "profile" to (profileCarrierPath ?: "none"))
         val all = ordered(profileCarrierPath)
         for ((index, candidate) in all.withIndex()) {
-            if (exists(candidate.path)) {
-                return CarrierChoice(index = index, total = all.size, candidate = candidate, readable = readable(candidate.path))
+            val present = exists(candidate.path)
+            log.debug("CarrierCandidates.select", "probe", "index" to index, "path" to candidate.path,
+                "present" to present)
+            if (present) {
+                val choice = CarrierChoice(index, all.size, candidate, readable(candidate.path))
+                log.debug("CarrierCandidates.select", "selected", "path" to choice.path,
+                    "readable" to choice.readable)
+                return choice
             }
         }
         val first = all[0]
-        return CarrierChoice(index = 0, total = all.size, candidate = first, readable = readable(first.path))
+        val choice = CarrierChoice(index = 0, total = all.size, candidate = first, readable = readable(first.path))
+        log.debug("CarrierCandidates.select", "fallback", "path" to choice.path)
+        return choice
     }
 }

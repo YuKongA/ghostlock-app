@@ -1,5 +1,6 @@
 package com.ghostlock.app.ui.screen.module.backends
 
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -32,6 +33,8 @@ import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -52,7 +55,9 @@ import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.HelpOutline
@@ -79,6 +84,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -89,6 +95,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -117,20 +124,26 @@ import kotlin.math.roundToInt
 
 private enum class FinishRoute { Main, App }
 
-/* ---------------- option metadata ---------------- */
+/* ---------------- payload metadata ---------------- */
 
-private data class FinishOption(val id: String, val titleRes: Int, val icon: androidx.compose.ui.graphics.vector.ImageVector)
-
-private val payloadIds = listOf("root", "app", "cmd", "lkm")
-
-private val finishOptions = listOf(
-    FinishOption("root", R.string.finish_root_manager, Icons.Filled.AdminPanelSettings),
-    FinishOption("app", R.string.finish_run_app, Icons.Filled.Apps),
-    FinishOption("cmd", R.string.finish_script, Icons.Filled.Terminal),
-    FinishOption("selinux", R.string.finish_restore_selinux, Icons.Filled.Security),
-    FinishOption("lkm", R.string.finish_lkm, Icons.Filled.Extension),
-    FinishOption("reboot", R.string.finish_soft_reboot, Icons.Filled.RestartAlt),
+/** 载荷类型对应的标题文案。 */
+@Composable
+private fun payloadTitle(kind: PayloadKind): String = stringResource(
+    when (kind) {
+        PayloadKind.Root -> R.string.finish_root_manager
+        PayloadKind.App -> R.string.finish_run_app
+        PayloadKind.Command -> R.string.finish_script
+        PayloadKind.Lkm -> R.string.finish_lkm
+    },
 )
+
+/** 载荷类型对应的图标。 */
+private fun payloadIcon(kind: PayloadKind) = when (kind) {
+    PayloadKind.Root -> Icons.Filled.AdminPanelSettings
+    PayloadKind.App -> Icons.Filled.Apps
+    PayloadKind.Command -> Icons.Filled.Terminal
+    PayloadKind.Lkm -> Icons.Filled.Extension
+}
 
 /* ---------------- entry card ---------------- */
 
@@ -138,12 +151,7 @@ private val finishOptions = listOf(
 fun FinishCard(miuix: Boolean, onOpen: () -> Unit) {
     val context = LocalContext.current
     val state = FinishConfig.state
-    val enabled = buildList {
-        if (state.rootManagerEnabled) add(stringResource(R.string.finish_root_manager))
-        if (state.runAppEnabled) add(stringResource(R.string.finish_run_app))
-        if (state.scriptEnabled) add(stringResource(R.string.finish_script))
-        if (state.lkmEnabled) add(stringResource(R.string.finish_lkm))
-    }
+    val enabled = state.payloads.filter { it.enabled }.map { payloadTitle(it.kind) }
     val summary = when (enabled.size) {
         0 -> stringResource(R.string.finish_none)
         1 -> enabled.first()
@@ -159,7 +167,6 @@ fun FinishCard(miuix: Boolean, onOpen: () -> Unit) {
                     Icon(
                         imageVector = Icons.Filled.CheckCircle,
                         contentDescription = null,
-                        modifier = Modifier.padding(end = 6.dp),
                         tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground,
                     )
                 },
@@ -186,6 +193,8 @@ fun FinishCard(miuix: Boolean, onOpen: () -> Unit) {
 @Composable
 fun FinishPage(miuix: Boolean, bottomInnerPadding: Dp, onBack: () -> Unit) {
     var route by remember { mutableStateOf(FinishRoute.Main) }
+    /* 应用选择器要知道「改哪一条载荷」：同类可以有多条（2026-10-19）。 */
+    var appSlotId by remember { mutableStateOf<String?>(null) }
     DisposableEffect(Unit) {
         PageChrome.hideBottomBar = true
         onDispose { PageChrome.hideBottomBar = false }
@@ -206,8 +215,18 @@ fun FinishPage(miuix: Boolean, bottomInnerPadding: Dp, onBack: () -> Unit) {
         label = "finish-route",
     ) { current ->
         when (current) {
-            FinishRoute.Main -> FinishMain(miuix, bottomInnerPadding, onBack) { route = FinishRoute.App }
-            FinishRoute.App -> FinishAppPage(miuix, bottomInnerPadding) { route = FinishRoute.Main }
+            FinishRoute.Main -> FinishMain(miuix, bottomInnerPadding, onBack) { slotId ->
+                appSlotId = slotId
+                route = FinishRoute.App
+            }
+            FinishRoute.App -> {
+                val slotId = appSlotId
+                if (slotId == null) {
+                    LaunchedEffect(Unit) { route = FinishRoute.Main }
+                } else {
+                    FinishAppPage(miuix, bottomInnerPadding, slotId) { route = FinishRoute.Main }
+                }
+            }
         }
     }
 }
@@ -219,22 +238,29 @@ private fun FinishMain(
     miuix: Boolean,
     bottomInnerPadding: Dp,
     onBack: () -> Unit,
-    onPickApp: () -> Unit,
+    onPickApp: (String) -> Unit,
 ) {
     val context = LocalContext.current
     var state by remember { mutableStateOf(FinishConfig.state) }
-    var sortMode by remember { mutableStateOf(false) }
+    /* 2026-10-19 用户裁定：右上角从「排序」改为「编辑」；载荷可重复添加/删除。 */
+    var editMode by remember { mutableStateOf(false) }
+    /* 编辑模式的底部按钮改成「添加载荷」，点开是四选一弹窗（2026-10-19）。 */
+    var showAdd by remember { mutableStateOf(false) }
+    /* 未填完整的启用项：标红，且普通模式禁止保存脚本（2026-10-19 用户裁定）。 */
+    val hasIncomplete = state.payloads.any { it.enabled && !it.isComplete() }
     fun commit(next: FinishState) {
         state = next
         FinishConfig.update(context, next)
     }
-    val scriptPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        commit(state.copy(scriptUri = uri?.toString()))
+    fun updateSlot(slot: PayloadSlot) {
+        commit(state.copy(payloads = state.payloads.map { if (it.id == slot.id) slot else it }))
     }
-    val lkmPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        commit(state.copy(lkmUri = uri?.toString()))
+    fun deleteSlot(id: String) {
+        commit(state.copy(payloads = state.payloads.filterNot { it.id == id }))
     }
-    val app = appDisplay(state.appPackage)
+    fun addSlot(kind: PayloadKind) {
+        commit(state.copy(payloads = state.payloads + newPayloadSlot(kind)))
+    }
 
     if (miuix) {
         val scrollBehavior = MiuixScrollBehavior()
@@ -244,10 +270,10 @@ private fun FinishMain(
                     title = stringResource(R.string.payload_title),
                     navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground) } },
                     actions = {
-                        IconButton(onClick = { sortMode = !sortMode }) {
+                        IconButton(onClick = { editMode = !editMode }) {
                             Icon(
-                                Icons.AutoMirrored.Filled.Sort,
-                                contentDescription = stringResource(R.string.menu_sort),
+                                imageVector = if (editMode) Icons.Filled.Check else Icons.Filled.Edit,
+                                contentDescription = stringResource(if (editMode) R.string.payload_edit_done else R.string.payload_edit),
                                 tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground,
                             )
                         }
@@ -255,31 +281,52 @@ private fun FinishMain(
                     scrollBehavior = scrollBehavior,
                 )
             },
-            contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout).only(WindowInsetsSides.Horizontal),
+            /* 覆盖层页面没有外层底栏：底部导航条留白必须自己吃，否则固定按钮被三大金刚键挡住（2026-10-19）。 */
+            contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout)
+                .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
         ) { inner ->
             val pageScroll = rememberScrollState()
-            Column(modifier = Modifier.fillMaxSize().padding(inner)) {
+            Column(modifier = Modifier.fillMaxSize().padding(inner).imePadding()) {
                 Column(
                     modifier = Modifier.weight(1f).fillMaxWidth()
-                        .then(if (sortMode) Modifier else Modifier.verticalScroll(pageScroll))
+                        .verticalScroll(pageScroll)
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                         .padding(bottom = bottomInnerPadding),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    if (sortMode) {
-                        FinishSortList(miuix = true, order = state.order.filter { it in payloadIds }) { commit(state.copy(order = it + state.order.filter { id -> id !in payloadIds })) }
+                    if (editMode) {
+                        /* 编辑模式只做三件事：加、排序、删；参数区不出现（2026-10-19 用户裁定）。 */
+                        if (state.payloads.isNotEmpty()) {
+                            PayloadEditList(
+                                miuix = true,
+                                slots = state.payloads,
+                                rootManager = state.rootManager,
+                                onDelete = ::deleteSlot,
+                                onMove = { next -> commit(state.copy(payloads = next)) },
+                            )
+                        }
                     } else {
-                        state.order.filter { it in payloadIds }.forEach { id ->
-                            FinishOptionMiuix(id, state, ::commit, app, onPickApp, { scriptPicker.launch(arrayOf("text/x-shellscript", "text/plain", "application/octet-stream")) }, { lkmPicker.launch(arrayOf("application/octet-stream", "*/*")) })
+                        if (state.payloads.isEmpty()) PayloadEmptyCard(miuix = true)
+                        state.payloads.forEach { slot ->
+                            PayloadSlotCard(
+                                miuix = true,
+                                slot = slot,
+                                incomplete = slot.enabled && !slot.isComplete(),
+                                rootManager = state.rootManager,
+                                onChange = ::updateSlot,
+                                onRootManager = { name -> commit(state.copy(rootManager = name)) },
+                                onPickApp = { onPickApp(slot.id) },
+                            )
                         }
                     }
                 }
-                /* 底部固定按钮：排序时是「完成」，否则是「保存」。 */
+                /* 底部固定按钮：普通模式保存预览；编辑模式打开「添加载荷」弹窗（2026-10-19）。 */
                 top.yukonga.miuix.kmp.basic.Button(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    enabled = editMode || !hasIncomplete,
                     onClick = {
-                        if (sortMode) {
-                            sortMode = false
+                        if (editMode) {
+                            showAdd = true
                         } else {
                             val file = FinishScriptStore.preview(context, state)
                             android.widget.Toast.makeText(context, context.getString(R.string.finish_saved, file.absolutePath), android.widget.Toast.LENGTH_LONG).show()
@@ -287,7 +334,7 @@ private fun FinishMain(
                     },
                 ) {
                     top.yukonga.miuix.kmp.basic.Text(
-                        stringResource(if (sortMode) R.string.finish_done else R.string.finish_save),
+                        stringResource(if (editMode) R.string.payload_add else R.string.finish_save),
                     )
                 }
             }
@@ -301,8 +348,11 @@ private fun FinishMain(
                     title = { Text(stringResource(R.string.payload_title)) },
                     navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } },
                     actions = {
-                        IconButton(onClick = { sortMode = !sortMode }) {
-                            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = stringResource(R.string.menu_sort))
+                        IconButton(onClick = { editMode = !editMode }) {
+                            Icon(
+                                imageVector = if (editMode) Icons.Filled.Check else Icons.Filled.Edit,
+                                contentDescription = stringResource(if (editMode) R.string.payload_edit_done else R.string.payload_edit),
+                            )
                         }
                     },
                     colors = expressiveTopAppBarColors(),
@@ -310,397 +360,612 @@ private fun FinishMain(
                     scrollBehavior = scrollBehavior,
                 )
             },
-            contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
+            /* 覆盖层无底栏：底部只吃系统栏；IME 留白交给内容根的 imePadding()，
+               避免 safeDrawing 已含 IME 时二次叠加（2026-10-19 用户裁定）。 */
+            contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout)
+                .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
         ) { inner ->
             val pageScroll = rememberScrollState()
-            Column(modifier = Modifier.fillMaxSize().padding(inner)) {
+            Column(modifier = Modifier.fillMaxSize().padding(inner).imePadding()) {
                 Column(
                     modifier = Modifier.weight(1f).fillMaxWidth()
                         .nestedScroll(scrollBehavior.nestedScrollConnection)
-                        .then(if (sortMode) Modifier else Modifier.verticalScroll(pageScroll))
+                        .verticalScroll(pageScroll)
                         .padding(horizontal = 16.dp).padding(top = 16.dp, bottom = bottomInnerPadding),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    if (sortMode) {
-                        TonalCard {
-                            FinishSortList(miuix = false, order = state.order.filter { it in payloadIds }) { commit(state.copy(order = it + state.order.filter { id -> id !in payloadIds })) }
+                    if (editMode) {
+                        if (state.payloads.isNotEmpty()) {
+                            PayloadEditList(
+                                miuix = false,
+                                slots = state.payloads,
+                                rootManager = state.rootManager,
+                                onDelete = ::deleteSlot,
+                                onMove = { next -> commit(state.copy(payloads = next)) },
+                            )
                         }
                     } else {
-                        state.order.filter { it in payloadIds }.forEach { id ->
-                            FinishOptionMaterial(id, state, ::commit, app, onPickApp, { scriptPicker.launch(arrayOf("text/x-shellscript", "text/plain", "application/octet-stream")) }, { lkmPicker.launch(arrayOf("application/octet-stream", "*/*")) })
+                        if (state.payloads.isEmpty()) PayloadEmptyCard(miuix = false)
+                        state.payloads.forEach { slot ->
+                            PayloadSlotCard(
+                                miuix = false,
+                                slot = slot,
+                                incomplete = slot.enabled && !slot.isComplete(),
+                                rootManager = state.rootManager,
+                                onChange = ::updateSlot,
+                                onRootManager = { name -> commit(state.copy(rootManager = name)) },
+                                onPickApp = { onPickApp(slot.id) },
+                            )
                         }
                     }
                 }
                 androidx.compose.material3.Button(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    enabled = editMode || !hasIncomplete,
                     onClick = {
-                        if (sortMode) {
-                            sortMode = false
+                        if (editMode) {
+                            showAdd = true
                         } else {
                             val file = FinishScriptStore.preview(contextM, state)
                             android.widget.Toast.makeText(contextM, contextM.getString(R.string.finish_saved, file.absolutePath), android.widget.Toast.LENGTH_LONG).show()
                         }
                     },
                 ) {
-                    Text(stringResource(if (sortMode) R.string.finish_done else R.string.finish_save))
+                    Text(stringResource(if (editMode) R.string.payload_add else R.string.finish_save))
                 }
             }
         }
     }
+
+    AddPayloadDialog(miuix = miuix, show = showAdd, onDismiss = { showAdd = false }, onAdd = ::addSlot)
 }
 
-/* ---------------- sort list ---------------- */
+/* ---------------- payload cards ---------------- */
 
+/**
+ * 一条载荷实例的卡片（2026-10-19 用户裁定）。
+ *
+ * 头部是类型名 + 开关；开关打开才渲染参数区。同类实例各自持有一份参数，
+ * 所以两张「命令」卡片可以是两条不同命令。编辑模式的列表是另一套行（PayloadEditList）。
+ */
 @Composable
-private fun FinishSortList(miuix: Boolean, order: List<String>, onOrder: (List<String>) -> Unit) {
-    val rowHeight = 60.dp
-    val rowPx = with(LocalDensity.current) { rowHeight.toPx() }
-    var draggingIndex by remember { mutableIntStateOf(-1) }
-    var dragOffset by remember { mutableFloatStateOf(0f) }
-    val latestOrder by rememberUpdatedState(order)
-    LazyColumn(
-        modifier = Modifier.fillMaxWidth().height(rowHeight * order.size),
-        userScrollEnabled = false,
-    ) {
-        itemsIndexed(order, key = { _, id -> id }) { index, id ->
-            val option = finishOptions.firstOrNull { it.id == id } ?: return@itemsIndexed
-            val dragging = index == draggingIndex
-            val rowShape = RoundedCornerShape(12.dp)
-            val rowBg = if (miuix) {
-                top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.surface
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant
-            }
-            val fg = if (miuix) top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground else androidx.compose.ui.graphics.Color.Unspecified
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(rowHeight)
-                    .then(
-                        if (dragging) {
-                            Modifier
-                                .shadow(elevation = 6.dp, shape = rowShape, clip = false)
-                                .background(rowBg, rowShape)
-                        } else {
-                            Modifier
-                        },
-                    )
-                    .animateItem()
-                    .zIndex(if (dragging) 1f else 0f)
-                    .padding(start = 16.dp, end = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(option.icon, contentDescription = null, tint = fg)
-                Spacer(Modifier.width(16.dp))
-                Text(stringResource(option.titleRes), modifier = Modifier.weight(1f), color = fg)
-                Icon(
-                    imageVector = Icons.Filled.DragHandle,
-                    contentDescription = stringResource(R.string.finish_drag),
-                    tint = fg,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .pointerInput(id) {
-                            detectDragGestures(
-                                onDragStart = { draggingIndex = latestOrder.indexOf(id); dragOffset = 0f },
-                                onDragEnd = { draggingIndex = -1; dragOffset = 0f },
-                                onDragCancel = { draggingIndex = -1; dragOffset = 0f },
-                                onDrag = { change, amount ->
-                                    change.consume()
-                                    dragOffset += amount.y
-                                    /* 自由拖动：一次手势内可连续跨过多行（while 消化所有越界）。 */
-                                    var current = latestOrder.indexOf(id)
-                                    while (dragOffset > rowPx / 2 && current < latestOrder.lastIndex) {
-                                        val next = latestOrder.toMutableList().apply { add(current + 1, removeAt(current)) }
-                                        onOrder(next)
-                                        current += 1
-                                        draggingIndex = current
-                                        dragOffset -= rowPx
-                                    }
-                                    while (dragOffset < -rowPx / 2 && current > 0) {
-                                        val next = latestOrder.toMutableList().apply { add(current - 1, removeAt(current)) }
-                                        onOrder(next)
-                                        current -= 1
-                                        draggingIndex = current
-                                        dragOffset += rowPx
-                                    }
-                                },
-                            )
-                        },
-                )
-            }
-        }
-    }
-}
-
-/* ---------------- option cards ---------------- */
-
-@Composable
-private fun FinishOptionMiuix(
-    id: String,
-    state: FinishState,
-    commit: (FinishState) -> Unit,
-    app: Pair<String, String>?,
+private fun PayloadSlotCard(
+    miuix: Boolean,
+    slot: PayloadSlot,
+    incomplete: Boolean,
+    rootManager: String,
+    onChange: (PayloadSlot) -> Unit,
+    onRootManager: (String) -> Unit,
     onPickApp: () -> Unit,
-    launchScript: () -> Unit,
-    launchLkm: () -> Unit,
 ) {
     val context = LocalContext.current
-    when (id) {
-        "root" -> top.yukonga.miuix.kmp.basic.Card(Modifier.fillMaxWidth().animateContentSize()) {
-            SwitchPreference(
-                checked = state.rootManagerEnabled,
-                onCheckedChange = { commit(state.copy(rootManagerEnabled = it)) },
-                title = stringResource(R.string.finish_root_manager),
-                summary = if (state.rootManagerEnabled) {
-                    state.rootManager + " · " + (FinishConfig.installedPackages(context, FinishConfig.spec(state.rootManager) ?: FinishConfig.rootManagers.first()).firstOrNull() ?: (FinishConfig.spec(state.rootManager) ?: FinishConfig.rootManagers.first()).packages.first())
-                } else null,
-                startAction = { Icon(Icons.Filled.AdminPanelSettings, null, Modifier.padding(end = 6.dp), tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground) },
-            )
-            if (state.rootManagerEnabled) {
-                FinishConfig.rootManagers.forEach { spec ->
-                    val installedPkgs = FinishConfig.installedPackages(context, spec)
-                    val installed = installedPkgs.isNotEmpty()
-                    RadioButtonPreference(
-                        title = spec.name,
-                        summary = if (installed) installedPkgs.first() else stringResource(R.string.finish_manager_missing, spec.name),
-                        selected = state.rootManager == spec.name,
-                        onClick = { commit(state.copy(rootManager = spec.name)) },
-                        startAction = { ManagerIcon(spec) },
-                        radioButtonLocation = RadioButtonLocation.End,
-                        enabled = installed,
-                    )
-                }
-            }
-        }
-        "app" -> top.yukonga.miuix.kmp.basic.Card(Modifier.fillMaxWidth().animateContentSize()) {
-            SwitchPreference(
-                checked = state.runAppEnabled,
-                onCheckedChange = { commit(state.copy(runAppEnabled = it)) },
-                title = stringResource(R.string.finish_run_app),
-                summary = null,
-                startAction = { Icon(Icons.Filled.Apps, null, Modifier.padding(end = 6.dp), tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground) },
-            )
-            if (state.runAppEnabled) {
-                ArrowPreference(
-                    title = app?.first ?: stringResource(R.string.finish_app_pick),
-                    summary = app?.second ?: stringResource(R.string.finish_app_none),
-                    onClick = onPickApp,
-                    startAction = { AppLeadingIcon(state.appPackage) },
-                )
-            }
-        }
-        "cmd" -> top.yukonga.miuix.kmp.basic.Card(Modifier.fillMaxWidth().animateContentSize()) {
-            SwitchPreference(
-                checked = state.scriptEnabled,
-                onCheckedChange = { commit(state.copy(scriptEnabled = it)) },
-                title = stringResource(R.string.finish_script),
-                summary = null,
-                startAction = { Icon(Icons.Filled.Terminal, null, Modifier.padding(end = 6.dp), tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground) },
-            )
-            if (state.scriptEnabled) {
-                RadioButtonPreference(
-                    title = stringResource(R.string.finish_mode_command),
-                    selected = state.scriptMode == 0,
-                    onClick = { commit(state.copy(scriptMode = 0)) },
-                    radioButtonLocation = RadioButtonLocation.End,
-                )
-                RadioButtonPreference(
-                    title = stringResource(R.string.finish_mode_script),
-                    selected = state.scriptMode == 1,
-                    onClick = { commit(state.copy(scriptMode = 1)) },
-                    radioButtonLocation = RadioButtonLocation.End,
-                )
-                if (state.scriptMode == 0) {
-                    MiuixTextField(
-                        value = state.command,
-                        onValueChange = { commit(state.copy(command = it)) },
-                        label = stringResource(R.string.finish_command_hint),
-                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
-                    )
-                } else {
-                    ArrowPreference(
-                        title = stringResource(R.string.finish_script_pick),
-                        summary = state.scriptUri ?: stringResource(R.string.finish_script_none),
-                        onClick = launchScript,
-                    )
-                }
-            }
-        }
-        "selinux" -> top.yukonga.miuix.kmp.basic.Card(Modifier.fillMaxWidth().animateContentSize()) {
-            SwitchPreference(
-                checked = state.restoreSelinux,
-                onCheckedChange = { commit(state.copy(restoreSelinux = it)) },
-                title = stringResource(R.string.finish_restore_selinux),
-                summary = null,
-                startAction = { Icon(Icons.Filled.Security, null, Modifier.padding(end = 6.dp), tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground) },
-            )
-        }
-        "reboot" -> top.yukonga.miuix.kmp.basic.Card(Modifier.fillMaxWidth().animateContentSize()) {
-            SwitchPreference(
-                checked = state.softRebootAfterFinish,
-                onCheckedChange = { commit(state.copy(softRebootAfterFinish = it)) },
-                title = stringResource(R.string.finish_soft_reboot),
-                summary = stringResource(R.string.finish_soft_reboot_summary),
-                startAction = { Icon(Icons.Filled.RestartAlt, null, Modifier.padding(end = 6.dp), tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground) },
-            )
-        }
-        "lkm" -> top.yukonga.miuix.kmp.basic.Card(Modifier.fillMaxWidth().animateContentSize()) {
-            SwitchPreference(
-                checked = state.lkmEnabled,
-                onCheckedChange = { commit(state.copy(lkmEnabled = it)) },
-                title = stringResource(R.string.finish_lkm),
-                summary = if (state.lkmEnabled) state.lkmUri ?: stringResource(R.string.finish_lkm_none) else null,
-                startAction = { Icon(Icons.Filled.Extension, null, Modifier.padding(end = 6.dp), tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground) },
-            )
-            if (state.lkmEnabled) {
-                ArrowPreference(
-                    title = stringResource(R.string.finish_lkm_pick),
-                    summary = state.lkmUri ?: stringResource(R.string.finish_lkm_none),
-                    onClick = launchLkm,
-                )
-
-            }
-        }
+    val app = appDisplay(slot.appPackage)
+    val scriptPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        onChange(slot.copy(scriptUri = uri?.toString()))
     }
-}
+    val lkmPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        onChange(slot.copy(lkmUri = uri?.toString()))
+    }
 
-@Composable
-private fun FinishOptionMaterial(
-    id: String,
-    state: FinishState,
-    commit: (FinishState) -> Unit,
-    app: Pair<String, String>?,
-    onPickApp: () -> Unit,
-    launchScript: () -> Unit,
-    launchLkm: () -> Unit,
-) {
-    val context = LocalContext.current
-    when (id) {
-        "root" -> TonalCard {
-            SegmentedColumn(Modifier.fillMaxWidth()) {
-                item {
-                    SegmentedListItem(
-                        leadingContent = { Icon(Icons.Filled.AdminPanelSettings, null) },
-                        headlineContent = { Text(stringResource(R.string.finish_root_manager)) },
-                        supportingContent = if (state.rootManagerEnabled) {
-                            { Text(state.rootManager + " · " + (FinishConfig.installedPackages(context, FinishConfig.spec(state.rootManager) ?: FinishConfig.rootManagers.first()).firstOrNull() ?: (FinishConfig.spec(state.rootManager) ?: FinishConfig.rootManagers.first()).packages.first())) }
-                        } else null,
-                        trailingContent = { Switch(checked = state.rootManagerEnabled, onCheckedChange = { commit(state.copy(rootManagerEnabled = it)) }) },
-                    )
-                }
-                if (state.rootManagerEnabled) {
-                    FinishConfig.rootManagers.forEach { spec ->
+    val content: @Composable () -> Unit = {
+        /* 底部补 8dp：最后一行到卡片下边框与首行到上边框等距（2026-10-19 用户反馈）。 */
+        Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+            PayloadHeader(miuix = miuix, slot = slot, incomplete = incomplete, onChange = onChange)
+            /* 开关关掉时只留头部：参数区隐藏，脚本生成也会跳过这条。 */
+            if (slot.enabled) {
+                when (slot.kind) {
+                    PayloadKind.Root -> FinishConfig.rootManagers.forEach { spec ->
                         val installedPkgs = FinishConfig.installedPackages(context, spec)
                         val installed = installedPkgs.isNotEmpty()
-                        item {
-                            SegmentedListItem(
-                                enabled = installed,
-                                onClick = if (installed) ({ commit(state.copy(rootManager = spec.name)) }) else null,
-                                leadingContent = { ManagerIcon(spec) },
-                                headlineContent = { Text(spec.name) },
-                                supportingContent = { Text(if (installed) installedPkgs.first() else stringResource(R.string.finish_manager_missing, spec.name)) },
-                                trailingContent = { RadioButton(selected = state.rootManager == spec.name, onClick = null, enabled = installed) },
+                        PayloadRow(
+                            miuix = miuix,
+                            title = spec.name,
+                            summary = if (installed) installedPkgs.first() else stringResource(R.string.finish_manager_missing, spec.name),
+                            enabled = installed,
+                            onClick = if (installed) ({ onRootManager(spec.name) }) else null,
+                            leading = { ManagerIcon(miuix, spec) },
+                            trailing = { PayloadRadio(miuix, selected = rootManager == spec.name, enabled = installed) },
+                        )
+                    }
+
+                    PayloadKind.App -> PayloadRow(
+                        miuix = miuix,
+                        title = app?.first ?: stringResource(R.string.finish_app_pick),
+                        summary = app?.second ?: stringResource(R.string.finish_app_none),
+                        error = incomplete,
+                        onClick = onPickApp,
+                        leading = { AppLeadingIcon(miuix, slot.appPackage) },
+                        trailing = { PayloadArrow(miuix) },
+                    )
+
+                    PayloadKind.Command -> {
+                        PayloadRow(
+                            miuix = miuix,
+                            title = stringResource(R.string.finish_mode_command),
+                            error = incomplete,
+                            onClick = { onChange(slot.copy(scriptMode = 0)) },
+                            trailing = { PayloadRadio(miuix, selected = slot.scriptMode == 0) },
+                        )
+                        PayloadRow(
+                            miuix = miuix,
+                            title = stringResource(R.string.finish_mode_script),
+                            onClick = { onChange(slot.copy(scriptMode = 1)) },
+                            trailing = { PayloadRadio(miuix, selected = slot.scriptMode == 1) },
+                        )
+                        if (slot.scriptMode == 0) {
+                            PayloadTextField(
+                                miuix = miuix,
+                                value = slot.command,
+                                onValueChange = { onChange(slot.copy(command = it)) },
+                                label = stringResource(R.string.finish_command_hint),
+                            )
+                        } else {
+                            PayloadRow(
+                                miuix = miuix,
+                                title = stringResource(R.string.finish_script_pick),
+                                summary = slot.scriptUri ?: stringResource(R.string.finish_script_none),
+                                error = incomplete,
+                                onClick = { scriptPicker.launch(arrayOf("text/x-shellscript", "text/plain", "application/octet-stream")) },
+                                trailing = { PayloadArrow(miuix) },
                             )
                         }
                     }
-                }
-            }
-        }
-        "app" -> TonalCard {
-            SegmentedColumn(Modifier.fillMaxWidth()) {
-                item {
-                    SegmentedListItem(
-                        leadingContent = { Icon(Icons.Filled.Apps, null) },
-                        headlineContent = { Text(stringResource(R.string.finish_run_app)) },
-                        trailingContent = { Switch(checked = state.runAppEnabled, onCheckedChange = { commit(state.copy(runAppEnabled = it)) }) },
-                    )
-                }
-                if (state.runAppEnabled) {
-                    item {
-                        SegmentedListItem(
-                            onClick = onPickApp,
-                            leadingContent = { AppLeadingIcon(state.appPackage) },
-                            headlineContent = { Text(app?.first ?: stringResource(R.string.finish_app_pick)) },
-                            supportingContent = { Text(app?.second ?: stringResource(R.string.finish_app_none)) },
-                            trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) },
+
+                    PayloadKind.Lkm -> {
+                        PayloadRow(
+                            miuix = miuix,
+                            title = stringResource(R.string.finish_lkm_pick),
+                            summary = slot.lkmUri ?: stringResource(R.string.finish_lkm_none),
+                            error = incomplete,
+                            onClick = { lkmPicker.launch(arrayOf("application/octet-stream", "*/*")) },
+                            trailing = { PayloadArrow(miuix) },
+                        )
+                        PayloadTextField(
+                            miuix = miuix,
+                            value = slot.lkmParams,
+                            onValueChange = { onChange(slot.copy(lkmParams = it)) },
+                            label = stringResource(R.string.finish_lkm_params),
                         )
                     }
                 }
             }
         }
-        "cmd" -> TonalCard {
-            SegmentedColumn(Modifier.fillMaxWidth()) {
-                item {
-                    SegmentedListItem(
-                        leadingContent = { Icon(Icons.Filled.Terminal, null) },
-                        headlineContent = { Text(stringResource(R.string.finish_script)) },
-                        trailingContent = { Switch(checked = state.scriptEnabled, onCheckedChange = { commit(state.copy(scriptEnabled = it)) }) },
-                    )
-                }
-                if (state.scriptEnabled) {
-                    item {
-                        SegmentedListItem(
-                            onClick = { commit(state.copy(scriptMode = 0)) },
-                            headlineContent = { Text(stringResource(R.string.finish_mode_command)) },
-                            trailingContent = { RadioButton(selected = state.scriptMode == 0, onClick = null) },
-                        )
-                    }
-                    item {
-                        SegmentedListItem(
-                            onClick = { commit(state.copy(scriptMode = 1)) },
-                            headlineContent = { Text(stringResource(R.string.finish_mode_script)) },
-                            trailingContent = { RadioButton(selected = state.scriptMode == 1, onClick = null) },
-                        )
-                    }
-                    if (state.scriptMode == 0) {
-                        item { OutlinedTextField(state.command, { commit(state.copy(command = it)) }, label = { Text(stringResource(R.string.finish_command_hint)) }, modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp), singleLine = true) }
-                    } else {
-                        item { SegmentedListItem(onClick = launchScript, headlineContent = { Text(stringResource(R.string.finish_script_pick)) }, supportingContent = { Text(state.scriptUri ?: stringResource(R.string.finish_script_none)) }) }
-                    }
-                }
-            }
-        }
-        "selinux" -> TonalCard {
-            SegmentedColumn(Modifier.fillMaxWidth()) {
-                item {
-                    SegmentedListItem(
-                        leadingContent = { Icon(Icons.Filled.Security, null) },
-                        headlineContent = { Text(stringResource(R.string.finish_restore_selinux)) },
-                        trailingContent = { Switch(checked = state.restoreSelinux, onCheckedChange = { commit(state.copy(restoreSelinux = it)) }) },
-                    )
-                }
-            }
-        }
-        "reboot" -> TonalCard {
-            SegmentedColumn(Modifier.fillMaxWidth()) {
-                item {
-                    SegmentedListItem(
-                        leadingContent = { Icon(Icons.Filled.RestartAlt, null) },
-                        headlineContent = { Text(stringResource(R.string.finish_soft_reboot)) },
-                        supportingContent = { Text(stringResource(R.string.finish_soft_reboot_summary)) },
-                        trailingContent = {
-                            Switch(
-                                checked = state.softRebootAfterFinish,
-                                onCheckedChange = { commit(state.copy(softRebootAfterFinish = it)) },
-                            )
+    }
+
+    if (miuix) {
+        top.yukonga.miuix.kmp.basic.Card(Modifier.fillMaxWidth().animateContentSize()) { content() }
+    } else {
+        TonalCard { content() }
+    }
+}
+
+/** leading 槽固定 36dp：图标大小不同也不会推动文字起点（2026-10-19 用户裁定）。 */
+private val PayloadIconSlot = 36.dp
+
+/** 槽与文字之间的固定间距。 */
+private val PayloadGap = 12.dp
+
+/** 固定宽度 leading 槽。 */
+@Composable
+private fun PayloadLeadingSlot(content: @Composable () -> Unit) {
+    Box(Modifier.size(PayloadIconSlot), contentAlignment = Alignment.Center) { content() }
+}
+
+/**
+ * 载荷卡片的统一行：槽 36dp + 间距 12dp + 标题/摘要 + 尾部控件。
+ *
+ * 头部与所有参数行共用它，标题与详情文字左对齐（2026-10-19 用户裁定）。
+ */
+@Composable
+private fun PayloadRow(
+    miuix: Boolean,
+    title: String,
+    summary: String? = null,
+    enabled: Boolean = true,
+    /** true 时标题/摘要用 error 色：表示这一项没填完整（2026-10-19 用户裁定）。 */
+    error: Boolean = false,
+    onClick: (() -> Unit)? = null,
+    leading: @Composable () -> Unit = {},
+    trailing: @Composable () -> Unit = {},
+) {
+    val click = if (onClick != null) Modifier.clickable(enabled = enabled, onClick = onClick) else Modifier
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .then(click)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .alpha(if (enabled) 1f else 0.45f),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PayloadLeadingSlot(leading)
+        Spacer(Modifier.width(PayloadGap))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+            if (miuix) {
+                top.yukonga.miuix.kmp.basic.Text(
+                    text = title,
+                    style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.body1,
+                    color = if (error) top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.error else Color.Unspecified,
+                )
+                summary?.let {
+                    top.yukonga.miuix.kmp.basic.Text(
+                        text = it,
+                        style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.footnote1,
+                        color = if (error) {
+                            top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.error
+                        } else {
+                            top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary
                         },
                     )
                 }
-            }
-        }
-        "lkm" -> TonalCard {
-            SegmentedColumn(Modifier.fillMaxWidth()) {
-                item {
-                    SegmentedListItem(
-                        leadingContent = { Icon(Icons.Filled.Extension, null) },
-                        headlineContent = { Text(stringResource(R.string.finish_lkm)) },
-                        trailingContent = { Switch(checked = state.lkmEnabled, onCheckedChange = { commit(state.copy(lkmEnabled = it)) }) },
+            } else {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (error) MaterialTheme.colorScheme.error else Color.Unspecified,
+                )
+                summary?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (state.lkmEnabled) {
-                    item { SegmentedListItem(onClick = launchLkm, headlineContent = { Text(stringResource(R.string.finish_lkm_pick)) }, supportingContent = { Text(state.lkmUri ?: stringResource(R.string.finish_lkm_none)) }) }
-                    item { OutlinedTextField(state.lkmParams, { commit(state.copy(lkmParams = it)) }, label = { Text(stringResource(R.string.finish_lkm_params)) }, modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp), singleLine = true) }
+            }
+        }
+        trailing()
+    }
+}
 
+/** 头部行：类型图标 + 标题 + 开关；普通模式不显示副标题（2026-10-19 用户裁定）。 */
+@Composable
+private fun PayloadHeader(
+    miuix: Boolean,
+    slot: PayloadSlot,
+    incomplete: Boolean,
+    onChange: (PayloadSlot) -> Unit,
+) {
+    PayloadRow(
+        miuix = miuix,
+        title = payloadTitle(slot.kind),
+        summary = if (incomplete) stringResource(R.string.payload_incomplete) else null,
+        error = incomplete,
+        onClick = { onChange(slot.copy(enabled = !slot.enabled)) },
+        leading = {
+            Icon(
+                imageVector = payloadIcon(slot.kind),
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+                tint = when {
+                    incomplete -> if (miuix) {
+                        top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    }
+                    miuix -> top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        },
+        trailing = {
+            if (miuix) {
+                top.yukonga.miuix.kmp.basic.Switch(
+                    checked = slot.enabled,
+                    onCheckedChange = { onChange(slot.copy(enabled = it)) },
+                )
+            } else {
+                Switch(checked = slot.enabled, onCheckedChange = { onChange(slot.copy(enabled = it)) })
+            }
+        },
+    )
+}
+
+/** 行尾单选框。 */
+@Composable
+private fun PayloadRadio(miuix: Boolean, selected: Boolean, enabled: Boolean = true) {
+    if (miuix) {
+        top.yukonga.miuix.kmp.basic.RadioButton(selected = selected, onClick = null, enabled = enabled)
+    } else {
+        RadioButton(selected = selected, onClick = null, enabled = enabled)
+    }
+}
+
+/** 行尾箭头。 */
+@Composable
+private fun PayloadArrow(miuix: Boolean) {
+    Icon(
+        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+        contentDescription = null,
+        tint = if (miuix) {
+            top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+    )
+}
+
+/** 输入框：左缘与行文字对齐（抵掉输入框自带的 16dp 内边距）。 */
+@Composable
+private fun PayloadTextField(
+    miuix: Boolean,
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+) {
+    val start = 16.dp + PayloadIconSlot + PayloadGap - 16.dp
+    if (miuix) {
+        MiuixTextField(
+            value = value,
+            onValueChange = onValueChange,
+            label = label,
+            modifier = Modifier.padding(start = start, end = 16.dp, top = 8.dp, bottom = 8.dp),
+        )
+    } else {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            label = { Text(label) },
+            modifier = Modifier.fillMaxWidth().padding(start = start, end = 16.dp, top = 8.dp, bottom = 8.dp),
+            singleLine = true,
+        )
+    }
+}
+
+/**
+ * 编辑模式行的小标题（2026-10-19 用户裁定）：
+ * root=管理器名、app=应用名、cmd=命令或脚本文件名、lkm=ko 文件名。
+ *
+ * @param slot 载荷实例。
+ * @param rootManager 当前 root 管理器。
+ * @return 单行文本；未配置时给占位文案。
+ */
+@Composable
+private fun payloadEditSubtitle(slot: PayloadSlot, rootManager: String): String = when (slot.kind) {
+    PayloadKind.Root -> rootManager
+    PayloadKind.App -> appDisplay(slot.appPackage)?.first
+        ?: slot.appPackage.ifBlank { stringResource(R.string.finish_app_none) }
+    PayloadKind.Command -> if (slot.scriptMode == 0) {
+        slot.command.ifBlank { stringResource(R.string.payload_not_configured) }
+    } else {
+        slot.scriptUri?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+            ?: stringResource(R.string.finish_script_none)
+    }
+    PayloadKind.Lkm -> slot.lkmUri?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+        ?: stringResource(R.string.finish_lkm_none)
+}
+
+/**
+ * 编辑模式的载荷行（2026-10-19 用户裁定）：
+ * 左边是删除键，中间是载荷名，右边是排序把手；参数区不在编辑模式出现。
+ */
+@Composable
+private fun PayloadEditList(
+    miuix: Boolean,
+    slots: List<PayloadSlot>,
+    rootManager: String,
+    onDelete: (String) -> Unit,
+    onMove: (List<PayloadSlot>) -> Unit,
+) {
+    val rowHeight = 72.dp
+    val rowPx = with(LocalDensity.current) { rowHeight.toPx() }
+    var draggingId by remember { mutableStateOf<String?>(null) }
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    val latest by rememberUpdatedState(slots)
+
+    /**
+     * 越过半行就交换位置：其它行由 animateItem() 补间，被拖的行跟手（不加动画，避免双重位移）。
+     * 松手时已被 onMove 落到目标位置，不需要回弹。
+     */
+    fun dragBy(slotId: String, amountY: Float) {
+        dragOffset += amountY
+        var current = latest.indexOfFirst { it.id == slotId }
+        if (current < 0) return
+        while (dragOffset > rowPx / 2 && current < latest.lastIndex) {
+            val next = latest.toMutableList().apply { add(current + 1, removeAt(current)) }
+            onMove(next)
+            current += 1
+            dragOffset -= rowPx
+        }
+        while (dragOffset < -rowPx / 2 && current > 0) {
+            val next = latest.toMutableList().apply { add(current - 1, removeAt(current)) }
+            onMove(next)
+            current -= 1
+            dragOffset += rowPx
+        }
+    }
+
+    val content: @Composable () -> Unit = {
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().height(rowHeight * latest.size),
+            userScrollEnabled = false,
+        ) {
+            itemsIndexed(latest, key = { _, slot -> slot.id }) { _, slot ->
+                val dragging = draggingId == slot.id
+                val incomplete = slot.enabled && !slot.isComplete()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(rowHeight)
+                        .then(if (dragging) Modifier else Modifier.animateItem())
+                        .zIndex(if (dragging) 1f else 0f)
+                        .offset {
+                            if (dragging) IntOffset(0, dragOffset.roundToInt()) else IntOffset.Zero
+                        }
+                        .padding(start = 4.dp, end = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = { onDelete(slot.id) }) {
+                        Icon(
+                            imageVector = Icons.Filled.Delete,
+                            contentDescription = stringResource(R.string.payload_delete),
+                            tint = if (miuix) {
+                                top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.error
+                            },
+                        )
+                    }
+                    Column(Modifier.weight(1f)) {
+                        if (miuix) {
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = payloadTitle(slot.kind),
+                                color = if (incomplete) {
+                                    top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.error
+                                } else {
+                                    Color.Unspecified
+                                },
+                            )
+                            top.yukonga.miuix.kmp.basic.Text(
+                                text = payloadEditSubtitle(slot, rootManager),
+                                style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.footnote1,
+                                color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            )
+                        } else {
+                            Text(
+                                text = payloadTitle(slot.kind),
+                                color = if (incomplete) MaterialTheme.colorScheme.error else Color.Unspecified,
+                            )
+                            Text(
+                                text = payloadEditSubtitle(slot, rootManager),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                    PayloadDragHandle(
+                        slotId = slot.id,
+                        tint = if (miuix) {
+                            top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        onStart = { draggingId = slot.id; dragOffset = 0f },
+                        onDrag = { dragBy(slot.id, it) },
+                        onEnd = { draggingId = null; dragOffset = 0f },
+                        onCancel = { draggingId = null; dragOffset = 0f },
+                    )
+                }
+            }
+        }
+    }
+
+    if (miuix) {
+        top.yukonga.miuix.kmp.basic.Card(Modifier.fillMaxWidth()) { content() }
+    } else {
+        TonalCard { content() }
+    }
+}
+
+/** 排序把手：拖动量交给列表换算目标下标。 */
+@Composable
+private fun PayloadDragHandle(
+    slotId: String,
+    tint: androidx.compose.ui.graphics.Color,
+    onStart: () -> Unit,
+    onDrag: (Float) -> Unit,
+    onEnd: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    Icon(
+        imageVector = Icons.Filled.DragHandle,
+        contentDescription = stringResource(R.string.payload_sort_handle),
+        tint = tint,
+        modifier = Modifier
+            .size(48.dp)
+            .pointerInput(slotId) {
+                detectDragGestures(
+                    onDragStart = { onStart() },
+                    onDragEnd = { onEnd() },
+                    onDragCancel = { onCancel() },
+                    onDrag = { change, amount ->
+                        change.consume()
+                        onDrag(amount.y)
+                    },
+                )
+            },
+    )
+}
+
+/** 空载荷表：只提示去编辑模式加一条。 */
+@Composable
+private fun PayloadEmptyCard(miuix: Boolean) {
+    if (miuix) {
+        top.yukonga.miuix.kmp.basic.Card(Modifier.fillMaxWidth()) {
+            top.yukonga.miuix.kmp.basic.BasicComponent(title = stringResource(R.string.payload_empty))
+        }
+    } else {
+        TonalCard {
+            SegmentedColumn(Modifier.fillMaxWidth()) {
+                item {
+                    SegmentedListItem(headlineContent = { Text(stringResource(R.string.payload_empty)) })
+                }
+            }
+        }
+    }
+}
+
+/** 编辑模式底部的「添加载荷」弹窗：四类各一行，选中后追加一条并关闭。 */
+@Composable
+private fun AddPayloadDialog(
+    miuix: Boolean,
+    show: Boolean,
+    onDismiss: () -> Unit,
+    onAdd: (PayloadKind) -> Unit,
+) {
+    if (!show) return
+    val kinds = listOf(PayloadKind.Root, PayloadKind.App, PayloadKind.Command, PayloadKind.Lkm)
+    val pick: (PayloadKind) -> Unit = { kind ->
+        onAdd(kind)
+        onDismiss()
+    }
+    if (miuix) {
+        top.yukonga.miuix.kmp.window.WindowDialog(
+            show = true,
+            title = stringResource(R.string.payload_add),
+            onDismissRequest = onDismiss,
+            content = {
+                Column {
+                    kinds.forEach { kind ->
+                        top.yukonga.miuix.kmp.basic.BasicComponent(
+                            title = payloadTitle(kind),
+                            startAction = {
+                                Icon(
+                                    imageVector = payloadIcon(kind),
+                                    contentDescription = null,
+                                    modifier = Modifier.padding(end = 6.dp),
+                                    tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground,
+                                )
+                            },
+                            onClick = { pick(kind) },
+                        )
+                    }
+                }
+            },
+        )
+    } else {
+        androidx.compose.material3.BasicAlertDialog(onDismissRequest = onDismiss) {
+            androidx.compose.material3.Surface(
+                shape = MaterialTheme.shapes.extraLarge,
+                tonalElevation = 6.dp,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                Column(Modifier.padding(vertical = 20.dp)) {
+                    Text(
+                        text = stringResource(R.string.payload_add),
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                    )
+                    kinds.forEach { kind ->
+                        androidx.compose.material3.ListItem(
+                            headlineContent = { Text(payloadTitle(kind)) },
+                            leadingContent = { Icon(payloadIcon(kind), contentDescription = null) },
+                            modifier = Modifier.clickable { pick(kind) },
+                        )
+                    }
                 }
             }
         }
@@ -710,7 +975,7 @@ private fun FinishOptionMaterial(
 /* ---------------- helpers ---------------- */
 
 @Composable
-private fun ManagerIcon(spec: FinishConfig.RootManagerSpec) {
+private fun ManagerIcon(miuix: Boolean, spec: FinishConfig.RootManagerSpec) {
     val context = LocalContext.current
     val installed = FinishConfig.installedPackages(context, spec)
     val pkg = installed.firstOrNull() ?: spec.packages.first()
@@ -719,19 +984,37 @@ private fun ManagerIcon(spec: FinishConfig.RootManagerSpec) {
         AppIconImage(Modifier.size(36.dp), info, info.loadLabel(context.packageManager).toString())
     } else {
         Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
-            Icon(Icons.Filled.HelpOutline, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(
+                imageVector = Icons.Filled.HelpOutline,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = if (miuix) {
+                    top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
         }
     }
 }
 
 @Composable
-private fun AppLeadingIcon(pkg: String?) {
+private fun AppLeadingIcon(miuix: Boolean, pkg: String?) {
     val context = LocalContext.current
     val info = remember(pkg) { pkg?.let { runCatching { context.packageManager.getApplicationInfo(it, 0) }.getOrNull() } }
     if (info != null) {
         AppIconImage(Modifier.size(36.dp), info, info.loadLabel(context.packageManager).toString())
     } else {
-        Icon(Icons.Filled.Apps, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(
+            imageVector = Icons.Filled.Apps,
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+            tint = if (miuix) {
+                top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        )
     }
 }
 
@@ -769,7 +1052,7 @@ private fun sortLabel(sort: AppSort): String = when (sort) {
 }
 
 @Composable
-private fun FinishAppPage(miuix: Boolean, bottomInnerPadding: Dp, onBack: () -> Unit) {
+private fun FinishAppPage(miuix: Boolean, bottomInnerPadding: Dp, slotId: String, onBack: () -> Unit) {
     val context = LocalContext.current
     var state by remember { mutableStateOf(FinishConfig.state) }
     var query by remember { mutableStateOf("") }
@@ -800,8 +1083,14 @@ private fun FinishAppPage(miuix: Boolean, bottomInnerPadding: Dp, onBack: () -> 
         }
         if (desc) filtered.sortedWith(comparator.reversed()) else filtered.sortedWith(comparator)
     }
+    val selectedPackage = state.payloads.firstOrNull { it.id == slotId }?.appPackage.orEmpty()
     val onPick: (AppEntry) -> Unit = { app ->
-        val next = state.copy(appPackage = app.info.packageName)
+        /* 只改这一条载荷的包名：同类其它实例不受影响（2026-10-19）。 */
+        val next = state.copy(
+            payloads = state.payloads.map { slot ->
+                if (slot.id == slotId) slot.copy(appPackage = app.info.packageName) else slot
+            },
+        )
         state = next
         FinishConfig.update(context, next)
         onBack()
@@ -816,13 +1105,23 @@ private fun FinishAppPage(miuix: Boolean, bottomInnerPadding: Dp, onBack: () -> 
             topBar = {
                 MiuixTopAppBar(
                     title = stringResource(R.string.finish_app_pick),
-                    navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = null,
+                                tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground,
+                            )
+                        }
+                    },
                     actions = { actions() },
                 )
             },
-            contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout).only(WindowInsetsSides.Horizontal),
+            /* 同一覆盖层：没有底部栏时，导航条留白由 contentWindowInsets 提供（2026-10-19）。 */
+            contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout)
+                .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
         ) { inner ->
-            Column(Modifier.fillMaxSize().padding(inner)) {
+            Column(Modifier.fillMaxSize().padding(inner).imePadding()) {
                 MiuixTextField(query, { query = it }, label = stringResource(R.string.finish_app_search), modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
                 LazyColumn(Modifier.fillMaxSize().padding(bottom = bottomInnerPadding)) {
                     items(apps, key = { it.info.packageName }) { app ->
@@ -831,7 +1130,7 @@ private fun FinishAppPage(miuix: Boolean, bottomInnerPadding: Dp, onBack: () -> 
                                 title = app.label,
                                 summary = app.info.packageName,
                                 startAction = { AppIconImage(Modifier.size(40.dp), app.info, app.label) },
-                                endActions = { if (state.appPackage == app.info.packageName) Icon(Icons.Filled.Check, null) },
+                                endActions = { if (selectedPackage == app.info.packageName) Icon(Icons.Filled.Check, null) },
                                 onClick = { onPick(app) },
                             )
                         }
@@ -849,7 +1148,7 @@ private fun FinishAppPage(miuix: Boolean, bottomInnerPadding: Dp, onBack: () -> 
                 )
             },
         ) { inner ->
-            Column(Modifier.fillMaxSize().padding(inner)) {
+            Column(Modifier.fillMaxSize().padding(inner).imePadding()) {
                 OutlinedTextField(query, { query = it }, label = { Text(stringResource(R.string.finish_app_search)) }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), singleLine = true)
                 LazyColumn(Modifier.fillMaxSize().padding(bottom = bottomInnerPadding)) {
                     items(apps, key = { it.info.packageName }) { app ->
@@ -859,7 +1158,7 @@ private fun FinishAppPage(miuix: Boolean, bottomInnerPadding: Dp, onBack: () -> 
                                 Text(app.label)
                                 Text(app.info.packageName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            if (state.appPackage == app.info.packageName) Icon(Icons.Filled.Check, null)
+                            if (selectedPackage == app.info.packageName) Icon(Icons.Filled.Check, null)
                         }
                     }
                 }
@@ -875,7 +1174,13 @@ private fun FinishSortAction(miuix: Boolean, sort: AppSort, desc: Boolean, onSor
     var show by remember { mutableStateOf(false) }
     if (miuix) {
         Box {
-            IconButton(onClick = { show = true }) { Icon(Icons.AutoMirrored.Filled.Sort, null) }
+            IconButton(onClick = { show = true }) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Sort,
+                    contentDescription = null,
+                    tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground,
+                )
+            }
             top.yukonga.miuix.kmp.overlay.OverlayListPopup(
                 show = show,
                 popupPositionProvider = com.ghostlock.app.ui.component.ListPopupDefaults.MenuPositionProvider,
@@ -939,7 +1244,13 @@ private fun FinishFilterAction(miuix: Boolean, showSystem: Boolean, onToggleSyst
     var show by remember { mutableStateOf(false) }
     if (miuix) {
         Box {
-            IconButton(onClick = { show = true }) { Icon(Icons.Filled.FilterList, null) }
+            IconButton(onClick = { show = true }) {
+                Icon(
+                    imageVector = Icons.Filled.FilterList,
+                    contentDescription = null,
+                    tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground,
+                )
+            }
             top.yukonga.miuix.kmp.overlay.OverlayListPopup(
                 show = show,
                 popupPositionProvider = com.ghostlock.app.ui.component.ListPopupDefaults.MenuPositionProvider,

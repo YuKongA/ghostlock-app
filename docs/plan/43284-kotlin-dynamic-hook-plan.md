@@ -1,5 +1,7 @@
 # 43284 动态 code cave（Kotlin-only）计划
 
+> 2026-10-19：重构设计见 `docs/analysis/43284-refactor-design-v4.md`。本文件 §0/§1 的 Kotlin-only/现有 PageCacheAccess 用户裁定不变；v4 只细化阶段与资源，不覆盖该裁定。
+
 - 日期：2026-10-19
 - 级别：L（攻击关键路径）
 - 关系：本件是 43284-production-engine-plan.md 的 P2/P3 攻击路径修订子计划；payload-finish-chain-plan.md 的收尾链保持不变
