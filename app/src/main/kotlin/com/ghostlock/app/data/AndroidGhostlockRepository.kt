@@ -10,6 +10,8 @@ import androidx.core.content.edit
 import androidx.core.net.toUri
 import com.ghostlock.app.BuildConfig
 import com.ghostlock.app.BuildInfo
+import com.ghostlock.app.autostart.AutoStartService
+import com.ghostlock.app.autostart.BootGuard
 import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.DebugSettings
 import com.ghostlock.app.domain.model.KernelSnapshot
@@ -97,6 +99,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private var shizukuPreferenceSet = false
     private var pendingParsedDocument: PendingParsedDocument? = null
     private val shizukuRunner = ShizukuExploitRunner(appContext)
+    private val bootGuard = BootGuard.of(appContext)
 
     init {
         buildCpuPairs()
@@ -170,6 +173,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             shizukuEnabled = shizukuActive,
             shizukuStatus = if (shizukuActive) shizukuRunner.status()
             else com.ghostlock.app.domain.model.ShizukuStatus.NOT_REQUIRED,
+            autoStartEnabled = bootGuard.read().enabled,
         )
     }
 
@@ -200,6 +204,16 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             }
         if (enabled) shizukuRunner.requestPermission()
     }
+
+    override fun setAutoStartEnabled(enabled: Boolean) {
+        if (enabled) bootGuard.enable() else bootGuard.disable()
+    }
+
+    override fun requestBootConfirmation() {
+        if (bootGuard.needsConfirmation()) AutoStartService.scheduleConfirmation(appContext)
+    }
+
+    override fun consumeAutoStartNotice(): Boolean = bootGuard.consumeNotice()
 
     override fun profileController(): ProfileConfigController = profileController
 
