@@ -20,7 +20,17 @@ fun FinishState.toRootScript(
     appendLine("LOG=" + shQuote(logPath))
     appendLine("exec 3>>\"\$LOG\"")
     appendLine("log() { printf '%s\\n' \"\$*\" >&3; }")
+    appendLine("STATUS=0")
     appendLine("log 'finish start'")
+    appendLine("rm -f /dev/dfm6 /dev/dfme2 2>/dev/null || true")
+    /* UMH 的 env 只有 PATH；am/monkey 需要 zygote 的 Android 环境。 */
+    appendLine("if [ -r /proc/1/environ ]; then")
+    appendLine("  for item in \$(tr '\\0' '\\n' < /proc/1/environ); do")
+    appendLine("    case \"\$item\" in")
+    appendLine("      ANDROID_ROOT=*|ANDROID_DATA=*|ANDROID_ART_ROOT=*|ANDROID_I18N_ROOT=*|ANDROID_RUNTIME_ROOT=*|ANDROID_TZDATA_ROOT=*|BOOTCLASSPATH=*|SYSTEMSERVERCLASSPATH=*) export \"\$item\" ;;")
+    appendLine("    esac")
+    appendLine("  done")
+    appendLine("fi")
 
     val context = PayloadContext(this@toRootScript, managerBinary, staged, folkPatchLkm)
     payloadRequests(context).forEach { payload ->
@@ -36,6 +46,7 @@ fun FinishState.toRootScript(
         appendLine("setprop ctl.restart zygote")
     }
     appendLine("log 'finish done'")
+    appendLine("if [ \"\$STATUS\" -eq 0 ]; then touch /dev/dfm6 2>/dev/null || true; else touch /dev/dfme2 2>/dev/null || true; fi")
     appendLine("rm -f /dev/df /dev/dz 2>/dev/null || true")
 }
 

@@ -13,7 +13,6 @@ import java.util.Base64
  */
 enum class PayloadKind(val id: String) {
     Root("root"),
-    App("app"),
     Command("cmd"),
     Lkm("lkm"),
     ;
@@ -32,7 +31,6 @@ enum class PayloadKind(val id: String) {
  * @property id 实例 id：列表 key，也是输入解析（脚本 / LKM 路径）的键。
  * @property kind 载荷类型。
  * @property enabled 开关：关掉的实例保留在表里但不进脚本（2026-10-19 用户裁定开关回归）。
- * @property appPackage kind=App 时要启动的包名。
  * @property scriptMode kind=Command 时 0=命令、1=脚本。
  * @property command kind=Command 且 mode=0 时的命令正文。
  * @property scriptUri kind=Command 且 mode=1 时选中的脚本 URI。
@@ -43,7 +41,6 @@ data class PayloadSlot(
     val id: String,
     val kind: PayloadKind,
     val enabled: Boolean = true,
-    val appPackage: String = "",
     val scriptMode: Int = 0,
     val command: String = "",
     val scriptUri: String? = null,
@@ -57,6 +54,8 @@ const val DEFAULT_ROOT_SLOT_ID = "slot-root"
 /** 收尾选项：最终都收敛为「以 root 执行一段收尾脚本」。 */
 data class FinishState(
     val rootManager: String = "KernelSU",
+    /** 安全模式：作为 ksud late-load 的 --safe-mode 参数，禁用所有模块（2026-10-19）。 */
+    val safeMode: Boolean = false,
     /** 载荷实例表：顺序即执行顺序，可重复、可删除。 */
     val payloads: List<PayloadSlot> = listOf(PayloadSlot(DEFAULT_ROOT_SLOT_ID, PayloadKind.Root)),
     val restoreSelinux: Boolean = false,
@@ -79,7 +78,6 @@ fun newPayloadSlot(kind: PayloadKind): PayloadSlot =
  */
 fun PayloadSlot.isComplete(): Boolean = when (kind) {
     PayloadKind.Root -> true
-    PayloadKind.App -> appPackage.isNotBlank()
     PayloadKind.Command -> if (scriptMode == 0) command.isNotBlank() else !scriptUri.isNullOrBlank()
     PayloadKind.Lkm -> !lkmUri.isNullOrBlank()
 }
@@ -149,7 +147,8 @@ object FinishConfig {
         val slots = value.payloads.joinToString(";") { slot ->
             listOf(
                 slot.kind.id,
-                b64(slot.appPackage),
+                /* legacy app 字段：App 载荷已删除（2026-10-19），保留空占位避免旧数据错位。 */
+                b64(""),
                 slot.scriptMode.toString(),
                 b64(slot.command),
                 b64(slot.scriptUri.orEmpty()),
@@ -165,6 +164,7 @@ object FinishConfig {
             flag(value.kernelAccessAfterRelay),
             flag(value.softRebootAfterFinish),
             slots,
+            flag(value.safeMode),
         ).joinToString("|")
     }
 
@@ -178,6 +178,7 @@ object FinishConfig {
             restoreSelinux = parts.getOrElse(2) { "0" } == "1",
             kernelAccessAfterRelay = parts.getOrElse(3) { "0" } == "1",
             softRebootAfterFinish = parts.getOrElse(4) { "0" } == "1",
+            safeMode = parts.getOrElse(6) { "0" } == "1",
         )
     }
 
@@ -187,7 +188,6 @@ object FinishConfig {
         return PayloadSlot(
             id = newPayloadSlot(kind).id,
             kind = kind,
-            appPackage = unb64(fields.getOrElse(1) { "" }),
             scriptMode = fields.getOrElse(2) { "0" }.toIntOrNull() ?: 0,
             command = unb64(fields.getOrElse(3) { "" }),
             scriptUri = unb64(fields.getOrElse(4) { "" }).ifBlank { null },
@@ -204,11 +204,6 @@ object FinishConfig {
         val slots = order.mapNotNull { id ->
             when (id) {
                 "root" -> if (parts[0] == "1") PayloadSlot("slot-root", PayloadKind.Root) else null
-                "app" -> if (parts.getOrElse(2) { "0" } == "1") {
-                    PayloadSlot("slot-app", PayloadKind.App, appPackage = parts.getOrElse(3) { "" })
-                } else {
-                    null
-                }
                 "cmd" -> if (parts.getOrElse(4) { "0" } == "1") {
                     PayloadSlot(
                         "slot-cmd",

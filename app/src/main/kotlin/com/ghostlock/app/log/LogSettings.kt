@@ -2,6 +2,7 @@ package com.ghostlock.app.log
 
 import android.content.Context
 import android.net.Uri
+import android.os.Environment
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -75,19 +76,39 @@ object LogSettings {
         context.getSharedPreferences(PREFS, 0).edit().putString(KEY_EXPORT_LOCATION, exportLocation).apply()
     }
 
-    /** 把 SAF 选择的目录 URI 转成 MediaStore 相对路径；只接受主存储。 */
+    /**
+     * 把 SAF 选择的目录 URI 转成 MediaStore（Downloads 集合）能用的相对路径。
+     *
+     * 只接受主存储的 Download 子树：树 URI 的 document id 形如
+     * primary:Download/ghostlock-log，而 MediaStore.Downloads 的 RELATIVE_PATH
+     * 必须带 Download/ 前缀；其它目录（Documents 等）Downloads 集合表达不了，
+     * 直接返回 null 让 UI 提示无效（2026-10-19 修复：之前只返回 "ghostlock-log"，
+     * 插入时被系统拒绝，导出静默失败）。
+     *
+     * @param uri ACTION_OPEN_DOCUMENT_TREE 返回的树 URI。
+     * @return Download/... 相对路径；不可用时 null。
+     */
     fun exportLocationFromTree(uri: Uri): String? {
         val id = runCatching { android.provider.DocumentsContract.getTreeDocumentId(uri) }.getOrNull() ?: return null
         if (!id.startsWith("primary:")) return null
-        return id.substringAfter(':').trim('/').takeIf { it.isNotEmpty() }
+        val relative = id.removePrefix("primary:").trim('/')
+        val download = Environment.DIRECTORY_DOWNLOADS
+        val path = when {
+            relative == download -> download
+            relative.startsWith(download + "/") -> relative
+            else -> null
+        }
+        return path?.takeIf { candidate -> candidate.split('/').none { it == ".." || it == "." } }
     }
 
+    /** @return 规范化后的导出根目录；始终位于 Download 子树下（MediaStore.Downloads 的要求）。 */
     fun normalizeExportLocation(value: String?): String {
         val cleaned = value.orEmpty().trim().trim('/').replace(Regex("/{2,}"), "/")
         val safe = cleaned.takeIf { candidate ->
             candidate.isNotEmpty() && candidate.split('/').none { it == ".." || it == "." }
-        }
-        return safe ?: DEFAULT_EXPORT_LOCATION
+        } ?: DEFAULT_EXPORT_LOCATION
+        val download = Environment.DIRECTORY_DOWNLOADS
+        return if (safe == download || safe.startsWith(download + "/")) safe else download + "/" + safe
     }
 
     /** 选中的字体文件复制到私有目录后调用。 */

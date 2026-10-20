@@ -37,29 +37,13 @@ class PayloadEffectsTest {
     }
 
     @Test
-    fun appAndCommandStayUnknown() {
+    fun commandStaysUnknown() {
         val reports = PayloadEffects.evaluate(
-            FinishState(
-                payloads = listOf(
-                    PayloadSlot("app", PayloadKind.App, appPackage = "com.example"),
-                    PayloadSlot("cmd", PayloadKind.Command, command = "id"),
-                ),
-            ),
+            FinishState(payloads = listOf(PayloadSlot("cmd", PayloadKind.Command, command = "id"))),
             exists = { false },
             modules = { "" },
         )
-        assertEquals(EffectState.Unknown, reports.single { it.item == "app" }.state)
         assertEquals(EffectState.Unknown, reports.single { it.item == "cmd" }.state)
-    }
-
-    @Test
-    fun blankAppPackageIsFailure() {
-        val reports = PayloadEffects.evaluate(
-            FinishState(payloads = listOf(PayloadSlot("app", PayloadKind.App, appPackage = ""))),
-            exists = { false },
-            modules = { "" },
-        )
-        assertEquals(EffectState.Failed, reports.single { it.item == "app" }.state)
     }
 
     @Test

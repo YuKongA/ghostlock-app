@@ -8,6 +8,9 @@ namespace ghostlock::backend::cve_2026_43284::lib {
 /** Connected ESP endpoint; owns sock until gl_esp_close. */
 struct RawEspEndpoint {
     int sock = -1;
+    /* One pipe for the whole session: DFRoot reuses pfd across all CBC writes. */
+    int pipe_rd = -1;
+    int pipe_wr = -1;
     std::uint32_t spi = 0;
 };
 

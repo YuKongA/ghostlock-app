@@ -23,8 +23,9 @@
  * string, the default command is inert, every step is logged for on-device
  * verification, and a missing mandatory symbol aborts before any state change.
  *
- * Returning -E2BIG is deliberate: a failing module_init makes the kernel unload
- * the module, so nothing stays resident.
+ * Returning -ENODEV is deliberate: a failing module_init makes the kernel unload
+ * the module, so nothing stays resident; DFRoot uses the same code to avoid
+ * vendor mrdump/module callbacks.
  */
 #include <linux/init.h>
 #include <linux/kernel.h>
@@ -77,7 +78,7 @@ typedef void *(*umh_setup_t)(const char *, char **, char **, gfp_t,
                              void (*)(struct subprocess_info *), void *);
 typedef int (*umh_exec_t)(struct subprocess_info *, int);
 
-static int __init ghostlock_init(void)
+static int __nocfi __init ghostlock_init(void)
 {
     static const char sh[] = "/system/bin/sh";
     static char *envp[] = { "PATH=/system/bin", NULL };
@@ -142,7 +143,9 @@ static int __init ghostlock_init(void)
     }
     /* Defeat CONFIG_STATIC_USERMODEHELPER_PATH="" (which would blank the path). */
     info->path = sh;
-    ret = umh_exec(info, UMH_WAIT_PROC);
+    /* DFRoot uses UMH_WAIT_EXEC: module_init must not stay blocked while the
+     * userspace script/manager runs (watchdog/mrdump risk on vendor kernels). */
+    ret = umh_exec(info, UMH_WAIT_EXEC);
     pr_info("ghostlock: umh exec returned %d for path=%s\n", ret, knob.script_path);
 
     /* Finish (43499-style): the command has returned, so KernelSU either loaded
@@ -154,11 +157,18 @@ static int __init ghostlock_init(void)
         pr_info("ghostlock: restore_enforce=0, SELinux left permissive\n");
     }
 
-    /* Deliberate failure so the module is unloaded and never stays resident. */
-    return -E2BIG;
+    /* Deliberate failure so the module is unloaded and never stays resident.
+     * DFRoot uses -ENODEV; -E2BIG can trip vendor mrdump/module callbacks. */
+    return -ENODEV;
 }
 
 module_init(ghostlock_init);
+
+static void __exit ghostlock_exit(void) {
+    pr_info("ghostlock: module exit\n");
+}
+
+module_exit(ghostlock_exit);
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("GhostLock minimal kernel-side payload");
 MODULE_AUTHOR("GhostLock");

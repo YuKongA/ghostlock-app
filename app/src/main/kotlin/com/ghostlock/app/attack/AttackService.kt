@@ -11,8 +11,11 @@ import android.os.Process
 import android.os.ResultReceiver
 import com.ghostlock.app.R
 import com.ghostlock.app.engine.EngineLog
+import com.ghostlock.app.log.LogExport
 import com.ghostlock.app.log.LogLevel
 import com.ghostlock.app.log.LogOrigin
+import com.ghostlock.app.log.LogSettings
+import com.ghostlock.app.log.log
 import com.ghostlock.app.ui.screen.run.RunCoordinator
 
 /**
@@ -74,8 +77,16 @@ class AttackService : Service() {
         receiver?.send(CODE_PID, Bundle().apply { putInt(KEY_PID, Process.myPid()) })
         worker = Thread({
             com.ghostlock.app.ui.screen.module.backends.FinishExecution.cleanStale(applicationContext)
+            /* :attack 是独立进程：先读开关与目录，否则只看到默认值（2026-10-19 修复自动导出未生效）。 */
+            LogSettings.attach(applicationContext)
+            /* 文件名沿用既有导出（ghostlock-run-*），与历史目录保持一致。 */
+            val export = LogExport.open(applicationContext, "run")
             fun record(origin: LogOrigin, level: LogLevel, line: String) {
+                export?.append(log.format(level, "[" + origin.name + "] " + line))
                 emit(receiver, origin, level, line)
+            }
+            if (LogSettings.autoExport && export == null) {
+                record(LogOrigin.KOTLIN, LogLevel.Warn, EngineLog.warn("Log export unavailable", "Downloads not writable"))
             }
             val outcome = runCatching {
                 RunCoordinator.run(applicationContext) { origin, level, line -> record(origin, level, line) }
@@ -85,6 +96,7 @@ class AttackService : Service() {
             }
             /* 开机重试计数属流程外状态：成功跑完才清零，panic 时保留。 */
             if (outcome.isSuccess) BootSettings.clearAttempts(this)
+            runCatching { export?.close() }
             receiver?.send(CODE_DONE, Bundle.EMPTY)
             stopSelf()
         }, "ghostlock-attack").apply { start() }

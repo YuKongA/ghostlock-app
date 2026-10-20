@@ -37,14 +37,14 @@ class ScriptRenderTest {
     fun payloadOrderFollowsSlotOrder() {
         val state = FinishState(
             payloads = listOf(
-                PayloadSlot("app", PayloadKind.App, appPackage = "com.example.app"),
+                PayloadSlot("cmd", PayloadKind.Command, command = "id"),
                 PayloadSlot("root", PayloadKind.Root),
             ),
         )
         val script = state.toRootScript(null, emptyMap(), log)
-        val app = script.indexOf("launch app: com.example.app")
+        val cmd = script.indexOf("\nid\n")
         val root = script.indexOf("start root manager")
-        assertTrue("app 在 root 之前", app in 0 until root)
+        assertTrue("cmd 在 root 之前", cmd in 0 until root)
     }
 
     @Test
@@ -61,11 +61,19 @@ class ScriptRenderTest {
     }
 
     @Test
+    fun safeModeIsPassedToLateLoad() {
+        val withSafe = FinishState(safeMode = true).toRootScript(null, emptyMap(), log)
+        assertTrue(withSafe.contains("late-load --allow-shell --safe-mode"))
+        val without = FinishState().toRootScript(null, emptyMap(), log)
+        assertFalse(without.contains("--safe-mode"))
+    }
+
+    @Test
     fun quotesSingleQuotes() {
         assertTrue(shQuote("a'b").contains("'\\''"))
         val script = FinishState(
-            payloads = listOf(PayloadSlot("app", PayloadKind.App, appPackage = "a'b")),
+            payloads = listOf(PayloadSlot("cmd", PayloadKind.Command, command = "echo a'b")),
         ).toRootScript(null, emptyMap(), log)
-        assertTrue(script.contains("a'b"))
+        assertTrue(script.contains("echo a'b"))
     }
 }

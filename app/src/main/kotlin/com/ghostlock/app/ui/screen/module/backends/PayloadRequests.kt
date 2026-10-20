@@ -13,7 +13,7 @@ data class PayloadContext(
     val folkPatchLkm: String? = null,
 )
 
-/** 一种载荷。四种实现：root 管理器、应用、命令、LKM。 */
+/** 一种载荷。三种实现：root 管理器、命令、LKM。 */
 interface PayloadRequest {
     /** 本请求对应的载荷实例。 */
     val slot: PayloadSlot
@@ -41,23 +41,15 @@ class RootManagerPayload(override val slot: PayloadSlot) : PayloadRequest {
             line("if [ ! -x \"\$BIN\" ]; then BIN=/data/adb/ksu/bin/ksud; fi")
         }
         line("log \"[ghostlock] loader=\$BIN\"")
-        line("if [ ! -x \"\$BIN\" ]; then log '[ghostlock] manager loader not found'; else")
+        line("if [ ! -x \"\$BIN\" ]; then STATUS=1; log '[ghostlock] manager loader not found'; else")
         line("  KVER=\$(uname -r | cut -d. -f1-2); AVER=\$(uname -r | grep -o 'android[0-9]*' | head -1); KMI=\"\$AVER-\$KVER\"")
-        line("  \"\$BIN\" " + spec.args.joinToString(" ") + " --kmi \"\$KMI\" >>\"\$LOG\" 2>&1 || log '[ghostlock] manager late-load failed'")
-        line("  \"\$BIN\" post-fs-data >>\"\$LOG\" 2>&1 || true")
-        line("  \"\$BIN\" services >>\"\$LOG\" 2>&1 || true")
-        line("  \"\$BIN\" boot-completed >>\"\$LOG\" 2>&1 || true")
+        /* 安全模式作为 late-load 参数：禁用所有模块（2026-10-19 用户裁定）。 */
+        val lateLoadArgs = (spec.args + listOfNotNull("--safe-mode".takeIf { context.state.safeMode }))
+            .joinToString(" ")
+        line("  if ! \"\$BIN\" " + lateLoadArgs + " --kmi \"\$KMI\" >>\"\$LOG\" 2>&1; then STATUS=1; log '[ghostlock] manager late-load failed'; fi")
+        /* DFRoot only runs ksud late-load; post-fs-data/services/boot-completed
+         * can panic a half-initialized KernelSU. */
         line("fi")
-    }
-}
-
-/** 在 root 脚本里启动一个应用。 */
-class AppPayload(override val slot: PayloadSlot) : PayloadRequest {
-
-    override fun appendTo(line: (String) -> Unit, context: PayloadContext) {
-        if (slot.appPackage.isBlank()) return
-        line("log '[ghostlock] launch app: " + slot.appPackage + "'")
-        line("monkey -p " + slot.appPackage + " -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p " + slot.appPackage + " >/dev/null 2>&1")
     }
 }
 
@@ -67,12 +59,12 @@ class CommandPayload(override val slot: PayloadSlot) : PayloadRequest {
     override fun appendTo(line: (String) -> Unit, context: PayloadContext) {
         if (slot.scriptMode == 0 && slot.command.isNotBlank()) {
             line("log '[ghostlock] run command'")
-            line(slot.command)
+            line(slot.command + " || { STATUS=1; log '[ghostlock] command failed'; }")
         }
         if (slot.scriptMode == 1) {
             val staged = context.staged[slot.id] ?: return
             line("log '[ghostlock] run script: " + staged + "'")
-            line("sh \"" + staged + "\" || log '[ghostlock] script failed'")
+            line("sh \"" + staged + "\" >>\"\$LOG\" 2>&1 || { STATUS=1; log '[ghostlock] script failed'; }")
         }
     }
 }
@@ -107,12 +99,12 @@ class LkmPayload(
             line("  log '[ghostlock] apd late-load started'")
             line("  sleep 6")
             line("else")
-            line("  insmod \"" + lkm + "\" && log '[ghostlock] insmod kernelpatch.ko ok' || log '[ghostlock] insmod kernelpatch.ko failed'")
+            line("  insmod \"" + lkm + "\" && log '[ghostlock] insmod kernelpatch.ko ok' || { STATUS=1; log '[ghostlock] insmod kernelpatch.ko failed'; }")
             line("fi")
             line("nohup sh -c 'sleep 8; am force-stop me.yuki.folk 2>/dev/null || true; monkey -p me.yuki.folk -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true' >/dev/null 2>&1 &")
         } else {
             line("log '[ghostlock] load custom lkm'")
-            line("insmod \"" + lkm + "\" " + slot.lkmParams + " && log '[ghostlock] lkm loaded' || log '[ghostlock] lkm insmod failed'")
+            line("insmod \"" + lkm + "\" " + slot.lkmParams + " >>\"\$LOG\" 2>&1 && log '[ghostlock] lkm loaded' || { STATUS=1; log '[ghostlock] lkm insmod failed'; }")
         }
         if (state.kernelAccessAfterRelay) {
             line("ACCESS_DEV=/dev/glk")
@@ -133,7 +125,7 @@ class LkmPayload(
 /**
  * 按 [FinishState.payloads] 的顺序生成载荷列表：同一条实例出现几次就生成几次。
  *
- * 没有执行价值的实例（app 没选包名、命令为空、脚本/LKM 没解析出路径）直接跳过，
+ * 没有执行价值的实例（命令为空、脚本/LKM 没解析出路径）直接跳过，
  * 但不改动用户表里的条目 —— 编辑界面仍然看得到、可以补参数。
  *
  * @param context 已解析路径的上下文。
@@ -143,7 +135,6 @@ fun FinishState.payloadRequests(context: PayloadContext): List<PayloadRequest> =
     payloads.filter { it.enabled }.forEach { slot ->
         when (slot.kind) {
             PayloadKind.Root -> add(RootManagerPayload(slot))
-            PayloadKind.App -> if (slot.appPackage.isNotBlank()) add(AppPayload(slot))
             PayloadKind.Command -> {
                 val hasScript = slot.scriptMode == 1 && context.staged[slot.id] != null
                 if (hasScript || (slot.scriptMode == 0 && slot.command.isNotBlank())) add(CommandPayload(slot))
@@ -159,4 +150,5 @@ fun FinishState.payloadRequests(context: PayloadContext): List<PayloadRequest> =
     ) {
         context.folkPatchLkm?.let { add(LkmPayload(PayloadSlot("slot-folk", PayloadKind.Lkm), it)) }
     }
-}
+    /* Manager last: app/command/LKM first, root manager at the end. */
+}.sortedBy { request -> if (request.slot.kind == PayloadKind.Root) 1 else 0 }

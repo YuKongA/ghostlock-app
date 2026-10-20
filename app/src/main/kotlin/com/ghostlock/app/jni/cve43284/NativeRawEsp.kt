@@ -24,18 +24,16 @@ object NativeRawEsp {
     }
 
     fun writeBlock(handle: Long, path: String, offset: Long, iv: ByteArray, sequence: Int): Boolean {
-        log.verbose("NativeRawEsp.writeBlock path=" + path + " offset=" + offset + " seq=" + sequence)
         val ok = nativeWriteBlock(handle, path, offset, iv, sequence)
-        log.debug("NativeRawEsp.writeBlock result ok=" + ok)
+        if (!ok) log.debug("NativeRawEsp.writeBlock failed offset=" + offset)
         return ok
     }
 
     fun writeBlockViaHelper(
         handle: Long, path: String, offset: Long, iv: ByteArray, sequence: Int, helperPath: String,
     ): Boolean {
-        log.verbose("NativeRawEsp.writeBlockViaHelper path=" + path + " offset=" + offset + " helper=" + helperPath)
         val ok = nativeWriteBlockViaHelper(handle, path, offset, iv, sequence, helperPath)
-        log.debug("NativeRawEsp.writeBlockViaHelper result ok=" + ok)
+        if (!ok) log.debug("NativeRawEsp.writeBlockViaHelper failed offset=" + offset)
         return ok
     }
 

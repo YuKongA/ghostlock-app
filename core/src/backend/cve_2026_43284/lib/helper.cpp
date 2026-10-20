@@ -19,12 +19,10 @@ void set_error(HelperError *error, const char *stage) noexcept {
     error->err = errno;
 }
 
-void exit_child(int fd, off_t offset, const char *path, bool read_mode) noexcept {
-    /* helper ABI: read mode writes fd 0 (OUT_FD), splice mode writes fd 1 (PIPE_FD). */
+void exit_child(int fd, const char *offstr, const char *path, bool read_mode) noexcept {
+    /* vfork child: only async-signal-safe dup2/exec/_exit, no snprintf/malloc. */
     const int target_fd = read_mode ? STDIN_FILENO : STDOUT_FILENO;
     if (fd != target_fd && ::dup2(fd, target_fd) < 0) _exit(1);
-    char offstr[24];
-    std::snprintf(offstr, sizeof(offstr), "%ld", static_cast<long>(offset));
     if (read_mode) ::execl(kCrashDump, "crashdump64", offstr, path, "r", nullptr);
     else ::execl(kCrashDump, "crashdump64", offstr, path, nullptr);
     _exit(1);
@@ -41,15 +39,23 @@ bool gl_helper_exec(off_t offset, const char *path, int out_fd, bool read_mode,
         if (error != nullptr) { error->stage = "helper-args"; error->err = EINVAL; }
         return false;
     }
-    const pid_t pid = ::fork();
+    char offstr[24];
+    std::snprintf(offstr, sizeof(offstr), "%ld", static_cast<long>(offset));
+    /* vfork + parent-side formatting: the child must not touch libc locks after
+     * fork in a multi-threaded ART process. */
+    const pid_t pid = ::vfork();
     if (pid < 0) {
-        debug("gl_helper_exec branch=fork-failed errno=%d", errno);
+        debug("gl_helper_exec branch=vfork-failed errno=%d", errno);
         set_error(error, "helper-fork");
         return false;
     }
-    if (pid == 0) exit_child(out_fd, offset, path, read_mode);
+    if (pid == 0) exit_child(out_fd, offstr, path, read_mode);
     int status = 0;
-    if (::waitpid(pid, &status, 0) < 0) {
+    pid_t waited = -1;
+    do {
+        waited = ::waitpid(pid, &status, 0);
+    } while (waited < 0 && errno == EINTR);
+    if (waited < 0) {
         debug("gl_helper_exec branch=wait-failed errno=%d", errno);
         set_error(error, "helper-wait");
         return false;
@@ -104,6 +110,10 @@ bool gl_trigger_orphan(unsigned delay_ms, HelperError *error) noexcept {
             _exit(0);
         }
         _exit(0);
+    }
+    /* Reap the intermediate child like DFRoot; the grandchild remains the orphan. */
+    int status = 0;
+    while (::waitpid(child, &status, 0) < 0 && errno == EINTR) {
     }
     return true;
 }

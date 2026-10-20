@@ -13,7 +13,7 @@ class PayloadRequestsTest {
                 PayloadSlot("a", PayloadKind.Lkm, lkmUri = "content://custom.ko"),
                 PayloadSlot("b", PayloadKind.Root),
                 PayloadSlot("c", PayloadKind.Command, command = "id"),
-                PayloadSlot("d", PayloadKind.App, appPackage = "com.example.app"),
+                PayloadSlot("d", PayloadKind.Command, command = "uname -a"),
             ),
         )
         val context = PayloadContext(state, null, staged = mapOf("a" to "/tmp/custom.ko"))
@@ -35,8 +35,6 @@ class PayloadRequestsTest {
     @Test
     fun completenessRules() {
         assertTrue(PayloadSlot("r", PayloadKind.Root).isComplete())
-        assertFalse(PayloadSlot("a", PayloadKind.App).isComplete())
-        assertTrue(PayloadSlot("a", PayloadKind.App, appPackage = "com.x").isComplete())
         assertFalse(PayloadSlot("c", PayloadKind.Command).isComplete())
         assertTrue(PayloadSlot("c", PayloadKind.Command, command = "id").isComplete())
         assertFalse(PayloadSlot("c", PayloadKind.Command, scriptMode = 1).isComplete())
@@ -92,7 +90,6 @@ class PayloadRequestsTest {
     fun dropsPayloadsWithoutContent() {
         val state = FinishState(
             payloads = listOf(
-                PayloadSlot("app", PayloadKind.App),
                 PayloadSlot("cmd", PayloadKind.Command),
                 PayloadSlot("lkm", PayloadKind.Lkm),
             ),

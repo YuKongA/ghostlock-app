@@ -42,10 +42,6 @@ object PayloadEffects {
                         add(EffectReport("root", if (ok) EffectState.Verified else EffectState.Unknown, state.rootManager))
                     }
                 }
-                PayloadKind.App -> {
-                    val detail = slot.appPackage.ifBlank { "blank" }
-                    add(EffectReport("app", if (slot.appPackage.isBlank()) EffectState.Failed else EffectState.Unknown, detail))
-                }
                 PayloadKind.Command -> {
                     add(EffectReport("cmd", EffectState.Unknown, if (slot.scriptMode == 0) "inline" else "script"))
                 }

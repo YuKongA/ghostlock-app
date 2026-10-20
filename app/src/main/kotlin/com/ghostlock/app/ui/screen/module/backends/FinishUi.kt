@@ -122,8 +122,6 @@ import top.yukonga.miuix.kmp.preference.RadioButtonPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import kotlin.math.roundToInt
 
-private enum class FinishRoute { Main, App }
-
 /* ---------------- payload metadata ---------------- */
 
 /** 载荷类型对应的标题文案。 */
@@ -131,7 +129,6 @@ private enum class FinishRoute { Main, App }
 private fun payloadTitle(kind: PayloadKind): String = stringResource(
     when (kind) {
         PayloadKind.Root -> R.string.finish_root_manager
-        PayloadKind.App -> R.string.finish_run_app
         PayloadKind.Command -> R.string.finish_script
         PayloadKind.Lkm -> R.string.finish_lkm
     },
@@ -140,7 +137,6 @@ private fun payloadTitle(kind: PayloadKind): String = stringResource(
 /** 载荷类型对应的图标。 */
 private fun payloadIcon(kind: PayloadKind) = when (kind) {
     PayloadKind.Root -> Icons.Filled.AdminPanelSettings
-    PayloadKind.App -> Icons.Filled.Apps
     PayloadKind.Command -> Icons.Filled.Terminal
     PayloadKind.Lkm -> Icons.Filled.Extension
 }
@@ -192,43 +188,11 @@ fun FinishCard(miuix: Boolean, onOpen: () -> Unit) {
 
 @Composable
 fun FinishPage(miuix: Boolean, bottomInnerPadding: Dp, onBack: () -> Unit) {
-    var route by remember { mutableStateOf(FinishRoute.Main) }
-    /* 应用选择器要知道「改哪一条载荷」：同类可以有多条（2026-10-19）。 */
-    var appSlotId by remember { mutableStateOf<String?>(null) }
     DisposableEffect(Unit) {
         PageChrome.hideBottomBar = true
         onDispose { PageChrome.hideBottomBar = false }
     }
-    BackHandler(enabled = route != FinishRoute.Main) { route = FinishRoute.Main }
-    AnimatedContent(
-        targetState = route,
-        transitionSpec = {
-            val forward = targetState.ordinal > initialState.ordinal
-            if (forward) {
-                (slideInHorizontally(tween(220)) { it / 3 } + fadeIn(tween(180))) togetherWith
-                    (slideOutHorizontally(tween(220)) { -it / 4 } + fadeOut(tween(160)))
-            } else {
-                (slideInHorizontally(tween(220)) { -it / 3 } + fadeIn(tween(180))) togetherWith
-                    (slideOutHorizontally(tween(220)) { it / 4 } + fadeOut(tween(160)))
-            }
-        },
-        label = "finish-route",
-    ) { current ->
-        when (current) {
-            FinishRoute.Main -> FinishMain(miuix, bottomInnerPadding, onBack) { slotId ->
-                appSlotId = slotId
-                route = FinishRoute.App
-            }
-            FinishRoute.App -> {
-                val slotId = appSlotId
-                if (slotId == null) {
-                    LaunchedEffect(Unit) { route = FinishRoute.Main }
-                } else {
-                    FinishAppPage(miuix, bottomInnerPadding, slotId) { route = FinishRoute.Main }
-                }
-            }
-        }
-    }
+    FinishMain(miuix, bottomInnerPadding, onBack)
 }
 
 /* ---------------- main ---------------- */
@@ -238,7 +202,6 @@ private fun FinishMain(
     miuix: Boolean,
     bottomInnerPadding: Dp,
     onBack: () -> Unit,
-    onPickApp: (String) -> Unit,
 ) {
     val context = LocalContext.current
     var state by remember { mutableStateOf(FinishConfig.state) }
@@ -313,9 +276,10 @@ private fun FinishMain(
                                 slot = slot,
                                 incomplete = slot.enabled && !slot.isComplete(),
                                 rootManager = state.rootManager,
+                                safeMode = state.safeMode,
                                 onChange = ::updateSlot,
                                 onRootManager = { name -> commit(state.copy(rootManager = name)) },
-                                onPickApp = { onPickApp(slot.id) },
+                                onSafeMode = { on -> commit(state.copy(safeMode = on)) },
                             )
                         }
                     }
@@ -392,9 +356,10 @@ private fun FinishMain(
                                 slot = slot,
                                 incomplete = slot.enabled && !slot.isComplete(),
                                 rootManager = state.rootManager,
+                                safeMode = state.safeMode,
                                 onChange = ::updateSlot,
                                 onRootManager = { name -> commit(state.copy(rootManager = name)) },
-                                onPickApp = { onPickApp(slot.id) },
+                                onSafeMode = { on -> commit(state.copy(safeMode = on)) },
                             )
                         }
                     }
@@ -434,12 +399,12 @@ private fun PayloadSlotCard(
     slot: PayloadSlot,
     incomplete: Boolean,
     rootManager: String,
+    safeMode: Boolean,
     onChange: (PayloadSlot) -> Unit,
     onRootManager: (String) -> Unit,
-    onPickApp: () -> Unit,
+    onSafeMode: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
-    val app = appDisplay(slot.appPackage)
     val scriptPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         onChange(slot.copy(scriptUri = uri?.toString()))
     }
@@ -454,29 +419,40 @@ private fun PayloadSlotCard(
             /* 开关关掉时只留头部：参数区隐藏，脚本生成也会跳过这条。 */
             if (slot.enabled) {
                 when (slot.kind) {
-                    PayloadKind.Root -> FinishConfig.rootManagers.forEach { spec ->
-                        val installedPkgs = FinishConfig.installedPackages(context, spec)
-                        val installed = installedPkgs.isNotEmpty()
-                        PayloadRow(
-                            miuix = miuix,
-                            title = spec.name,
-                            summary = if (installed) installedPkgs.first() else stringResource(R.string.finish_manager_missing, spec.name),
-                            enabled = installed,
-                            onClick = if (installed) ({ onRootManager(spec.name) }) else null,
-                            leading = { ManagerIcon(miuix, spec) },
-                            trailing = { PayloadRadio(miuix, selected = rootManager == spec.name, enabled = installed) },
-                        )
+                    PayloadKind.Root -> {
+                        FinishConfig.rootManagers.forEach { spec ->
+                            val installedPkgs = FinishConfig.installedPackages(context, spec)
+                            val installed = installedPkgs.isNotEmpty()
+                            PayloadRow(
+                                miuix = miuix,
+                                title = spec.name,
+                                summary = if (installed) installedPkgs.first() else stringResource(R.string.finish_manager_missing, spec.name),
+                                enabled = installed,
+                                onClick = if (installed) ({ onRootManager(spec.name) }) else null,
+                                leading = { ManagerIcon(miuix, spec) },
+                                trailing = { PayloadRadio(miuix, selected = rootManager == spec.name, enabled = installed) },
+                            )
+                        }
+                        /* 安全模式只在支持 ksud late-load 的管理器上出现（FolkPatch 是 launchOnly）。 */
+                        if (FinishConfig.spec(rootManager)?.launchOnly != true) {
+                            PayloadRow(
+                                miuix = miuix,
+                                title = stringResource(R.string.safe_mode_label),
+                                summary = stringResource(R.string.safe_mode_summary),
+                                onClick = { onSafeMode(!safeMode) },
+                                trailing = {
+                                    if (miuix) {
+                                        top.yukonga.miuix.kmp.basic.Switch(
+                                            checked = safeMode,
+                                            onCheckedChange = onSafeMode,
+                                        )
+                                    } else {
+                                        Switch(checked = safeMode, onCheckedChange = onSafeMode)
+                                    }
+                                },
+                            )
+                        }
                     }
-
-                    PayloadKind.App -> PayloadRow(
-                        miuix = miuix,
-                        title = app?.first ?: stringResource(R.string.finish_app_pick),
-                        summary = app?.second ?: stringResource(R.string.finish_app_none),
-                        error = incomplete,
-                        onClick = onPickApp,
-                        leading = { AppLeadingIcon(miuix, slot.appPackage) },
-                        trailing = { PayloadArrow(miuix) },
-                    )
 
                     PayloadKind.Command -> {
                         PayloadRow(
@@ -722,8 +698,6 @@ private fun PayloadTextField(
 @Composable
 private fun payloadEditSubtitle(slot: PayloadSlot, rootManager: String): String = when (slot.kind) {
     PayloadKind.Root -> rootManager
-    PayloadKind.App -> appDisplay(slot.appPackage)?.first
-        ?: slot.appPackage.ifBlank { stringResource(R.string.finish_app_none) }
     PayloadKind.Command -> if (slot.scriptMode == 0) {
         slot.command.ifBlank { stringResource(R.string.payload_not_configured) }
     } else {
@@ -917,7 +891,7 @@ private fun AddPayloadDialog(
     onAdd: (PayloadKind) -> Unit,
 ) {
     if (!show) return
-    val kinds = listOf(PayloadKind.Root, PayloadKind.App, PayloadKind.Command, PayloadKind.Lkm)
+    val kinds = listOf(PayloadKind.Root, PayloadKind.Command, PayloadKind.Lkm)
     val pick: (PayloadKind) -> Unit = { kind ->
         onAdd(kind)
         onDismiss()
@@ -994,295 +968,6 @@ private fun ManagerIcon(miuix: Boolean, spec: FinishConfig.RootManagerSpec) {
                     MaterialTheme.colorScheme.onSurfaceVariant
                 },
             )
-        }
-    }
-}
-
-@Composable
-private fun AppLeadingIcon(miuix: Boolean, pkg: String?) {
-    val context = LocalContext.current
-    val info = remember(pkg) { pkg?.let { runCatching { context.packageManager.getApplicationInfo(it, 0) }.getOrNull() } }
-    if (info != null) {
-        AppIconImage(Modifier.size(36.dp), info, info.loadLabel(context.packageManager).toString())
-    } else {
-        Icon(
-            imageVector = Icons.Filled.Apps,
-            contentDescription = null,
-            modifier = Modifier.size(24.dp),
-            tint = if (miuix) {
-                top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-        )
-    }
-}
-
-
-@Composable
-private fun appDisplay(pkg: String?): Pair<String, String>? {
-    val context = LocalContext.current
-    if (pkg.isNullOrBlank()) return null
-    return remember(pkg) {
-        runCatching {
-            val info = context.packageManager.getApplicationInfo(pkg, 0)
-            info.loadLabel(context.packageManager).toString() to pkg
-        }.getOrNull()
-    }
-}
-
-/* ---------------- app picker ---------------- */
-
-private enum class AppSort { Name, Package, Installed, Updated }
-
-private data class AppEntry(
-    val info: ApplicationInfo,
-    val label: String,
-    val system: Boolean,
-    val installed: Long,
-    val updated: Long,
-)
-
-@Composable
-private fun sortLabel(sort: AppSort): String = when (sort) {
-    AppSort.Name -> stringResource(R.string.finish_sort_name)
-    AppSort.Package -> stringResource(R.string.finish_sort_package)
-    AppSort.Installed -> stringResource(R.string.finish_sort_installed)
-    AppSort.Updated -> stringResource(R.string.finish_sort_updated)
-}
-
-@Composable
-private fun FinishAppPage(miuix: Boolean, bottomInnerPadding: Dp, slotId: String, onBack: () -> Unit) {
-    val context = LocalContext.current
-    var state by remember { mutableStateOf(FinishConfig.state) }
-    var query by remember { mutableStateOf("") }
-    var sort by remember { mutableStateOf(AppSort.Name) }
-    var desc by remember { mutableStateOf(false) }
-    var showSystem by remember { mutableStateOf(false) }
-
-    val allApps = remember {
-        val pm = context.packageManager
-        @Suppress("DEPRECATION")
-        pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            .filter { it.packageName != context.packageName }
-            .filter { info -> pm.getLaunchIntentForPackage(info.packageName) != null || (info.flags and ApplicationInfo.FLAG_SYSTEM) == 0 }
-            .map { info ->
-                val pkg = runCatching { pm.getPackageInfo(info.packageName, 0) }.getOrNull()
-                AppEntry(info, info.loadLabel(pm).toString(), (info.flags and ApplicationInfo.FLAG_SYSTEM) != 0, pkg?.firstInstallTime ?: 0L, pkg?.lastUpdateTime ?: 0L)
-            }
-    }
-    val apps = remember(query, sort, desc, showSystem, allApps) {
-        val filtered = allApps.filter { app ->
-            (showSystem || !app.system) && (query.isBlank() || app.label.contains(query, true) || app.info.packageName.contains(query, true))
-        }
-        val comparator: Comparator<AppEntry> = when (sort) {
-            AppSort.Name -> compareBy { it.label.lowercase() }
-            AppSort.Package -> compareBy { it.info.packageName }
-            AppSort.Installed -> compareBy { it.installed }
-            AppSort.Updated -> compareBy { it.updated }
-        }
-        if (desc) filtered.sortedWith(comparator.reversed()) else filtered.sortedWith(comparator)
-    }
-    val selectedPackage = state.payloads.firstOrNull { it.id == slotId }?.appPackage.orEmpty()
-    val onPick: (AppEntry) -> Unit = { app ->
-        /* 只改这一条载荷的包名：同类其它实例不受影响（2026-10-19）。 */
-        val next = state.copy(
-            payloads = state.payloads.map { slot ->
-                if (slot.id == slotId) slot.copy(appPackage = app.info.packageName) else slot
-            },
-        )
-        state = next
-        FinishConfig.update(context, next)
-        onBack()
-    }
-    val actions: @Composable () -> Unit = {
-        FinishSortAction(miuix, sort, desc, { sort = it }, { desc = !desc })
-        FinishFilterAction(miuix, showSystem) { showSystem = !showSystem }
-    }
-
-    if (miuix) {
-        MiuixScaffold(
-            topBar = {
-                MiuixTopAppBar(
-                    title = stringResource(R.string.finish_app_pick),
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = null,
-                                tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground,
-                            )
-                        }
-                    },
-                    actions = { actions() },
-                )
-            },
-            /* 同一覆盖层：没有底部栏时，导航条留白由 contentWindowInsets 提供（2026-10-19）。 */
-            contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout)
-                .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
-        ) { inner ->
-            Column(Modifier.fillMaxSize().padding(inner).imePadding()) {
-                MiuixTextField(query, { query = it }, label = stringResource(R.string.finish_app_search), modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
-                LazyColumn(Modifier.fillMaxSize().padding(bottom = bottomInnerPadding)) {
-                    items(apps, key = { it.info.packageName }) { app ->
-                        top.yukonga.miuix.kmp.basic.Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-                            top.yukonga.miuix.kmp.basic.BasicComponent(
-                                title = app.label,
-                                summary = app.info.packageName,
-                                startAction = { AppIconImage(Modifier.size(40.dp), app.info, app.label) },
-                                endActions = { if (selectedPackage == app.info.packageName) Icon(Icons.Filled.Check, null) },
-                                onClick = { onPick(app) },
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    } else {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = { Text(stringResource(R.string.finish_app_pick)) },
-                    navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } },
-                    actions = { actions() },
-                )
-            },
-        ) { inner ->
-            Column(Modifier.fillMaxSize().padding(inner).imePadding()) {
-                OutlinedTextField(query, { query = it }, label = { Text(stringResource(R.string.finish_app_search)) }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), singleLine = true)
-                LazyColumn(Modifier.fillMaxSize().padding(bottom = bottomInnerPadding)) {
-                    items(apps, key = { it.info.packageName }) { app ->
-                        Row(Modifier.fillMaxWidth().clickable { onPick(app) }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            AppIconImage(Modifier.size(40.dp), app.info, app.label)
-                            Column(Modifier.padding(start = 12.dp).weight(1f)) {
-                                Text(app.label)
-                                Text(app.info.packageName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            if (selectedPackage == app.info.packageName) Icon(Icons.Filled.Check, null)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/* ---------------- menus ---------------- */
-
-@Composable
-private fun FinishSortAction(miuix: Boolean, sort: AppSort, desc: Boolean, onSort: (AppSort) -> Unit, onToggleDesc: () -> Unit) {
-    var show by remember { mutableStateOf(false) }
-    if (miuix) {
-        Box {
-            IconButton(onClick = { show = true }) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Sort,
-                    contentDescription = null,
-                    tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground,
-                )
-            }
-            top.yukonga.miuix.kmp.overlay.OverlayListPopup(
-                show = show,
-                popupPositionProvider = com.ghostlock.app.ui.component.ListPopupDefaults.MenuPositionProvider,
-                alignment = top.yukonga.miuix.kmp.basic.PopupPositionProvider.Align.TopEnd,
-                onDismissRequest = { show = false },
-                content = {
-                    top.yukonga.miuix.kmp.basic.ListPopupColumn {
-                        AppSort.entries.forEachIndexed { index, option ->
-                            top.yukonga.miuix.kmp.basic.DropdownImpl(
-                                text = sortLabel(option),
-                                optionSize = AppSort.entries.size + 1,
-                                isSelected = sort == option,
-                                index = index,
-                                onSelectedIndexChange = { onSort(option); show = false },
-                            )
-                        }
-                        top.yukonga.miuix.kmp.basic.HorizontalDivider(Modifier.padding(horizontal = 20.dp, vertical = 4.dp), thickness = 1.5.dp)
-                        top.yukonga.miuix.kmp.basic.DropdownImpl(
-                            text = stringResource(R.string.finish_sort_desc),
-                            optionSize = AppSort.entries.size + 1,
-                            isSelected = desc,
-                            index = AppSort.entries.size,
-                            onSelectedIndexChange = { onToggleDesc(); show = false },
-                        )
-                    }
-                },
-            )
-        }
-    } else {
-        IconButton(onClick = { show = true }) {
-            Icon(Icons.AutoMirrored.Filled.Sort, null)
-            DropdownMenuPopup(expanded = show, onDismissRequest = { show = false }) {
-                DropdownMenuGroup(shapes = MenuDefaults.groupShape(index = 0, count = 2)) {
-                    AppSort.entries.forEachIndexed { index, option ->
-                        SelectableDropdownMenuItem(
-                            text = { Text(sortLabel(option)) },
-                            selected = sort == option,
-                            selectedLeadingIcon = { Icon(Icons.Filled.Check, null, Modifier.size(MenuDefaults.LeadingIconSize)) },
-                            onClick = { onSort(option); show = false },
-                            shapes = MenuDefaults.itemShape(index = index, count = AppSort.entries.size),
-                        )
-                    }
-                }
-                Spacer(Modifier.size(MenuDefaults.GroupSpacing))
-                DropdownMenuGroup(shapes = MenuDefaults.groupShape(index = 1, count = 2)) {
-                    CheckableDropdownMenuItem(
-                        text = { Text(stringResource(R.string.finish_sort_desc)) },
-                        checked = desc,
-                        checkedLeadingIcon = { Icon(Icons.Filled.Check, null, Modifier.size(MenuDefaults.LeadingIconSize)) },
-                        onCheckedChange = { onToggleDesc(); show = false },
-                        shapes = MenuDefaults.itemShape(index = 0, count = 1),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun FinishFilterAction(miuix: Boolean, showSystem: Boolean, onToggleSystem: () -> Unit) {
-    var show by remember { mutableStateOf(false) }
-    if (miuix) {
-        Box {
-            IconButton(onClick = { show = true }) {
-                Icon(
-                    imageVector = Icons.Filled.FilterList,
-                    contentDescription = null,
-                    tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground,
-                )
-            }
-            top.yukonga.miuix.kmp.overlay.OverlayListPopup(
-                show = show,
-                popupPositionProvider = com.ghostlock.app.ui.component.ListPopupDefaults.MenuPositionProvider,
-                alignment = top.yukonga.miuix.kmp.basic.PopupPositionProvider.Align.TopEnd,
-                onDismissRequest = { show = false },
-                content = {
-                    top.yukonga.miuix.kmp.basic.ListPopupColumn {
-                        top.yukonga.miuix.kmp.basic.DropdownImpl(
-                            text = stringResource(R.string.finish_show_system),
-                            optionSize = 1,
-                            isSelected = showSystem,
-                            index = 0,
-                            onSelectedIndexChange = { onToggleSystem(); show = false },
-                        )
-                    }
-                },
-            )
-        }
-    } else {
-        IconButton(onClick = { show = true }) {
-            Icon(Icons.Filled.FilterList, null)
-            DropdownMenuPopup(expanded = show, onDismissRequest = { show = false }) {
-                DropdownMenuGroup(shapes = MenuDefaults.groupShapes()) {
-                    CheckableDropdownMenuItem(
-                        text = { Text(stringResource(R.string.finish_show_system)) },
-                        checked = showSystem,
-                        checkedLeadingIcon = { Icon(Icons.Filled.Check, null, Modifier.size(MenuDefaults.LeadingIconSize)) },
-                        onCheckedChange = { onToggleSystem(); show = false },
-                        shapes = MenuDefaults.itemShape(index = 0, count = 1),
-                    )
-                }
-            }
         }
     }
 }

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -62,6 +63,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -454,10 +456,15 @@ fun SegmentedDropdownItem(
             headlineContent = { Text(text = title) },
             supportingContent = summary?.let { { Text(it) } },
             trailingContent = {
+                /* 单行显示选中值，不再按 30% 宽度折行（2026-10-19 用户裁定）：
+                 * CVE 编号这类值必须完整一行；超长值用省略号收尾。 */
                 Text(
                     text = if (hasItems && safeIndex >= 0) items[safeIndex] else "",
                     textAlign = TextAlign.End,
-                    modifier = Modifier.fillMaxWidth(0.3f),
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 180.dp),
                     color = if (enabled) colorScheme.primary else colorScheme.onSurfaceVariant
                 )
             }

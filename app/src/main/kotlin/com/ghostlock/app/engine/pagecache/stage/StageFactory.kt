@@ -32,7 +32,9 @@ data class StageConfig(
     val trigger: suspend () -> Boolean,
     val restore: suspend () -> Boolean,
     val waitTimeoutMs: Long = 5000,
+    val failPaths: List<String> = emptyList(),
     val log: StageLog = silentStageLog,
+    val waitSince: Long = 0L,
 )
 
 private const val CRASH_DUMP = "/apex/com.android.runtime/bin/crash_dump64"
@@ -54,7 +56,13 @@ object StageFactory {
             config.hook.key, config.hook.sequence, config.log, config.hook.verify,
         ),
         trigger = TriggerStage(config.trigger, config.log),
-        wait = WaitStage(config.waitPaths, config.waitTimeoutMs, log = config.log),
+        wait = WaitStage(
+            paths = config.waitPaths,
+            timeoutMs = config.waitTimeoutMs,
+            failPaths = config.failPaths,
+            log = config.log,
+            sinceMs = config.waitSince,
+        ),
         cleanup = CleanupStage(config.log, config.restore),
         log = config.log,
     )

@@ -14,9 +14,8 @@ object NativeHelper {
     private external fun nativeLastError(): String
 
     fun read(path: String, offset: Long): ByteArray? {
-        log.verbose("NativeHelper.read path=" + path + " offset=" + offset)
         val out = nativeRead(path, offset)
-        log.debug("NativeHelper.read result bytes=" + (out?.size ?: -1))
+        if (out == null) log.debug("NativeHelper.read failed offset=" + offset)
         return out
     }
 

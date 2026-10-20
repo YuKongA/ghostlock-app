@@ -23,8 +23,6 @@ class BlockWriter(
         key: ByteArray,
         sequence: Int,
     ): Boolean {
-        log.verbose("BlockWriter.writeBlock", "path" to path, "offset" to offset,
-            "block" to desired.size, "sequence" to sequence)
         if (desired.size != 16) {
             log.debug("BlockWriter.writeBlock", "bad-block-size", "size" to desired.size)
             return false
@@ -43,8 +41,6 @@ class BlockWriter(
         if (!ok) {
             log.debug("BlockWriter.writeBlock", "jni-false", "path" to path, "offset" to offset,
                 "error" to NativeRawEsp.lastError())
-        } else {
-            log.debug("BlockWriter.writeBlock", "ok", "offset" to offset)
         }
         return ok
     }
@@ -93,10 +89,11 @@ class BlockWriter(
             return 0
         }
         var written = 0
+        var helperReads = 0
         while (written * 16 < image.size) {
             val at = written * 16
             val block = image.copyOfRange(at, at + 16)
-            val old = readOld(path, offset + at)
+            val old = readOld(path, offset + at, allowDirect = false, onHelper = { helperReads += 1 })
             if (old == null) {
                 if (lastError.isEmpty()) lastError = "old-read-null"
                 log.debug("BlockWriter.writeRangeViaHelper", "old-null", "offset" to (offset + at))
@@ -113,7 +110,8 @@ class BlockWriter(
             }
             written += 1
         }
-        log.verbose("BlockWriter.writeRangeViaHelper.result", "written" to written, "bytes" to image.size)
+        log.verbose("BlockWriter.writeRangeViaHelper.result", "written" to written, "bytes" to image.size,
+            "helperReads" to helperReads)
         return written
     }
 
@@ -147,8 +145,13 @@ class BlockWriter(
         NativeRawEsp.close(endpoint)
     }
 
-    private fun readOld(path: String, offset: Long): ByteArray? {
-        val direct = runCatching {
+    private fun readOld(
+        path: String,
+        offset: Long,
+        allowDirect: Boolean = true,
+        onHelper: () -> Unit = {},
+    ): ByteArray? {
+        val direct = if (!allowDirect) null else runCatching {
             RandomAccessFile(path, "r").use { file ->
                 file.seek(offset)
                 val bytes = ByteArray(16)
@@ -157,7 +160,7 @@ class BlockWriter(
             }
         }.getOrNull()
         if (direct != null) return direct
-        log.debug("BlockWriter.readOld", "direct-failed", "path" to path, "offset" to offset)
+        onHelper()
         val helper = NativeHelper.read(path, offset)
         if (helper == null) lastError = NativeHelper.lastError()
         return helper
@@ -168,7 +171,6 @@ class BlockWriter(
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"))
         val decrypted = cipher.doFinal(old)
         val iv = ByteArray(16) { index -> (decrypted[index].toInt() xor desired[index].toInt()).toByte() }
-        log.debug("BlockWriter.computeIv", "ok", "keySize" to key.size)
         return iv
     }
 

