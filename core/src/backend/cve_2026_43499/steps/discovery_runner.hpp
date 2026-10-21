@@ -26,6 +26,9 @@ namespace ghostlock::backend::cve_2026_43499::steps {
         leak::ScanRange range{};
         std::size_t counter_offset = 0U;
         bool sweep_tags = false;
+        /** 可选：调用方已映射的 words region（>=64 KiB）；非空时 run_discovery 不 map/unmap。 */
+        void *words_region = nullptr;
+        std::size_t words_bytes = 0U;
     };
 
     /** What came of it: the leak layer"s verdict name, and the numbers it reported. */
@@ -41,6 +44,9 @@ namespace ghostlock::backend::cve_2026_43499::steps {
         std::uint32_t rounds = 0U;
         std::size_t pokes_wanted = 0U;
         std::int32_t error = 0;
+        /** 调用方提供的 words base（仅当请求带 words_region）；内部映射成功时为空。 */
+        void *words_base = nullptr;
+        std::size_t words_bytes = 0U;
     };
 
     /** Run the search once. @return true when it ran (whatever it found), false with a named

@@ -15,6 +15,8 @@
 namespace {
     using ghostlock::backend::cve_2026_43499::WordLanding;
     using ghostlock::backend::cve_2026_43499::TargetState;
+    using ghostlock::backend::cve_2026_43499::memory::WriteMode;
+    using ghostlock::backend::cve_2026_43499::memory::WriteRequest;
     using ghostlock::backend::cve_2026_43499::landing::MulticastLanding;
     using ghostlock::backend::cve_2026_43499::landing::Window;
     using ghostlock::profile::RouteId;
@@ -34,12 +36,26 @@ namespace {
         std::uint64_t address = 0U;
         std::uint64_t value = 0U;
         std::uint64_t offset = 0U;
+        WriteMode mode = WriteMode::Disabled;
+        bool preserve = false;
 
         [[nodiscard]] bool write_word(std::uint64_t a, std::uint64_t v, std::uint64_t o) noexcept override {
             ++writes;
             address = a;
             value = v;
             offset = o;
+            return true;
+        }
+
+        [[nodiscard]] bool write_word(std::uint64_t a, std::uint64_t v,
+                                     const WriteRequest &request,
+                                     std::uint64_t o) noexcept override {
+            ++writes;
+            address = a;
+            value = v;
+            offset = o;
+            mode = request.mode;
+            preserve = request.preserve_child;
             return true;
         }
     };
@@ -84,6 +100,16 @@ namespace {
         expect(window.offset == 0x40U, "and the offset from the parameters");
     }
 
+    void a_word_carries_its_shape() {
+        RecordingWindow window;
+        MulticastLanding landing(window);
+        expect(landing.bring_up(RouteId::MulticastWaiter, prepared()), "the route comes up");
+        const WriteRequest request{0x2000U, WriteMode::Zero, false};
+        expect(landing.land_word(0x2000U, 1U, request, 0x40U), "a shaped word lands");
+        expect(window.mode == WriteMode::Zero && !window.preserve,
+               "and the landing carries the shape to the window");
+    }
+
     void missing_facts_stop_the_write() {
         RecordingWindow window;
         MulticastLanding landing(window);
@@ -101,6 +127,8 @@ int main() {
     only_multicast_is_served();
     std::printf("multicast landing: a word arrives unchanged\n");
     a_word_arrives_unchanged();
+    std::printf("multicast landing: a word carries its shape\n");
+    a_word_carries_its_shape();
     std::printf("multicast landing: missing facts\n");
     missing_facts_stop_the_write();
     if (g_failures != 0U) {

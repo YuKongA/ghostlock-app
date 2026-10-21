@@ -2,7 +2,6 @@ package com.ghostlock.app.data.nativeaccess
 
 import com.ghostlock.app.core.AccessFailure
 import com.ghostlock.app.core.AccessResult
-import com.ghostlock.app.core.AccessSession as LegacyAccessSession
 import com.ghostlock.app.core.CleanupDisposition
 import com.ghostlock.app.core.SessionPhase
 import com.ghostlock.app.core.access.AccessSession
@@ -23,7 +22,7 @@ class JniCapabilitySession(
     private val native: JniAccessSession,
     target: PageCacheTarget,
     private val initParams: PageCacheInit43284? = null,
-) : AccessSession, LegacyAccessSession {
+) : AccessSession {
     private val page = PageCacheKernelAccess(JniPageCacheOps(native, target), blockWidth = 16)
     private var initialized = false
 

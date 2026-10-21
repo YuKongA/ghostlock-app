@@ -22,6 +22,19 @@
 | B8 | GhostLock 特有功能：PayloadScriptSpec/custom payload renderer、manager/libksud 选择、bootstrap 环境、失败/回滚 | 待做；当前 PayloadScript 固定脚本、root 写 payload.status//dev/dfm6，与 payload-finish 白名单冲突，B8 必须替换 |
 | B9 | LKM AVC/Oppo/Defex/BTI、restore_enforce/soft reboot、最终 GhostLock 门禁 | 待做 |
 
+## 旧计划归档与合并（2026-10-21）
+
+| 旧件 | 处置 | 现行依据 |
+| --- | --- | --- |
+| `43284-b8-b9-plan-v2.md` | **归档** → [20261019-2309-43284-b8-b9-plan-v2.md](../archive/20261019-2309-43284-b8-b9-plan-v2.md) | v3 + B5 删除清单 |
+| `43284-b8-b9-b10-plan.md`（v1） | **归档** → [20261019-2309-43284-b8-b9-b10-plan.md](../archive/20261019-2309-43284-b8-b9-b10-plan.md) | v3 + MASTER-PLAN §0.1 |
+| `43284-b8-b9-b10-plan-v3.md` | **原地保留**（B8/B9 在办） | 本文件 §B8/B9 |
+| `43284-kotlin-dynamic-hook-plan.md` | **原地保留**（实现被 v4 取代，Kotlin-only 裁定仍有效） | v4 + `KotlinElfPlanner`/`ElfTarget` |
+| `43284-production-engine-plan.md` | **原地保留**（P4–P6 约束仍被引用） | v4 + `payload-finish-chain-plan.md` |
+
+- 归档规则见 [docs/archive/README.md](../archive/README.md)；**被在途计划引用的文件不移**（本表第 3–5 行）。
+- 本批只动文档：无代码、无构建、无设备。
+
 ## 当前已知
 
 - 43284 backend 实现已删除；interface.hpp 保留 AccessParamsPod，access_params.hpp B5 删除。

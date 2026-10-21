@@ -4,6 +4,11 @@
 
 > 子计划：[payload-finish-chain-plan.md](payload-finish-chain-plan.md)（P3/P4/P5 的载荷/收尾单向链、零落盘、marker 去除与 KernelSU 接线）。零落盘约束见 [payload-finish-chain-design.md](../analysis/payload-finish-chain-design.md) v2，与 P4 的通道形态冲突时以子计划为准。
 
+> **2026-10-21 状态**：P1/P2/P3 的实现段已由 `docs/analysis/43284-refactor-design-v4.md` 取代（旧 `KotlinAttackSession` /
+> `Backend43284Port` / `api_43284` 已删）；P4/P5/P6 的约束（payload/finish 单向链、零落盘、43499 只写 Kotlin）仍有效。
+> **本件被 `payload-finish-chain-plan.md` 与 43499 计划引用，按归档规则原地保留、不移动。**
+> 执行结构见 [execution-architecture.md](execution-architecture.md)。
+
 ## 0. 目标与决策
 
 **目标**：把 CVE-2026-43284 从临时探针（`TypedBackendProbe` + `tempui`）迁入正式 `ExecutionEngine`，让执行页、开机自动攻击、收尾都走同一套生产路径。

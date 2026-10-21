@@ -147,7 +147,7 @@ data class ShutdownReceipt(val clean: Boolean, val detail: String = "")
  * 资源所有权仍在 C++/native 一侧；这里的实现只持有不透明 handle（LKM 场景下是 /dev/glk fd），
  * 并把同一 handle 上的调用串行化。子能力视图不提供 close。
  */
-interface AccessSession {
+interface AccessSession : com.ghostlock.app.core.NativeSession {
     val capabilities: AccessCapabilities
 
     suspend fun snapshot(): AccessResult<SessionSnapshot>

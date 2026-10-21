@@ -4,6 +4,8 @@ import android.system.Os
 import android.system.OsConstants
 import com.ghostlock.app.core.AccessFailure
 import com.ghostlock.app.core.AccessResult
+import com.ghostlock.app.core.CleanupDisposition
+import com.ghostlock.app.core.SessionPhase
 import java.io.FileDescriptor
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -100,6 +102,7 @@ class LkmGlkSession(
     private var generation: UInt = 0u
     private var ready = false
     private var failed = false
+    private var closed = false
 
     private val kernelView = object : KernelMemoryAccess {
         override val descriptor: KernelMemoryDescriptor
@@ -116,6 +119,21 @@ class LkmGlkSession(
     override val pageCache: PageCacheAccess? get() = null
 
     override val capabilities: AccessCapabilities get() = this
+
+    override val phase: SessionPhase get() = when {
+        closed -> SessionPhase.CLOSED
+        failed -> SessionPhase.FAILED
+        ready -> SessionPhase.READY
+        else -> SessionPhase.INITIALIZING
+    }
+
+    override val cleanup: CleanupDisposition get() = CleanupDisposition.CLEAN
+
+    /** Cancel-only: fd/unload cleanup remains in shutdown(). */
+    override fun close() {
+        closed = true
+        ready = false
+    }
 
     private fun descriptorNow(): KernelMemoryDescriptor {
         val handleReady = ready && fd != null
@@ -141,6 +159,7 @@ class LkmGlkSession(
     }
 
     override suspend fun initialize(): AccessResult<InitializationReceipt> = gate.withLock {
+        if (closed) return@withLock AccessResult.Failure(AccessFailure.NOT_READY, "session closed")
         if (fd != null) {
             return@withLock AccessResult.Success(InitializationReceipt(listOf(descriptorNow())))
         }
@@ -163,6 +182,7 @@ class LkmGlkSession(
     }
 
     override suspend fun shutdown(): AccessResult<ShutdownReceipt> = gate.withLock {
+        closed = true
         val handle = fd
         if (handle == null) return@withLock AccessResult.Success(ShutdownReceipt(clean = true))
         val unload = callLocked(GlkRequest(op = GlkRequest.OP_UNLOAD))

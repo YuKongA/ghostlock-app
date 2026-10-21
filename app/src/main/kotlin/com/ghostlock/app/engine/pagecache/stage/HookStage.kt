@@ -55,11 +55,11 @@ class HookStage(
         ))
     }
 
-    override suspend fun abort(code: StageCode) {
+    override fun abort(code: StageCode) {
         log.debug("HookStage.abort", "enter", "code" to code)
     }
 
-    override suspend fun close() {
+    override fun close() {
         log.debug("HookStage.close", "done")
     }
 }

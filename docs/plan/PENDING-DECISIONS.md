@@ -63,7 +63,7 @@
 
 > **状态**：**待重述** —— 旧 native 读取点（`backend_profile.cpp`）已不存在；**extractor 侧 `report.rs:185` 仍发射 `steps`**、`:1745` 断言仍在 ⇒ 需按新 wire 重新表述（清或保留）。
 
-- **参考**：extractor 仍发射 [report.rs:185](../../tools/extract_rs/src/report.rs) + 断言 `:1745`；native 遗留读取 [backend_profile.cpp:82-85](../../core/src/backend/cve_2026_43499/backend_profile.cpp)
+- **参考**：extractor 仍发射 [report.rs:185](../../tools/extract_rs/src/report.rs) + 断言 `:1745`；native 遗留读取 **`core/src/backend/cve_2026_43499/backend_profile.cpp:82-85`** —— **该文件已不存在（legacy，已删除，`git show 92d55d3e:<path>` 可取回）**，不再作为当前依据。
 - **建议**：与 R11/P5 的 wire 变更同批清
 
 ### B5 审查原则定稿 + **A 组是否升阻断级**；`design-critic` 是否正式启用

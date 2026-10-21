@@ -36,7 +36,7 @@ object PageCacheEngine {
         log.info("Stage page cache engine started")
         log.verbose("PageCacheEngine.runStages", "waitPaths" to config.waitPaths.joinToString(","),
             "timeoutMs" to config.waitTimeoutMs)
-        val results = com.ghostlock.app.engine.pagecache.stage.StageFactory.build(config).run()
+        val results = com.ghostlock.app.backend.cve43284.pagecache.Cve43284Run(config).runStages()
         for (result in results) {
             if (result.code == com.ghostlock.app.engine.pagecache.stage.StageCode.OK) {
                 log.debug("PageCacheEngine.runStages", "stage-ok", "reason" to result.reason)

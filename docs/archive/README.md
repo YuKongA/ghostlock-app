@@ -33,6 +33,8 @@
 | `docs/analysis/step-queue-design.md` | `docs/archive/20261006-1712-step-queue-design.md` | 2026-10-06 17:12:33 -0400 | **已实现完**：M3（`d34caa99`+`6a3d60c6`）与 M5（`e59a8479`+归档 `af2feefc`）均已落地并在 `branch-plan` 标「已完成」 |
 | `docs/analysis/fallback-route-wire-plan.md` | `docs/archive/20261006-1712-fallback-route-wire-plan.md` | 2026-10-06 17:12:33 -0400 | **机制已不存在**：旧 fallback 派发在 R6a 被移除（`ProfileResolver.kt:45` 注释），其配置语法属 v2 legacy |
 | `docs/analysis/m5-handoff-20261006.md` | `docs/archive/20261006-1426-m5-handoff-20261006.md` | 2026-10-06 14:26:43 -0400 | **一次性交接稿**：内容已被 M5 收口文档与 `branch-plan` 吸收 |
+| `docs/plan/43284-b8-b9-plan-v2.md` | `docs/archive/20261019-2309-43284-b8-b9-plan-v2.md` | 2026-10-19 23:09:19 -0400 | **被取代**：v3 与 `43284-refactor-design-v4` 覆盖其删除结论（2026-10-21 归档） |
+| `docs/plan/43284-b8-b9-b10-plan.md` | `docs/archive/20261019-2309-43284-b8-b9-b10-plan.md` | 2026-10-19 23:09:19 -0400 | **被取代**：v3 取代；其「Lua 自定义流程」已被 MASTER-PLAN §0.1 废除（2026-10-21 归档） |
 
 ## 四、维护约定
 

@@ -43,6 +43,8 @@ namespace ghostlock::backend::cve_2026_43499::steps {
         /** Where the proof walk starts (the window start), and how many proofs to find. */
         std::uint64_t proof_seed = 0U;
         std::size_t proof_count = 0U;
+        /** Kotlin 传入的扫描标签开关；runner 不再写死 false。 */
+        bool sweep_tags = false;
     };
 
     /** What the preparation reported, from its own outcome. */

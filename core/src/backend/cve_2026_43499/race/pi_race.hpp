@@ -82,6 +82,7 @@ namespace ghostlock::backend::cve_2026_43499::race {
             (void) word;
             return 0;
         }
+        static int last_errno() noexcept { return 0; }
     };
 
     /** One PI race attempt. The caller owns the window guard; this class owns
@@ -118,17 +119,28 @@ namespace ghostlock::backend::cve_2026_43499::race {
              *  showed as a refusal before this was split. The handshake was proven on the
              *  hardware first -- owned=0 requeued=1 released=0 waiter=0 -- and this is that
              *  arrangement with the owner side here. */
-            if (Seam::lock_pi(target_) != 0) {
+            last_lock_result_ = Seam::lock_pi(target_);
+            if (last_lock_result_ != 0) {
                 outcome_ = RaceOutcome::Refused;
                 return outcome_;
             }
             /* The count of waiters the kernel moved is the evidence: a count of one is the
              *  kernel saying a waiter was really there, and zero means there was none to move. */
-            if (Seam::cmp_requeue_pi(chain_, target_) < 1) {
+            last_requeue_result_ = Seam::cmp_requeue_pi(chain_, target_);
+            last_requeue_errno_ = Seam::last_errno();
+            if (last_requeue_result_ < 1) {
                 outcome_ = RaceOutcome::Refused;
                 return outcome_;
             }
             outcome_ = RaceOutcome::Running;
+            return outcome_;
+        }
+
+        /** Requeue an already-parked waiter while another thread owns the target. No target lock here. */
+        [[nodiscard]] RaceOutcome requeue() noexcept {
+            last_requeue_result_ = Seam::cmp_requeue_pi(chain_, target_);
+            last_requeue_errno_ = Seam::last_errno();
+            outcome_ = (last_requeue_result_ >= 1) ? RaceOutcome::Running : RaceOutcome::Refused;
             return outcome_;
         }
 
@@ -148,10 +160,16 @@ namespace ghostlock::backend::cve_2026_43499::race {
         }
 
         [[nodiscard]] RaceOutcome outcome() const noexcept { return outcome_; }
+        [[nodiscard]] std::int32_t last_lock_result() const noexcept { return last_lock_result_; }
+        [[nodiscard]] std::int32_t last_requeue_result() const noexcept { return last_requeue_result_; }
+        [[nodiscard]] std::int32_t last_requeue_errno() const noexcept { return last_requeue_errno_; }
 
       private:
         std::uint32_t *chain_ = nullptr;
         std::uint32_t *target_ = nullptr;
         RaceOutcome outcome_ = RaceOutcome::NotPrepared;
+        std::int32_t last_lock_result_ = 0;
+        std::int32_t last_requeue_result_ = 0;
+        std::int32_t last_requeue_errno_ = 0;
     };
 }  // namespace ghostlock::backend::cve_2026_43499::race

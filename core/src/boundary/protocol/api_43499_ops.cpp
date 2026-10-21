@@ -31,9 +31,18 @@ namespace ghostlock::jni {
             for (std::size_t i = 0U; i < block.size(); ++i) {
                 block[i] = static_cast<std::uint8_t>((request.value >> (8U * i)) & 0xFFU);
             }
+            const FormMapping mapping = map_write_form(
+                write_form_of(static_cast<std::int32_t>(request.form)));
+            if (mapping.mode == 0) {
+                return false;
+            }
             const char *why = nullptr;
-            const std::uint64_t offset = request.offsetPresent ? request.offset : 0U;
-            return device_write_43499(ctx->access_id, ctx->route, offset, request.address, block, &why);
+            const std::uint64_t offset = request.offsetPresent
+                ? static_cast<std::uint64_t>(request.offset)
+                : 0U;
+            return device_write_43499(ctx->access_id, ctx->route, offset,
+                                      static_cast<std::uint64_t>(request.address), block,
+                                      mapping.mode, mapping.preserve, &why);
         }
 
         /** Read one word through the existing primitive. */

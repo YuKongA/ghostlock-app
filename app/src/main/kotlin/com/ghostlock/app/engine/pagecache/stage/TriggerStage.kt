@@ -21,11 +21,11 @@ class TriggerStage(
         return StageResult(StageCode.OK, evidence = Evidence(source = "trigger"))
     }
 
-    override suspend fun abort(code: StageCode) {
+    override fun abort(code: StageCode) {
         log.debug("TriggerStage.abort", "enter", "code" to code)
     }
 
-    override suspend fun close() {
+    override fun close() {
         log.debug("TriggerStage.close", "done")
     }
 }

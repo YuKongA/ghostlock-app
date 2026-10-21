@@ -660,3 +660,14 @@ sequenceDiagram
 
 要点：Kotlin 负责 plan、IV/分块、first-inst/jumpback、恢复顺序；JNI 只做 syscall；页缓存目标由 Kotlin 直接指定，不经过 `PageCacheLanding`。
 
+## 9. 执行层权威图（2026-10-21 · 指针，不复制）
+
+> 本文件 §2.1「计划（脚本）生命周期」、§3 的 `script/` 面、§4.4 handoff 等章节属 **Lua/script 时代**（2026-10-17 已删除，见 MASTER-PLAN §0.1），保留作沿革，**不得作为现行结构依据**。
+>
+> 执行层的结构与状态机权威图已迁至 **`docs/plan/execution-architecture.md`**：
+> - 组件图：`ExecutionEngine → BackendRun → PipelineEngine → node（Cve43499OpNode / Cve43284StageNode）` + 数据面 `AccessSession → capabilities`；
+> - 状态机：`SessionPhase`（INITIALIZING/READY/FAILED/CLOSING/CLOSED）与 close/shutdown 互斥；
+> - 决策记录：`docs/analysis/adr/0018-execution-authority.md`。
+>
+> 一处结构只留一处权威图 ⇒ 本文件不再复制这两张图，只保留指针。
+

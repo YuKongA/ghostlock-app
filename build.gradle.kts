@@ -293,7 +293,8 @@ tasks.register<Copy>("prepareGhostlockJniLibs") {
     dependsOn("nativeBuildAndroid")
     /* 三个库都要进 APK：旧的帧边界 + 两个 backend 各自的函数面（D2）。 */
     from("build/native/libghostlock_jni.so")
-    from("build/native/libghostlock43499.so")
+    from("build/native/libgl43499syscalls.so")
+    from("build/native/libgl43499native.so")
     from("build/native/libghostlock43284.so")
     into("app/src/main/jniLibs/arm64-v8a")
 }

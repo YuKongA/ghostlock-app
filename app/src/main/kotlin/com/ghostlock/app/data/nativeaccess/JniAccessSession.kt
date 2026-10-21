@@ -2,8 +2,8 @@ package com.ghostlock.app.data.nativeaccess
 
 import com.ghostlock.app.core.AccessFailure
 import com.ghostlock.app.core.AccessResult
-import com.ghostlock.app.core.AccessSession
-import com.ghostlock.app.core.AccessSessionFactory
+import com.ghostlock.app.core.NativeSession
+import com.ghostlock.app.core.NativeSessionFactory
 import com.ghostlock.app.core.AccessSessionRequest
 import com.ghostlock.app.core.CleanupDisposition
 import com.ghostlock.app.core.SessionPhase
@@ -59,7 +59,7 @@ class JniAccessSession internal constructor(
     private val handle: Long,
     /** The backend this session was opened for, as its id token. */
     val backendId: String,
-) : AccessSession, SessionInvoker {
+) : NativeSession, SessionInvoker {
     private val gate = Any()
 
     @Volatile
@@ -150,8 +150,8 @@ class JniAccessSession internal constructor(
  * The backend is named by its id token ("cve_2026_43499"); the number the wire carries is derived
  * from that token in one place (backendCodeOf), so no other file spells it.
  */
-class JniAccessSessionFactory : AccessSessionFactory {
-    override fun open(request: AccessSessionRequest): AccessResult<AccessSession> {
+class JniAccessSessionFactory : NativeSessionFactory {
+    override fun open(request: AccessSessionRequest): AccessResult<NativeSession> {
         if (!Native.ensureLoaded()) {
             return AccessResult.Failure(
                 AccessFailure.NATIVE_FAILURE,

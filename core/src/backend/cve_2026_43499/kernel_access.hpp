@@ -25,6 +25,7 @@
 #include <string_view>
 
 #include "backend/cve_2026_43499/access_params.hpp"
+#include "backend/cve_2026_43499/memory/write_request.hpp"
 #include "backend/cve_2026_43499/session.hpp"
 #include "contract/kernel_access.hpp"
 #include "platform/route_catalog.hpp"
@@ -47,6 +48,21 @@ namespace ghostlock::backend::cve_2026_43499 {
         /** Land one word through the window. The whole point of the backend. */
         [[nodiscard]] virtual bool land_word(std::uint64_t address, std::uint64_t value,
                                              std::uint64_t offset) noexcept = 0;
+
+        /**
+         *  Land one word with its write shape (mode/preserve).
+         *
+         *  The old overload stays for the legacy window path; a landing that can carry the shape
+         *  overrides this one, and the access uses it. The default delegates, so a landing that has
+         *  no shape support keeps its old behaviour instead of silently dropping the form at a
+         *  place the caller cannot see.
+         */
+        [[nodiscard]] virtual bool land_word(std::uint64_t address, std::uint64_t value,
+                                             const memory::WriteRequest &request,
+                                             std::uint64_t offset) noexcept {
+            static_cast<void>(request);
+            return land_word(address, value, offset);
+        }
         /** Whether this route can also read, and by what means. False until a route says
          *  otherwise, which is the honest answer for a window that only writes. */
         [[nodiscard]] virtual bool can_read() const noexcept { return false; }
@@ -172,6 +188,13 @@ namespace ghostlock::backend::cve_2026_43499 {
             if (!supports_width(in.size())) {
                 return Result::failed(AccessStatus::BadWidth);
             }
+            memory::WriteRequest request{};
+            request.target = address;
+            request.mode = params->write_mode;
+            request.preserve_child = params->preserve_child;
+            if (memory::check_request(request) != memory::RequestVerdict::Ok) {
+                return Result::failed(AccessStatus::BadParameters);
+            }
             /* The facts the write lands on have to be in place before the window opens. Readiness
              *  is asked here rather than assumed, and its answer is a named refusal. */
             if (target_ == nullptr || write_readiness(*target_) != WriteReadiness::Ready) {
@@ -181,7 +204,7 @@ namespace ghostlock::backend::cve_2026_43499 {
             for (std::size_t i = 0U; i < in.size(); ++i) {
                 value |= static_cast<std::uint64_t>(std::to_integer<unsigned>(in[i])) << (8U * i);
             }
-            if (ops_ == nullptr || !ops_->land_word(address, value, params->offset)) {
+            if (ops_ == nullptr || !ops_->land_word(address, value, request, params->offset)) {
                 return Result::failed(AccessStatus::Failed);
             }
             return Result::ok(in.size());

@@ -18,6 +18,7 @@ namespace ghostlock::jni::marshal::cve43499 {
             "phase",       "flags",        "width",     "page_base",  "word0",
             "word1",       "payload_page", "payload_base", "alias_delta", "found",
             "mm_struct",   "victim_task",  "victim_pid",
+            "prepare_generation", "discovery_generation", "victim_generation",
         };
         static constexpr std::size_t count = sizeof(names) / sizeof(names[0]);
 
@@ -48,6 +49,12 @@ namespace ghostlock::jni::marshal::cve43499 {
             static_cast<std::int64_t>(snapshot.facts.victim_task);
         out[Snapshot43499Layout::index("victim_pid")] =
             static_cast<std::int64_t>(snapshot.facts.victim_pid);
+        out[Snapshot43499Layout::index("prepare_generation")] =
+            static_cast<std::int64_t>(snapshot.facts.prepare_generation);
+        out[Snapshot43499Layout::index("discovery_generation")] =
+            static_cast<std::int64_t>(snapshot.facts.discovery_generation);
+        out[Snapshot43499Layout::index("victim_generation")] =
+            static_cast<std::int64_t>(snapshot.facts.victim_generation);
     }
 
 }  // namespace ghostlock::jni::marshal::cve43499

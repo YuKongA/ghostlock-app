@@ -217,3 +217,28 @@ flowchart LR
 3. J7.5-5 / 6：43499 的设备函数（含需从退役树只读参考后重写的 spawn_victim）与端到端 uid=0。
 
 **用户裁定（在办约束）**：临时逻辑只放 Kotlin；native 只留设备工作；不要用 "seam" 这类临时名（R1/R2/R4 已完成，帧时代的 Ops*Seams 随其整块删除一起消失）。
+
+## §13 43499 生产引擎接入（kt-step · 2026-10-20）
+
+- **生产计划（唯一）**：[43499-kt-step-plan.md](43499-kt-step-plan.md)（全部逻辑 Kotlin、C++ 仅薄 syscall；UI 未接线）。
+- legacy 记录：[43499-production-engine-plan.md](43499-production-engine-plan.md)（K1 降 legacy 适配器）、[43499-native-device-ops-plan.md](43499-native-device-ops-plan.md)（C++ N1b/N2/N3 降 legacy，不接入生产）。
+- **K1 legacy 记录**：`app/src/main/kotlin/com/ghostlock/app/engine/kernelmemory/` 28 个单测（0 fail/0 error）；它经 `JniBackend43499Port` 调用 C++ `Native43499`，不满足 kt-step 的“C++ 仅 syscall”，不再作为生产路径。
+- **native legacy 记录**：N1a 快照字段 + N1b C++ form 路径已实现（`nativeTestHost` 75/75、Android 零告警），但 N1b/N2/N3 逻辑路径降 legacy，不接入生产；旧 `libghostlock43499.so` 必须在 K0 从生产构建/APK 隔离。
+- **kt-step K1 已实现**：Kotlin `KernelSyscalls`/`NativeSyscalls43499`；C++ `syscalls_43499` + `native_syscalls_43499` + `gl43499syscalls`；`nativeTestHost` **76/76**、`nativeBuildAndroid` 零告警、Kotlin 3/3、导出 22 个 JNI 符号。
+- **K0a APK 隔离已做**：`prepareGhostlockJniLibs` 不再复制旧 43499 库；`packaging.jniLibs` 排除；`KernelMemoryEngine.production()` 移除；APK `unzip -l` 仅见 `libgl43499syscalls.so`，无 `libghostlock43499.so`。
+- **K2 已实现**：Kotlin `KernelLayout`（页/凭据/布局/arm/编码）+ `KtStepEngine`/`KtOpsInvoker`/`KernelRoute` 骨架；布局/凭据 7 + 引擎 9；kt-step 合计 **19/19**。C++ `payload_page.cpp` 的 node 覆盖 task/lock 写序 bug 只在 Kotlin 修正，未回写 legacy。
+- **N2 PASS（AVD）**：`native_attempt_43499` + JNI `gl43499native` + `NativeJniAttemptPort`；Pixel_5/Android 13 `actorsStarted=true`、`requeue=1`、`wait=0`、`pageStage=0`；记录 [n2-actor-20261020-1020-pass.md](../analysis/device-gates/n2-actor-20261020-1020-pass.md)。host **77/77**。N3 未开始。
+- **K3.1–K3.7 已离线移植**：`KotlinPiRace`/`FutexWord` + `SyscallFutexWord`/`KernelFutexWords`/`PiSpike` + `KotlinPiActors` 三线程骨架 + `PiActorsKernelRoute` 诊断 route + `PiProbeRunner` K0b 读数 + `PageWriter`/`K3PageFixture` 边界 + `VictimProbe` uid 校验 + N1 params/result codec（51 测）；kt-step 合计 **70/70**。生产 route/page 写入、K4/K5 未做。
+- **K4a 已备**：`ProcessVictim`/`ProcessVictimProbe`/`ProcessVictimSession` 用 Kotlin `ProcessBuilder` 起 shell 回 `id -u`，`KtVictimFlow` 保证 start 失败/route 失败/成功都 close；仍不写 cred，真实 victim pipe 待 K4。
+- **K0b PI 探针 PASS（AVD）**：`requeue=1`、`wait=0`、`target-after=TID`、`completed=true`；`page-write=false`、`root=false`。记录 [k0b-probe-20261020-0952-pass.md](../analysis/device-gates/k0b-probe-20261020-0952-pass.md)。仅 actor 探针，不标 supported。
+- **K3 生产阻断**：`process_vm_writev` 对 kernel 地址返回 `EFAULT`，Kotlin 薄 syscall 面没有内核页写原语；真实 43499 page landing 仍在 legacy C++ `MulticastRoute`/`PayloadPage`，需要 actor batch/child helper 或把该逻辑迁入 C++ 生产路径。按 [43499-approval-status.md](43499-approval-status.md)：actor batch / child helper 的**原则＝已批准**、**生产启用＝待批准**（第 2 层），故 `KernelPageWriter` 继续 fail-closed `ENOSYS`，不得把 fixture 当生产成功（**不得读成「生产已批准」**）。
+- **Discover 命中 + Kotlin 处理**：AVD 直接映射扫描得到 `verdict=1`、`found=0xffffff80002d7800`（mm_struct）、`probes=2911`；`DiscoverProcessor` 产出候选 `pageBase=found`/fake slots。记录 [discover-mmstruct-20261020-1038.md](../analysis/device-gates/discover-mmstruct-20261020-1038.md)。
+- **N3 candidate 链路**：discover 命中 `0xffffff80000da400` → Kotlin `DiscoverProcessor` → 页写 16 KiB → actor `requeue=1`/`wait=0`；记录 [n3-candidate-20261020-1040.md](../analysis/device-gates/n3-candidate-20261020-1040.md)。
+- **N3 page-send 通道**：`NativeAttemptParams.pageFd` + C++ `write(fd,page,len)`；AVD 回读 16384 字节一致，actor `requeue=1`；短写/bad fd 已改为 `actorsStarted=false`、`pageErrno=9`。记录 [n3-pipe-20261020-1043.md](../analysis/device-gates/n3-pipe-20261020-1043.md)。
+- **Prepare 成功 + N3 skb page-send**：AVD `status=0`、`base=-549752602624`、`shapingFd=82`、`snitchFound` 非零；按 `payload_delta=-0xE80` 建 64 KiB skb 页并经 prepare fd 送出，`pageBytesWritten=65536`、actor `requeue=1`。记录 [n3-skb-20261020-1059.md](../analysis/device-gates/n3-skb-20261020-1059.md)。仍无内核页读回/uid=0，N3 未通过。
+- **N3 硬缺口**：当前 C++ `prepare_page.hpp:21-24` 明确“payload inside the page 尚未 ported”；`prepare` 只给 base，不产页 payload。discover 只给 mm_struct，`pageBase=found` 不是已证明页。因此 N3 页落点尚未具备生产实现；候选链路只是用户 mapping + actor 形状。
+- **N3 验证限制**：AVD root 可登录，但无 `/proc/kcore`、无 `/dev/mem`，不能直接读内核页；页落点必须靠 N4/N5 行为判据（victim uid=0）。记录 [n3-verify-20261020-1100.md](../analysis/device-gates/n3-verify-20261020-1100.md)。
+- **N3 验证限制**：AVD root 无 `/proc/kcore`/`/dev/mem`；页落点只能靠 route/victim uid。当前 `prepare`+`shapingFd`+64 KiB skb 页发送已通，但 actor 的 futex 目标仍是独立用户字，**没有 route 把发送页接到 target/cred 写入**；因此 `requeue=1` 不证明页被消费。
+- **下一步**：实现 route（multicast stamp/target 或等价页消费者）+ N4 child/N5 victim uid=0；未过真机门禁不得标 supported。
+- 技术债（T4）：`exportJniProtocolManifest` 的生成器 `build/host/jni_protocol_manifest` 已不存在，`testDebugUnitTest` 需 `-x` 才能跑；owner=build，偿还=恢复生成器或删除任务并改用静态 manifest 校验；未偿还前全量门禁不能称绿。
+- **结构与批准指针（2026-10-21 追加）**：执行层唯一权威 [execution-architecture.md](execution-architecture.md)；43499 批准状态单表 [43499-approval-status.md](43499-approval-status.md)。

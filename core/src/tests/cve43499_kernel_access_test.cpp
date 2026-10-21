@@ -20,6 +20,7 @@ namespace {
     using ghostlock::backend::cve_2026_43499::Access43499Parameters;
     using ghostlock::backend::cve_2026_43499::WordLanding;
     using ghostlock::backend::cve_2026_43499::TargetState;
+    using ghostlock::backend::cve_2026_43499::memory::WriteMode;
     using ghostlock::contract::AccessChannel;
     using ghostlock::contract::KernelAccess;
     using ghostlock::profile::RouteId;
@@ -113,6 +114,8 @@ namespace {
         params.route = RouteId::MulticastWaiter;
         params.offset = 0x80U;
         params.offset_set = true;
+        params.write_mode = WriteMode::Credential;
+        params.preserve_child = true;
         const std::byte word[8] = {std::byte{0x48}, std::byte{0x47}, std::byte{0x46}, std::byte{0x45},
                                    std::byte{0x44}, std::byte{0x43}, std::byte{0x42}, std::byte{0x41}};
         expect(access.write(0x1000U, std::span<const std::byte>(word), AccessChannel::PiWindow, params).status
@@ -125,6 +128,15 @@ namespace {
         expect(landing.lands == 1 && landing.last_value == 0x4142434445464748ULL,
                "landing the value little-endian through the landing");
         expect(landing.last_offset == 0x80U, "with the offset from the parameters");
+        Access43499Parameters no_shape;
+        no_shape.route = RouteId::MulticastWaiter;
+        no_shape.offset = 0x80U;
+        no_shape.offset_set = true;
+        no_shape.write_mode = WriteMode::Disabled;
+        expect(access.write(0x2000U, std::span<const std::byte>(word), AccessChannel::PiWindow,
+                            no_shape).status == KernelAccess43499::AccessStatus::BadParameters,
+               "a write without a shape is refused before the landing");
+        expect(landing.lands == 1, "and the landing was not called for it");
         const std::byte four[4] = {};
         expect(access.write(0x2000U, std::span<const std::byte>(four), AccessChannel::PiWindow, params).status
                    == KernelAccess43499::AccessStatus::BadWidth,

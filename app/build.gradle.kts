@@ -166,6 +166,8 @@ android {
         jniLibs {
             useLegacyPackaging = true
             excludes += "lib/*/libandroidx.graphics.path.so"
+            /* kt-step K0a：旧 C++ 逻辑库不进 APK；生产只用 libgl43499syscalls.so。 */
+            excludes += "lib/*/libghostlock43499.so"
         }
         dex {
             useLegacyPackaging = true

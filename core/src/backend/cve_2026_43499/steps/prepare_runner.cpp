@@ -93,7 +93,7 @@ namespace ghostlock::backend::cve_2026_43499::steps {
         policy.args.word_count = request.proof_count;
         policy.args.strides = request.strides;
         policy.args.range = request.range;
-        policy.args.sweep_tags = false;
+        policy.args.sweep_tags = request.sweep_tags;
         policy.args.addresses = word_addresses;   /* 规则比的是字所在的桶，不是证明地址 */
         policy.args.address_count = request.proof_count;
 

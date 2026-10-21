@@ -40,11 +40,11 @@ class EnvironmentStage(
         return StageResult(StageCode.OK, evidence = Evidence(source = "env"))
     }
 
-    override suspend fun abort(code: StageCode) {
+    override fun abort(code: StageCode) {
         log.debug("EnvironmentStage.abort", "enter", "code" to code)
     }
 
-    override suspend fun close() {
+    override fun close() {
         log.debug("EnvironmentStage.close", "done")
     }
 }

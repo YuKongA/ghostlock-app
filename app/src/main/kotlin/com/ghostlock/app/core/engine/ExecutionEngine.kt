@@ -38,13 +38,16 @@ class StaticProbe(private val device: DeviceInfo) : DeviceProbe {
     override suspend fun probe(): DeviceInfo = device
 }
 
-/** 执行引擎：界面与后台共用同一个入口。 */
-interface ExecutionEngine {
+/** 执行引擎：界面与后台共用同一个入口。一次性使用，必须 close。 */
+interface ExecutionEngine : AutoCloseable {
     /** 当前状态（界面订阅）。 */
     val state: StateFlow<ExecutionState>
 
     /** 跑一个方案；实现负责把状态推进到 Success/Failed。 */
     suspend fun run(plan: Plan)
+
+    /** 幂等；拒绝并发 run；close 后 run 必须失败。 */
+    override fun close()
 }
 
 /**
@@ -59,8 +62,10 @@ class ScriptedEngine(
 ) : ExecutionEngine {
     private val _state = MutableStateFlow<ExecutionState>(ExecutionState.Idle)
     override val state: StateFlow<ExecutionState> = _state.asStateFlow()
+    private var closed = false
 
     override suspend fun run(plan: Plan) {
+        check(!closed) { "engine closed" }
         _state.value = ExecutionState.Checking("probe")
         onLog("engine: checking " + plan.path.id)
         val problems = plan.validate()
@@ -77,6 +82,12 @@ class ScriptedEngine(
         onLog("engine: finishing " + plan.finisher.id)
         _state.value = ExecutionState.Success("完成（框架阶段：未接线）")
         onLog("engine: success")
+    }
+
+    override fun close() {
+        if (closed) return
+        closed = true
+        _state.value = ExecutionState.Failed("engine-closed")
     }
 }
 

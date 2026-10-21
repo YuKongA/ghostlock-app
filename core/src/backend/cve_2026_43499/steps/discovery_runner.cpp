@@ -78,12 +78,21 @@ namespace ghostlock::backend::cve_2026_43499::steps {
 
         /* The words live in a region this process maps, one per collision: they are both the words
          *  the cohort hammers and the addresses the rule compares. */
-        const auto words_region = DeviceOps::map_shared(kWordsBytes);
-        if (words_region.address == nullptr) {
-            *refusal = kWordsUnmapped;
+        void *words_address = request.words_region;
+        bool words_owned = false;
+        if (words_address == nullptr) {
+            const auto mapped = DeviceOps::map_shared(kWordsBytes);
+            if (mapped.address == nullptr) {
+                *refusal = kWordsUnmapped;
+                return false;
+            }
+            words_address = mapped.address;
+            words_owned = true;
+        } else if (request.words_bytes < kWordsBytes) {
+            *refusal = "discovery-words-small";
             return false;
         }
-        auto *base = static_cast<unsigned char *>(words_region.address);
+        auto *base = static_cast<unsigned char *>(words_address);
         std::uint32_t *word_ptrs[kMaxCollisions] = {};
         std::uint64_t addresses[kMaxCollisions] = {};
         const std::size_t count = request.setup.collisions;
@@ -104,6 +113,7 @@ namespace ghostlock::backend::cve_2026_43499::steps {
             }
         }
         if (placed < count) {
+            if (words_owned) (void)DeviceOps::unmap(words_address, kWordsBytes);
             *refusal = "discovery-no-colliding-words";
             return false;
         }
@@ -126,6 +136,12 @@ namespace ghostlock::backend::cve_2026_43499::steps {
         out.rounds = outcome.rounds;
         out.pokes_wanted = outcome.pokes_wanted;
         out.error = outcome.error;
+        if (words_owned) {
+            (void)DeviceOps::unmap(words_address, kWordsBytes);
+        } else {
+            out.words_base = words_address;
+            out.words_bytes = kWordsBytes;
+        }
         return true;
     }
 }  // namespace ghostlock::backend::cve_2026_43499::steps

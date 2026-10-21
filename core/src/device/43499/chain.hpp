@@ -17,7 +17,13 @@ namespace ghostlock::jni {
      */
     [[nodiscard]] std::uint64_t device_make_access_43499(int route) noexcept;
 
-    /** 写一块（通道 PiWindow）。 */
+    /** 写一块（通道 PiWindow），携带写形状：mode = memory::WriteMode，preserve = 保留目标字节。 */
+    [[nodiscard]] bool device_write_43499(std::uint64_t accessId, std::uint64_t route,
+                                        std::uint64_t offset, std::uint64_t address,
+                                        const std::vector<std::uint8_t> &block,
+                                        std::int32_t mode, bool preserve,
+                                        const char **why) noexcept;
+    /** Legacy 写一块：mode=Credential、preserve=true；K1/K2 零调用，N2 处置。 */
     [[nodiscard]] bool device_write_43499(std::uint64_t accessId, std::uint64_t route,
                                         std::uint64_t offset, std::uint64_t address,
                                         const std::vector<std::uint8_t> &block,

@@ -57,6 +57,8 @@ endif()
 set(GL_RUNTIME_SRCS
   src/support/gl_log.c
   src/platform/access_factory.cpp
+  src/platform/syscalls_43499.cpp
+  src/platform/native_attempt_43499.cpp
   src/backend/cve_2026_43499/leak/snitch_setup.cpp
   src/support/sha256.cpp
   src/backend/cve_2026_43284/lib/helper.cpp
@@ -99,6 +101,9 @@ set(GL_ANDROID_ONLY_SRCS
   src/backend/cve_2026_43499/memory/multicast_arm.cpp
   src/backend/cve_2026_43499/memory/payload_page.cpp
   src/backend/cve_2026_43499/landing/multicast_route_linux.cpp
+  src/backend/cve_2026_43499/landing/select_stack_route_linux.cpp
+  src/backend/cve_2026_43499/route/tcp_zerocopy_route_legacy.cpp
+  src/backend/cve_2026_43499/route/select_stack_route_legacy.cpp
   src/backend/cve_2026_43499/memory/prepare_plan.cpp
   src/backend/cve_2026_43499/memory/reclaim_plan.cpp
   src/backend/cve_2026_43499/memory/shaping_plan.cpp
@@ -203,6 +208,21 @@ if(GL_JNI)
     target_link_libraries(ghostlock43499 PRIVATE ghostlock_core log)
     set_target_properties(ghostlock43499 PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${GL_BIN_DIR})
 
+    # kt-step：唯一的薄 syscall 库；旧 ghostlock43499 在 K0a 默认 OFF（本批先并存，K0a 再隔离）。
+    add_library(gl43499syscalls SHARED src/boundary/jni/native_syscalls_43499.cpp)
+    target_compile_options(gl43499syscalls PRIVATE ${GL_WARNINGS})
+    target_link_libraries(gl43499syscalls PRIVATE ghostlock_core log)
+    set_target_properties(gl43499syscalls PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${GL_BIN_DIR})
+
+    add_library(gl43499native SHARED src/boundary/jni/native_attempt_jni.cpp
+      src/boundary/jni/native_discover_jni.cpp src/platform/native_discover_43499.cpp
+      src/boundary/jni/native_prepare_jni.cpp src/platform/native_prepare_43499.cpp
+      src/boundary/jni/native_select_stack_jni.cpp src/boundary/jni/native_select_legacy_jni.cpp
+      src/boundary/jni/native_perf_task_jni.cpp src/boundary/jni/native_tcp_route_jni.cpp)
+    target_compile_options(gl43499native PRIVATE ${GL_WARNINGS})
+    target_link_libraries(gl43499native PRIVATE ghostlock_core log)
+    set_target_properties(gl43499native PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${GL_BIN_DIR})
+
   else()
     message(STATUS "GL_JNI: src/jni 下暂无源文件 —— 边界库本次跳过")
   endif()
@@ -247,6 +267,7 @@ set(GL_TEST_NAMES
   kernel_access_test
   leak_search_test
   leak_walk_test
+  marshal_43499_test
   multicast_arm_test
   multicast_policy_test
   multicast_landing_test
@@ -283,6 +304,8 @@ set(GL_TEST_NAMES
   snitch_tuning_test
   step_runner_test
   step_targets_test
+  syscalls_43499_test
+  native_attempt_43499_test
   target_state_test
   window_attempt_test
   window_steps_test

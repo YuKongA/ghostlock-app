@@ -143,6 +143,19 @@
 | `docs/plan/B0.0-REVISION.md` | `docs/archive/20261017-1835-B0.0-REVISION.md` | **工作包作废**（Lua / GLKv3 文档 / CLI / script 面删除） | 2026-10-17 |
 | `docs/plan/A6-baseline-approval.md` | `docs/archive/20261017-1835-A6-baseline-approval.md` | **工作包作废**（Lua / GLKv3 文档 / CLI / script 面删除） | 2026-10-17 |
 
+## 九、2026-10-21 批次：43284 旧计划合并（**2 件**）
+
+> 依据：43284 于 2026-10-19 重置（设计与批次见 `docs/analysis/43284-refactor-design-v4.md` + `docs/plan/43284-reset-batch.md`）。
+> 被取代的两件归档；**仍在办的 v3、被引用的 hook/production-engine 计划原地保留**（清单见 `43284-reset-batch.md` §旧计划归档与合并）。
+
+| 原路径 | 归档路径 | 归档原因 | 日期 |
+|---|---|---|---|
+| `docs/plan/43284-b8-b9-plan-v2.md` | `docs/archive/20261019-2309-43284-b8-b9-plan-v2.md` | **被 v3 取代**；删除结论已并入 v3 与 B5 | 2026-10-21 |
+| `docs/plan/43284-b8-b9-b10-plan.md` | `docs/archive/20261019-2309-43284-b8-b9-b10-plan.md` | **被 v3 取代**；Lua 编排段已被 §0.1 废除 | 2026-10-21 |
+
+- 存档时间取「最后修改提交」（两者同为 `0ed4e6d6`，2026-10-19 23:09:19 -0400）。
+- 同批不归档但改动头部指针的：`43284-b8-b9-b10-plan-v3.md`、`43284-kotlin-dynamic-hook-plan.md`、`43284-production-engine-plan.md`、`43284-reset-batch.md`。
+
 ## 八、UML 归档（**1 件**，2026-10-08）
 
 | 原路径 | 归档路径 | 原因 | 日期 |

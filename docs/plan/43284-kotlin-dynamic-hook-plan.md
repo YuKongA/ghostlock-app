@@ -8,6 +8,10 @@
 - 触发：模拟器固定 plan 的 landing 0xFE628 超出 libc++ 的 671496 B；hook_armed=1 但 hook=0
 - 约束（用户裁定）：不在 C++ 加逻辑；探测、解析、code cave 搜索、plan 计算全部在 Kotlin；写入走现有 PageCacheAccess
 
+> **2026-10-21 状态**：**实现段已被 `docs/analysis/43284-refactor-design-v4.md` 取代**（code cave / ELF 规划现落在
+> `engine/pagecache/KotlinElfPlanner.kt` + `ElfTarget.kt`）；本件的 Kotlin-only 与「写入走现有 PageCacheAccess」用户裁定
+> 仍然有效，故原地保留作沿革。执行结构见 [execution-architecture.md](execution-architecture.md)。
+
 ## 1. 问题与目标
 
 固定 plan 来自参考设备 libc++：

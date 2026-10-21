@@ -48,11 +48,11 @@ class WaitStage(
         return StageResult(StageCode.WAIT_TIMEOUT, "wait-timeout")
     }
 
-    override suspend fun abort(code: StageCode) {
+    override fun abort(code: StageCode) {
         log.debug("WaitStage.abort", "enter", "code" to code)
     }
 
-    override suspend fun close() {
+    override fun close() {
         log.debug("WaitStage.close", "done")
     }
 }

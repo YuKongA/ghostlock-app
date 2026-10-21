@@ -15,6 +15,8 @@ namespace {
     using ghostlock::backend::cve_2026_43499::route::MulticastLimits;
     using ghostlock::backend::cve_2026_43499::landing::MulticastWindow;
     using ghostlock::backend::cve_2026_43499::landing::WindowOutcome;
+    using ghostlock::backend::cve_2026_43499::memory::WriteMode;
+    using ghostlock::backend::cve_2026_43499::memory::WriteRequest;
 
     std::size_t g_failures = 0U;
 
@@ -33,12 +35,25 @@ namespace {
         std::uint64_t address = 0U;
         std::uint64_t value = 0U;
         std::uint64_t offset = 0U;
+        WriteMode mode = WriteMode::Disabled;
+        bool preserve = false;
 
         [[nodiscard]] bool execute(std::uint64_t a, std::uint64_t v, std::uint64_t o) noexcept {
             ++executes;
             address = a;
             value = v;
             offset = o;
+            return true;
+        }
+
+        [[nodiscard]] bool execute(const WriteRequest &request, std::uint64_t v,
+                                   std::uint64_t o) noexcept {
+            ++executes;
+            address = request.target;
+            value = v;
+            offset = o;
+            mode = request.mode;
+            preserve = request.preserve_child;
             return true;
         }
         [[nodiscard]] bool arm(std::int32_t) noexcept {
@@ -54,6 +69,19 @@ namespace {
         expect(!window.write_word(0x1000U, 1U, 0U), "a caller who never gave a warm-up count is refused");
         expect(window.outcome() == WindowOutcome::NoWarmUp, "and told so by name");
         expect(exec.arms == 0 && exec.executes == 0, "without touching the controller at all");
+    }
+
+    void a_write_carries_its_shape() {
+        RecordingExec exec;
+        MulticastLimits limits;
+        limits.max_attempts = 4;
+        limits.arm_sequence = 1;
+        MulticastWindow<RecordingExec> window(exec, limits);
+        const WriteRequest request{0x2000U, WriteMode::Zero, false};
+        expect(window.write_word(0x2000U, 0x4142434445464748ULL, request, 0x40U),
+               "a shaped write lands");
+        expect(exec.mode == WriteMode::Zero && !exec.preserve,
+               "and the window carries the shape to the controller");
     }
 
     void the_warm_up_runs_before_the_write() {
@@ -75,6 +103,8 @@ namespace {
 int main() {
     std::printf("multicast window: the warm-up the old handshake had\n");
     a_warm_up_count_is_required();
+    std::printf("multicast window: a write carries its shape\n");
+    a_write_carries_its_shape();
     the_warm_up_runs_before_the_write();
     if (g_failures != 0U) {
         std::printf("multicast window: FAIL (%zu)\n", g_failures);

@@ -42,11 +42,11 @@ class WriteStage(
         return StageResult(StageCode.OK, evidence = Evidence(written = written, verified = written, source = name))
     }
 
-    override suspend fun abort(code: StageCode) {
+    override fun abort(code: StageCode) {
         log.debug("WriteStage.abort", "enter", "code" to code)
     }
 
-    override suspend fun close() {
+    override fun close() {
         log.debug("WriteStage.close", "done")
     }
 }

@@ -1,182 +1,194 @@
 # 从代码可辨识的事实（introduction）
 
-> 本文件由 **R9（文档三层拆分）** 设立：把"读代码即可确认的事实"从 `AGENTS.md` 移到这里，
-> 使 `AGENTS.md` 只留**流程、纪律、判据**。判据与沿革见 `docs/plan/B0.0-REVISION.md` R9。
-> 本文只写**可从代码读出**的内容；每条都可就地核验（给出路径）。
+> **2026-10-21 重写（docs-uml）**。本文原为 R9「事实层」快照（2026-10-18）；其中
+> 「`core/src/{pipeline,profile,terminal}`」「`ghostlock` CLI + stdin 上的 GLKv3 文档（`--ghostlock-app-call`）」
+> 「Lua / script 执行体」「Native = 可执行 ELF，由 Kotlin `ProcessBuilder` 启动」等叙述**已失效**，
+> 依据：MASTER-PLAN §0.1（2026-10-17 用户裁定：Lua / GLKv3 文档 / CLI / script 面删除）、
+> 2026-10-19 43284 重置、2026-10-20 43499 kt-step 生产化。原文整篇归档在
+> [20261018-2322-introduction.md](../archive/20261018-2322-introduction.md)，不删除。
+>
+> **一句话区分（本文最重要的一条）**：生产面 = **Kotlin 编排 + JNI 库**；**没有 native CLI、没有 wire 文档、
+> 没有 Lua / script 执行体**。旧文档里「native 是进程、吃文档」的描述一律按归档件读。
+>
+> 本文只写**当前树可核验的事实**（给出路径）。进度见 `docs/plan/MASTER-PLAN.md`（唯一进度入口）；
+> 排期见 `docs/plan/ROADMAP.md`；执行层唯一权威见 `docs/plan/execution-architecture.md`。
 
-## 零、目录结构（2026-10-18 重排）
-
-**代码侧的目录按职责分，不按文件多少分**（重排前 `jni/` 36 个文件、单文件 93 KB，而 `memory/` `pipeline/` `profile/` 各只剩 1 个）：
+## 零、目录结构（2026-10-21 核实）
 
 ```text
 core/src/
-  boundary/jni/        Java_* 导出（薄壳：DTO ↔ 值，再调 device 层）
+  boundary/jni/        Java_*/JNI 导出（薄壳：DTO ↔ 值，再调 platform 或 device 层）
   boundary/protocol/   会话协议 / 句柄 / 编组 / op 表（与 JNI 无关）
-  contract/            契约与跨端字段表：attack_contract_{fields,model,reader,values} + kernel_access/kind/…
-  device/43284/        43284 设备侧编排（chain.cpp 原 jni/api_43284_device.cpp，93 KB）
-  device/43499/        43499 设备侧编排
-  platform/            跨层单件：access_factory.cpp（KernelAccess::create）、target_profile.hpp、route_catalog.hpp
-  support/             sha256 / hmac / gl_log.hpp
-  backend/             cve_2026_43284 / cve_2026_43499（按漏洞分，内部再分 landing/steps/leak/…）
-  tests/               宿主测试（92 个）
-  tools/               构建期工具（jni_protocol_manifest）
+  contract/            跨端契约：attack_contract_{fields,model,reader,values} + kernel_access/kind/resource_scope/step_catalog
+  device/43499/        43499 设备侧编排（chain.cpp）
+  platform/            KernelAccess::create（access_factory.cpp）+ route_catalog + target_profile
+                       + syscalls_43499 + native_{attempt,discover,prepare}_43499
+  support/             sha256 / hmac / gl_log
+  backend/cve_2026_43284/   重置后只剩 interface.hpp / access_params.hpp / lib/{raw_esp,helper} / README
+  backend/cve_2026_43499/   按机制分：landing/ leak/ memory/ race/ route/ steps/ + kernel_access/session/abi
+  tests/               宿主测试（75 个测试源 + 3 个 manifest pin）
+  tools/               构建期工具（当前为空；设备探针已随 MASTER-PLAN §0.1 删除）
 ```
 
-- 旧路径（`core/src/jni/…`、`memory/`、`pipeline/`、`profile/`）**已不存在**；文档与 Gradle 任务同批改到新路径。
-- 名字与职责一一对应：`boundary/jni` 里不应再出现设备编排；跨端字段表与它的 reader/values 放在同一目录。
+- **已不存在的旧路径**：`core/src/jni/`、`pipeline/`、`profile/`、`terminal/`、`script/`、`device/43284/`、`core/src/main.cpp`、`core/Makefile`。
+  文档、Gradle 任务与 include 防火墙均已改到上表路径。
 
-## 一、三层结构
+## 一、三层结构与产物
 
 | 层 | 位置 | 产物 | 说明 |
 | --- | --- | --- | --- |
-| Android | `app/` | APK | Kotlin/Compose；HOCON profile 解析/合并；Shizuku UserService；日志 |
-| Native | `core/src/` | `build/native/ghostlock` | C++23 攻击 runtime；`core/Makefile` |
-| Extractor | `tools/extract_rs/` | CLI | Rust；boot.img/OTA → `--format conf` / `--format json` |
+| Android | `app/` | APK | Kotlin/Compose；**唯一生产编排层**（kt-step）；HOCON profile 解析/合并；Shizuku UserService；日志 |
+| Native | `core/src/` + `core/CMakeLists.txt` | 静态核心库 + **JNI 动态库** | C++23；**没有可执行体**（CLI 已删） |
+| Extractor | `tools/extract_rs/` | `libextract.so` / CLI | Rust；boot.img/OTA → `--format conf` / `--format json` |
 
-- **Native 不是 JNI**：`libghostlock.so` 是**可执行 ELF**，由 Kotlin `ProcessBuilder` 启动；
-  入口为 stdin 上的**长度前缀 GLKv3 文档**（`--ghostlock-app-call`），其后可接运行时密钥会话帧。
-- 内置 profile 在 `app/src/main/assets/profile/`：`index.conf`、`<uname-r>.conf`、
-  `execution-*.conf`、`credential-6x.conf`、`kernelsnitch-6x.conf`；格式 HOCON（支持 `include`）。
-- **Kotlin 侧为旧架构**（ADR-0013）：跨端对拍降级为参考，native 侧为准。
+CMake 目标（`core/CMakeLists.txt`）：
 
-## 二、常用命令
+| 目标 | 形态 | 用途 |
+| --- | --- | --- |
+| `ghostlock_core` | STATIC | 全部纯逻辑/协议/设备编排的宿主可测核心 |
+| `ghostlock_jni` | SHARED | 43284 侧 JNI：helper / raw_esp / protocol |
+| `gl43499syscalls` | SHARED | **43499 生产**：逐 syscall 薄包装（K1） |
+| `gl43499native` | SHARED | 43499 actor batch / attempt / discover / prepare（AVD 探针与 N3 实验用） |
+| `ghostlock43499` | SHARED | 43499 legacy 逻辑面；**默认不进 APK**（K0a 隔离） |
+
+- `libghostlock43284.so` 由 `prepareGhostlockJniLibs` 从 `build/native/` 就位；`core/CMakeLists.txt` 无同名 target
+  （生成链不在本文件断言）。
+- 内置 profile 在 `app/src/main/assets/profile/`：`index.conf`（`schema_version`）、`common/`、`43499/`；格式 HOCON（支持 `include`）。
+  **native 不读 profile**：Kotlin 解析后以参数/字节数组过 JNI（kt-step 不变量）。
+- 43284 侧同样由 Kotlin 编排阶段（`engine/pagecache/stage/`），C++ 只留纯函数（`lib/raw_esp`、`lib/helper`）。
+
+## 二、常用命令（Gradle 是唯一构建入口）
 
 ```sh
-# Native：Gradle 是唯一入口（CMake 构建 + CTest 测试；core/Makefile 已于 2026-10-14 删除）
-./gradlew nativeTestHost       # 宿主：配置 + 构建 + 跑全部 CTest（测试/证据 + 结构性检查）
-./gradlew nativeBuildHost      # 只要构建（build/host/ghostlock + 各 *_test）
-./gradlew nativeBuildAndroid   # NDK 构建 -> build/native/{ghostlock,libghostlock_jni.so}
-./gradlew prepareGhostlockJniLibs   # 把 libghostlock_jni.so 复制进 app 的 jniLibs
-./gradlew checkAll             # 集中测试：原生 CTest + :app:testDebugUnitTest
+# Native
+./gradlew nativeTestHost          # 配置 + 构建 + 跑全部 CTest（含结构性检查）
+./gradlew nativeBuildHost         # 只构建宿主（build/cmake/host，CTest 不跑）
+./gradlew nativeBuildAndroid      # NDK 构建 -> build/native/*.so
+./gradlew prepareGhostlockJniLibs # 把 JNI 库复制进 app 的 jniLibs/arm64-v8a
+./gradlew verifyJniLibs           # 三库符号互不重叠
+./gradlew exportJniProtocolManifest  # 导出跨端协议表到 app/build（Kotlin 侧对拍读它）
 
-# 直接驱动 CMake（等价，调试用）
-cmake -S core -B build/cmake/host -G Ninja -DGL_TESTS=ON
-cmake --build build/cmake/host -j
-ctest --test-dir build/cmake/host --output-on-failure
-# 设备探针（按需）：加 -DGL_PROBES=ON 才会构建 src/tools/*（futex/requeue/snitch/perf/prepare-page/heap-landing）
+# 汇总
+./gradlew checkAll                # nativeTestHost + :app:testDebugUnitTest + verifyJniLibs
+./gradlew gateAll                 # checkAll + deviceGate（真机）
 
 # Android / 提取器
 ./gradlew :app:assembleDebug
 ./gradlew :app:testDebugUnitTest
-./gradlew :profile-core:exportProfiles  # 生成 GLKv3 .bin 到 build/profile/
-./gradlew markdownlint                  # 文档渲染级门禁（docs/archive 豁免）
-(cd tools/extract_rs && cargo test --release)
+./gradlew buildGhostlockExtract   # Rust 交叉编译（tools/extract_rs）
+cargo test --release              # 在 tools/extract_rs 下
 ```
 
-> **旧命令名已失效（2026-10-10 实测）**：`make -C core ghostlock`、`make -C core native-host-tests`、
-> `make -C core lint-tidy` 在 `core/Makefile` 中均无对应目标。
-
-- 生成物统一在 `build/` 下；**构建产物必须在仓库内真实 `build/`，禁止任何链接**。
-- `python3 tools/cmp_disasm.py build/native/ghostlock-B0 build/native/ghostlock` = **可选诊断**，非门槛。
+- **已失效的命令名**：`make -C core check` / `make -C core android`（`core/Makefile` 已删）⇒ 分别对应
+  `nativeTestHost` / `nativeBuildAndroid`；`./gradlew markdownlint`（仓内无此 task，grep 0 命中）；
+  `./gradlew :profile-core:exportProfiles`（`:profile-core` 已禁用，`settings.gradle.kts` 有注释）。
+- **技术债 T4**（MASTER-PLAN §13）：`exportJniProtocolManifest` 依赖的生成器 `build/host/jni_protocol_manifest`
+  已不存在，`:app:testDebugUnitTest` 目前需 `-x` 才能跑；未偿还前全量门禁不能称绿。
+- 生成物统一在仓库内真实 `build/` 下；**禁止任何链接**；跨端列表由 native 导出，不得手抄。
 
 ## 三、契约面（`core/src/contract/`）
 
 | 文件 | 权威内容 |
 | --- | --- |
-| `kernel_access.hpp` | `KernelAccess`：`create(BackendId)` / `initialize(params)` / `read` / `write` / `read64` / `write64` / `write_zero` / `shutdown`；`AccessResult` / `AccessState` / `AccessChannel` / `AccessCarrier` / `AccessMiscParameters`（ADR-0014） |
-| `kind.hpp` | `BackendId`（值为 CVE 号；`Cve_2026_43499` / `Cve_2026_43284` 等） |
-| `identity.hpp` | `kCombinationCatalog`（组合权威：token → backend/route/steps/terminal/available） |
-| `chain_catalog.hpp` | `ChainSpec`（`backend` / `step_set` / `terminal` / `wired`）：分派的输入行 |
-| `script_surface.hpp` | 脚本面：`backend` / `writeop` / `copyop` / `settle` / `handoff` / `cfg` / `close`；`handoff = {handle, terminal, payload_ref}`（ADR-0009/0012） |
+| `kernel_access.hpp` | `KernelAccess`：`create(BackendId)` / `initialize` / `read` / `write` / `read64` / `write64` / `write_zero` / `shutdown`；`AccessResult` / `AccessState` / `AccessChannel` / `AccessCarrier` / `AccessMiscParameters`（ADR-0014） |
+| `kind.hpp` | `BackendId`（值为 CVE 号：`Cve_2026_43499` / `Cve_2026_43284` …） |
 | `step_catalog.hpp` | `kStepSetAliases`（别名 → 有序 `StepId`） |
-| `capability_catalog.hpp` / `resource_scope.hpp` / `layer_scope.hpp` / `op_registry.hpp` | 能力与资源作用域声明 |
+| `resource_scope.hpp` | 能力与资源作用域声明 |
+| `attack_contract_{fields,model,reader,values}` | 跨端字段表 + 生成式 DTO 的唯一来源（Kotlin 侧 `core/generated/AttackContractDtos.kt`） |
 
-## 三·补、拒绝名的约定（2026-10-11 定，设备侧定位用）
+> 已删除（R9 后、随 §0.1 与后续重构）：`identity.hpp`、`chain_catalog.hpp`、`script_surface.hpp`、
+> `capability_catalog.hpp`、`layer_scope.hpp`、`op_registry.hpp`。文档中不应再引用它们。
+
+## 三·补、具名拒绝的写法
 
 - **名字的权威在各单元自己的具名表里**，中心文档不复制清单（复制就是第二份权威）。
-- 形式约定：`<名>` 或 `<名>:<细节>`。细节的三种来源固定如下，读到它们就知道卡在哪一层：
-  - **errno**：`pagecache-door-unopenable:<errno>`、`step-encap-peer-failed:<errno>` —— 系统调用给的；
-  - **步骤码**：`step-write-refused:<状态名>/splice=<码>` —— 正数是发送路径上的第几步（1–4 前置、10 管道、20/21/22/23 vmsplice 与切页、24 短送），负数是 `-errno`；
-  - **状态机码**：`session-frame-invalid:<码>` —— 帧读取器的状态（Missing/Truncated/BadLength/…）。
-- 名字要**说缺的是哪一种**：`session-frame-{path,storage}-missing` / `unreadable` / `invalid:<码>` 四者分开；
-  `step-initialize-bad-params` 与 `step-initialize-landing-failed` 分开；**不把「缺路径」说成「缺设备」**。
+- 形式：`<名>` 或 `<名>:<细节>`；细节优先给 **errno / 原始计数 / 阶段码**，不给形容词。
+- 现行例子（各单元具名）：`precondition:<token>-<input>`、`precondition:<token>-no-calls`、
+  `victim-start:<errno|类型>`、`victim-uid:<uid>`、`probe:<errno>`、`page-send:<stage>`。
+- **不说成「缺设备」**：缺路径 / 缺权限 / 参数不合法 / 内核不可读 要分开报。
 
-## 四、组装与执行（`core/src/pipeline/`）
+## 四、组装与执行（`core/src/platform/`）
 
 | 文件 | 职责 |
 | --- | --- |
 | `access_factory.cpp` | `KernelAccess::create` 的唯一实现处（依赖两个 backend 的地方只此一处） |
-| `component_catalog.hpp` | `DispatchTarget` 与 `dispatch_target_of(ChainSpec)`：**分派权威** |
-| `executors.hpp` | 每路径执行器：`Cve43499W1W3_RootChild`（`selinux_cred_seccomp` + `root_child`）等 |
-| `composition_root.hpp` | 组合根（不可拷贝） |
-| `plan_gate.hpp` | 计划闸门 |
-| `run_pipeline_temp.cpp` | **临时入口（登记待删）**：逐步跑通链 |
+| `route_catalog.hpp` | `RouteId` 登记（`MulticastWaiter` / `SelectStack` / `TcpZerocopy`） |
+| `target_profile.hpp` | `KeyValue` / `KeyView`（值视图） |
+| `syscalls_43499.{hpp,cpp}` | 逐 syscall 薄包装（无状态、无决策） |
+| `native_attempt_43499.{hpp,cpp}` | actor batch 的 native 侧（参数编组、page 发送、结果编码） |
+| `native_discover_43499.{hpp,cpp}` | discover 端口（Kotlin 给参数、解释结果） |
+| `native_prepare_43499.{hpp,cpp}` | prepare 端口（`WordsRegion` handle、shaping fd） |
 
-> 注意：早前文档提到的 `pipeline/orchestrator.hpp` **不存在**；分派现在住在 `component_catalog.hpp`。
+> 旧 `pipeline/`（`component_catalog` / `executors` / `composition_root` / `plan_gate` / `run_pipeline_temp`）
+> **整体不存在**；分派与装配现由 Kotlin 执行层 + `access_factory.cpp` 承担。
 
 ## 五、backend 面（`core/src/backend/`）
 
 ### `cve_2026_43499`（PI-futex）
 
-| 文件 | 职责 |
+| 目录/文件 | 关键单元 |
 | --- | --- |
-| `kernel_access.hpp` | `Access`（`KernelAccess` 实现）+ `WordLanding`（`bring_up` / `tear_down` / `land_word` / `can_read` / `read_word`） |
-| `access_params.hpp` | `AccessParams{route, offset, offset_set, document}` |
-| `session.hpp` | `TargetState{mm_struct, page_base, fake_task, fake_lock}` |
-| `landing/multicast_landing.hpp` | `MulticastLanding : WordLanding`（只接 multicast） |
-| `landing/multicast_window.hpp` | `Window{write_word}` + `RouteExec{execute, arm}` + `MulticastWindow` |
-| `landing/multicast_exec.hpp` | `MulticastExec`（彩票循环：stamp → setsockopt） |
-| `landing/multicast_consumer.hpp` | `MulticastConsumerThread`（`sched_setattr` 第三位 actor） |
-| `route/multicast_policy.hpp` | `MulticastLimits` / `MulticastConsumer` / `MulticastHold` / `run_multicast_handshake` |
-| `memory/multicast_arm.hpp` | `MulticastGeometry` / `encode_multicast_arm` |
-| `steps/action.hpp` | `RaceAction`（`request_for` / `arm_for` / `encode_waiter_arm`） |
-| `abi.hpp` | `PayloadOffsets` / `fill_payload_offsets` / `kPayloadFields` |
-| `layout_from_document.hpp` | `ImageArithmetic` / `offset_to_direct` / `layout_from_document` |
+| `kernel_access.hpp` / `session.hpp` | `Access`（`KernelAccess` 实现）+ `TargetState` |
+| `access_params.hpp` / `abi.{hpp,cpp}` | `AccessParams` / `PayloadOffsets` |
+| `access_{multicast_waiter,select_stack,tcp_zerocopy}.hpp` | 三条 route 的访问面 |
+| `landing/` | `MulticastLanding` / `MulticastWindow` / `MulticastRoute`（`_linux`）/ `SelectStackRoute`（`_linux`） |
+| `leak/` | kernelsnitch discover：`snitch_*` / `collision_*` / `leak_*` / `candidate_match` |
+| `memory/` | 页/凭据/布局：`payload_page`、`credential_image`、`write_layout`、`write_encoder`、`prepare_*`、`page_*`、`multicast_arm` |
+| `race/` | `PiRace` / `PiWindow` / `RaceRuntime` |
+| `route/` | `lifecycle` / `route_policy` / `policy_dispatch` / `route_status` / `expected_keys` / `multicast_policy` + `*_legacy.cpp` |
+| `steps/` | `step_runner` / `window_*` / `prepare_*` / `discovery_runner` / `words_region` / `route_config` / `access_binder` |
 
-### `cve_2026_43284`（page cache）
+### `cve_2026_43284`（page cache，2026-10-19 重置后）
 
-| 文件 | 职责 |
+| 文件 | 说明 |
 | --- | --- |
-| `kernel_access.hpp` | `Access`（43284 实现） |
-| `landing/pagecache_landing.hpp` / `pagecache_write.hpp` | `PageCacheLanding` / `PageCacheWindow` |
-| `landing/real_splice_io.hpp` / `real_splice_io.cpp` | `SpliceIoOps`（可替换系统调用面）+ 设备绑定 |
-| `landing/pagecache_doors.hpp` / `pagecache_door_linux.*` | 门 |
-| `landing/esp_crypto.hpp` | 帧加密 |
-| `session_frame.{hpp,cpp}` | 会话帧 |
-| `lkm/` | LKM 策略 |
+| `interface.hpp` | `AccessParamsPod`（唯一 POD 定义） |
+| `access_params.hpp` | 旧参数面（按 v4 §2 计划在 B5 删除；当前仍在树） |
+| `lib/raw_esp.{hpp,cpp}` | `gl_esp_open/write_block/close` 薄 syscall |
+| `lib/helper.{hpp,cpp}` | `gl_helper_exec/read`、`gl_fadvise_drop` |
+| `README.md` | 本目录边界说明 |
 
-## 五·补、43499 的链形状与入口约定（2026-10-11 定）
+> 旧 43284 实现（会话/帧/门/ESP 链/LKM 策略）已在 2026-10-19 删除；新设计与批次见
+> `docs/analysis/43284-refactor-design-v4.md` 与 `docs/plan/43284-reset-batch.md`。
 
-- **链**：`wire` → 值映射（键只写一处）→ 区域排布（`layout_snitch_region`）→ 发现（`run_discovery`）→
-  准备（`run_prepare`，产出 `prepare_base`）→ 两个字（`steps::WordsRegion`，**调用方持有**）→
-  载荷页（`memory/payload_page`，落在 `WordsRegion::payload()`）→ 窗口三步（`w1/w2/w3`）→ 路由引擎（`landing::MulticastRoute`）。
-- **归属规则（反复踩过）**：凡"要活过某一段"的东西（两个字、载荷页、引擎、守卫）都归**调用方**；
-  单元返回后其内部映射即失效 ✓。
-- **路由按文档选**：`main` 读 `available.<id>.route`；本树只移植了 `multicast_waiter`，其余给
-  **具名拒绝** `route-not-ported:<名字>`（目录/键集/链目录里三支都有预留 ✓）。
-- **每个 backend 的 required_param**：`cve_2026_43284` = `["sa"]`（会话帧路径，值不进文档 ✓）；
-  `cve_2026_43499` = `["value"]`（载荷值，**数据**不是密钥 ✓）；未知名一律 `required-param-unknown` ✓。
-- **窗口三步的判据**在引擎里（`MulticastRoute::execute` 的三角色 + 改挂 ✓）；阶段层只报自己的名字 ✓
-  （`step-words-unprepared` / `step-window-not-won` 等 ✓）。
-- **配置构建**：`steps::build_route_config`（纯函数）——任一位为 0 即 `route-config-missing:<字段>` ✓，
-  越界即 `route-config-too-big:<字段>` ✓；**绝不填默认值** ✓。
-- **设备复核纪律**：夹具改了必须重推（旧副本会让你误判 ✓）；取证行的**位置**也是证据的一部分 ✓。
+## 六、JNI 边界面（`core/src/boundary/jni/`）
 
-## 六、终端面（`core/src/terminal/`）
+| 文件 | 面向 | 生产? |
+| --- | --- | --- |
+| `native_syscalls_43499.cpp` | `gl43499syscalls`：逐 syscall | **是**（kt-step K1） |
+| `native_attempt_jni.cpp` / `native_discover_jni.cpp` / `native_prepare_jni.cpp` | `gl43499native`：actor batch / discover / prepare | 实验（N2/N3），未过 N5 不标 supported |
+| `native_select_stack_jni.cpp` / `native_select_legacy_jni.cpp` / `native_tcp_route_jni.cpp` | 43499 select / tcp 路由端口 | select 有 AVD 门禁；tcp 无通过结果 |
+| `api_43499.cpp` / `native_43499.cpp` | 43499 legacy 逻辑面 | 否（K0a 已隔离） |
+| `native_helper.cpp` / `native_raw_esp.cpp` | 43284 helper / ESP（`ghostlock_jni`） | 是（43284 阶段链） |
+| `native_finish.cpp` / `native_memfd.cpp` / `native_perf_task_jni.cpp` | 收尾 / memfd / perf 辅助 | 按调用方 |
 
-| 文件 | 职责 |
+- **没有通用 read/write JNI**：读写经 Kotlin 会话与能力接口（见 §七）；执行节点直接走 backend 端口。
+
+## 七、Kotlin 执行面（生产）
+
+| 位置 | 角色 |
 | --- | --- |
-| `execution.hpp` / `.cpp` | `FinishMoment{OnSuccess, Always, OnFailure}`；`run_payload(path)`（补 x 位 + `fork`） |
-| `payload.hpp` | `Payload{bytes, size, declared_sha256, declared_size}`；`PayloadVerdict` |
-| `payload_store.hpp` / `.cpp` | `store_payload(dir, name, …)` → `StoreResult`（0600 原子） |
-| `layer.hpp` | 终端层入口 |
+| `core/engine/PipelineEngine.kt` | **执行唯一权威**：节点顺序 / 重试 / 冻结 / 清理 / 反向 close |
+| `core/engine/BackendRun.kt` | 每次执行的边界（一次性）+ `DelegatingExecutionEngine` + `ExecutionEngineFactory` |
+| `core/engine/ExecutionEngine.kt` | UI 面状态机接口（`ExecutionState`） |
+| `core/NativeSession.kt` + `NativeSessionFactory.kt` | 会话生命周期底座（`SessionPhase` / `CleanupDisposition` / `close`） |
+| `core/access/AccessCapability.kt` | `AccessSession` + `KernelMemoryAccess` / `PageCacheAccess` 能力接口 |
+| `core/access/{LkmKernelAccess,PageCacheAccess}.kt` | LKM 与 43284 页缓存能力实现 |
+| `core/steps/{StepId,StepInputs,StepPlans,OpsInvoker}.kt` | 步骤数据与调用边界（**不是**执行权威） |
+| `engine/ktstep/` | 43499 kt-step：布局/引擎/端口/pirace/victim |
+| `backend/cve43499/ktstep/run/` | 43499 生产 run/flow/session/route 端口 |
+| `backend/cve43284/pagecache/` + `engine/pagecache/` | 43284 Stage 节点与阶段实现 |
 
-## 七、profile / memory 面
-
-| 文件 | 职责 |
-| --- | --- |
-| `profile/glkv3_document.hpp` | `Document` / `DocumentVerdict`（GLKv3 解析） |
-| `profile/document_pairs.hpp` | `read_section_pairs(document, section, names, …)` |
-| `profile/route_catalog.hpp` | `RouteId`（`MulticastWaiter` / `TcpZerocopy` / `SelectStack`） |
-| `profile/key_catalog.hpp` | 键目录（`backend.cve_2026_43499.abi.*` 等） |
-| `memory/target_profile.hpp` | `KeyValue` / `KeyView` |
+- 结构、状态机与「会话 close 与执行 close 互斥」的规则见 `docs/plan/execution-architecture.md`（唯一权威）。
+- `StepEngine` / `StageRunner` / `StagePageCacheEngine` 已删除；`core/steps` 只留数据与翻译器。
 
 ## 八、可核验的不变量
 
 - **全局状态**只允许 `g_exploit_session`（进程唯一）与启动期只读的 `g_direct_map_end`。
-- **R1 include 防火墙**：`core/src/tests/include_firewall_test.cpp` 强制分层，白名单当前为空。
-- **双侧一致性**由导出 manifest 对拍（生成命令见 `core/Makefile`）：
-  `profile-manifest-v3.tsv` / `combination-manifest.tsv` / `vocabulary-manifest.tsv` /
-  `stepset-steps.tsv` / `lkm-kmi-manifest.tsv`。
-- **wire**：GLKv3 MessagePack，根 map 必填 `schema == 3`，canonical = 最短整数 + 键按 UTF-8 字节序；
-  `v2` 已弃用，旧 bin 一律拒绝。
+- **R1 include 防火墙**：`core/src/tests/include_firewall_test.cpp`，白名单当前为空；越层 include 与 stale 条目皆 FAIL。
+- **跨端对拍**：`core/src/tests/{combination,payload,surface}-manifest.pin.tsv`；生成/校验入口是
+  `exportJniProtocolManifest` 与 Kotlin 侧 `NativeProtocolTest`（T4 债务见 §二）。
+- **步骤数据无虚表/无继承**：`StepSpec`/`StepPlan` 是数据；backend 差异用目录表与端口，不用子类。
+- **PI 窗口内**：零分配、零打印、零间接分派、零 JNI 回调；`sched_setattr` 只在窗口外调用。
+- **owner 在 Kotlin**：fd / 映射 / actor 线程 / child 进程的创建与释放都在 Kotlin；C++ 不缓存 fd/指针。
+- **构建产物**在仓库内真实 `build/`；禁止链接；疑似旧树用 `realpath` 核实后清理，不得并存两棵树。

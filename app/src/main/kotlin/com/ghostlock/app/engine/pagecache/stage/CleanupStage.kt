@@ -23,12 +23,11 @@ class CleanupStage(
         return StageResult(StageCode.OK, evidence = Evidence(restored = true, source = "cleanup"))
     }
 
-    override suspend fun abort(code: StageCode) {
+    override fun abort(code: StageCode) {
         log.debug("CleanupStage.abort", "enter", "code" to code)
-        runCatching { run() }
     }
 
-    override suspend fun close() {
+    override fun close() {
         log.debug("CleanupStage.close", "done")
     }
 }

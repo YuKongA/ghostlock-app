@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <string_view>
 
+#include "backend/cve_2026_43499/memory/write_request.hpp"
 #include "contract/kernel_access.hpp"
 #include "platform/route_catalog.hpp"
 
@@ -82,6 +83,10 @@ namespace ghostlock::backend::cve_2026_43499 {
         std::uint64_t fake_lock = 0U;
         std::uint64_t target = 0U;
         std::uint64_t value = 0U;
+        /** 本步写形状：由 `WordWrite43499.form` 映射而来；Disabled 在 write 前具名拒绝。 */
+        memory::WriteMode write_mode = memory::WriteMode::Disabled;
+        /** 是否保留目标原有字节；与 write_mode 一起决定页/编码。 */
+        bool preserve_child = false;
 
         /** Whether the assembly inputs are all present. They are one set: a caller that supplies some
          *  of them is not half-ready, it is wrong, because the route engine reads them together. */

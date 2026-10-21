@@ -153,7 +153,9 @@ int device_initialize_43499_full(const std::uint64_t accessId, const std::uint64
     /** 写一块（通道 PiWindow，43499 只支持它）。@return 成功 true；失败给具名 why。 */
     bool device_write_43499(const std::uint64_t accessId, const std::uint64_t route,
                            const std::uint64_t offset, const std::uint64_t address,
-                           const std::vector<std::uint8_t> &block, const char **why) noexcept {
+                           const std::vector<std::uint8_t> &block,
+                           const std::int32_t mode, const bool preserve,
+                           const char **why) noexcept {
                                debug("43499: write access=%llu route=%llu bytes=%zu", static_cast<unsigned long long>(accessId), static_cast<unsigned long long>(route), block.size());
         if (why != nullptr) {
             *why = nullptr;
@@ -169,6 +171,8 @@ int device_initialize_43499_full(const std::uint64_t accessId, const std::uint64
         }
         backend::cve_2026_43499::Access43499Parameters params{};
         fill_access_params_43499(params, route, offset, true);
+        params.write_mode = static_cast<backend::cve_2026_43499::memory::WriteMode>(mode);
+        params.preserve_child = preserve;
         const auto out = g_accesses_43499[slot]->write(
             address,
             std::span<const std::byte>(reinterpret_cast<const std::byte *>(block.data()), block.size()),
@@ -177,6 +181,16 @@ int device_initialize_43499_full(const std::uint64_t accessId, const std::uint64
             *why = ghostlock::contract::KernelAccess::status_name(out.status);
         }
         return out.ok();
+    }
+
+    /** Legacy 写一块（无 form）：mode=Credential、preserve=true；K1/K2 零调用。 */
+    bool device_write_43499(const std::uint64_t accessId, const std::uint64_t route,
+                           const std::uint64_t offset, const std::uint64_t address,
+                           const std::vector<std::uint8_t> &block, const char **why) noexcept {
+        return device_write_43499(accessId, route, offset, address, block,
+                                  static_cast<std::int32_t>(
+                                      backend::cve_2026_43499::memory::WriteMode::Credential),
+                                  true, why);
     }
 
 

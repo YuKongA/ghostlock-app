@@ -454,6 +454,11 @@ namespace ghostlock::backend::cve_2026_43499::memory {
                     }
                 }
             }
+            /* 选项 B：把 shaping 端交给调用方；它负责用 send_bytes 送页。 */
+            if (shaping_pair[0] >= 0) {
+                outcome.shaping_fd = shaping_pair[0];
+                outcome.shaping_peer_fd = shaping_pair[1];
+            }
         }
 
         /* PinAndYield: the owner's processor, then let the scheduler run. */

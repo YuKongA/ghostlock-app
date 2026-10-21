@@ -22,6 +22,6 @@ data class StageResult(val code: StageCode, val reason: String = "", val evidenc
 
 interface Stage {
     suspend fun run(): StageResult
-    suspend fun abort(code: StageCode)
-    suspend fun close()
+    fun abort(code: StageCode)
+    fun close()
 }

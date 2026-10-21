@@ -1,5 +1,6 @@
 package com.ghostlock.app.engine.pagecache.stage
 
+import com.ghostlock.app.backend.cve43284.pagecache.Cve43284Run
 import com.ghostlock.app.engine.pagecache.KotlinSentryPlan
 import com.ghostlock.app.engine.pagecache.write.BlockAccess
 import kotlinx.coroutines.runBlocking
@@ -33,13 +34,13 @@ class StageFactoryTest {
             ),
             ByteArray(16), ByteArray(32), 1,
         ) { true }
-        val engine = StageFactory.build(
+        val stages = StageFactory.stages(
             StageConfig(
                 EnvironmentInput("android13-5.15", "carrier", 1, ByteArray(32), ByteArray(32)),
                 access, spec, spec, hook, listOf("nonexistent-marker"), { true }, { true }, 50,
             ),
         )
-        val results = engine.run()
+        val results = Cve43284Run(stages).runStages()
         assertEquals(StageCode.WAIT_TIMEOUT, results[5].code)
         assertEquals(StageCode.OK, results.last().code)
     }

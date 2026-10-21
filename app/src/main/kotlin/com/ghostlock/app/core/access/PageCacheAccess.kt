@@ -2,6 +2,8 @@ package com.ghostlock.app.core.access
 
 import com.ghostlock.app.core.AccessFailure
 import com.ghostlock.app.core.AccessResult
+import com.ghostlock.app.core.CleanupDisposition
+import com.ghostlock.app.core.SessionPhase
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -33,6 +35,7 @@ class PageCacheKernelAccess(
     private val gate = Mutex()
     private var generation: UInt = 0u
     private var ready = false
+    private var closed = false
 
     private val pageView = object : PageCacheAccess {
         override val descriptor: PageCacheDescriptor
@@ -96,6 +99,20 @@ class PageCacheKernelAccess(
 
     override val capabilities: AccessCapabilities get() = this
 
+    override val phase: SessionPhase get() = when {
+        closed -> SessionPhase.CLOSED
+        ready -> SessionPhase.READY
+        else -> SessionPhase.INITIALIZING
+    }
+
+    override val cleanup: CleanupDisposition get() = CleanupDisposition.CLEAN
+
+    /** Cancel-only: token teardown remains in shutdown(). */
+    override fun close() {
+        closed = true
+        ready = false
+    }
+
     private fun descriptorNow(): PageCacheDescriptor = PageCacheDescriptor(
         targets = if (ready) ops.targets() else emptyList(),
         blockWidth = blockWidth,
@@ -113,6 +130,7 @@ class PageCacheKernelAccess(
     }
 
     override suspend fun initialize(): AccessResult<InitializationReceipt> = gate.withLock {
+        if (closed) return@withLock AccessResult.Failure(AccessFailure.NOT_READY, "session closed")
         if (!ops.up()) {
             return@withLock AccessResult.Failure(
                 AccessFailure.NOT_READY,
@@ -125,6 +143,7 @@ class PageCacheKernelAccess(
     }
 
     override suspend fun shutdown(): AccessResult<ShutdownReceipt> = gate.withLock {
+        closed = true
         if (!ready) {
             return@withLock AccessResult.Success(ShutdownReceipt(clean = true))
         }
