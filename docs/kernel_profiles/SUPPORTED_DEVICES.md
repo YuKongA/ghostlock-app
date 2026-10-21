@@ -21,6 +21,10 @@ Rows without the marker don't turn the switch on automatically, but **you can
 enable it manually on any device**. Running via Shizuku skips the W3 seccomp
 bypass there as well, so it saves time even where it isn't required.
 
+按内核版本号（主版本.次版本.修订号）从小到大排好了。版本号相同的行保持原来的先后顺序。原表只有两行位置不对，已经挪好：
+- `6.1.134` 原来排在 `6.1.115` 前面，现在挪到 `6.1.118` 之后。
+- `6.1.138-...g51f8c580613d` 原来夹在 `6.1.145` 中间，现在挪回其他 `6.1.138` 的后面。
+
 | Kernel                                                 | Devices                                                          |
 |--------------------------------------------------------|------------------------------------------------------------------|
 | `5.15.41-android13-8-g8dc4c75ab7d8-ab1673212412`       | MEIZU 20 Pro · Shizuku recommended                               |
@@ -30,19 +34,19 @@ bypass there as well, so it saves time even where it isn't required.
 | `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`  | Sony Xperia 1 V                                                  |
 | `5.15.189-android13-8-00004-g1c3825f8ac0a-ab14110541`  | Sony Xperia 1 V                                                  |
 | `6.1.25-android14-11-maybe-dirty`                      | MEIZU 21 / MEIZU 21 Pro                                          |
-| `6.1.134-android14-11-maybe-dirty`                     | Boox Onyx NoteAir6C                                              |
 | `6.1.115-android14-11-ga2521ca27699-ab13294383`        | POCO X6 Pro                                                      |
 | `6.1.118-android14-11-ga3b9c44908dd-ab13320413`        | Redmi Note 15 Pro+                                               |
 | `6.1.118-android14-11-gca0ef6d17716-ab13624819`        | Xiaomi 14                                                        |
+| `6.1.134-android14-11-maybe-dirty`                     | Boox Onyx NoteAir6C                                              |
 | `6.1.138-android14-11-g0c3d559bcd85-ab14529422`        | Xiaomi 14                                                        |
 | `6.1.138-android14-11-g151cf2b6bfbe-ab13719792`        | Lenovo Xiaoxin Pad Pro 12.7 (TB375FC)                            |
 | `6.1.138-android14-11-g6ab8c9a86a33-ab14396278`        | POCO X6 Pro                                                      |
 | `6.1.138-android14-11-g44bda9e8f6e9-ab13792638`        | POCO X6 Pro                                                      |
 | `6.1.138-android14-11-g965475777129-mi`                | REDMI K80                                                        |
 | `6.1.138-android14-11-g2ecae636cf9b-ab14676408`        | Lenovo Yoga Tab Plus (TB520FU)                                   |
+| `6.1.138-android14-11-g51f8c580613d-ab13911623`        | Redmi Note 14 Pro 5G / POCO X7                                   |
 | `6.1.145-android14-11-g09f1c0074ad7-ab14226177`        | Infinix Note 50s 5G, Infinix GT 30 (X6876)                       |
 | `6.1.145-android14-11-g11c274d0441f-ab14259673`        | RedMagic 9(S) Pro (REDMAGICOS11.0.5MR1_GB)                       |
-| `6.1.138-android14-11-g51f8c580613d-ab13911623`        | Redmi Note 14 Pro 5G / POCO X7                                   |
 | `6.1.145-android14-11-g74d1702dab4d-ab14669069`        | vivo T4, IQOO 12                                                 |
 | `6.1.145-android14-11-geaa643a2c0ee-ab14763719`        | Motorola Razr 50 Ultra / Motorola Razr+ 2024                     |
 | `6.1.145-android14-11-g9b69cc399ae1-ab14819715`        | Motorola Edge 60 Fusion                                          |
