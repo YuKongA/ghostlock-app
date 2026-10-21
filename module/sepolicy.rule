@@ -1,3 +1,0 @@
-# GhostLock 的 SELinux 规则（KernelSU/Magisk 在开机时注入）。
-# 允许应用域连到 ghostlockd 的 socket（将来接线时启用具体类型）。
-# allow untrusted_app ghostlockd_socket:sock_file { read write open };

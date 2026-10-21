@@ -1,6 +1,0 @@
-id=ghostlock
-name=GhostLock 后端
-version=v1.3
-versionCode=1328
-author=YG
-description=GhostLock 的内核模块（按 KMI 装载 ghostlock.ko）与守护进程骨架；由 KernelSU/Magisk 管理器刷入。
