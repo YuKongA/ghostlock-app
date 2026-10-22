@@ -1,390 +1,384 @@
-# GhostLock 工程与设计规范（Engineering & Design Standards）
+English | [简体中文](engineering-standards_ZH.md)
 
-> 思想层（为什么/信什么）见 [`design-philosophy.md`](design-philosophy.md)——11 条原则均以软件工程理论
-> （SWEBOK / ISO/IEC/IEEE 12207 / ISO/IEC 25010 / 经典文献 / 工业实践）为依据，本文是做法层（怎么做/门槛）。
-> 适用对象：本仓库的人类开发者与 AI agent。**任何改动开始前必须先读本文并完成第 1 节的设计流程。**
-> 用语按 RFC 2119：**必须**（MUST）/ **应当**（SHOULD）/ **可以**（MAY）。
-> 效力顺序：用户当期要求 > `AGENTS.md` > 本文 > 其他文档。本文与代码不一致时，以代码为准并**顺带修正本文**。
+# GhostLock engineering and design standards
 
-本文由仓库历史文档（`docs/analysis/**`、`DECOUPLING_PLAN.md`、`native-cpp-migration-plan.md`
-等，已归档在 git 历史）与外部权威规范（见附录 A）合成，描述的是**这个项目实际执行过并被验证有效**的做法，
-不是通用说教。
+> Practices and requirements. See [`design-philosophy.md`](design-philosophy.md) for the reasons behind them. These rules apply to human developers and
+> AI agents in this repository. Before any change, you must read this document and complete the design process in section 1.
+> Terms follow RFC 2119: MUST / SHOULD / MAY.
+> Precedence: the user's current requirements > `AGENTS.md` > this document > other documentation. If this document conflicts with code, the code takes precedence. Correct this document with the change.
 
 ---
 
-## 1. 开发流程：先设计，后改动（强制）
+## 1. Development process: design before changes, required
 
-### 1.1 四阶段流程
+### 1.1 Four-stage process
 
 ```
-Explore（只读调查） → Design（设计产物） → Implement（最小实现） → Verify（分级验证）
+Explore (read-only investigation) → Design (design artifacts) → Implement (minimal implementation) → Verify (verification by level)
 ```
 
-- **Explore**：动手前先读相关代码与文档；用 `git log`/`git show` 查阅历史设计与证据（本仓库的
-  `docs/analysis/**` 与 device-gates 在 git 历史中完整保留）。调查范围要窄，不确定就声明假设。
-- **Design**：按下表产出一个**可评审的设计**。设计未完成不得进入实现。
-- **Implement**：最小改动；只碰设计里列出的文件；侧向改动一律不做。
-- **Verify**：按 §1.3 的门槛执行并**保留证据**（命令输出、日志、对比结果）。证据优于口头断言。
+- **Explore**: read the relevant code and documentation before changing anything. Use `git log`/`git show` to review historical designs and evidence.
+  This repository's `docs/analysis/**` and device-gates are fully retained in git history. Keep the investigation narrow. State assumptions where uncertain.
+- **Design**: produce a reviewable design according to the table below. Do not start implementation before the design is complete.
+- **Implement**: make the smallest change, touching only the files listed in the design. Do not make changes outside that scope.
+- **Verify**: run the checks required by §1.3 and keep the evidence: command output, logs, and comparison results. Evidence takes precedence over verbal assertions.
 
-依据：Anthropic《Claude Code best practices》的 Explore→Plan→Implement→Commit 与
-"give a way to verify its work"；本项目 `native-cpp-migration-plan.md` 的批次门禁实践。
+### 1.2 Change levels and design artifacts
 
-### 1.2 变更分级与设计产物
-
-| 级别 | 判定 | 设计产物（最小） |
+| Level | Criteria | Minimum design artifact |
 |---|---|---|
-| **S** | 单文件内的注释/拼写/纯格式；文档笔误 | 无（直接改） |
-| **M** | 普通缺陷修复、非攻击路径的功能/重构、测试补充、文档结构性更新 | 一段改动说明：动机、影响文件、行为差异、验证计划（可写在任务描述或提交信息中） |
-| **L** | 攻击关键路径（waiter/race/payload/route/exec 流程）；配置文件格式/wire 协议；跨 Native↔Kotlin 契约；公共数据结构；构建系统；新增 route | **计划文档**（模板见 `documentation-standards.md`）：现状与基线 commit、目标与约束、改动清单（逐文件）、数据流/控制流差异、兼容性与回滚、验证矩阵、明确保留项 |
+| **S** | Comments, spelling, or formatting within one file; documentation typos | None; change directly |
+| **M** | Ordinary bug fixes, features or refactors outside the attack path, added tests, structural documentation updates | A paragraph stating the motivation, affected files, behavioral differences, and verification plan; this may be in the task description or commit message |
+| **L** | Critical attack path: waiter/race/payload/route/exec flow; configuration file format or wire protocol; cross-Native↔Kotlin contracts; public data structures; build system; new routes | A **plan document**, using the template in `documentation-standards.md`: current state and baseline commit, goals and constraints, per-file change list, data-flow/control-flow differences, compatibility and rollback, verification matrix, and explicit preservation list |
 
-L 级改动**必须**先给出设计并获得用户认可，再写代码。历史范例：
-`DECOUPLING_PLAN.md`（Goals and constraints → Phase 0 基线 → 逐项 checkbox）；
-`docs/development/native-modernization-plan.md`（批次化 + 每批验证 + 明确保留）。
+For L-level changes, you must present the design and obtain the user's approval before writing code.
 
-### 1.3 验证门槛（按级别）
+### 1.3 Verification requirements by level
 
-| 改动 | 主机测试 | NDK 构建 | lint-tidy | `cmp_disasm` | 真机门禁 |
+| Change | Host tests | NDK build | lint-tidy | `cmp_disasm` | Device gate |
 |---|---|---|---|---|---|
-| S/M 非攻击路径 | 必须 | 必须零警告 | 必须 0 findings | 可跳过 | 不需要 |
-| M 触及攻击路径 | 必须 | 必须零警告 | 必须 0 findings | **必须**（8 函数） | 必须（见 §8.3） |
-| L | 必须 | 必须零警告 | 必须 0 findings | **必须** | 必须，且归档证据 |
+| S/M outside the attack path | Required | Required, zero warnings | Required, 0 findings | May skip | Not required |
+| M touching the attack path | Required | Required, zero warnings | Required, 0 findings | **Required**, 8 functions | Required; see §8.3 |
+| L | Required | Required, zero warnings | Required, 0 findings | **Required** | Required, with archived evidence |
 
-命令见 `AGENTS.md` 与 §8。
+See `AGENTS.md` and §8 for commands.
 
-### 1.4 批次化与"明确保留"
+### 1.4 Batches and explicit preservation
 
-- 大改动拆批次，**一个批次只做一类事**；每批次独立完成"实现 → 全部门槛 → 记录验证结论"，
-  上一批未验证通过不得进入下一批。
-- 每个计划**必须**包含"明确保留（不做）"清单，防止顺手重写（例：`futex_hash.h` 内核移植代码、
-  `put32/put64`、`PayloadPage` 无析构、`FIELD` 宏）。未列入改动清单的代码即视为冻结。
+- Split large changes into batches, each covering one kind of work. Each batch independently completes "implement → all required checks → record verification conclusions".
+  Do not start the next batch before the previous one passes verification.
+- Every plan must include an "Explicit preservation: out of scope" list to prevent incidental rewrites. Examples include ported kernel code in `futex_hash.h`,
+  `put32/put64`, the absence of a `PayloadPage` destructor, and the `FIELD` macro. Code outside the change list is frozen.
 
-### 1.5 提交与分支
+### 1.5 Commits and branches
 
-- 分支流向：`very-not-stable-dev` → 上游 `main`。**未经用户明确要求不得 commit / push / 建 PR。**
-- 提交信息用 Conventional Commits：`type(scope): summary`，`type ∈ {feat,fix,docs,refactor,test,chore,build,revert}`；
-  行为变化与不变量写进 body（历史范例：`fix(profile): resolve imported v1 reports and edit them per their own release`）。
-- 一个提交只表达一个意图；不夹带无关格式化；大变更拆成小提交序列（对应批次化）。
-- 评审：主库变更应由至少一名非作者复核（历史 PR review 即此实践）；L 级改动以计划文档 + 门禁证据
-  作为评审记录；新增功能不带测试视为不完整。
+- Branch flow: `very-not-stable-dev` → upstream `main`. Do not commit, push, or create a PR without an explicit user request.
+- Use Conventional Commits: `type(scope): summary`,
+  `type ∈ {feat,fix,docs,refactor,test,chore,build,revert}`. Put behavioral changes and invariants in the body. Historical example:
+  `fix(profile): resolve imported v1 reports and edit them per their own release`.
+- Each commit expresses one intent and contains no unrelated formatting. Split large changes into a sequence of small commits aligned with the batches.
+- Review: changes to the main repository should have at least one reviewer other than the author. For L-level changes, the plan and gate evidence are the review record.
+  A new feature without tests is incomplete.
 
 ---
 
-## 2. 架构规范
+## 2. Architecture standards
 
-### 2.1 三层与依赖方向
+### 2.1 Three layers and dependency direction
 
 ```
 app/ (Kotlin, UI/domain/data/shizuku)
-  │  ProcessBuilder（不是 JNI）：stdin 写 GLK1、stdout/stderr 收日志、退出码表达结果
+  │  ProcessBuilder (not JNI): write GLK1 to stdin, collect logs from stdout/stderr, report the result through the exit code
   ▼
-src/core/ (C++23 可执行 ELF)          tools/extract_rs/ (Rust 离线提取器)
+src/core/ (C++23 executable ELF)     tools/extract_rs/ (Rust offline extractor)
 ```
 
-- 层间契约**只能是**进程、文件、stdin/stdout、退出码、以及 GLK1/HOCON profile 文本；新增跨层状态
-  必须经 profile 或文件，不得发明新环境变量（§3.1）。
-- Kotlin 分层：`ui → domain → data`；平台 I/O 只允许在 `data/`；`shizuku/` 是执行入口的变体，
-  不承载业务规则。
-- Native 命名空间分层：`ghostlock::{route,session,memory,attack,race,support,profile}`；
-  include 一律相对 `src/core`（`#include "route/..."`），让所有权在调用点可见。
+- Cross-layer contracts are limited to processes, files, stdin/stdout, exit codes, and GLK1/HOCON profile text. New cross-layer state must go through
+  a profile or file. Do not invent environment variables; see §3.1.
+- Kotlin layers: `ui → domain → data`. Platform I/O is allowed only in `data/`. `shizuku/` is an execution-entry variant,
+  not a place for business rules.
+- Native namespace layers: `ghostlock::{route,session,memory,attack,race,support,profile}`.
+  All includes are relative to `src/core`, as in `#include "route/..."`, so ownership is visible at the call site.
 
-### 2.2 route 结构（本项目核心扩展点）
+### 2.2 Route structure, the project's main extension point
 
-每条 route 由三个部件构成，**不得使用虚基类**（PI 竞争窗口内不允许间接调用）：
+Each route has three parts. Do not use virtual base classes because indirect calls are forbidden in the PI race window:
 
-1. **Policy**（`route/route_policy.hpp`）：编译期能力声明 + `kind` + `supported()` + `run()`。
-   **必须 host 可编译**（主机测试引用每个 Policy）。
-2. **Procedure**（`session/exploit_procedure.hpp` 子类）：只覆盖与共享流程不同的步骤；
-   共享步骤（setup/W1/handoff/retry）严禁复制到 route 内。
-3. **Route 类**：`prepare → execute → disarm → destroy` 固定生命周期（概念见 `route_lifecycle.hpp`），
-   结果只经 `status` 汇报。`execute` 仅在 `prepare` 返回 0 时调用。
+1. **Policy**, in `route/route_policy.hpp`: compile-time capability declarations, `kind`, `supported()`, and `run()`.
+   It must be host-compilable because host tests reference every Policy.
+2. **Backend steps**, in `session/backend/cve_2026_43499_backend.*`: the W1/W2/W3 flow,
+   templated on the middleware policy. Do not copy shared steps or retries into a route.
+3. **Route class**: the fixed `prepare → execute → disarm → destroy` lifecycle, whose concept is in `route_lifecycle.hpp`.
+   Report results only through `status`. Call `execute` only when `prepare` returns 0.
 
-新增组件（middleware/backend/frontend）的完整触点清单以 `docs/development/adding-a-component.md`
-为唯一权威，必须逐项核对。
+`route/pipeline.hpp` runs the backend first, then hands off to the frontend.
+The sole authority for the complete list of places to update when adding middleware, a backend, or a frontend is
+`docs/development/adding-a-component.md`. Check every item.
 
-### 2.3 编译边界与条件编译
+### 2.3 Compilation boundaries and conditional compilation
 
-- Policy、数据结构、纯函数**必须**能在主机（非 Android）编译；真机专属实现放在
-  `#if defined(__ANDROID__)` 段内（route 的入口/Procedure/工厂即在其中）。
-- 主机测试由 `src/Makefile` 的 `NATIVE_HOST_TESTS` 登记；测试专用探针不得链接进生产二进制。
+- Policies, data structures, and pure functions must compile on a non-Android host. Put device-only implementations in
+  `#if defined(__ANDROID__)` blocks or include them only in Android builds. Route entry points, backend steps, and
+  middleware hook definitions are Android execution code.
+- Register host tests in `NATIVE_HOST_TESTS` in `src/Makefile`. Test-only probes must not link into production binaries.
 
-### 2.4 全局状态
+### 2.4 Global state
 
-- 唯一进程 singleton 为 `g_exploit_session`；另允许启动期只读的 `g_direct_map_end`。
-  **新代码不得引入任何可变全局或进程级引用别名**（审计口径见 git 历史 `docs/analysis/native-global-state.md`）。
-- route 级 static 属于受限例外，必须：匿名 namespace、单例访问器、`stop()` 后归零，并在计划中说明。
+- `g_exploit_session` is the only process singleton. `g_direct_map_end`, read-only after startup, is also allowed.
+  New code must not introduce mutable globals or process-wide reference aliases. See `docs/analysis/native-global-state.md` in git history for the audit criteria.
+- Route-level statics are a restricted exception. They must use an anonymous namespace and a singleton accessor, reset to zero after `stop()`, and be explained in the plan.
 
-### 2.5 上游移植代码与 v1 legacy
+### 2.5 Ported upstream code and legacy v1
 
-- `kernelsnitch/`（含 `futex_hash.h`、`utils.h` 的 `pr_*` 宏）是上游原样移植：**不重写、不顺手现代化**；
-  确需改动时单独立项并说明理由。
-- v1（旧 `offsets.json`）只在 Kotlin 侧由 `LegacyProfileConverter.kt` 转换；native 不再解析 v1。新 route/新字段
-  **不得**修改 legacy 转换；兼容输入只做一次性转换。
+- `kernelsnitch/`, including `futex_hash.h` and the `pr_*` macros in `utils.h`, is ported unchanged from upstream.
+  Do not rewrite or modernize it incidentally. Any necessary change requires separate scope and a stated reason.
+- Only Kotlin converts v1, the old `offsets.json`, through `LegacyProfileConverter.kt`. Native no longer parses v1.
+  New routes and fields must not modify legacy conversion. Convert compatibility input once.
 
 ---
 
-## 3. 数据流规范
+## 3. Data-flow standards
 
-### 3.1 配置数据流：单一权威
-
-```
-assets HOCON（index.conf + <uname-r>.conf + execution-*.conf + 公共节）
-   → Kotlin 解析/合并（include 展开、route 显式选择）
-   → 用户覆盖层（按 release 稀疏保存，优先级高于内置与导入）
-   → GLK1 二进制（stdin 传给 native；exportKernelProfiles 生成 .bin）
-   → native TargetProfile 只读快照（此后执行层只认它）
-```
-
-- **profile 是唯一配置权威**。执行层只允许读进程/路径类环境变量（`GHOSTLOCK_HOME`、`TMPDIR`、
-  `GHOSTLOCK_KSU_LOG`）；需要新状态就扩展 profile，绝不新增配置类环境变量。
-- `uname -r` 精确匹配；route 由 profile 显式声明，**不得**从 kernel 版本/设备名推断。
-- 导入与内置的差异必须可追踪（字段级比较后再提供覆盖），profile 的 release 名与文件名逐字一致。
-
-### 3.2 Native 数据流
+### 3.1 Configuration data flow: a single authority
 
 ```
-TargetProfile（不可变，拥有值）→ resolve_address_space() → ResolvedAddresses（权威快照）
-   → WriteRequest（不可变写请求：target/mode/preserve-child）→ Payload 编码（span 界）
-   → uintptr_t 写入内核
+assets HOCON (index.conf + <uname-r>.conf + execution-*.conf + shared sections)
+   → Kotlin parsing/merging (expand includes, explicit route selection)
+   → user override layer (stored sparsely per release, higher priority than built-in and imported profiles)
+   → GLK1 binary (passed to native through stdin; exportKernelProfiles generates .bin)
+   → native TargetProfile read-only snapshot (the execution layer uses only this from this point on)
 ```
 
-- 可选字段与显式 0 必须区分（presence mask / `optional`）；"0 = 缺省"的隐式兼容只允许存在于
-  文档化的一次性推导入口。
-- 任何 profile 驱动的缓冲区尺寸/偏移计算必须做溢出安全检查，并在使用前做范围校验（
-  `MulticastGeometry`/`Fields` 的既有模式）。
+- The profile is the sole configuration authority. The execution layer may read only process/path environment variables:
+  `GHOSTLOCK_HOME`, `TMPDIR`, and `GHOSTLOCK_KSU_LOG`. Extend the profile when new state is needed. Never add configuration environment variables.
+- Match `uname -r` exactly. The profile declares the route explicitly. Do not infer it from the kernel version or device name.
+- Differences between imported and built-in profiles must be traceable. Compare fields before offering an override.
+  A profile's release name and filename must match exactly.
 
-### 3.3 资源所有权（RAII 类型）
+### 3.2 Native data flow
 
-| 类型 | 用途 | 规则 |
+```
+TargetProfile (immutable, owns values) → ResolvedAddresses::init() → ResolvedAddresses (authoritative snapshot)
+   → WriteRequest (immutable write request: target/mode/preserve-child) → Payload encoding (span bounds)
+   → uintptr_t write into the kernel
+```
+
+- Distinguish optional fields from explicit 0. GLK1 expresses presence through whether a key exists. Native stores optional fields in `std::optional`.
+  Implicit "0 = absent" compatibility is allowed only in a documented, one-time derivation entry point.
+- Every profile-driven buffer-size or offset calculation must check for overflow safely and validate the range before use.
+  Follow the existing `MulticastGeometry`/`Fields` pattern.
+
+### 3.3 Resource ownership, RAII types
+
+| Type | Purpose | Rule |
 |---|---|---|
-| `UniqueFd` | 拥有 fd | 出作用域即关；`BorrowedFd` 表达借用，从不关闭 |
-| `MappedRegion` | mmap | 拥有映射；显式 `release_to_process_lifetime()` 才可延寿 |
-| `PthreadOwner` | 线程 | join 语义显式；失败置 dirty 而不是丢弃 |
-| `ChildProcess` | 子进程 | 所有权显式（`VictimContext`）；作用域退出绝不 signal；退休=SIGKILL+reap |
-| `ScopeExit` | 通用清理 | 只在无更具体 owner 时使用 |
-| `PayloadPage` | 内核页 | **无析构**（内核引用可超生存期）；生命周期由 HeapContext 显式管理 |
-| `std::expected`/`Result<T>` | 可恢复失败 | 失败用 `std::unexpected`；调用点必须处理或上抛 |
+| `UniqueFd` | Own an fd | Close on scope exit; `BorrowedFd` expresses a borrow and never closes |
+| `MappedRegion` | mmap | Own the mapping; extend its lifetime only through an explicit `release_to_process_lifetime()` |
+| `PthreadOwner` | Thread | Make join semantics explicit; mark dirty on failure instead of dropping it |
+| `ChildProcess` | Child process | Explicit ownership through `VictimContext`; never signal on scope exit; retirement = SIGKILL+reap |
+| `ScopeExit` | General cleanup | Use only when there is no more specific owner |
+| `PayloadPage` | Kernel page | No destructor because kernel references may outlive it; HeapContext manages its lifetime explicitly |
+| `std::expected`/`Result<T>` | Recoverable failure | Use `std::unexpected` for failure; call sites must handle or propagate it |
 
-- 禁止裸 `new/delete`、裸 `close/join` 的新代码（已登记例外见 §5.4）。
-- 资源清理语义（用户态释放 vs 内核悬空 disarm）必须在设计中说清；"dirty" 是合法终态，
-  必须写明保留到进程退出还是可回收。
+- New code must not use raw `new/delete` or raw `close/join`. See §5.4 for registered exceptions.
+- The design must explain resource cleanup semantics, including user-space release versus disarming dangling kernel references.
+  "dirty" is a valid terminal state. State whether resources remain until process exit or can be reclaimed.
 
 ---
 
-## 4. 控制流规范
+## 4. Control-flow standards
 
-### 4.1 攻击阶段机
+### 4.1 Attack state machine
 
 ```
-setup → W1（SELinux）→ W2（凭据）→ W3（seccomp）→ handoff（root child / KernelSU）
+setup → W1 (SELinux) → W2 (credentials) → W3 (seccomp) → handoff (root child / KernelSU)
 ```
 
-- 每阶段返回结构化结果，重试统一走 `retry_write_stage()`；**不得**在 route 或阶段里各自实现重试。
-- W1/W2/W3 的目标地址与写模式来自不可变 `WriteRequest`；stage 之间不共享可变中间态，
-  共享状态只经 `ExploitSession`/`VictimChain` 显式传递。
-- handoff 后的子进程所有权经 `release_child()` 显式转移；探针失败走"退休"而不是盲写。
+- Each stage returns a structured result. All retries go through `retry_write_stage()`. Do not implement separate retries in routes or stages.
+- W1/W2/W3 target addresses and write modes come from immutable `WriteRequest` values. Stages do not share mutable intermediate state.
+  Pass shared state explicitly through `ExploitSession`/`VictimChain`.
+- Transfer child-process ownership after handoff explicitly through `release_child()`. If a probe fails, retire the child instead of writing blindly.
 
-### 4.2 PI 竞争窗口规则
+### 4.2 PI race-window rules
 
-`waiter_thread → owner_thread → consumer_thread → CMP_REQUEUE_PI → route` 窗口内：
+Within the `waiter_thread → owner_thread → consumer_thread → CMP_REQUEUE_PI → route` window:
 
-- **禁止**异常、动态分派（虚函数/`std::function`）、锁、日志阻塞调用（用 `log_sync()` 语义的既有路径）；
-- 只允许直接调用与编译期已知的 Policy 能力比较（`route_capability`）；
-- 任何"顺手简化"都必须先过 `cmp_disasm.py`（§8.2）。
+- No exceptions, dynamic dispatch through virtual functions or `std::function`, locks, or blocking logging calls.
+  Use the existing path with `log_sync()` semantics.
+- Allow only direct calls and comparisons of Policy capabilities known at compile time through `route_capability`.
+- Any incidental simplification must first pass `cmp_disasm.py`; see §8.2.
 
-### 4.3 错误处理分层
+### 4.3 Error-handling layers
 
-| 机制 | 使用场景 | 示例 |
+| Mechanism | Use | Example |
 |---|---|---|
-| `FatalError` | **仅**攻击前致命错误，抛出点自行记录日志，顶层直接退出 | profile 校验失败 |
-| `std::expected`/`Result<T>` | 可恢复失败（带 errno 语义） | I/O、解析 |
-| `Status`(bool) | 无数据的成败 | 阶段推进 |
-| `RouteStatus` | route 结果：OK / fallback-safe / dirty | 只经 `status` 汇报 |
+| `FatalError` | Fatal errors before the attack only; log at the throw site, exit directly at the top level | Profile validation failure |
+| `std::expected`/`Result<T>` | Recoverable failure with errno semantics | I/O, parsing |
+| `Status`(bool) | Success or failure with no data | Stage progression |
+| `RouteStatus` | Route result: OK / fallback-safe / dirty | Report only through `status` |
 
-- Native 以 `-fno-exceptions` 语义设计：除 `FatalError` 外不得抛异常；不得用异常表达可恢复错误。
-- 失败必须**早失败、带上下文**（profile 校验拒绝发布 active profile；KernelSnitch 越界拒绝）。
-
----
-
-## 5. 数据结构规范
-
-### 5.1 内核 ABI 结构（最高风险区）
-
-- `profile/binary.cpp` 的 GLK1 wire v2 section/key 表是**契约权威**：字段名、类型与位型一经发布不可改；
-  新增字段 = 在该 section 追加一个条目（section/entry 顺序无关），并与 Kotlin `NativeProfile.kt` 同步。
-- Kotlin↔Native 双侧注册表（`RouteKind`、字段表）由测试锁定（`route_catalog_test` /
-  `RouteCatalogAgreementTest`）；键名逐字一致，顺序逐项一致。
-- 枚举带显式 wire 值并写入合同注释（`0` 值语义特殊时不得被当普通值使用，如 `kRouteAuto` 不出现在 Kotlin）。
-
-### 5.2 类型设计
-
-- 新类型用 `PascalCase` + `final`；无 invariant 的聚合用 `struct`；有 invariant 的用 `class`。
-- 小值类型（句柄、状态）：`noexcept`、`[[nodiscard]]`、可平凡复制时加 `static_assert`（`BorrowedFd` 模式）。
-- 视图/容器按用途选型：`std::span`（借用序列）、`std::array`（固定尺寸）、`std::string_view`、
-  `std::optional`、`std::expected`；禁止自造可变长 VLA（攻击路径已全部替换为 page-bounded 缓冲）。
-- 整数运算：显式宽度（`int32_t`/`uint32_t`…）；混用符号必须显式转换并通过 `-Wsign-conversion`。
-
-### 5.3 不可变性
-
-- 默认 `const`/`constexpr`：编译期能定的不上运行期；只读快照（`TargetProfile`、`ResolvedAddresses`、
-  `WriteRequest`）发布后不得再改。
-- 需要"可能变更"的数据必须显式建模（mutex/原子量/session 成员），不允许隐式可变全局。
-
-### 5.4 已登记例外（保留，不改）
-
-`fdset_put/get_word` 的 `reinterpret_cast`（POSIX ABI）、`put32/put64`（内核布局写入）、
-`iomem_map_span` 的 getline/free、`PayloadPage` 无析构、全局 session 单例、`binary.cpp` 的 `FIELD` 宏、
-`kernelsnitch` 移植代码。新增例外必须进计划文档并给出理由。
+- Native is designed with `-fno-exceptions` semantics. Do not throw exceptions other than `FatalError`. Do not use exceptions for recoverable errors.
+- Fail early with context. Profile validation must refuse to publish the active profile on failure. KernelSnitch must reject out-of-bounds access.
 
 ---
 
-## 6. 代码风格规范
+## 5. Data-structure standards
 
-### 6.1 C++（`src/core`）
+### 5.1 Kernel ABI structures, the highest-risk area
 
-- 语言：C++23、`-fno-rtti`、静态 libc++；`-O2 -flto`；`-Wall -Wextra -Wconversion -Wsign-conversion`，
-  **新代码不得引入任何告警**。禁止 RTTI/异常/非标准扩展。
-- 头文件：`#ifndef GHOSTLOCK_<PATH>_<FILE>_HPP` guard、自包含、`#include` 相对 `src/core`
-  （项目头）、组内按字母序（沿用现有文件的实际风格，不做无关重排）。
-- 命名：函数/变量 `snake_case`；类型 `PascalCase`；编译期常量 `kCamelCase`；
-  成员变量 `name_`；宏仅限已保留的移植头。
-- 格式：4 空格缩进、K&R 大括号、行宽 ~100；`clang-format` 未强制（`FormatStyle: none`），
-  但同一文件内保持一致。
-- 注释：写**设计意图与不变量**（为什么），不写"是什么"。既有 `/* ... */` 段落注释是范例
-  （见 `route_policy.hpp` 的 Policy 说明）。
-- 接口：单参构造与转换运算符必须 `explicit`（有意充当值语义时除外）；不可变性优先；
-  编译期检查（`static_assert`/concept）优先于运行期检查。
-- clang-tidy：`bugprone-*`、`performance-*`、`clang-analyzer-*`，`--warnings-as-errors='*'`，
-  期望 0 findings；category 级排除必须写入 `.clang-tidy` 注释说明理由；单点误报用行内 `NOLINT`。
-- 静态/全局对象：只允许平凡析构；动态初始化必须有明确理由（对照 Google Style 的同条规则）。
+- The GLK1 wire v2 section/key table in `profile/binary.cpp` is the contract authority. Once published, field names, types, and bit patterns must not change.
+  Add a field by adding an entry to that section and synchronizing Kotlin `NativeProfile.kt`. Section/entry order does not matter.
+- Tests lock down the Kotlin↔Native registries for `RouteKind` and field tables: `route_catalog_test` /
+  `RouteCatalogAgreementTest`. Wire IDs, key names, and types must match. Named sections and entries are unordered.
+- Give enums explicit wire values and document them in contract comments. If `0` has special semantics, do not treat it as an ordinary value.
+  For example, `kRouteAuto` does not appear in Kotlin.
 
-### 6.2 Kotlin（`app/`）
+### 5.2 Type design
 
-- 遵循官方 Kotlin Coding Conventions（4 空格、trailing comma、表达式体、modifier 顺序、
-  命名规则）；项目内额外约定：
-  - 默认 `internal`/`private` 收紧可见性；`val` 优先、immutable collection 优先；
-  - profile 相关类以 `data class` + `entries()/apply()/from()` 三元组为模式；
-  - 与 native 同步的常量/枚举注明对应 native 符号（如 `RouteKind` 的 wire 注释）；
-  - 注释使用 KDoc 简述意图，不用 `@param`/`@return` 复述签名。
-- 平台 I/O 必须隔离在 `data/`；领域逻辑放 `domain/usecase`；Compose UI 不直接碰进程与文件。
+- Use `PascalCase` and `final` for new types. Use `struct` for aggregates without invariants, and `class` for types with invariants.
+- Small value types, such as handles and statuses, use `noexcept` and `[[nodiscard]]`. Add a `static_assert` when they are trivially copyable,
+  following the `BorrowedFd` pattern.
+- Choose views and containers by purpose: `std::span` for borrowed sequences, `std::array` for fixed sizes, `std::string_view`,
+  `std::optional`, and `std::expected`. Do not create variable-length VLAs. The attack path has already replaced all of them with page-bounded buffers.
+- Use explicitly sized integers such as `int32_t`/`uint32_t`. Mixing signed and unsigned values requires explicit conversions and must pass `-Wsign-conversion`.
 
-### 6.3 Rust（`tools/extract_rs`）
+### 5.3 Immutability
 
-- `cargo fmt` + `cargo clippy` 作为默认门槛；错误处理用 `Result` + `?`，不 `unwrap` 可失败路径。
-- API 面向本仓库的 CLI 契约：`--format conf`（flatten GLK profile，默认）与 `--format json`
-  （v1 导入）、退出码有语义（如 preflight 拒绝 `6`）；新增 CLI 选项要更新 README 与 profile
-  适配文档。
+- Default to `const`/`constexpr`. Do not defer to runtime what can be decided at compile time. Read-only snapshots,
+  `TargetProfile`, `ResolvedAddresses`, and `WriteRequest`, must not change after publication.
+- Model potentially mutable data explicitly with mutexes, atomics, or session members. Implicit mutable globals are forbidden.
 
-### 6.4 提交、分支与评审批次
+### 5.4 Registered exceptions, preserve unchanged
 
-见 §1.5。评审批次参考 `native-cpp-migration-plan.md`：每批次一个可独立验证的提交序列，
-提交信息含变更与验证结论。
+The `reinterpret_cast` in `fdset_put/get_word` for the POSIX ABI; `put32/put64` for kernel-layout writes;
+getline/free in `iomem_map_span`; no destructor for `PayloadPage`; the global session singleton; the `FIELD` macro in `binary.cpp`;
+and ported `kernelsnitch` code. New exceptions must be included in a plan document with reasons.
 
 ---
 
-## 7. 文档规范（摘要）
+## 6. Code-style standards
 
-完整规范——文档分类与地图、命名与结构、中英文写作、RFC 2119 用语、计划/门禁模板、归档与评审流程、
-作者检查清单——以 [`documentation-standards.md`](documentation-standards.md) 为唯一权威（依据
-ISO/IEC/IEEE 42010 / 15289 / 2651x、Diátaxis、DITA 信息类型、Carroll Minimalism、Google style）。
-工程侧的三条硬约束：
+### 6.1 C++ (`src/core`)
 
-- 双语对（`README.md`/`README_ZH.md`、`docs/kernel_profiles/**` 的 `_ZH`）必须同批次同步修改；
-- 改动影响命令/字段/流程时，文档必须同一批次回写；
-- 计划文档与门禁记录的模板字段（含 commit 与日期）必须完整，fail/pass 同等归档。
+- Language: C++23, `-fno-rtti`, static libc++, `-O2 -flto`, and `-Wall -Wextra -Wconversion -Wsign-conversion`.
+  New code must not introduce warnings. RTTI, exceptions, and nonstandard extensions are forbidden.
+- Headers: use `#ifndef GHOSTLOCK_<PATH>_<FILE>_HPP` guards, make headers self-contained, and use `#include` paths relative to `src/core`
+  for project headers. Sort within groups alphabetically, following the file's existing style without unrelated reordering.
+- Naming: `snake_case` for functions and variables, `PascalCase` for types, `kCamelCase` for compile-time constants, and `name_` for members.
+  Macros are limited to the ported headers explicitly preserved.
+- Formatting: 4-space indentation, K&R braces, and a line width of about 100. `clang-format` is not enforced, with `FormatStyle: none`,
+  but keep each file consistent.
+- Comments explain design intent and invariants, the reasons rather than a description of the code. Existing `/* ... */` block comments are examples.
+  See the Policy description in `route_policy.hpp`.
+- Interfaces: single-argument constructors and conversion operators must be `explicit`, except when intentionally providing value semantics.
+  Prefer immutability and compile-time checks through `static_assert`/concepts to runtime checks.
+- clang-tidy: `bugprone-*`, `performance-*`, `clang-analyzer-*`, and `--warnings-as-errors='*'`,
+  with 0 findings expected. Explain category-wide exclusions in `.clang-tidy` comments. Use inline `NOLINT` for individual false positives.
+- Static/global objects: only trivial destruction is allowed. Dynamic initialization requires a clear reason.
+
+### 6.2 Kotlin (`app/`)
+
+- Follow the official Kotlin Coding Conventions: 4 spaces, trailing commas, expression bodies, modifier order, and naming rules.
+  Additional project conventions:
+  - Restrict visibility with `internal`/`private` by default. Prefer `val` and immutable collections.
+  - Profile-related classes follow the `data class` and `entries()/apply()/from()` pattern.
+  - Constants and enums synchronized with native name the corresponding native symbol, as in `RouteKind` wire comments.
+  - Use KDoc comments to state intent briefly. Do not repeat the signature with `@param`/`@return`.
+- Isolate platform I/O in `data/`. Put domain logic in `domain/usecase`. Compose UI must not access processes or files directly.
+
+### 6.3 Rust (`tools/extract_rs`)
+
+- Use `cargo fmt` and `cargo clippy` as the default gates. Handle errors with `Result` and `?`. Do not use `unwrap` on fallible paths.
+- CLI `--format conf` outputs a self-contained HOCON profile. `--format json` outputs a v1 import report.
+  The default `text` format also outputs JSON. To get HOCON, you must explicitly pass `--format conf`.
+  Exit codes carry meaning. For example, preflight rejection is `6`. New CLI options require updates to the README and profile-adaptation documentation.
+
+### 6.4 Commits, branches, and review batches
+
+See §1.5. Each batch has an independently verifiable commit sequence. Commit messages include the changes and verification conclusions.
 
 ---
 
-## 8. 验证与证据规范
+## 7. Documentation standards, summary
 
-### 8.1 验证金字塔
+[`documentation-standards.md`](documentation-standards.md) is the sole authority for the full rules. Three engineering requirements apply:
 
-1. **主机单元测试**（`make -C src native-host-tests`，23 个）：固定向量、生命周期、几何边界、
-   双侧一致性；新增数据结构/route 必须补测试（登记进 `NATIVE_HOST_TESTS`）；无对应测试的功能变更
-   视为不完整。
-2. **Kotlin 单测**（`./gradlew :app:testDebugUnitTest`）与 **Rust 测试**（`cargo test --release`）。
-3. **形状对比**（攻击路径专用，§8.2）。
-4. **真机门禁**（§8.3）。
+- Every reader document throughout the repository must have an English `.md` version and a Chinese `_ZH.md` version. Update both in the same batch.
+- Changes to commands, fields, or workflows must update documentation in the same batch.
+- Plans and gate records must have complete template fields, including commit and date. Archive failures and passes on the same terms.
 
-### 8.2 攻击函数形状对比
+---
+
+## 8. Verification and evidence standards
+
+### 8.1 Verification pyramid
+
+1. **Host unit tests**, `make -C src native-host-tests`, 26 tests: fixed vectors, lifecycles, geometry boundaries,
+   and agreement between both sides. New data structures and routes require tests registered in `NATIVE_HOST_TESTS`.
+   A feature change without corresponding tests is incomplete.
+2. **Kotlin unit tests**, `./gradlew :app:testDebugUnitTest`, and **Rust tests**, `cargo test --release`.
+3. **Shape comparison**, for attack-path changes only; see §8.2.
+4. **Device gate**, §8.3.
+
+### 8.2 Attack-function shape comparison
 
 ```sh
 python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
 ```
 
-- 覆盖 8 个攻击函数（`TARGETS`）；判定：`IDENTICAL (strict)` 或**已复核并记录的注解差异**
-  （如允许的 `LAYOUT-SHIFT` 单地址注解）。新攻击函数必须加入 `TARGETS`。
-- 报告与结论写入提交信息/计划文档（历史范例：批次报告中逐函数列出 IDENTICAL）。
+- Covers 8 attack functions in `TARGETS`. The result must be `IDENTICAL (strict)` or annotation differences that have been reviewed and recorded,
+  such as an allowed `LAYOUT-SHIFT` single-address annotation. Add new attack functions to `TARGETS`.
+- Put reports and conclusions in the commit message or plan. Historical examples list IDENTICAL for each function in the batch report.
 
-### 8.3 真机门禁（攻击路径改动必须）
+### 8.3 Device gate, required for attack-path changes
 
-**前置**：冷机、固定 CPU 对、单 route、KernelSU 未加载的干净启动、设备状态记录（uptime）。
-**判定**：`route_done status=0 clean=1/1`、`child is root!`、`exploit complete`、handoff `KernelSU ready`、
-无 kernel panic；至少重复运行并记录次数。
-**归档**：按 `documentation-standards.md` 的模板写记录；日志对应设备 `Download/ghostlock-debug-log/<时间>/`。
+**Prerequisites**: cold device, fixed CPU pair, one route, a clean boot without KernelSU loaded, and a record of device state, including uptime.
 
-### 8.4 归因纪律
+**Pass criteria**: `route_done status=0 clean=1/1`, `child is root!`, `exploit complete`, handoff
+`KernelSU ready`, and no kernel panic. At minimum, repeat the run and record the run count.
 
-- `KERNEL-PANIC-01` 是已知环境/时序问题（同构建可出现 PASS/panic/PASS）。判定代码因果**必须**
-  同构建复现 + 冷机复跑 + 栈证据；单次 panic 不得归因代码。
-- 未验证路径不得宣称支持：Multicast（5.15）、TCP、Select 三条路径均已由开发者真机验证；
-  新 profile 未过真机不得标 `supported`。
-- 失败记录与通过记录**同等归档**（fail/panic 文档与 pass 文档并存，格式一致）。
+**Archive**: use the template in `documentation-standards.md`. Logs correspond to the device's
+`Download/ghostlock-debug-log/<时间>/` directory.
 
----
+### 8.4 Attribution discipline
 
-## 9. Agent 执行检查清单（先设计，后改动）
-
-**开始前**
-- [ ] 读 `AGENTS.md` + 本文 + 与任务直接相关的现行文档（`adding-a-component.md`、PROFILE_SCHEMA 等）
-- [ ] 用 git 历史检索是否已有同类设计与证据（`git log --all -- <path>`）
-- [ ] 判定变更级别（S/M/L）；L 级先写计划并获用户认可
-- [ ] 列出影响面：文件清单、数据流/控制流/数据结构是否变化、是否需要跨层同步
-- [ ] 确认不变量（profile 权威、全局状态清单、wire 兼容、保留清单）
-
-**实施中**
-- [ ] 最小改动；不碰设计外文件；不动 kernelsnitch/`LegacyProfileConverter.kt`/保留清单
-- [ ] 双侧同步：Native↔Kotlin 注册表与字段表逐字一致；文档同步（含 `_ZH`）
-- [ ] 新代码零告警；显式类型转换；RAII 所有权；不可变性优先
-
-**完成后**
-- [ ] 按级别跑满 §1.3 门槛命令，保留原始输出
-- [ ] 攻击路径：`cmp_disasm` + 真机门禁 + 门禁记录归档
-- [ ] 汇报时给出**证据**（命令、结果、文件路径），不写"应该没问题"
-- [ ] 未经明确要求：不 commit、不 push、不建 PR
-
-**禁止模式**（历史失败模式）
-- 厨房水槽式改动（多主题混杂、顺带重构）
-- 无设计直接改攻击路径；改了不跑形状对比
-- 无证据宣称验证通过；用单次结果推翻既有归因
-- 把历史文档当"过时垃圾"删除而不留索引；重复造已存在的抽象
+- `KERNEL-PANIC-01` is a known environment/timing issue. The same build can produce PASS/panic/PASS.
+  Attributing it to code requires reproduction with the same build, a cold-device rerun, and stack evidence. Do not attribute a single panic to code.
+- Do not claim support for unverified paths. The developer has verified all three paths on devices: Multicast on 5.15, TCP, and Select.
+  Do not mark a new profile `supported` before it passes device verification.
+- Archive failures on the same terms as passes. Keep fail/panic and pass documents together in the same format.
 
 ---
 
-## 附录 A：外部参考（2026-09 调研）
+## 9. Agent checklist, design before changes
 
-| 来源 | 采用内容 |
-|---|---|
-| [C++ Core Guidelines](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines) | P.1 直接表达意图、P.4 静态类型安全、P.5 编译期检查优先、P.8 不泄漏资源、P.10 不可变优先、P.11 封装混乱构造、RAII/expected 资源模型 |
-| [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html) | 为读者优化（调用点留下所有权痕迹）、与既有代码一致、自包含头文件、静态/全局对象的平凡析构约束、`explicit` 与 copy/move 明确、规则必须"值得" |
-| [Kotlin Coding Conventions](https://kotlinlang.org/docs/coding-conventions.html) | 命名/格式/类布局、不可变优先、named arguments、KDoc 写法、trailing comma |
-| [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/) | 命名与文档、可预测性、健壮错误处理、面向 CLI 的契约稳定 |
-| [Conventional Commits 1.0.0](https://www.conventionalcommits.org/) | 提交格式与类型集、breaking change 表达 |
-| [ADR](https://adr.github.io/)、[MADR 模板](https://adr.github.io/adr-templates/) | 决策记录要素：背景/决策/理由/备选/后果 |
-| [Diátaxis](https://diataxis.fr/) | 文档四象限（tutorial/how-to/reference/explanation）与不混写原则 |
-| [AGENTS.md 开放格式](https://agents.md/) | agent 指令文件定位、嵌套/就近优先、命令会被实际执行、作为 living documentation 维护 |
-| [Software Engineering at Google（Fergus Henderson, 2017，中文校订版）](https://github.com/laofo/SoftwareEngineeringAtGoogle) | 代码审查（至少一名非作者、小变更、开发中评审）、测试随变更强制、事后剖析字段（影响/时间线/根因/行动项）、受控重写 |
-| [Anthropic: Claude Code best practices](https://www.anthropic.com/engineering/claude-code-best-practices) | Explore→Plan→Implement→Commit、可执行验证闭环、证据优于断言、spec 先行、对抗式复核、避免上下文污染 |
+**Before starting**
 
-## 附录 B：本地出处（均在 git 历史中可检索）
+- [ ] Read `AGENTS.md`, this document, and current documentation directly related to the task, such as `adding-a-component.md` and PROFILE_SCHEMA
+- [ ] Search git history for similar designs and evidence with `git log --all -- <path>`
+- [ ] Classify the change as S/M/L; for L, write a plan and obtain user approval first
+- [ ] List affected files, changes to data flow, control flow, or data structures, and any required cross-layer synchronization
+- [ ] Confirm invariants: profile authority, the global-state list, wire compatibility, and the preservation list
 
-| 主题 | 出处 |
-|---|---|
-| 解耦设计流程与验收 | `DECOUPLING_PLAN.md` / `DECOUPLING_LOG.md`（commit `432a05f` 等） |
-| C++ 迁移批次与门禁 | `docs/analysis/native-cpp-migration-plan.md`、`docs/development/native-modernization-plan.md` |
-| 组件扩展清单 | `docs/development/adding-a-component.md`（现行） |
-| 全局状态口径 | `docs/analysis/native-global-state.md` |
-| 入口/CLI 契约 | `docs/analysis/native-entrypoint-plan.md` |
-| 环境变量收敛 | `docs/analysis/environment-convergence-plan.md` |
-| 门禁记录样例 | `docs/analysis/device-gates/**`（S04–S15、CPP00–CPP17、U01、NS*、PROFILE-*） |
-| 首攻实验史（负结果） | `repro/xperia-first-success/README.md`（V1–V21） |
-| 警告/clang-tidy 策略 | `docs/analysis/native-warning-audit.md`、`src/.clang-tidy` 注释 |
+**During implementation**
+
+- [ ] Make the smallest change; do not touch files outside the design, kernelsnitch, `LegacyProfileConverter.kt`, or the preservation list
+- [ ] Synchronize both sides: Native↔Kotlin registries and field tables match exactly; update documentation, including `_ZH`
+- [ ] Zero warnings in new code; explicit type conversions; RAII ownership; prefer immutability
+
+**After completion**
+
+- [ ] Run all commands required by §1.3 for the change level and keep raw output
+- [ ] Attack path: `cmp_disasm`, device gate, and archived gate record
+- [ ] Report evidence: commands, results, and file paths; do not write "should be fine"
+- [ ] Without an explicit request: do not commit, push, or create a PR
+
+**Prohibited patterns**, based on past failures
+
+- Changes that mix several topics or include incidental refactors
+- Changing the attack path without a design, or skipping shape comparison after a change
+- Claiming verification passed without evidence, or using a single result to overturn an established attribution
+- Deleting historical documents as "outdated junk" without an index; recreating abstractions that already exist
+
+---
+
+## Appendix: external references
+
+- [C++ Core Guidelines](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines): P.4 static type safety,
+  P.5 prefer compile-time checking, P.8 do not leak resources, P.10 prefer immutability, and P.11 encapsulate messy constructs.
+- [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html): leave ownership evidence at call sites,
+  self-contained headers, and trivial-destruction requirements for static/global objects.
+- [Kotlin Coding Conventions](https://kotlinlang.org/docs/coding-conventions.html).
+- [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/).
+- [Conventional Commits 1.0.0](https://www.conventionalcommits.org/).
+- [ADR](https://adr.github.io/), [MADR](https://adr.github.io/adr-templates/).
+- [Diátaxis](https://diataxis.fr/).
+- [AGENTS.md open format](https://agents.md/).
+- [Software Engineering at Google](https://github.com/laofo/SoftwareEngineeringAtGoogle).
+- [Anthropic: Claude Code best practices](https://www.anthropic.com/engineering/claude-code-best-practices).
+
+Local sources, all searchable in git history: `DECOUPLING_PLAN.md`/`DECOUPLING_LOG.md`, including commit `432a05f`;
+`docs/analysis/native-cpp-migration-plan.md`, `docs/development/native-modernization-plan.md`,
+`docs/analysis/native-global-state.md`, `docs/analysis/native-entrypoint-plan.md`,
+`docs/analysis/environment-convergence-plan.md`, `docs/analysis/device-gates/**`,
+`repro/xperia-first-success/README.md`, `docs/analysis/native-warning-audit.md`, and `src/.clang-tidy`.

@@ -76,6 +76,18 @@ static void runtime_config_init_paths(config::RuntimeConfig *config) {
     config->ksu_log_path = (ksu_log && ksu_log[0])
                                ? std::string(ksu_log)
                                : config->home_dir + "/.ghostlock_ksu.log";
+
+    /* The value is embedded in shell single quotes by write_root_script;
+     * escape ' so a quote in the path cannot break the script. */
+    const char *ksud = getenv("GHOSTLOCK_KSUD");
+    if (ksud && ksud[0]) {
+        std::string escaped;
+        for (const char *p = ksud; *p; p++) {
+            if (*p == '\'') escaped += "'\\''";
+            else escaped += *p;
+        }
+        config->ksud_path = std::move(escaped);
+    }
 }
 
 /* Capture all process environment and CPU/path choices exactly once. Input:
@@ -86,6 +98,7 @@ int32_t ghostlock::config::RuntimeConfig::init() {
     home_dir.clear();
     root_script_path.clear();
     ksu_log_path.clear();
+    ksud_path.clear();
     debug_dir.clear();
 
     runtime_config_init_cpus(this);

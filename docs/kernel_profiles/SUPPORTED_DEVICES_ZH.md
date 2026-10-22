@@ -24,12 +24,13 @@ W3 seccomp bypass，即使并非必需，也能节省时间。
 
 | Kernel                                                 | Devices                                                          |
 |--------------------------------------------------------|------------------------------------------------------------------|
-| `5.15.41-android13-8-g8dc4c75ab7d8-ab1673212412`       | MEIZU 20 Pro · Shizuku recommended                               |
+| `5.15.41-android13-8-g8dc4c75ab7d8-ab1673212412`       | MEIZU 20 Pro · 推荐Shizuku                                        |
 | `5.15.119-android13-8-g6ff5097ee32a-ab1764665171`      | MEIZU 21 Note                                                    |
 | `5.15.167-android13-8-00017-gb1f32b310a30-ab12826353`  | Red Magic 8 Pro                                                  |
 | `5.15.178-android13-8-00025-g7feb0b0b7cd8-ab14134651`  | Sharp AQUOS R8 SH-R80                                            |
 | `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`  | Sony Xperia 1 V                                                  |
 | `5.15.189-android13-8-00004-g1c3825f8ac0a-ab14110541`  | Sony Xperia 1 V                                                  |
+| `5.15.206-android13-8-00056-g3f87b8704e9e-ab15683575`  | ASUS Zenfone 10                                                  |
 | `6.1.25-android14-11-maybe-dirty`                      | MEIZU 21 / MEIZU 21 Pro                                          |
 | `6.1.115-android14-11-ga2521ca27699-ab13294383`        | POCO X6 Pro                                                      |
 | `6.1.118-android14-11-ga3b9c44908dd-ab13320413`        | Redmi Note 15 Pro+                                               |
@@ -49,11 +50,13 @@ W3 seccomp bypass，即使并非必需，也能节省时间。
 | `6.1.145-android14-11-g9b69cc399ae1-ab14819715`        | Motorola Edge 60 Fusion                                          |
 | `6.1.157-android14-11-ga8b0b542991e-ab15601211`        | Infinix GT 30 Pro (X6873)                                        |
 | `6.1.157-android14-11-gbd23337e42e7-ab14791245`        | Google Pixel 9a (Tensor G4), Google Pixel 7 (Tensor G2)          |
+| `6.1.157-android14-11-g82d681c9b06b-ab14634535`        | Nothing Phone (3a) Pro (A059P)                                   |
 | `6.1.162-android14-11-gce140c0e5bf5-ab15450923`        | Zenfone 11 Ultra                                                 |
 | `6.1.162-android14-11-g752d9c17787d-ab15574904`        | Google Pixel 9 Pro / 9 Pro Fold (Tensor G4)                      |
 | `6.1.162-android14-11-g5e8b0cffebd1-ab15202165`        | Google Pixel 9a (Tensor G4)                                      |
 | `6.6.30-android15-8-g54dcbfbef792-ab12368803-4k`       | Red Magic Tablet 3 Pro                                           |
 | `6.6.30-android15-8-g6b55ce738535-4k`                  | Redmi 13c                                                        |
+| `6.6.30-android15-8-g24ffe62b0a0e-abogki387229724-4k`  | vivo X200 Pro · 建议使用 Shizuku                                  |
 | `6.6.77-android15-8-g4a507830d890-ab13636293-4k`       | Xiaomi Civi 5 Pro, REDMI K90 / 4 Turbo, POCO F7                  |
 | `6.6.77-android15-8-g63ce7556864c-ab13994517-4k`       | Xiaomi 15                                                        |
 | `6.6.77-android15-8-gca30f3b4bef6-abogki440974771-4k`  | Xiaomi 15 Pro, REDMI K80 Pro / K80 Ultra                         |
@@ -91,4 +94,4 @@ W3 seccomp bypass，即使并非必需，也能节省时间。
 | `6.12.38-android16-5-g665eafb62659-ab14778838-4k`      | NX809J / NX888J                                                  |
 | `6.12.38-android16-5-g74ad46052215-ab14494108-4k`      | Lenovo Legion Y700 Wuji                                          |
 | `6.12.38-android16-5-g844001fb8721-ab14552068-4k`      | OnePlus 15T                                                      |
-| `6.12.38-android16-5-gb575a0b6e647-ab14355190-4k`      | TECNO POVA 7 4G (TECNO LJ6)                                      |
+| `6.12.38-android16-5-gb575a0b6e647-ab14355190-4k`      | TECNO POVA 7 4G（TECNO LJ6）                                     |

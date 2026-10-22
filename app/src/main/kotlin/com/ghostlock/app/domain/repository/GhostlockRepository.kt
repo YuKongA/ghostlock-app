@@ -1,5 +1,6 @@
 package com.ghostlock.app.domain.repository
 
+import com.ghostlock.app.data.ManagerScanner
 import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.DebugSettings
 import com.ghostlock.app.domain.model.KernelSnapshot
@@ -20,6 +21,14 @@ interface GhostlockRepository {
     fun setForceAttackTest(enabled: Boolean)
 
     fun setShizukuEnabled(enabled: Boolean)
+
+    /** User-chosen manager package, or null for auto-detect. */
+    fun selectedManagerPackage(): String?
+
+    fun setSelectedManagerPackage(pkg: String?)
+
+    /** All installed non-system apps, compatible-first ordering. */
+    suspend fun installedManagers(): List<ManagerScanner.Candidate>
 
     /**
      * Imports one or more picked documents (file name -> text). Includes are
