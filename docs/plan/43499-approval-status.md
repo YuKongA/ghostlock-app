@@ -13,6 +13,7 @@
 | 基线 | **所有逻辑在 Kotlin；C++ 只保留最薄 JNI syscall 接口** | 已批准 | 用户 2026-10-20；[43499-kt-step-plan.md](43499-kt-step-plan.md) 头部 |
 | 层级拆分 | 第 1 层＝逐 syscall JNI；第 2 层＝actor batch / victim child helper | **原则＝已批准；生产启用＝仅第 1 层**（第 2 层生产启用＝待批准） | [43499-kt-step-plan.md](43499-kt-step-plan.md) §0 |
 | PI 粒度 | 每个 futex 一次 JNI 可能破坏 PI 窗口时序 ⇒ 不能直接作生产方案 | 已批准（作为约束） | `docs/analysis/jni-six-targets-params-plan.md:58-65`；`pi-window-constraints.md` |
+| JNI v4 基线取代 | 批准时把“C++只最薄 syscall”精确替换为“Kotlin/Lua拥有全部业务编排；Native可持有物理资源并完成最小不可拆transaction” | **待批准** | K1 历史薄 syscall 层继续保留；D3 新生产机制允许变厚但不得拥有 route |
 
 ## 2. 批次状态
 
@@ -46,13 +47,26 @@
 | 通用 `routeId` 参数 + 单一 JNI | — | **不做** | [43499-ktstep-architecture-plan.md](43499-ktstep-architecture-plan.md) §1：每条 route 自己的 JNI 家族与 TU |
 | 三 route 合并成一个参数化 route | — | **不做** | 同上 |
 
+### 4.1 JNI v4 同批取代候选（未批准不生效）
+
+| 项 | 候选内容 | 状态 | 生效代价/偿还 |
+|---|---|---|---|
+| route 所在层 | 取代“每 route JNI/TU”：Native 只给三个命名 mechanism entry；Kotlin/Lua 组合 route | **待批准** | 静态隔离减少；typed request + 三路真机偿还 |
+| actor batch 生产 | 最小不可拆 PI actor transaction 在一次 Native call 内完成 | **待批准** | Native transaction 变厚；窗口调用图/真机门禁 |
+| typed handle | 值调用无状态；Page/Actor/Discovery/Victim 等物理资源用 handle | **待批准** | registry 状态；并发矩阵和残留检查 |
+| registry 例外 | 每 DSO 一个固定容量可写 registry，PI 窗口外访问 | **待批准** | 取代 ADR-0019 全局为空；BSS manifest/fork gate |
+| victim/Finish | protocol child 用 Native handle；普通 victim 仍 ProcessBuilder；UI脚本由 rooted child 中性触发 | **待批准** | 新 owner/清理链；pid/hash/marker/SELinux 真机门禁 |
+
+批准方式：用户对 JNI v4 候选一次知情确认后，§1 原“基线”行被上一候选句精确取代，“层级拆分”改为“第1层历史薄层继续保留；第2层最小transaction生产启用”；本表六个候选项同步改“已批准”，ADR/plan/UML 同批生效。此前旧裁定继续有效。
+
 ## 5. 本计划范围内明确不做
 
 | 项 | 状态 | 依据 |
 | --- | --- | --- |
 | UI / 配置 / profile 接线 | **不做**（本阶段） | kt-step 头部与 §9 |
 | 43284 / 64560 | **不做** | kt-step §9 |
-| Lua / CLI / 临时旁路 | **不做** | MASTER-PLAN §0.1；kt-step §9 |
+| CLI / 临时旁路 | **不做** | MASTER-PLAN §0.1；kt-step §9 |
+| Lua 自由跨 backend 编排 | **待批准（JNI v4）** | UI run 仍经 FlowLuaImpl；脚本内部可直调 scope-bound API |
 | 删除 legacy C++ 43499 | **不做**（隔离保留，`git show 92d55d3e:<path>` 恢复清单） | kt-step §7 CBN / §9 |
 | 把 fixture 当生产成功 | **不做**（禁止） | MASTER-PLAN §13；kt-step §16 |
 
@@ -61,6 +75,7 @@
 | 计划 | 角色 | 状态 |
 | --- | --- | --- |
 | [43499-kt-step-plan.md](43499-kt-step-plan.md) | **唯一生产计划** | 在办（K1/K2 已实现，K3–K5 待批准） |
+| [43499-43284-jni-rewrite-plan.md](43499-43284-jni-rewrite-plan.md) | JNI 重写（Kotlin-first） | **待批**（design-critic v1 不可进；v2 待复核）。批准后接管 kt-step 的生产计划地位；本表仍是批准状态唯一权威 |
 | [43499-route-port-plan.md](43499-route-port-plan.md) | multicast 生产 route | 在办（PI 例外已批；页面落点未证） |
 | [43499-three-routes-production-plan.md](43499-three-routes-production-plan.md) | 三 route 生产化 | 阻断（design-critic）；select 已 AVD pass、tcp 未通 |
 | [43499-production-victim-plan.md](43499-production-victim-plan.md) | victim 生命周期（Kotlin） | 已实现（host + AVD lifecycle） |

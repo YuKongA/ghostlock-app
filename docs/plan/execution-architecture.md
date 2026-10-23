@@ -1,5 +1,7 @@
 # 执行架构（execution · 唯一权威）
 
+> **2026-10-23 用户裁定**：编排权威改为 Flow（[ADR-0022](../analysis/adr/0022-flow-execution-authority.md)）。本文 §1 规则 1/2、§2、§3、§6 的 PipelineEngine/RunNode 章节标历史；§1 规则 3/4/5（close 互斥、能力视图、一次性）仍有效。
+
 - 日期：2026-10-21
 - 级别：L（跨 Kotlin/native 契约 + 生命周期 + 攻击关键路径）
 - **状态**：本文合并并取代三份在办设计——[backend-access-execution-design.md](backend-access-execution-design.md)（rev 7）、

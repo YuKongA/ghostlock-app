@@ -73,7 +73,7 @@ fd/pid/线程的所有权写进类型（`UniqueFd`/`VictimContext`/`PthreadOwner
 
 **原则**：同一件事只有一个权威；双权威不会立刻出错，会在最难查的地方出错。
 
-**项目实例化**：profile（GLK1/HOCON）是唯一配置权威，执行层只消费不可变 `TargetProfile` 快照；
+**项目实例化**：Kotlin 解析 profile（GLK1/HOCON 为 legacy 导入格式），执行层只消费传入的 POD 快照（2026-10-22 沿革：native 不持有 profile 表）；
 `ResolvedAddresses` 发布后只读；Native↔Kotlin 双侧注册表由测试对拍锁定；全局状态收敛为一个 session
 singleton + 一个启动期只读上界。
 

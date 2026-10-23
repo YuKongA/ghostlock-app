@@ -20,6 +20,7 @@
 | 43284 | 重置设计 v4 + 批次 B0–B6 完成；**B7-A 基线 7/7 Stage OK**；B8/B9 未做；旧计划两件已归档 |
 | 文档 | `introduction.md` 已按当前树重写（旧版归档）；ROADMAP/ADR 已更新；`MASTER-PLAN` 仍是唯一进度入口 |
 | 门禁债务 | **T4**：`exportJniProtocolManifest` 的生成器不存在 ⇒ `:app:testDebugUnitTest` 需 `-x`；未偿还前不得称全量绿 |
+| JNI 重写（待批） | 当前分支改走 Kotlin-first JNI：[43499-43284-jni-rewrite-plan.md](43499-43284-jni-rewrite-plan.md)；批准后本表 §3 的 Now/Next/Later 标 superseded |
 
 ## §2 阶段门与硬约束（不可越）
 

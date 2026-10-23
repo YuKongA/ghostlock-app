@@ -1,0 +1,6 @@
+/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/.cxx/Debug/12l21261/arm64-v8a/CMakeFiles/gl_general.dir
+/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/.cxx/Debug/12l21261/arm64-v8a/CMakeFiles/ghostlock43284.dir
+/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/.cxx/Debug/12l21261/arm64-v8a/CMakeFiles/ghostlock43499.dir
+/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/.cxx/Debug/12l21261/arm64-v8a/CMakeFiles/ghostlock_jni.dir
+/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/.cxx/Debug/12l21261/arm64-v8a/CMakeFiles/edit_cache.dir
+/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/.cxx/Debug/12l21261/arm64-v8a/CMakeFiles/rebuild_cache.dir

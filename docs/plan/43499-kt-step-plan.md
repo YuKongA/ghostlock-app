@@ -58,6 +58,7 @@ C++ libgl43499syscalls.so：
 ### 3.1 Kotlin actor 线程设计（A4）
 
 - 每次 attempt 由 Kotlin 创建/复用一个 waiter、一个 owner、一个 consumer 线程；线程入口只调用 `KernelSyscalls` 或 actor batch，不读 profile、不选 route。
+- **2026-10-22 沿革**：线程创建方由 [JNI 计划](43499-43284-jni-rewrite-plan.md) §4.3 第 2 层取代（生产启用待批，T-PI2）；批准前仍按本行 Kotlin 创建。
 - 线程 affinity 用 `sched_setaffinity`（Kotlin 调用；主/消费者 CPU 来自输入）；`sched_setattr` 只在 PI 外调用；PI 内零分配/零打印/零间接分派。
 - JNI attach：线程启动时 attach，退出时 detach；JNI 包装不分配、不缓存局部引用；actor batch 返回后不再访问 Kotlin 缓冲。
 - 共享状态用 Kotlin `AtomicInteger`/`AtomicReference` 或直接 `mmap` 的 ByteBuffer；PI 内的读写不用 Kotlin 集合/字符串/装箱。

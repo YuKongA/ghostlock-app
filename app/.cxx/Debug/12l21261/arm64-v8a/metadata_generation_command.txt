@@ -1,0 +1,18 @@
+                        -H/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp
+-DCMAKE_SYSTEM_NAME=Android
+-DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+-DCMAKE_SYSTEM_VERSION=31
+-DANDROID_PLATFORM=android-31
+-DANDROID_ABI=arm64-v8a
+-DCMAKE_ANDROID_ARCH_ABI=arm64-v8a
+-DANDROID_NDK=/Users/nickji/Library/Android/sdk/ndk/30.0.16248370
+-DCMAKE_ANDROID_NDK=/Users/nickji/Library/Android/sdk/ndk/30.0.16248370
+-DCMAKE_TOOLCHAIN_FILE=/Users/nickji/Library/Android/sdk/ndk/30.0.16248370/build/cmake/android.toolchain.cmake
+-DCMAKE_MAKE_PROGRAM=/Users/nickji/Library/Android/sdk/cmake/3.22.1/bin/ninja
+-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=/Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/intermediates/cxx/Debug/12l21261/obj/arm64-v8a
+-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=/Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/intermediates/cxx/Debug/12l21261/obj/arm64-v8a
+-DCMAKE_BUILD_TYPE=Debug
+-B/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/.cxx/Debug/12l21261/arm64-v8a
+-GNinja
+                        Build command args: []
+                        Version: 2

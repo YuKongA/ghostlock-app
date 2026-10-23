@@ -1,5 +1,8 @@
 # MASTER-PLAN：GhostLock 主计划（唯一进度入口）
 
+> **当前 `dev-nocpp` C 分支的剩余执行计划见 [REMAINING-PLAN.md](REMAINING-PLAN.md)。**
+> 本文件保留 C++/Kotlin 主计划的进度与历史，不覆盖当前 C 分支的独立收口。
+
 > **2026-10-19 43284 重置**：旧 43284 后端/JNI 具体实现已删除；重构设计与批次见 `docs/analysis/43284-refactor-design-v4.md`、`docs/plan/43284-reset-batch.md`。该文件取代 DFRP P1/P2/P3 旧会话实现；KPLAN 用户裁定不变（Kotlin plan/write，C++ 仅 syscall）。
 
 ## §0.1 2026-10-17 用户裁定：Lua / GLKv3 文档 / CLI / script 面删除（取代 §1 目标 1 与 3）
@@ -221,6 +224,7 @@ flowchart LR
 ## §13 43499 生产引擎接入（kt-step · 2026-10-20）
 
 - **生产计划（唯一）**：[43499-kt-step-plan.md](43499-kt-step-plan.md)（全部逻辑 Kotlin、C++ 仅薄 syscall；UI 未接线）。
+- **JNI 参数化子计划（实施中）**：[43499-43284-cpp-parameterization-plan.md](43499-43284-cpp-parameterization-plan.md)（P0a/P0b 完成；P1a…P5b-CAPI 完成；43499/43284 b/B=0；43284 important PASS；P6b 完成 JNI 会话/jlong/Kotlin bridge（Kotlin 编译阻塞）；P6c 设计阻断0；S1–S7 拆分完成；S8a–S8f 参数化完成；P6c-1 日志 sink 实现完成（b/B=0）；`leak-on-stuck` 临时接受并注释）。
 - legacy 记录：[43499-production-engine-plan.md](43499-production-engine-plan.md)（K1 降 legacy 适配器）、[43499-native-device-ops-plan.md](43499-native-device-ops-plan.md)（C++ N1b/N2/N3 降 legacy，不接入生产）。
 - **K1 legacy 记录**：`app/src/main/kotlin/com/ghostlock/app/engine/kernelmemory/` 28 个单测（0 fail/0 error）；它经 `JniBackend43499Port` 调用 C++ `Native43499`，不满足 kt-step 的“C++ 仅 syscall”，不再作为生产路径。
 - **native legacy 记录**：N1a 快照字段 + N1b C++ form 路径已实现（`nativeTestHost` 75/75、Android 零告警），但 N1b/N2/N3 逻辑路径降 legacy，不接入生产；旧 `libghostlock43499.so` 必须在 K0 从生产构建/APK 隔离。
@@ -242,3 +246,4 @@ flowchart LR
 - **下一步**：实现 route（multicast stamp/target 或等价页消费者）+ N4 child/N5 victim uid=0；未过真机门禁不得标 supported。
 - 技术债（T4）：`exportJniProtocolManifest` 的生成器 `build/host/jni_protocol_manifest` 已不存在，`testDebugUnitTest` 需 `-x` 才能跑；owner=build，偿还=恢复生成器或删除任务并改用静态 manifest 校验；未偿还前全量门禁不能称绿。
 - **结构与批准指针（2026-10-21 追加）**：执行层唯一权威 [execution-architecture.md](execution-architecture.md)；43499 批准状态单表 [43499-approval-status.md](43499-approval-status.md)。
+- **2026-10-22 JNI 重写（待批）**：当前 `dev-nocpp` 的 JNI 路线见 [43499-43284-jni-rewrite-plan.md](43499-43284-jni-rewrite-plan.md)；批准后 §12/§13 的 C++/kt-step 路线标 superseded，本文件只留历史。

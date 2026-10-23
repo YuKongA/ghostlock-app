@@ -1,5 +1,7 @@
 # 全流程 UML（**权威**）· 新架构（A0–A6）
 
+> 2026-10-23 JNI v4 候选：§11 经用户批准后取代本文件旧的 route/JNI handle/Flow/Finish 局部图；批准前旧图继续有效。此处只保留一份候选权威图，细节链接 JNI v4 plan。
+
 > **本文件是唯一权威 UML**（`docs/development/full-process-uml.md`）；旧的旧实现 UML 已归档为 [old-full-process-uml.md](old-full-process-uml.md)（**仅历史对照**，结构与本件不同）。
 > 依据：`rewrite-plan-v2`（A0–A6）· `lua-surface-design`（暴露面 7 条）· `lua-surface-annex-document/-target/-route-switch` · ADR-0008/0009/0010 · `A6-baseline-approval`。日期 2026-10-08。
 
@@ -400,7 +402,7 @@ sequenceDiagram
   N-->>N: 内核兜底（relay/enforce 恢复 + watchdog）
 ```
 
-## 4.5 JNI 边界与 Kotlin 步骤（2026-10-14 · typed JNI / D1）
+## 4.5 JNI 边界与 Kotlin 步骤（历史；批准后由 §11 取代）
 
 > Round 13 已取代 J1–J7 的 `invoke(op, frame)`：每个 backend 一个 JNI 库，边界只接收普通 JVM
 > 字段。D1 只完成参数定义、生成和读取器形状；真实 landing 装配属于 D2，Kotlin 高阶步骤适配属于 D3。
@@ -477,8 +479,6 @@ classDiagram
   Native43284 --> Session43284 : opaque handle
   Session43499 ..> Seams43499 : D2
   Session43284 ..> Seams43284 : D2
-```
-
 ```
 
 ### 4.5.2 状态机（会话相位 + 一步的结局）
@@ -602,7 +602,7 @@ classDiagram
 - **沿革（2026-10-14 · typed JNI / D1）**：4.5 改为每 backend 一个 JNI 库与具名函数；`attack_contract_fields.def` 单表投影 C++ 读取器、Kotlin DTO、TSV manifest，宿主逐字段哨兵与字段交换负例锁定顺序。D1 不宣称真实 landing 已接线。
 - **历史**：旧实现 UML = [old-full-process-uml.md](old-full-process-uml.md)（归档头含理由与恢复来源；登记见 `docs/archive/INDEX-plans.md` §七）。
 
-## 7. Access capability wrapper（2026-10-19）
+## 7. Access capability wrapper（历史；批准后由 §11 与 ADR-0022 决策4取代）
 
 ```mermaid
 sequenceDiagram
@@ -671,3 +671,152 @@ sequenceDiagram
 >
 > 一处结构只留一处权威图 ⇒ 本文件不再复制这两张图，只保留指针。
 
+## 10. 43499 C 核心会话骨架（历史；批准后由 §11 取代）
+
+> 从属 [43499-43284-cpp-parameterization-plan.md](../plan/43499-43284-cpp-parameterization-plan.md) P1；P1a 只新增类型/句柄，旧全局仍在。证据 [p1a-session-skeleton.md](../analysis/p1a-session-skeleton.md)。非生产接线。
+
+```mermaid
+classDiagram
+    class GlkSession {
+      +GlkBackend backend
+      +union u
+    }
+    class Glk43499Session {
+      +Glk43499Target target
+      +Glk43499Config config
+      +Glk43499Env env
+      +Glk43499Runtime rt
+      +Glk43499Result result
+      +GlkLogSink log
+      +atomic_bool stopping
+    }
+    class Glk43499Target {
+      +uintptr_t self
+      +kernel_offsets offsets
+      +char release[192]
+      +Glk43499Layout layout
+    }
+    class Glk43499Config
+    class Glk43499Runtime
+    class Glk43499Result
+    class GlkWriteRequest {
+      +uintptr_t target
+      +uintptr_t value
+      +uint32_t mode
+      +uint32_t preserve_child
+      +const char* label
+    }
+    GlkSession --> Glk43499Session : u.p43499 (borrowed)
+    Glk43499Session --> Glk43499Target
+    Glk43499Session --> Glk43499Config
+    Glk43499Session --> Glk43499Runtime
+    Glk43499Session --> Glk43499Result
+```
+
+```text
+GlkSession* (caller-owned; no process-wide handle)
+caller owns Glk43499Session; destroy never frees it
+```
+
+## 11. JNI v4 分层与生命周期（2026-10-23 候选）
+
+> 生效条件与取代范围见 [JNI v4 §2](../plan/43499-43284-jni-rewrite-plan.md)。本节是该结构唯一候选图。
+
+### 11.1 IPO / dependency
+
+```mermaid
+flowchart LR
+  Lua[FlowLuaImpl + RunScope] --> K[Kotlin route/address/payload]
+  UI[UI/default Flow] --> K
+  K --> C[common JNI discovery]
+  C -->|copied DTO| K
+  K --> B4[43499 mechanism JNI]
+  K --> B2[43284 JNI]
+  G[general STATIC] --> C
+  G --> B4
+  G --> B2
+  K --> F[FinishExecution/script]
+```
+
+禁止边：common↔backend、backend↔backend。route 仅在 Kotlin/Lua。
+
+### 11.2 Handle / actor state
+
+```mermaid
+stateDiagram-v2
+  [*] --> Open
+  Open --> Closing: close linearizes
+  Closing --> Closed: inFlight=0 and borrow=0
+  Open --> Quarantined: DIRTY/LEAKED_ON_STUCK
+  Quarantined --> [*]: process exit only
+
+  state Actor {
+    [*] --> Prepared
+    Prepared --> Executing
+    Prepared --> CancelledClean
+    Executing --> CompletedClean
+    Executing --> CompletedDirty
+  }
+  state Victim {
+    [*] --> ProtocolChild
+    ProtocolChild --> Closed: cancel/destroy
+    ProtocolChild --> RootedTransferred: handoff; old stale
+    RootedTransferred --> Closed: wait or kill+wait
+  }
+```
+
+Actor prepare 对 Page 建 persistent borrow；仅 clean 在 stop/join 后解除。dirty 将 Actor、Page、关联 fd 的完整依赖闭包一并 quarantine，禁 Cleaner 回收。
+
+### 11.3 Class
+
+```mermaid
+classDiagram
+  class RunResourceScope
+  class NativeCommonJni
+  class Native43499Jni
+  class Native43284Jni
+  class DiscoveryHandle
+  class PageHandle
+  class ActorHandle
+  class VictimHandle
+  class RootedVictimHandle
+  class AccessView
+  RunResourceScope *-- DiscoveryHandle
+  RunResourceScope *-- PageHandle
+  RunResourceScope *-- ActorHandle
+  RunResourceScope *-- VictimHandle
+  RunResourceScope *-- RootedVictimHandle
+  AccessView --> PageHandle : borrowed
+  NativeCommonJni --> DiscoveryHandle
+  Native43499Jni --> PageHandle
+  Native43499Jni --> ActorHandle
+  AccessView ..> RunResourceScope : borrowed only
+  VictimHandle --> RootedVictimHandle : transfer; old stale
+```
+
+### 11.4 Sequence
+
+```mermaid
+sequenceDiagram
+  participant K as Kotlin/Lua
+  participant C as common JNI
+  participant B as 43499 JNI
+  participant F as Finish
+  K->>C: scan(params)
+  C-->>K: copied candidates DTO
+  K->>B: allocatePage/installPayload(final bytes)
+  K->>B: prepareActor(address, page)
+  K->>B: executeXActor(mechanism params)
+  B-->>K: effect/errno/counters
+  K->>F: prepare script + hash + patch
+  K->>B: create protocol VictimHandle
+  K->>B: handoff -> RootedVictimHandle; old stale
+  K->>B: executeFinishScript(rootedVictim,path,hash)
+  K->>F: await marker/log/SELinux
+  alt failure/cancel before transfer
+    K->>B: close writer, grace, kill pgid, waitpid, close pipes
+  else failure/cancel after transfer
+    K->>B: rooted wait/kill, close
+  end
+  K->>F: finish cleanup
+```

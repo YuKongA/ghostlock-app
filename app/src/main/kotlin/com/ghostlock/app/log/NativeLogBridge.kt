@@ -44,9 +44,12 @@ object NativeLogBridge {
                     else -> attachFd43284(fd, debug)
                 }
             }
-            /* 三条 JNI 入口返回的是**上一次**注册的 fd（首次必为 -1），所以状态行报「接上没有」，
-             * 不报那个数（-1 会被读成失败）。 */
-            outcomes += library + outcome.fold({ "=ok" }, { problem -> "=" + problem.javaClass.simpleName })
+            /* 43499 已接 general/gl_log：返回 owned dup fd；
+             * ghostlock_jni/43284 仍是 P6c 中间态，返回 -1 时明确写 no-op。 */
+            outcomes += library + outcome.fold(
+                { result -> if (result == -1) "=no-op" else "=fd:" + result },
+                { problem -> "=" + problem.javaClass.simpleName },
+            )
         }
         return "native: attach fd=" + fd + " " + outcomes.joinToString(" ")
     }

@@ -1,0 +1,58 @@
+{
+  "buildFiles": [
+    "/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/Users/nickji/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/.cxx/Debug/12l21261/arm64-v8a",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/Users/nickji/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/.cxx/Debug/12l21261/arm64-v8a",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "ghostlock43284::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "ghostlock43284",
+      "output": "/Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/intermediates/cxx/Debug/12l21261/obj/arm64-v8a/libghostlock43284.so",
+      "runtimeFiles": []
+    },
+    "ghostlock43499::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "ghostlock43499",
+      "output": "/Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/intermediates/cxx/Debug/12l21261/obj/arm64-v8a/libghostlock43499.so",
+      "runtimeFiles": []
+    },
+    "ghostlock_jni::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "ghostlock_jni",
+      "output": "/Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/intermediates/cxx/Debug/12l21261/obj/arm64-v8a/libghostlock_jni.so",
+      "runtimeFiles": []
+    },
+    "gl_general::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "gl_general",
+      "output": "/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/.cxx/Debug/12l21261/arm64-v8a/libgl_general.a"
+    }
+  },
+  "toolchains": {
+    "toolchain": {
+      "cCompilerExecutable": "/Users/nickji/Library/Android/sdk/ndk/30.0.16248370/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang.lld",
+      "cppCompilerExecutable": "/Users/nickji/Library/Android/sdk/ndk/30.0.16248370/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang++.lld"
+    }
+  },
+  "cFileExtensions": [
+    "c"
+  ],
+  "cppFileExtensions": []
+}

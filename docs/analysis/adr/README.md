@@ -22,7 +22,11 @@
 | [0015](../../archive/20261017-1835-adr-0015-profile-through-lua.md) | profile 解析结果一律经 Lua 中转 | native 不直接把 profile 转到执行层 | **已废除（2026-10-17）** |
 | [0016](../../archive/20261017-1835-adr-0016-script-argument-crossing.md) | 脚本参数如何过界（Str 一类的归约） | Str 归约为固定表内一项，查不到即具名拒绝 | **已废除（2026-10-17）** |
 | [0017](../../archive/20261017-1835-adr-0017-jcs-canonical-form.md) | GLKv3 规范化与摘要（JCS/RFC 8785 · sha256 · base64 载荷） | 记契约声明 + **实现只校验 digest 形式**的技术债 | **已废除（2026-10-17）** |
-| [0018](0018-execution-authority.md) | 执行权威唯一化与两条 close 路径互斥 | `PipelineEngine` 是唯一执行权威；KtStep/Stage 只是 node 形态；`AccessSession` 与 execution 的 close 互斥 | Accepted（2026-10-21） |
+| [0018](0018-execution-authority.md) | 执行权威唯一化与两条 close 路径互斥 | 决策 1/2 被 0022 取代；决策 3/4/5（close 互斥、能力视图、一次性）保留 | Superseded（决策 1/2，2026-10-23） |
+| [0019](0019-c11-core-exception.md) | 43499/43284 纯 C 核心与 C JNI 边界 | P1–P5 纯 C；C11 例外因 AGENTS §4 删除 C++23 条文而撤回，改为记录纯 C 选择 | Accepted（用户 2026-10-21） |
+| [0020](0020-gl-log-exception.md) | 日志子系统可写全局例外（general/gl_log） | 允许 4 个日志 DSO 状态符号；新增第 5 个即 FAIL；长期改 session API | Proposed（待用户确认） |
+| [0021](0021-jni-abi-and-ownership.md) | JNI ABI 与句柄所有权（Kotlin-first） | wire/错误码/状态机/两层线程/PI 窗口/隔离；句柄归 Kotlin，native 无全局表 | Proposed（随 JNI 计划批准） |
+| [0022](0022-flow-execution-authority.md) | Flow 为唯一执行权威 | `Flow.run` + `SequentialFlow` 的顺序/重试/超时/cleanup；PipelineEngine 归档 | Accepted（用户 2026-10-23） |
 
 ## 相关但与本文档无关的索引
 

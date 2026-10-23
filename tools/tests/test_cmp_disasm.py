@@ -136,5 +136,19 @@ class RelocationResolveTests(unittest.TestCase):
         self.assertEqual(hard, [])
 
 
+class CallSubsequenceTests(unittest.TestCase):
+    def test_identical_calls_match(self):
+        self.assertTrue(cd.is_subsequence(["a", "b"], ["a", "b"]))
+
+    def test_extra_call_is_allowed(self):
+        self.assertTrue(cd.is_subsequence(["a", "b"], ["a", "helper", "b"]))
+
+    def test_missing_call_is_rejected(self):
+        self.assertFalse(cd.is_subsequence(["a", "b"], ["a"]))
+
+    def test_reordered_call_is_rejected(self):
+        self.assertFalse(cd.is_subsequence(["a", "b"], ["b", "a"]))
+
+
 if __name__ == "__main__":
     unittest.main()

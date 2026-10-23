@@ -1,7 +1,6 @@
 # AGENTS.md — 流程 · 纪律 · 判据
 
-> **R9 三层拆分（2026-10-10）**：本文件只留**流程、纪律与判据**。事实（结构/命令/契约面/backend 面/不变量）见 `docs/development/introduction.md`；排期见 `docs/plan/ROADMAP.md`；进度见 `docs/plan/MASTER-PLAN.md`；决策见 `docs/analysis/adr/`。
-> **插件与 payload 工程按用户指令字面暂停**（文档出现即拒）；恢复＝撤销注释 + 跑门禁，file:line 清单见 `docs/archive/20261007-2237-branch-plan.md`。
+> 项目正重构中，以用户要求为准
 
 ## 1. 最高思想与质疑义务（2026-10-07 用户裁定 · 强制）
 
@@ -36,7 +35,7 @@
 
 ## 4. 代码约定（规则；枚举见 introduction.md）
 
-- C++23、**RTTI 启用**（2026-10-12 用户裁定取消 `-fno-rtti`；`dynamic_cast` 限于接口边界）、静态 libc++；`-Wall -Wextra -Wconversion -Wsign-conversion`，**新码零告警**；include 相对 `core/src`。
+- <del>C++23、**RTTI 启用**（2026-10-12 用户裁定取消 `-fno-rtti`；`dynamic_cast` 限于接口边界）、静态 libc++；`-Wall -Wextra -Wconversion -Wsign-conversion`，**新码零告警**；include 相对 `core/src`。<del>
 - **禁用 `using`**（别名 · using 声明 · 其它 `using namespace`）；唯一例外 `using namespace ghostlock;`。
 - **全局状态**只允许 `g_exploit_session` 与启动期只读 `g_direct_map_end`；不得新增可变全局/引用别名。
 - **R1 include 防火墙**（`include_firewall_test`）：**白名单必须为空**；越层 include 与 stale 条目皆 FAIL；豁免须登记 owner 批次。
@@ -101,3 +100,10 @@
 
 - 三层架构（结构/CLI/资产/组件模型/owner 白名单/根级标量/vr_guard/命名空间）⇒ `introduction.md` §一 §三；决策 `adr/0001`·`0003`·`0004`·`0006`。
 - 常用命令 · `cmp_disasm` ⇒ `introduction.md` §二；代码约定之枚举 ⇒ §一 §八；排期 ⇒ `docs/plan/ROADMAP.md`。
+
+## 12. 通用日志
+
+- 级别 V/D/I/W/E，默认 I；V 行级、D 分支、I 里程碑、W 可降级、E 无回退。
+- 来源：Kotlin `<>`、native `[]`、shell `()`；fd 行 `[级/毫秒] body`，logcat `file:line body`。
+- 一行一次 write、ASCII、禁密钥/令牌；PI 窗口禁日志；失败不影响攻击。
+- 细则见 `docs/analysis/log-levels-and-sites.md`。

@@ -1,0 +1,97 @@
+#include "memory/heap_context.h"
+
+#include <cstring>
+#include <unistd.h>
+
+#include <utility>
+
+namespace ghostlock::memory {
+    namespace {
+        /* Return the page to the empty state without touching any fd. Ownership
+ * release is always explicit (destroy()), never scope-exit. */
+        void clear_page(PayloadPage &page) noexcept {
+            page.base = 0;
+            page.last_mm_struct = 0;
+            page.fake_lock = 0;
+            page.fake_w0 = 0;
+            page.fake_task = 0;
+            page.fake_parent = 0;
+            page.fake_right = 0;
+            page.fake_left = 0;
+            page.fake_fops = 0;
+            page.reclaim.fd[0] = -1;
+            page.reclaim.fd[1] = -1;
+            page.state = PayloadPageState::Empty;
+        }
+    } // namespace
+
+    PayloadPage::PayloadPage() noexcept { clear_page(*this); }
+
+    PayloadPage::PayloadPage(PayloadPage &&other) noexcept : PayloadPage() {
+        (void) other.move_to(*this, other.state);
+    }
+
+    bool PayloadPage::has_reclaim() const noexcept {
+        return reclaim.fd[0] >= 0 && reclaim.fd[1] >= 0;
+    }
+
+    void PayloadPage::destroy() noexcept {
+        for (const int32_t fd : reclaim.fd) {
+            if (fd >= 0) close(fd);
+        }
+        clear_page(*this);
+    }
+
+    bool PayloadPage::move_to(PayloadPage &destination,
+                              PayloadPageState destination_state) noexcept {
+        if (&destination == this || destination.state != PayloadPageState::Empty ||
+            !has_reclaim()) {
+            return false;
+        }
+        destination.base = base;
+        destination.last_mm_struct = last_mm_struct;
+        destination.fake_lock = fake_lock;
+        destination.fake_w0 = fake_w0;
+        destination.fake_task = fake_task;
+        destination.fake_parent = fake_parent;
+        destination.fake_right = fake_right;
+        destination.fake_left = fake_left;
+        destination.fake_fops = fake_fops;
+        destination.reclaim.fd[0] = reclaim.fd[0];
+        destination.reclaim.fd[1] = reclaim.fd[1];
+        destination.state = destination_state;
+        clear_page(*this);
+        return true;
+    }
+
+    void close_ctx_memfds(MmContextSet *ctx) {
+        for (size_t i = 0; i < ctx->memfds.size(); i++) {
+            if (ctx->memfds[i] > 0) {
+                close(ctx->memfds[i]);
+                ctx->memfds[i] = -1;
+            }
+        }
+    }
+
+    void free_ctx_storage(MmContextSet *ctx) {
+        std::vector<pid_t>().swap(ctx->childs);
+        std::vector<int32_t>().swap(ctx->memfds);
+    }
+
+    void HeapContext::init() {
+        snitch = nullptr;
+        mm_objs_per_slab = 0;
+        skb_buffer.reset();
+        prepare = MmContextSet{};
+        spray = MmContextSet{};
+        pre = MmContextSet{};
+        post = MmContextSet{};
+        /* Drop any stale pid without signaling it, then start empty. */
+        (void) leak_child.release_to_handoff();
+        leak_child = support::ChildProcess();
+        leak_memfd.reset();
+        current.destroy();
+        prebuilt.destroy();
+        quarantine.destroy();
+    }
+} // namespace ghostlock::memory

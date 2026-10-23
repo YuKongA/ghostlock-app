@@ -6,6 +6,11 @@
 > 用语按 RFC 2119：**必须**（MUST）/ **应当**（SHOULD）/ **可以**（MAY）。
 > 效力顺序：用户当期要求 > `AGENTS.md` > 本文 > 其他文档。本文与代码不一致时，以代码为准并**顺带修正本文**。
 
+> **2026-10-22 状态：部分 superseded。** §2.1/§2.2/§3.1 中「ProcessBuilder + stdin GLK1」「`core/src/` C++23 可执行 ELF」
+> 「profile = GLK1 唯一配置权威」描述的是 2026-10-17 前架构。当前生产面 = **Kotlin 编排 + JNI 库**，native 只收 POD/fd；
+> 事实见 [introduction.md](introduction.md)，结构见 [execution-architecture.md](../plan/execution-architecture.md)，
+> 当前 JNI 计划见 [43499-43284-jni-rewrite-plan.md](../plan/43499-43284-jni-rewrite-plan.md)。旧条文保留作历史，不再作判据。
+
 本文由仓库历史文档（`docs/analysis/**`、`DECOUPLING_PLAN.md`、`native-cpp-migration-plan.md`
 等，已归档在 git 历史）与外部权威规范（见附录 A）合成，描述的是**这个项目实际执行过并被验证有效**的做法，
 不是通用说教。
@@ -103,13 +108,14 @@ L 级改动**必须**先给出设计并获得用户认可，再写代码。历�
 
 ```
 app/ (Kotlin, UI/domain/data/shizuku)
-  │  ProcessBuilder（不是 JNI）：stdin 写 GLK1、stdout/stderr 收日志、退出码表达结果
+  │  JNI（当前生产边界）：POD 参数 + fd/ByteBuffer；无 wire 文档
   ▼
-core/src/ (C++23 可执行 ELF)          tools/extract_rs/ (Rust 离线提取器)
+app/src/main/cpp/ (C11 薄原语；无 CLI/无全局)   tools/extract_rs/ (Rust 离线提取器)
+  · 历史（2026-10-17 前）：ProcessBuilder 启动 core/src C++23 ELF，stdin 写 GLK1
 ```
 
-- 层间契约**只能是**进程、文件、stdin/stdout、退出码、以及 GLK1/HOCON profile 文本；新增跨层状态
-  必须经 profile 或文件，不得发明新环境变量（§3.1）。
+- 当前跨层契约 = **JNI POD + fd/文件 + 进程（child/handoff）**；GLK1/HOCON 仅 legacy 导入与只读参考，
+  不是生产 wire。新增跨层状态必须走参数或显式文件，不得发明新环境变量（§3.1）。
 - Kotlin 分层：`ui → domain → data`；平台 I/O 只允许在 `data/`；`shizuku/` 是执行入口的变体，
   不承载业务规则。
 - Native 命名空间分层：`ghostlock::{route,session,memory,attack,race,support,profile}`（**重写目标见
@@ -163,8 +169,8 @@ core/src/ (C++23 可执行 ELF)          tools/extract_rs/ (Rust 离线提取器
 assets HOCON（index.conf + <uname-r>.conf + execution-*.conf + 公共节）
    → Kotlin 解析/合并（include 展开、route 显式选择）
    → 用户覆盖层（按 release 稀疏保存，优先级高于内置与导入）
-   → GLK1 二进制（stdin 传给 native；exportProfiles 生成 .bin）
-   → native TargetProfile 只读快照（此后执行层只认它）
+   → （历史）GLK1 二进制 stdin 传给 native；当前 Kotlin 直接构造 POD 参数
+   → native 只读 POD 快照（不持有 profile 表/默认值）
 ```
 
 - **profile 是唯一配置权威**。执行层只允许读进程/路径类环境变量（`GHOSTLOCK_HOME`、`TMPDIR`、

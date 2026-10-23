@@ -1,5 +1,7 @@
 # ADR-0018：执行权威唯一化与两条 close 路径互斥
 
+> **2026-10-23 状态变更**：决策 1/2（`PipelineEngine` 唯一、KtStep/Stage 只是 node）被 [ADR-0022](0022-flow-execution-authority.md) 取代；决策 3/4/5（close 互斥、能力视图、一次性）继续有效。
+
 - 日期：2026-10-21
 - 状态：**Accepted**（三份来源设计已由 design-critic 通过：rev 7 / rev 6 / rev final，均无阻断项；本 ADR 是合并后的决策记录）
 - 取代：无（合并 [backend-access-execution-design](../../plan/backend-access-execution-design.md)、

@@ -1,8 +1,47 @@
 #!/usr/bin/env python3
-"""Compare the disassembly of attack-critical functions between two native binaries.
+"""Compare attack-critical disassembly and trace important call/syscall arguments.
+
+功能总览
+========
+1. 函数级对比（保留原有行为）
+   - strict / layout / operands 三档；--reviewed 归一化可解释的 ELF 重定位；
+   - --partial 跳过一个二进制中不存在的目标；
+   - --count-delta N 允许受控的指令数变化，但要求 baseline 的 bl 顺序仍是
+     candidate 的子序列。
+2. 重要调用 / syscall 筛选（--important / --important-only）
+   - 默认筛选 futex/socket/mmap/ioctl/open/read/write/clone/execve/
+     waitpid/pthread_*/syscall 等攻击相关符号；
+   - svc #0 始终记录；blr 由 --trace-indirect 开启；
+   - 记录每个函数的重要指令数量、顺序、偏移、kind、target、参数寄存器。
+3. 参数链追踪与验证
+   - 从重要指令前一条反向扫描，追踪每个参数寄存器到根：
+     arg / fixed / frame / frame-load / load / computed / call-return /
+     syscall-return / system-register / unknown；
+   - 记录传入前每一次写该寄存器的指令（offset + text）；
+   - baseline vs candidate 比较数量、顺序、根类型、根值和完整修改链；
+   - 归一化 adrp 地址链、栈帧偏移、参数个数，避免布局变化造成假差异。
+4. 输出
+   - 人类可读 IMPORTANT-SUMMARY / COUNT / ORDER / TRACE / RESULT；
+   - --important-json 输出双份结构化分析；--important-verbose 打印参数树。
 
 Usage:
-    python3 tools/cmp_disasm.py <baseline-binary> <candidate-binary>
+    python3 tools/cmp_disasm.py [--reviewed] [--partial] <baseline-binary> <candidate-binary>
+
+--partial skips a target when it is absent from BOTH binaries (used when one
+binary contains only one backend). A target present in one binary but not the
+other is still a failure.
+
+--count-delta N accepts an instruction-count change up to N only when every
+baseline `bl` target still appears in the candidate in the same order; a
+removed or reordered call still fails. It is an interface-change diagnostic,
+not a replacement for strict/reviewed equivalence.
+
+--important runs the important-call/syscall extractor after the existing
+comparison (or alone with --important-only). It records call/syscall count,
+order, and each argument chain from its root to the call. --important-verbose prints the trees; --important-json writes both analyses
+as JSON; --important-symbols FILE adds call names; --trace-depth N limits
+recursion; --trace-indirect also follows blr; --important-ignore-new and
+--important-ignore-removed treat one-sided functions as informational.
 
 The objdump binary is resolved from $LLVM_OBJDUMP, then PATH, then the
 Android NDK under $ANDROID_NDK_HOME / $ANDROID_NDK_ROOT / ~/Library/Android/sdk.
@@ -76,18 +115,26 @@ import struct
 import subprocess
 import sys
 
+_TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _TOOLS_DIR not in sys.path:
+    sys.path.insert(0, _TOOLS_DIR)
+import important_trace as itrace
+
 TARGETS = [
     ("owner_thread", [
         "ghostlock::race::owner_thread(void*)",
         "owner_thread(void*)",
+        "owner_thread",
     ]),
     ("waiter_thread", [
         "ghostlock::race::waiter_thread(void*)",
         "waiter_thread(void*)",
+        "waiter_thread",
     ]),
     ("consumer_thread", [
         "ghostlock::race::consumer_thread(void*)",
         "consumer_thread(void*)",
+        "consumer_thread",
     ]),
     ("run_main_route_threads", [
         "ghostlock::race::run_main_route_threads(ghostlock::memory::WriteRequest const&)",
@@ -96,6 +143,7 @@ TARGETS = [
         "run_main_route_threads(ghostlock::memory::WriteRequest const&)",
         "run_main_route_threads(ghostlock::memory::WriteRequest const*)",
         "run_main_route_threads(ghostlock::WriteRequest const*)",
+        "run_main_route_threads",
     ]),
     ("do_kernel5_fake_lock_route", [
         "ghostlock::backend::cve_2026_43499::route::do_kernel5_fake_lock_route(ghostlock::memory::WriteRequest const*)",
@@ -104,6 +152,7 @@ TARGETS = [
         "ghostlock::route::do_kernel5_fake_lock_route(ghostlock::WriteRequest const*)",
         "do_kernel5_fake_lock_route(ghostlock::memory::WriteRequest const*)",
         "do_kernel5_fake_lock_route(ghostlock::WriteRequest const*)",
+        "do_kernel5_fake_lock_route",
     ]),
     ("do_one_write", [
         "bool ghostlock::backend::Cve43499Primitives::attack_write<ghostlock::backend::cve_2026_43499::route::MulticastPolicy>(ghostlock::session::CoreSession&, ghostlock::memory::WriteRequest const&, char const*)",
@@ -139,6 +188,73 @@ TARGETS = [
         "ghostlock::ops::do_one_write(ghostlock::WriteRequest const*, char const*)",
         "do_one_write(ghostlock::memory::WriteRequest const*, char const*)",
         "do_one_write(ghostlock::WriteRequest const*, char const*)",
+        "do_one_write",
+    ]),
+    ("do_tcp_fake_lock_route", [
+        "do_tcp_fake_lock_route",
+    ]),
+    ("do_pselect_fake_lock_route", [
+        "do_pselect_fake_lock_route",
+    ]),
+    ("kernel5_resident_start", [
+        "kernel5_resident_start",
+    ]),
+    ("kernel5_resident_write", [
+        "kernel5_resident_write",
+    ]),
+    ("kernel5_resident_stop", [
+        "kernel5_resident_stop",
+    ]),
+    ("prepare_skb_payload", [
+        "prepare_skb_payload",
+    ]),
+    ("prepare_kernel_page", [
+        "prepare_kernel_page",
+    ]),
+    ("prepare_good_kernel_page", [
+        "prepare_good_kernel_page",
+    ]),
+    ("run_exploit", [
+        "run_exploit",
+    ]),
+    ("spawn_crash_dump", [
+        "spawn_crash_dump",
+    ]),
+    ("read_vendor_content", [
+        "read_vendor_content",
+    ]),
+    ("do_one_write_cbc", [
+        "do_one_write_cbc",
+    ]),
+    ("patch_file_cbc", [
+        "patch_file_cbc",
+    ]),
+    ("patch_helper", [
+        "patch_helper",
+    ]),
+    ("patch_ko", [
+        "patch_ko",
+    ]),
+    ("patch_hook", [
+        "patch_hook",
+    ]),
+    ("find_hook_target", [
+        "find_hook_target",
+    ]),
+    ("createOrphanProcess", [
+        "createOrphanProcess",
+    ]),
+    ("exploit", [
+        "exploit",
+    ]),
+    ("setup", [
+        "setup",
+    ]),
+    ("cleanup", [
+        "cleanup",
+    ]),
+    ("compute_iv", [
+        "compute_iv",
     ]),
 ]
 
@@ -165,6 +281,17 @@ def find_objdump():
 
 OBJDUMP = None
 GLOBAL_SHIFT = None
+PARTIAL = False
+COUNT_DELTA = None
+IMPORTANT = False
+IMPORTANT_ONLY = False
+IMPORTANT_VERBOSE = False
+IMPORTANT_IGNORE_NEW = False
+IMPORTANT_IGNORE_REMOVED = False
+IMPORTANT_JSON = None
+IMPORTANT_SYMBOLS = set(itrace.DEFAULT_SYMBOLS)
+IMPORTANT_DEPTH = 64
+TRACE_INDIRECT = False
 
 
 def disassemble(path):
@@ -543,32 +670,96 @@ def operands_shift_equal(base, cur):
     return not re.search(r"\bsp\b", base) and not re.search(r"\bsp\b", cur)
 
 
+def call_targets(lines):
+    """Return the symbol targets of direct `bl` instructions, in order."""
+    targets = []
+    for line in lines:
+        match = re.match(r"bl\s+0x[0-9a-f]+\s+<([^>]+)>", line)
+        if match:
+            targets.append(match.group(1))
+    return targets
+
+
+def is_subsequence(needle, haystack):
+    """True when every call in needle appears in haystack in the same order."""
+    it = iter(haystack)
+    return all(item in it for item in needle)
+
+
 def main():
-    global OBJDUMP, GLOBAL_SHIFT
+    global OBJDUMP, GLOBAL_SHIFT, PARTIAL, COUNT_DELTA
+    global IMPORTANT, IMPORTANT_ONLY, IMPORTANT_VERBOSE, IMPORTANT_JSON
+    global IMPORTANT_IGNORE_NEW, IMPORTANT_IGNORE_REMOVED
+    global IMPORTANT_SYMBOLS, IMPORTANT_DEPTH, TRACE_INDIRECT
     argv = sys.argv[1:]
-    if argv and argv[0] == "--reviewed":
-        if len(argv) != 3:
-            sys.exit("usage: cmp_disasm.py [--reviewed] <baseline> <candidate>")
-        GLOBAL_SHIFT = True
-        base_path, cur_path = argv[1], argv[2]
-    elif len(argv) == 2:
-        base_path, cur_path = argv[0], argv[1]
-    else:
-        sys.exit(main.__doc__ or "usage: cmp_disasm.py [--reviewed] <baseline> <candidate>")
+
+    def take_value(flag):
+        if flag not in argv:
+            return None
+        index = argv.index(flag)
+        if index + 1 >= len(argv):
+            sys.exit(f"cmp_disasm.py: {flag} needs a value")
+        value = argv[index + 1]
+        del argv[index:index + 2]
+        return value
+
+    count_delta = take_value("--count-delta")
+    COUNT_DELTA = int(count_delta) if count_delta is not None else None
+    json_path = take_value("--important-json")
+    symbols_path = take_value("--important-symbols")
+    depth = take_value("--trace-depth")
+    if depth is not None:
+        IMPORTANT_DEPTH = int(depth)
+    IMPORTANT_JSON = json_path
+    if symbols_path:
+        with open(symbols_path) as handle:
+            for line in handle:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    IMPORTANT_SYMBOLS.add(itrace.symbol_key(line))
+
+    IMPORTANT_ONLY = "--important-only" in argv
+    IMPORTANT = IMPORTANT_ONLY or "--important" in argv
+    IMPORTANT_VERBOSE = "--important-verbose" in argv
+    IMPORTANT_IGNORE_NEW = "--important-ignore-new" in argv
+    IMPORTANT_IGNORE_REMOVED = "--important-ignore-removed" in argv
+    TRACE_INDIRECT = "--trace-indirect" in argv
+    GLOBAL_SHIFT = "--reviewed" in argv
+    PARTIAL = "--partial" in argv
+    flags = {"--reviewed", "--partial", "--important", "--important-only",
+             "--important-verbose", "--important-ignore-new",
+             "--important-ignore-removed", "--trace-indirect"}
+    paths = [a for a in argv if a not in flags]
+    if len(paths) != 2:
+        sys.exit(main.__doc__ or "usage: cmp_disasm.py [--reviewed] [--partial] "
+                 "[--count-delta N] [--important] [--important-only] "
+                 "[--important-verbose] [--important-json PATH] "
+                 "[--important-symbols PATH] [--trace-depth N] <baseline> <candidate>")
+    base_path, cur_path = paths
     OBJDUMP = find_objdump()
     base, cur = disassemble(base_path), disassemble(cur_path)
     base_elf = ElfImage(base_path) if GLOBAL_SHIFT else None
     cur_elf = ElfImage(cur_path) if GLOBAL_SHIFT else None
     failed = 0
-    for label, candidates in TARGETS:
+    targets = [] if IMPORTANT_ONLY else TARGETS
+    for label, candidates in targets:
         base_name = resolve(base, candidates)
         cur_name = resolve(cur, candidates)
         if base_name is None or cur_name is None:
+            if PARTIAL and base_name is None and cur_name is None:
+                print(f"SKIP {label}: absent from both binaries")
+                continue
             print(f"MISSING {label}: base={base_name is not None} cur={cur_name is not None}")
             failed += 1
             continue
         b, c = base[base_name], cur[cur_name]
         if len(b) != len(c):
+            delta = abs(len(c) - len(b))
+            if COUNT_DELTA is not None and delta <= COUNT_DELTA and \
+                    is_subsequence(call_targets(b), call_targets(c)):
+                print(f"COUNT-DELTA {label}: base={len(b)} cur={len(c)} "
+                      f"delta={delta} calls=subsequence")
+                continue
             print(f"DIFF {label}: instruction count base={len(b)} cur={len(c)}")
             failed += 1
             continue
@@ -644,6 +835,30 @@ def main():
             diff = sum(1 for x, y in zip(sb, sc) if x != y)
             print(f"LAYOUT-SHIFT {label}: {len(b)} instructions, "
                   f"{diff} annotated address operands differ")
+
+    if IMPORTANT:
+        base_analysis = itrace.analyze(base_path, OBJDUMP, IMPORTANT_SYMBOLS,
+                                       IMPORTANT_DEPTH, TRACE_INDIRECT)
+        cur_analysis = itrace.analyze(cur_path, OBJDUMP, IMPORTANT_SYMBOLS,
+                                      IMPORTANT_DEPTH, TRACE_INDIRECT)
+        important_ok, important_lines = itrace.compare(
+            base_analysis, cur_analysis, IMPORTANT_VERBOSE,
+            IMPORTANT_IGNORE_NEW, IMPORTANT_IGNORE_REMOVED)
+        for line in important_lines:
+            print(line)
+        if IMPORTANT_VERBOSE:
+            print("--- baseline important trees ---")
+            for line in itrace.format_analysis(base_analysis):
+                print(line)
+            print("--- candidate important trees ---")
+            for line in itrace.format_analysis(cur_analysis):
+                print(line)
+        if IMPORTANT_JSON:
+            itrace.write_json(IMPORTANT_JSON, base_analysis, cur_analysis)
+            print(f"IMPORTANT-JSON: {IMPORTANT_JSON}")
+        if not important_ok:
+            failed += 1
+
     print("RESULT:", "FAIL" if failed else "PASS")
     return 1 if failed else 0
 

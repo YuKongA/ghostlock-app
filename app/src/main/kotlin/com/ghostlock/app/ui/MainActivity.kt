@@ -74,7 +74,7 @@ import com.ghostlock.app.ui.screen.appprofile.AppProfileScreen
 import com.ghostlock.app.ui.screen.colorpalette.ColorPaletteScreen
 import com.ghostlock.app.ui.screen.executemoduleaction.ExecuteModuleActionScreen
 import com.ghostlock.app.ui.screen.home.HomePager
-import com.ghostlock.app.ui.screen.module.ModulePager
+import com.ghostlock.app.ui.screen.module.BackendPager
 import com.ghostlock.app.ui.screen.scriptrun.ScriptRunScreen
 import com.ghostlock.app.ui.screen.settings.SettingPager
 import com.ghostlock.app.ui.screen.sulog.SulogScreen
@@ -407,7 +407,7 @@ fun MainScreen(
                     when (page) {
                         0 -> if (contentReady || isCurrentPage) HomePager(navController, bottomInnerPadding, isCurrentPage)
                         /* 2026-10-18 用户裁定：路径页与执行页互换位置（路径在前）。 */
-                        1 -> if (contentReady || isCurrentPage) ModulePager(bottomInnerPadding, isCurrentPage)
+                        1 -> if (contentReady || isCurrentPage) BackendPager(bottomInnerPadding, isCurrentPage)
                         2 -> if (contentReady || isCurrentPage) when (uiMode) {
                             UiMode.Material -> com.ghostlock.app.ui.screen.run.RunPageMaterial(bottomInnerPadding)
                             UiMode.Miuix -> com.ghostlock.app.ui.screen.run.RunPageMiuix(bottomInnerPadding)

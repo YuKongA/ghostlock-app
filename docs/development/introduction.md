@@ -184,11 +184,13 @@ cargo test --release              # 在 tools/extract_rs 下
 
 ## 八、可核验的不变量
 
-- **全局状态**只允许 `g_exploit_session`（进程唯一）与启动期只读的 `g_direct_map_end`。
+- **攻击状态零可写全局**：43499/43284 的 `llvm-nm` `b/B` = 0，会话由调用方持有；剩余 `d` 为 `.data.rel.ro` 常量，libc 的 `fini_array_with_sentinels` 除外。
+  例外（2026-10-22）：日志子系统 4 个 DSO-local `d` 见 [ADR-0020](../analysis/adr/0020-gl-log-exception.md)（Proposed）；长期改 session API（T-LOG）。
 - **R1 include 防火墙**：`core/src/tests/include_firewall_test.cpp`，白名单当前为空；越层 include 与 stale 条目皆 FAIL。
 - **跨端对拍**：`core/src/tests/{combination,payload,surface}-manifest.pin.tsv`；生成/校验入口是
   `exportJniProtocolManifest` 与 Kotlin 侧 `NativeProtocolTest`（T4 债务见 §二）。
 - **步骤数据无虚表/无继承**：`StepSpec`/`StepPlan` 是数据；backend 差异用目录表与端口，不用子类。
 - **PI 窗口内**：零分配、零打印、零间接分派、零 JNI 回调；`sched_setattr` 只在窗口外调用。
 - **owner 在 Kotlin**：fd / 映射 / actor 线程 / child 进程的创建与释放都在 Kotlin；C++ 不缓存 fd/指针。
+  沿革（2026-10-22）：actor 线程创建方按 [JNI 计划](../plan/43499-43284-jni-rewrite-plan.md) §4.3 第 2 层（待批 T-PI2）；批准前仍按本行。
 - **构建产物**在仓库内真实 `build/`；禁止链接；疑似旧树用 `realpath` 核实后清理，不得并存两棵树。
