@@ -49,4 +49,34 @@ class ProfileMergerTest {
         assertEquals(3L, selected["main"])
         assertEquals(4L, selected["consumer"])
     }
+
+    @Test
+    fun `absent pair keeps the profile recommendation and drops selected_cpus`() {
+        val imported = valueMapOf(
+            "execution" to valueMapOf(
+                "selected_cpus" to valueMapOf("main" to 7L, "consumer" to 8L),
+            ),
+        )
+        val builtin = valueMapOf(
+            "release" to "r",
+            "kernel_major" to 6L,
+            "execution" to valueMapOf(
+                "recommended_cpus" to valueMapOf("main" to 4L, "consumer" to 5L),
+            ),
+        )
+        val resolved = ProfileMerger.resolveMerged(
+            deviceRelease = "r",
+            builtin = builtin,
+            imported = imported,
+            overrides = null,
+            tuningExecution = null,
+            pair = null,
+            routePresets = emptyMap(),
+        )
+        val execution = resolved["execution"].asValueMap()!!
+        assertEquals(null, execution["selected_cpus"])
+        val recommended = execution["recommended_cpus"].asValueMap()!!
+        assertEquals(4L, recommended["main"])
+        assertEquals(5L, recommended["consumer"])
+    }
 }
