@@ -91,6 +91,25 @@ Run the exploit once, then read the first lines of the debug log
 
 If W1 keeps failing, recheck both values against the script output.
 
+## Attach vendor_boot.img (no root)
+
+Some MediaTek devices only need boot.img and work right away. On others, the
+attack still fails during W1 because `kernel_phys_load` / `kernel_phys_offset`
+are missing. GhostLock can recover them from the stock **vendor_boot.img**, with
+no root and no /proc access.
+
+1. Open GhostLock → **Advanced options** → **Parameter configuration** →
+   **Load configuration** → **Parse local image.**
+2. Select **boot.img**.
+3. Tap **Attach vendor_boot.img (MediaTek only)** and
+   pick the stock vendor_boot.img.
+
+The Attach vendor_boot.img entry is shown only on MediaTek devices.
+ 
+vendor_boot.img always yields kernel_phys_load. kernel_phys_offset is
+filled in only when the image's alignment pattern proves it; otherwise it stays empty and you should fall back to the
+mtk-phys route above to read it from /proc/iomem.
+
 ## Adding the device as a built-in (maintainers)
 
 To ship a built-in profile, follow [README.md](README.md). Prefer the image's
