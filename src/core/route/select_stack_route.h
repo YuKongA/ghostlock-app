@@ -109,4 +109,14 @@ namespace ghostlock::route::select_stack {
     };
 } // namespace ghostlock::route::select_stack
 
+namespace ghostlock::route {
+    /* The select route's fd snapshot: open_selected_fds() copies every slot it
+     * rebinds, restore_selected_fds() puts them back. Declared here because
+     * destroy() restores on the host build too. */
+    int32_t open_selected_fds(fd_set *in, fd_set *out, fd_set *ex, int32_t read_fd,
+                              int32_t write_fd, int32_t *error_number);
+
+    void restore_selected_fds(void);
+} // namespace ghostlock::route
+
 #endif

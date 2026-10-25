@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <cstdint>
 #include <cstdio>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <type_traits>
@@ -122,6 +123,74 @@ int32_t main(void) {
         restored.destroy();
         assert(fcntl(saved_stdout, F_GETFD) != -1);
         close(saved_stdout);
+    }
+
+    /* The pass must snapshot every slot it rebinds -- open, closed, and the
+     * forced one, whose bit the stamp may leave clear -- and hand them back. */
+    {
+        /* Park every pipe end above the route's range, so the low slots below
+         * are free and each pipe keeps its identity through the pass. */
+        int32_t routed[2] = {-1, -1}, plain[2] = {-1, -1}, cloexec[2] = {-1, -1};
+        assert(pipe(routed) == 0 && pipe(plain) == 0 && pipe(cloexec) == 0);
+        int32_t *ends[3] = {routed, plain, cloexec};
+        for (int32_t *pair : ends) {
+            for (int32_t end = 0; end < 2; end++) {
+                const int32_t high =
+                    fcntl(pair[end], F_DUPFD_CLOEXEC, PSELECT_ROUTE_NFDS + 256);
+                assert(high >= 0);
+                close(pair[end]);
+                pair[end] = high;
+            }
+        }
+
+        const int32_t open_slot = 7;   /* open, without FD_CLOEXEC */
+        const int32_t closed_slot = 9; /* closed when the pass runs */
+        const int32_t forced_slot = static_cast<int32_t>(PSELECT_ROUTE_NFDS) - 1;
+        assert(dup2(plain[0], open_slot) == open_slot);
+        assert(dup2(cloexec[0], forced_slot) == forced_slot);
+        assert(fcntl(forced_slot, F_SETFD, FD_CLOEXEC) == 0);
+        (void) close(closed_slot);
+
+        fd_set in, out, ex;
+        FD_ZERO(&in);
+        FD_ZERO(&out);
+        FD_ZERO(&ex);
+        FD_SET(open_slot, &in);
+        FD_SET(closed_slot, &ex);
+        /* forced_slot is left clear: the pass installs it and must snapshot it
+         * all the same. */
+
+        int32_t error_number = -1;
+        const int32_t unbacked =
+            ghostlock::route::open_selected_fds(&in, &out, &ex, routed[0], -1,
+                                                &error_number);
+        assert(unbacked == 0);      /* every slot it took was copied first */
+        assert(error_number == 0);
+
+        struct stat taken{}, app{};
+        assert(fstat(routed[0], &app) == 0);
+        assert(fstat(open_slot, &taken) == 0 && taken.st_ino == app.st_ino);
+        assert(fstat(closed_slot, &taken) == 0 && taken.st_ino == app.st_ino);
+        assert(fstat(forced_slot, &taken) == 0 && taken.st_ino == app.st_ino);
+        assert(FD_ISSET(forced_slot, &ex));
+
+        ghostlock::route::restore_selected_fds();
+
+        assert(fstat(plain[0], &app) == 0);
+        assert(fstat(open_slot, &taken) == 0 && taken.st_ino == app.st_ino);
+        assert((fcntl(open_slot, F_GETFD) & FD_CLOEXEC) == 0);
+        assert(fstat(cloexec[0], &app) == 0);
+        assert(fstat(forced_slot, &taken) == 0 && taken.st_ino == app.st_ino);
+        assert((fcntl(forced_slot, F_GETFD) & FD_CLOEXEC) != 0);
+        errno = 0;
+        assert(fcntl(closed_slot, F_GETFD) == -1 && errno == EBADF);
+
+        for (int32_t *pair : ends) {
+            close(pair[0]);
+            close(pair[1]);
+        }
+        close(open_slot);
+        close(forced_slot);
     }
 
     /* disarm is idempotent and marks the route disarmed. */
