@@ -145,7 +145,10 @@ TARGETS = [
         "run_main_route_threads(ghostlock::WriteRequest const*)",
         "run_main_route_threads",
     ]),
-    ("do_kernel5_fake_lock_route", [
+    ("do_mcast_fake_lock_route", [
+        "ghostlock::route::do_mcast_fake_lock_route(ghostlock::core::MulticastInputs const&)",
+        "do_mcast_fake_lock_route(ghostlock::core::MulticastInputs const&)",
+        "do_mcast_fake_lock_route",
         "ghostlock::backend::cve_2026_43499::route::do_kernel5_fake_lock_route(ghostlock::memory::WriteRequest const*)",
         "ghostlock::backend::cve_2026_43499::route::do_kernel5_fake_lock_route(ghostlock::WriteRequest const*)",
         "ghostlock::route::do_kernel5_fake_lock_route(ghostlock::memory::WriteRequest const*)",

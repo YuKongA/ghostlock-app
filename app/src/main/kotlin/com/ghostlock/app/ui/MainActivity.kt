@@ -5,8 +5,15 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -25,6 +32,8 @@ import androidx.compose.foundation.pager.PagerDefaults.flingBehavior
 import androidx.compose.foundation.pager.PagerDefaults.pageNestedScrollConnection
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -32,10 +41,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -45,18 +52,14 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.withContext
 import com.ghostlock.app.ui.Natives
 import com.ghostlock.app.ui.component.bottombar.BottomBar
 import com.ghostlock.app.ui.component.bottombar.MainPagerState
@@ -78,24 +81,23 @@ import com.ghostlock.app.ui.screen.module.BackendPager
 import com.ghostlock.app.ui.screen.scriptrun.ScriptRunScreen
 import com.ghostlock.app.ui.screen.settings.SettingPager
 import com.ghostlock.app.ui.screen.sulog.SulogScreen
-import com.ghostlock.app.ui.screen.superuser.SuperUserPager
 import com.ghostlock.app.ui.screen.template.AppProfileTemplateScreen
 import com.ghostlock.app.ui.screen.templateeditor.TemplateEditorScreen
 import com.ghostlock.app.ui.theme.KernelSUTheme
+import com.ghostlock.app.ui.theme.AppSettings
+import com.ghostlock.app.ui.theme.ColorMode
+import com.materialkolor.PaletteStyle
+import com.materialkolor.dynamiccolor.ColorSpec
 import com.ghostlock.app.ui.theme.LocalColorMode
 import com.ghostlock.app.ui.theme.LocalEnableBlur
 import com.ghostlock.app.ui.theme.LocalEnableFloatingBottomBar
 import com.ghostlock.app.ui.theme.LocalEnableFloatingBottomBarBlur
-import com.ghostlock.app.ui.theme.LocalEnableNavigationBadge
 import com.ghostlock.app.ui.theme.LocalModuleDescriptionMaxLines
-import com.ghostlock.app.ui.util.getSuperuserCount
 import com.ghostlock.app.ui.util.install
 import com.ghostlock.app.ui.util.rememberBlurBackdrop
 import com.ghostlock.app.ui.util.rememberContentReady
 import com.ghostlock.app.ui.viewmodel.MainActivityViewModel
 import com.ghostlock.app.ui.viewmodel.MainPagerConfig
-import com.ghostlock.app.ui.viewmodel.ModuleViewModel
-import com.ghostlock.app.ui.viewmodel.SuperUserViewModel
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
@@ -163,7 +165,6 @@ class MainActivity : ComponentActivity() {
                 LocalEnableBlur provides uiState.enableBlur,
                 LocalEnableFloatingBottomBar provides uiState.enableFloatingBottomBar,
                 LocalEnableFloatingBottomBarBlur provides uiState.enableFloatingBottomBarBlur,
-                LocalEnableNavigationBadge provides uiState.enableNavigationBadge,
                 LocalModuleDescriptionMaxLines provides uiState.moduleDescriptionMaxLines,
                 LocalUiMode provides uiMode,
             ) {
@@ -294,60 +295,8 @@ fun MainScreen(
     val interceptPagerGestures = pagerMode == PagerInterceptionMode.CrossAxisInterceptor
     var userScrollEnabled by remember(isFullFeatured) { mutableStateOf(isFullFeatured) }
 
-    val enableNavigationBadge = LocalEnableNavigationBadge.current
-    val badgeEnabled = enableNavigationBadge && isFullFeatured
-    val moduleViewModel = viewModel<ModuleViewModel>()
-    val moduleUiState by moduleViewModel.uiState.collectAsStateWithLifecycle()
-
-    val superUserViewModel = viewModel<SuperUserViewModel>()
-    val grantedUidCount by remember(superUserViewModel) {
-        superUserViewModel.uiState
-            .map { state -> state.groupedApps.count { it.anyAllowSu } }
-            .distinctUntilChanged()
-    }.collectAsStateWithLifecycle(0)
-
-    var startupPreloadStarted by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(isFullFeatured) {
-        if (!isFullFeatured || startupPreloadStarted) {
-            return@LaunchedEffect
-        }
-
-        moduleViewModel.initializePreferences()
-        val moduleState = moduleViewModel.uiState.value
-        if (!moduleState.hasLoaded) {
-            if (!moduleState.isRefreshing) moduleViewModel.fetchModuleList()
-            moduleViewModel.uiState.first { it.hasLoaded }
-        }
-        moduleViewModel.syncModuleUpdateInfo(moduleViewModel.uiState.value.modules)
-
-        val superUserState = superUserViewModel.uiState.value
-        if (!superUserState.hasLoaded) {
-            superUserViewModel.initializePreferences()
-            if (superUserState.isRefreshing) {
-                superUserViewModel.uiState.first { it.hasLoaded }
-            } else {
-                superUserViewModel.loadAppList().join()
-            }
-        }
-
-        startupPreloadStarted = true
-    }
-
-    // Loading the app list just for a badge is too expensive; read the kernel allowlist instead.
-    var superuserCount by remember { mutableIntStateOf(0) }
-    LaunchedEffect(badgeEnabled, grantedUidCount) {
-        superuserCount = if (badgeEnabled) withContext(Dispatchers.IO) { getSuperuserCount() } else 0
-    }
-
-    val navigationBadge = if (badgeEnabled) {
-        NavigationBadgeState(
-            superuserCount = superuserCount,
-            moduleEnabledCount = moduleUiState.modules.count { it.enabled },
-            moduleUpdatableCount = moduleUiState.updateInfo.count { it.value.downloadUrl.isNotBlank() },
-        )
-    } else {
-        NavigationBadgeState()
-    }
+    /* 当前四页是主页/路径/执行/设置，不再为已移除的 KernelSU 授权与模块页预载数据。 */
+    val navigationBadge = NavigationBadgeState()
     val uiMode = LocalUiMode.current
     val surfaceColor = when (uiMode) {
         UiMode.Material -> MaterialTheme.colorScheme.surface // Blur is not used in Material, this is just a placeholder
@@ -418,117 +367,128 @@ fun MainScreen(
             }
         }
 
-        if (useNavigationRail) {
-            val startInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout)
-                .only(WindowInsetsSides.Start)
-            val navBarBottomPadding = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (useNavigationRail) {
+                val startInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout)
+                    .only(WindowInsetsSides.Start)
+                val navBarBottomPadding = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
 
-            when (uiMode) {
-                UiMode.Material -> androidx.compose.material3.Scaffold(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer
-                ) {
-                    Row {
-                        SideRail(navigationBadge)
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .consumeWindowInsets(startInsets)
-                        ) {
-                            pagerContent(navBarBottomPadding)
-                        }
-                    }
-                }
-
-                UiMode.Miuix -> Scaffold { _ ->
-                    Row {
-                        SideRail(navigationBadge)
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .consumeWindowInsets(startInsets)
-                        ) {
-                            pagerContent(navBarBottomPadding)
-                        }
-                    }
-                }
-            }
-        } else {
-            Box(modifier = Modifier.fillMaxSize()) {
-            val bottomBar = @Composable {
-                /* 子页面（收尾等）隐藏底栏（2026-10-18 用户裁定）。 */
-                if (!PageChrome.hideBottomBar) {
-                    Box(
-                        modifier = Modifier.fillMaxWidth()
+                when (uiMode) {
+                    UiMode.Material -> androidx.compose.material3.Scaffold(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
                     ) {
-                        BottomBar(
-                            blurBackdrop = blurBackdrop,
-                            backdrop = backdrop,
-                            navigationBadge = navigationBadge,
-                            modifier = Modifier.align(Alignment.BottomCenter),
-                        )
+                        Row {
+                            SideRail(navigationBadge)
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .consumeWindowInsets(startInsets)
+                            ) {
+                                pagerContent(navBarBottomPadding)
+                            }
+                        }
+                    }
+
+                    UiMode.Miuix -> Scaffold { _ ->
+                        Row {
+                            SideRail(navigationBadge)
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .consumeWindowInsets(startInsets)
+                            ) {
+                                pagerContent(navBarBottomPadding)
+                            }
+                        }
+                    }
+                }
+            } else {
+                val bottomBar = @Composable {
+                    /* 子页面（收尾等）隐藏底栏（2026-10-18 用户裁定）。 */
+                    if (!PageChrome.hideBottomBar) {
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            BottomBar(
+                                blurBackdrop = blurBackdrop,
+                                backdrop = backdrop,
+                                navigationBadge = navigationBadge,
+                                modifier = Modifier.align(Alignment.BottomCenter),
+                            )
+                        }
+                    }
+                }
+
+                when (uiMode) {
+                    UiMode.Material -> androidx.compose.material3.Scaffold(
+                        bottomBar = bottomBar,
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
+                    ) { innerPadding ->
+                        pagerContent(innerPadding.calculateBottomPadding())
+                    }
+
+                    UiMode.Miuix -> Scaffold(bottomBar = bottomBar) { innerPadding ->
+                        pagerContent(innerPadding.calculateBottomPadding())
                     }
                 }
             }
 
-            when (uiMode) {
-                UiMode.Material -> androidx.compose.material3.Scaffold(
-                    bottomBar = bottomBar,
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer
-                ) { innerPadding ->
-                    pagerContent(innerPadding.calculateBottomPadding())
-                }
-
-                UiMode.Miuix -> Scaffold(bottomBar = bottomBar) { innerPadding ->
-                    pagerContent(innerPadding.calculateBottomPadding())
-                }
-            }
-            /* 全屏子页面覆盖在 pager 之上：手势被它拦截，左右划不会换页。 */
-            androidx.compose.animation.AnimatedVisibility(
-                visible = PageChrome.showFinish,
-                enter = androidx.compose.animation.slideInHorizontally(
-                    animationSpec = androidx.compose.animation.core.tween(260),
-                ) { it } + androidx.compose.animation.fadeIn(
-                    animationSpec = androidx.compose.animation.core.tween(200),
-                ),
-                exit = androidx.compose.animation.slideOutHorizontally(
-                    animationSpec = androidx.compose.animation.core.tween(240),
-                ) { it } + androidx.compose.animation.fadeOut(
-                    animationSpec = androidx.compose.animation.core.tween(180),
-                ),
-            ) {
-                androidx.activity.compose.BackHandler(enabled = PageChrome.showFinish) {
-                    PageChrome.showFinish = false
-                }
-                com.ghostlock.app.ui.screen.module.backends.FinishPage(
-                    miuix = uiMode == UiMode.Miuix,
-                    bottomInnerPadding = 0.dp,
-                    onBack = { PageChrome.showFinish = false },
-                )
-            }
-            androidx.compose.animation.AnimatedVisibility(
-                visible = PageChrome.showFinishSettings,
-                enter = androidx.compose.animation.slideInHorizontally(
-                    animationSpec = androidx.compose.animation.core.tween(260),
-                ) { it } + androidx.compose.animation.fadeIn(
-                    animationSpec = androidx.compose.animation.core.tween(200),
-                ),
-                exit = androidx.compose.animation.slideOutHorizontally(
-                    animationSpec = androidx.compose.animation.core.tween(240),
-                ) { it } + androidx.compose.animation.fadeOut(
-                    animationSpec = androidx.compose.animation.core.tween(180),
-                ),
-            ) {
-                androidx.activity.compose.BackHandler(enabled = PageChrome.showFinishSettings) {
-                    PageChrome.showFinishSettings = false
-                }
-                com.ghostlock.app.ui.screen.module.backends.FinishSettingsPage(
-                    miuix = uiMode == UiMode.Miuix,
-                    bottomInnerPadding = 0.dp,
-                    onBack = { PageChrome.showFinishSettings = false },
-                )
-            }
-            }
+            MainPageOverlays(uiMode)
         }
+    }
+}
+
+/**
+ * 在手机底栏与宽屏侧栏布局之上统一承载全屏子页面。
+ *
+ * @param uiMode 当前皮肤，用于选择子页面渲染器。
+ * @note 两个页面互斥；设置页优先，避免同时注册两个返回处理器。
+ */
+@Composable
+private fun MainPageOverlays(uiMode: UiMode) {
+    val showFinish = PageChrome.showFinish && !PageChrome.showFinishSettings
+    FullScreenPageOverlay(
+        visible = showFinish,
+        onBack = { PageChrome.showFinish = false },
+    ) {
+        com.ghostlock.app.ui.screen.module.backends.FinishPage(
+            miuix = uiMode == UiMode.Miuix,
+            bottomInnerPadding = 0.dp,
+            onBack = { PageChrome.showFinish = false },
+        )
+    }
+    FullScreenPageOverlay(
+        visible = PageChrome.showFinishSettings,
+        onBack = { PageChrome.showFinishSettings = false },
+    ) {
+        com.ghostlock.app.ui.screen.module.backends.FinishSettingsPage(
+            miuix = uiMode == UiMode.Miuix,
+            bottomInnerPadding = 0.dp,
+            onBack = { PageChrome.showFinishSettings = false },
+        )
+    }
+}
+
+/**
+ * 以统一动画和返回语义显示覆盖 pager 的全屏页面。
+ *
+ * @param visible 页面是否可见。
+ * @param onBack 返回操作。
+ * @param content 页面内容。
+ */
+@Composable
+private fun FullScreenPageOverlay(
+    visible: Boolean,
+    onBack: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = slideInHorizontally(animationSpec = tween(260)) { it } +
+            fadeIn(animationSpec = tween(200)),
+        exit = slideOutHorizontally(animationSpec = tween(240)) { it } +
+            fadeOut(animationSpec = tween(180)),
+    ) {
+        BackHandler(enabled = visible, onBack = onBack)
+        content()
     }
 }
 
@@ -553,4 +513,30 @@ private fun MainScreenBackHandler(
             mainState.animateToPage(0)
         }
     )
+}
+
+/**
+ * 在不启动导航、ViewModel 或执行层的条件下预览主界面的 Material 外壳。
+ *
+ * @note 预览只验证主题与基础容器；完整页面仍由运行时的 [MainScreen] 组合。
+ */
+@Preview(name = "Main shell", showBackground = true, showSystemUi = true)
+@Composable
+private fun MainActivityPreview() {
+    val uiMode = UiMode.Material
+    val appSettings = AppSettings(
+        colorMode = ColorMode.LIGHT,
+        keyColor = 0,
+        paletteStyle = PaletteStyle.TonalSpot,
+        colorSpec = ColorSpec.SpecVersion.SPEC_2025,
+    )
+    CompositionLocalProvider(LocalUiMode provides uiMode) {
+        KernelSUTheme(appSettings = appSettings, uiMode = uiMode) {
+            Surface(modifier = Modifier.fillMaxSize()) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(text = "GhostLock")
+                }
+            }
+        }
+    }
 }

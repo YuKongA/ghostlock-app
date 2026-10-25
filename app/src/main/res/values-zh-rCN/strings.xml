@@ -475,4 +475,5 @@
     <string name="run_state_rerun">重新执行</string>
     <string name="run_rerun_title">重新执行？</string>
     <string name="run_rerun_message">将再次发起攻击，确认继续。</string>
+    <string name="run_backend_not_wired">执行后端尚未接线。</string>
 </resources>

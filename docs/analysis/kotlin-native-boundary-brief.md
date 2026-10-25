@@ -9,24 +9,24 @@
 ```text
 Lua -> FlowLuaImpl.run -> scope-bound Kotlin API
 UI/default Flow/custom Kotlin
-  ├─> common JNI -> copied DTO -> Kotlin -> backend
+  ├─> general JNI -> copied DTO -> Kotlin -> backend
   ├─> 43499 JNI
   └─> 43284 JNI
-general STATIC -> common/43499/43284
+common STATIC -> general/43499/43284
 ```
 
 - **Kotlin/Lua**：profile、地址、payload、route、SELinux overwrite / forge credential / seccomp bypass、重试、fallback、跨 backend 顺序、结果解释、Finish。
 - **backend JNI**：漏洞机制、物理资源、不可拆 transaction；不接收 `RouteKind`。
-- **common JNI**：仅 Kotlin 调用的 discovery/scan；backend 不调用/link common，也不接收 common handle。
-- **general STATIC**：至少两个 DSO 真实复用的无业务状态基础实现。
+- **general JNI**：仅 Kotlin 调用的 discovery/scan；backend 不调用/link general，也不接收 general handle。
+- **common STATIC**：至少两个 DSO 真实复用的无业务状态基础实现。
 - **UI Finish**：生成 root manager/载荷/SELinux 恢复脚本；Native 不生成或选择脚本。
 
 ## 2. 关键归属
 
 | 能力 | 归属 |
 |---|---|
-| KernelSnitch、futex hash/collision scan | common JNI |
-| 薄 futex syscall helper | common；43499 也复用后才下沉 general |
+| KernelSnitch、futex hash/collision scan | general JNI |
+| 薄 futex syscall helper | general；43499 也复用后才下沉 common |
 | waiter/owner/consumer、PI actor | 43499 |
 | 地址、payload、route | Kotlin/Lua |
 | SA/sequence/page-cache session | 43284 |
@@ -34,7 +34,7 @@ general STATIC -> common/43499/43284
 
 ## 3. 接口
 
-- Kotlin `object NativeCommonJni/Native43499Jni/Native43284Jni` 承载 external entry。
+- Kotlin `object NativeGeneralJni/Native43499Jni/Native43284Jni` 承载 external entry。
 - 有 owner 的跨调用资源由 `AutoCloseable class` 包装 typed opaque handle；地址、payload、candidate、errno、receipt 是 DTO。
 - Access 只是 stable backend handle 的 borrowed read/write view；不 prepare、scan、route、handoff，也不包装全部 JNI。
 - Lua 保留任意 public Java/Kotlin 反射能力；受支持 wrapper 必须绑定本次 `RunScopeToken`，无 scope 创建 owner 时 fail-closed，run finally 逆序 close。
@@ -49,7 +49,7 @@ Native 不把完整攻击称作原子；只有 PI actor transaction 不可拆：
 -> stop/disarm -> join -> 清 borrowed ref -> 返回 effect
 ```
 
-三个**物理 mechanism** entry：`executePselectActor/executeSendmsgActor/executeTcpZerocopyActor`；不按 route 命名，也不接收 route。分派在 PI 窗口前；窗口内无 switch 间接目标、函数指针、JNI、registry 锁、分配、日志或首次触页。
+唯一 **route-agnostic** entry：`executeActor`；不按 route/mechanism 命名，也不接收 route。机制差异在 Kotlin 传入的参数里；JNI 入口在 PI 窗口前完成准备，窗口内无 switch 间接目标、函数指针、JNI、registry 锁、分配、日志或首次触页。
 
 ## 5. owner 与 dirty
 
@@ -75,7 +75,7 @@ Native 不把完整攻击称作原子；只有 PI actor transaction 不可拆：
 | race/pi_race、threads | 43499 pi_actor |
 | 三 route 实现 | 三 mechanism；route 组合移 Kotlin |
 | heap_context | 43499 page_resource |
-| kernelsnitch | common JNI |
+| kernelsnitch | general JNI |
 | payload/address/profile/offset | Kotlin 唯一权威 |
 | route policy/controller/session state | Kotlin Flow/run state |
 | victim | 普通 ProcessBuilder；protocol child 留 handle |
@@ -99,8 +99,8 @@ Native 不把完整攻击称作原子；只有 PI actor transaction 不可拆：
 ## 9. 通过标准
 
 - plan/ADR/approval/UML 候选口径一致；design-critic 阻断 0；用户明确批准。
-- route 仅在 Kotlin/Lua；KernelSnitch 仅 common；PI actor 仅 43499。
+- route 仅在 Kotlin/Lua；KernelSnitch 仅 general；PI actor 仅 43499。
 - 每批记录当前 Gradle/CMake exact command、XML 三桶、NDK、nm/readelf/link-map、APK/DSO hash。
 - 攻击批当批完成冷机、固定 CPU、单 route、KSU 未加载真机门禁；未过不得标 supported。
 
-**共识：general 是 Native 静态基础库，common 是 Kotlin 独占的 discovery 服务，backend 是可组合的漏洞机制与资源；Kotlin/Lua 用地址、payload、handle 和调用顺序组成 route。**
+**共识：common 是 Native 静态基础库，general 是 Kotlin 独占的 discovery 服务，backend 是可组合的漏洞机制与资源；Kotlin/Lua 用地址、payload、handle 和调用顺序组成 route。**

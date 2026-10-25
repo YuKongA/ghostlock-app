@@ -11,6 +11,9 @@ import com.ghostlock.app.backend.cve43499.flow.Flow43499WordWrite
  * 顺序。Port 拥有 native session/handle、typed 资源和状态；Flow 只拥有固定
  * 步骤顺序、重试与 cleanup。
  *
+ * Port 不把 Flow43499Route 或 route 参数传进 native；route 只在 Kotlin 组合，
+ * native 只接收物理参数并调用唯一 `executeActor`。
+ *
  * 生命周期：create → initialize → prepare → discover → spawnVictim →
  * writeStep* → victimProbe → finishVictim → shutdown。任一阶段拒绝即停手。
  */

@@ -1,6 +1,6 @@
 # 43499 kt-step architecture plan — revision 2
 
-Status: **design-critic approved the final revision with no blocking issues** (2026-10-20), including the glcommon discovery split and Kotlin backend package refactor. No production code change in this batch. User approved the PI exception for the multicast route and the per-route landing direction.
+Status: **design-critic approved the final revision with no blocking issues** (2026-10-20), including the glgeneral discovery split and Kotlin backend package refactor. No production code change in this batch. User approved the PI exception for the multicast route and the per-route landing direction.
 
 > **2026-10-21**：批准状态见 [43499-approval-status.md](43499-approval-status.md)（唯一权威）；执行结构见 [execution-architecture.md](execution-architecture.md)。
 > 本件（route JNI 家族与包结构）**设计已批准**，实现分批。
@@ -119,12 +119,12 @@ ktstep_host_core (STATIC) -> syscall_core, common_core, memory_core:
 - platform/native_multicast_landing_codec.cpp (host-visible params/result codec)
 - platform/native_multicast_landing_codec.hpp
 
-glcommon_core (STATIC, final generic discovery) -> common_core, memory_core:
+glgeneral_core (STATIC, final generic discovery) -> common_core, memory_core:
 - steps/discovery_runner.cpp
 - platform/native_discover_session.cpp
 - platform/native_discover_common.cpp (renamed from native_discover_43499.cpp)
 
-libglcommon.so (SHARED) -> glcommon_core, common_core, log:
+libghostlock_general.so (SHARED) -> glgeneral_core, common_core, log:
 - boundary/jni/native_discover_jni.cpp
 
 ktstep_android_core (STATIC, final) -> ktstep_host_core:
@@ -134,7 +134,7 @@ ktstep_android_core (STATIC, final) -> ktstep_host_core:
 - platform/native_multicast_landing_43499.*
 - select/tcp stub TUs
 
-Interim before phase 6: native_discover_43499.cpp + native_discover_session_43499.cpp are in ktstep_android_core, native_discover_jni.cpp is in gl43499native, libglcommon is not built. Phase 6 is one atomic CMake commit: remove discovery_runner.cpp/native_discover_*.cpp from ktstep_android_core and native_discover_jni.cpp from gl43499native; add discovery_runner.cpp/native_discover_session.cpp/native_discover_common.cpp to glcommon_core and native_discover_jni.cpp to libglcommon; rename the session TU in the same commit. Source-overlap assertion and Android load tests cover before/after.
+Interim before phase 6: native_discover_43499.cpp + native_discover_session_43499.cpp are in ktstep_android_core, native_discover_jni.cpp is in gl43499native, libghostlock_general.so is not built. Phase 6 is one atomic CMake commit: remove discovery_runner.cpp/native_discover_*.cpp from ktstep_android_core and native_discover_jni.cpp from gl43499native; add discovery_runner.cpp/native_discover_session.cpp/native_discover_common.cpp to glgeneral_core and native_discover_jni.cpp to libghostlock_general.so; rename the session TU in the same commit. Source-overlap assertion and Android load tests cover before/after.
 
 ktstep_core (INTERFACE) -> ktstep_host_core on host, ktstep_android_core on Android:
 - the two source lists above; no legacy units
@@ -189,7 +189,7 @@ ghostlock43284 (build.gradle artifact, not a core/CMake target):
 ghostlock_core (STATIC, compatibility only for old tests) -> legacy43499_core + legacy_session_core + common_core + memory_core + support_43284_core; not linked by gl43499native. This keeps jni_session_lifecycle_test (43284 session) and api_43499_test linkable.
 ghostlock_attack_contract -> legacy43499_core.
 
-No target links both ktstep_core and legacy43499_core except a dedicated ODR test executable. CMake configure-time assertion covers every target source list: common_core, memory_core, syscall_core, support_43284_core, glcommon_core, libglcommon, ktstep_host_core, ktstep_android_core, legacy43499_core, legacy_session_core, ghostlock_jni, ghostlock43499, ghostlock_attack_contract, gl43499native, gl43499syscalls. Only common_core/memory_core/syscall_core/support_43284_core may be shared static libraries; no source path may appear in two lists. A deliberate duplicate-source fixture must fail configure.
+No target links both ktstep_core and legacy43499_core except a dedicated ODR test executable. CMake configure-time assertion covers every target source list: common_core, memory_core, syscall_core, support_43284_core, glgeneral_core, libghostlock_general.so, ktstep_host_core, ktstep_android_core, legacy43499_core, legacy_session_core, ghostlock_jni, ghostlock43499, ghostlock_attack_contract, gl43499native, gl43499syscalls. Only common_core/memory_core/syscall_core/support_43284_core may be shared static libraries; no source path may appear in two lists. A deliberate duplicate-source fixture must fail configure.
 
 ## 5. Global-state owners
 
@@ -232,7 +232,7 @@ Keep Backend43499Port.kt/Facts43499.kt only if no production path imports them; 
 ktstep_core host tests:
 syscalls_43499_test, native_attempt_43499_test, discovery_result_test, snitch_child_test, snitch_discovery_test, snitch_policy_test, snitch_region_test, snitch_run_test, snitch_scan_test, snitch_ops_test, snitch_setup_test, snitch_tuning_test, prepare_page_test, prepare_plan_test, prepare_steps_test, reclaim_plan_test, shaping_plan_test, write_encoder_test, write_layout_test, write_request_test, credential_image_test, multicast_arm_test, page_geometry_test, page_slot_test, scan_bounds_test, scan_geometry_test, plus new native_multicast_landing_codec_test, route_selectability_test (Kotlin host), include_firewall_ktstep_test, Cve43499DiscoverFactsTest and Cve43499DiscoverProcessorTest (package backend.cve43499.ktstep.discovery, link ktstep_host_core; assert aliasDelta/pageBase/fakeTask/fakeLock/waiterWord equal current values).
 
-Android/AVD targets: `native_multicast_landing_jni_test` links `gl43499native` and covers only cve43499 families (attempt/prepare/syscalls/multicast/select/tcp), create/run/close, result mapping, select/tcp ENOSYS. Discovery is separate: interim `NativeDiscoverJniCve43499LifecycleTest` links gl43499native; final `NativeDiscoverJniGlcommonLifecycleTest` links libglcommon and asserts jni.glcommon symbols; final run also asserts gl43499native exports none of the jni.glcommon discovery prefix. Host target: `native_multicast_landing_codec_test` links `ktstep_host_core` only.
+Android/AVD targets: `native_multicast_landing_jni_test` links `gl43499native` and covers only cve43499 families (attempt/prepare/syscalls/multicast/select/tcp), create/run/close, result mapping, select/tcp ENOSYS. Discovery is separate: interim `NativeDiscoverJniCve43499LifecycleTest` links gl43499native; final `NativeDiscoverJniGlgeneralLifecycleTest` links libghostlock_general.so and asserts jni.glgeneral symbols; final run also asserts gl43499native exports none of the jni.glgeneral discovery prefix. Host target: `native_multicast_landing_codec_test` links `ktstep_host_core` only.
 
 The new route tests must cover: multicast params/result codec short/oversize/version, page/stamp equality/mismatch, page send timeout/partial/non-socket/peer-close (zero actors), actor order/result fields, disarm fields; NativeMulticastLanding43499Jni create/run/close handle lifecycle, malformed params, result mapping, close idempotency; select/tcp JNI ENOSYS; MulticastLanding43499Port result mapping; KtOpsInvoker rejects Stub before JNI; Fixture allowed only by FixtureOpsInvoker; no generic NativeRoute43499Port symbol; nm asserts required/forbidden prefixes.
 
@@ -249,14 +249,14 @@ Remaining existing tests keep ghostlock_core compatibility until reclassified. E
 - GL_KTSTEP_ONLY default ON; it controls only the 43499 legacy graph, not 43284/ghostlock_jni.
 - ON: build gl43499native/gl43499syscalls + ktstep tests; ghostlock43499 not built; ghostlock_jni + ghostlock43284 remain built and packaged; APK excludes libghostlock43499.so.
 - OFF: build ghostlock43499 + legacy 43499 tests; ktstep and 43284/ghostlock_jni unaffected.
-- prepareGhostlockJniLibs copies: libghostlock_jni.so, libghostlock43284.so, libgl43499syscalls.so, libgl43499native.so, libglcommon.so; never libghostlock43499.so.
+- prepareGhostlockJniLibs copies: libghostlock_jni.so, libghostlock43284.so, libgl43499syscalls.so, libgl43499native.so, libghostlock_general.so; never libghostlock43499.so.
 - verifyJniLibs checks:
-  - required: libghostlock_jni.so, libghostlock43284.so, libgl43499syscalls.so, libgl43499native.so, libglcommon.so;
+  - required: libghostlock_jni.so, libghostlock43284.so, libgl43499syscalls.so, libgl43499native.so, libghostlock_general.so;
   - forbidden: libghostlock43499.so.
-- nm -D libglcommon.so required: Java_com_ghostlock_app_jni_glcommon_NativeDiscoverJni_create/discover/close; forbidden: 43499 route/access/KernelAccess symbols.
+- nm -D libghostlock_general.so required: Java_com_ghostlock_app_jni_glgeneral_NativeDiscoverJni_create/discover/close; forbidden: 43499 route/access/KernelAccess symbols.
 - nm -D libgl43499native.so:
   - required prefixes after JNI facade migration: Java_com_ghostlock_app_jni_cve43499_ (attempt/prepare/syscalls/multicast/select/tcp); old Java_com_ghostlock_app_engine_ktstep_* allowed only during forwarding window, then forbidden;
-  - forbidden after phase 6: Java_com_ghostlock_app_jni_glcommon_NativeDiscoverJni_ (sole owner is libglcommon);
+  - forbidden after phase 6: Java_com_ghostlock_app_jni_glgeneral_NativeDiscoverJni_ (sole owner is libghostlock_general.so);
   - forbidden: Java_com_ghostlock_app_jni_cve43499_Native43499_, KernelAccess43499, create_kernel_access_43499, and after forwarding removal Java_com_ghostlock_app_engine_ktstep_*.
 - nm -D libghostlock_jni.so forbidden exact/mangled substrings: KernelAccess43499, create_kernel_access_43499, MulticastRoute, MulticastLanding, SelectStackRoute, TcpZerocopy, access_factory_43499, route_config, window_runner, window_attempt. Required allowlist: session_protocol/session_handles/session_object/ops_43499 public symbols and native_finish/native_memfd/native_raw_esp/native_helper/raw_esp exports. Full nm/readelf also checks local/static symbols for the forbidden set.
 - full nm/readelf/link-map ODR test when both cores are linked.
@@ -265,7 +265,7 @@ Remaining existing tests keep ghostlock_core compatibility until reclassified. E
 ## 10. Gates
 
 - host/codec/include-firewall/ODR tests;
-- Interim AVD JNI lifecycle: load gl43499native, resolve attempt/prepare/syscalls/multicast/select/tcp + interim jni.cve43499 discovery, create/run/close multicast; final AVD JNI lifecycle: load libglcommon for jni.glcommon discovery and gl43499native for cve43499 families (two libraries), assert no glcommon discovery symbol in gl43499native after phase 6.
+- Interim AVD JNI lifecycle: load gl43499native, resolve attempt/prepare/syscalls/multicast/select/tcp + interim jni.cve43499 discovery, create/run/close multicast; final AVD JNI lifecycle: load libghostlock_general.so for jni.glgeneral discovery and gl43499native for cve43499 families (two libraries), assert no glgeneral discovery symbol in gl43499native after phase 6.
 - AVD existing N2/discover/prepare/page-send;
 - multicast landing gate follows route revision 7 + PI exception;
 - victim uid=0 only landing proof;

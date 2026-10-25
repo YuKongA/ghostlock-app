@@ -91,18 +91,15 @@ internal enum class BadgeTone { Alert, Accent }
 @Immutable
 internal data class NavBadge(val count: Int, val tone: BadgeTone)
 
-internal fun badgeFor(index: Int, state: NavigationBadgeState): NavBadge? = when (index) {
-    BottomBarDestination.SuperUser.ordinal ->
-        state.superuserCount.takeIf { it > 0 }?.let { NavBadge(it, BadgeTone.Accent) }
-
-    BottomBarDestination.Module.ordinal -> when {
-        state.moduleUpdatableCount > 0 -> NavBadge(state.moduleUpdatableCount, BadgeTone.Alert)
-        state.moduleEnabledCount > 0 -> NavBadge(state.moduleEnabledCount, BadgeTone.Accent)
-        else -> null
-    }
-
-    else -> null
-}
+/**
+ * 在旧 Module/SuperUser 页移除期间关闭导航 badge。
+ *
+ * @param index 当前导航位置；保留于组件契约，本阶段不读取。
+ * @param state 当前 badge 状态；保留于组件契约，本阶段不读取。
+ * @return 始终返回 null，表示不显示 badge。
+ * @note 无失败分支；前提是新导航页尚未定义 badge 语义。
+ */
+internal fun badgeFor(@Suppress("UNUSED_PARAMETER") index: Int, @Suppress("UNUSED_PARAMETER") state: NavigationBadgeState): NavBadge? = null
 
 @Composable
 fun useNavigationRail(enableFloatingBottomBar: Boolean): Boolean {

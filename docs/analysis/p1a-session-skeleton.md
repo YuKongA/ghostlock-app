@@ -10,8 +10,8 @@ P1a 只新增类型/句柄，不改 15 个核心函数签名，不改旧 main：
 
 | 文件 | 内容 |
 |---|---|
-| `app/src/main/cpp/glk43499/glk_session.h` | Target/Config/Env/Runtime/Result/Session/WriteRequest/LogSink |
-| `app/src/main/cpp/glk43499/glk_session.c` | `g_exploit_session`、target init/valid、create/destroy |
+| `app/src/main/cpp/gl43499/glk_session.h` | Target/Config/Env/Runtime/Result/Session/WriteRequest/LogSink |
+| `app/src/main/cpp/gl43499/glk_session.c` | `g_exploit_session`、target init/valid、create/destroy |
 | `app/src/main/cpp/CMakeLists.txt` | `glk_session.c` 加入 `ghostlock43499` target |
 
 - `Glk43499Target` 带 `self` 与 `release[192]`；`offsets.uname_r` 重指到 `release`，禁止按值复制。

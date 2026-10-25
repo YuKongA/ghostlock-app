@@ -2,7 +2,7 @@
 
 ## 已实施
 
-`common.h` 在 `kernelsnitch/utils.h` 之后 include `general/gl_log.h`，
+`common.h` 在 `kernelsnitch/utils.h` 之后 include `common/gl_log.h`，
 并重定义活动 TU 的 `pr_*`：
 
 ```c
@@ -35,14 +35,14 @@ Kotlin 的 `LogFile.fd` 仍由 Kotlin 拥有；native 只持有副本。
 
 ## authority
 
-- 43499：`general/gl_log`（DSO-local fd + level/timestamps）。
+- 43499：`common/gl_log`（DSO-local fd + level/timestamps）。
 - 43284/legacy：仍为 P6c 中间态 `attachFd* = -1`。
 - 因此 P6c 的 `create(logFd)` 对 43499 已被本方案取代；
   P6c 若继续，只服务 43284 或未来 per-handle sink。
 
 ## 全局状态
 
-`general/gl_log.c` 有 4 个 DSO-local 可写数据：
+`common/gl_log.c` 有 4 个 DSO-local 可写数据：
 
 ```text
 g_export_fd

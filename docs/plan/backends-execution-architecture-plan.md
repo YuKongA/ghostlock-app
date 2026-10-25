@@ -255,7 +255,7 @@ StageRunResult(outcomes, primary); primary is returned, not thrown. Cve43284Page
       # no StepCatalog: 43284 keeps Stage pipeline; BackendRun wraps PageCacheEngine
       # jni.cve43284 package/ABI stays unchanged; no 43284 JNI package move
 
-C++: support_43284_core (helper) stays; raw_esp/ghostlock43284 remain the external 43284 artifact, not owned by this plan; independent of gl43499native/glcommon.
+C++: support_43284_core (helper) stays; raw_esp/ghostlock43284 remain the external 43284 artifact, not owned by this plan; independent of gl43499native/glgeneral.
 
 ## 8. Migration phases
 

@@ -858,4 +858,5 @@
     <string name="run_state_rerun">Run again</string>
     <string name="run_rerun_title">Run again?</string>
     <string name="run_rerun_message">This starts the attack again. Continue?</string>
+    <string name="run_backend_not_wired">Execution backend is not connected yet.</string>
 </resources>

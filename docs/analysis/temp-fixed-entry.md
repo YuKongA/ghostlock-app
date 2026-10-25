@@ -7,7 +7,7 @@
 
 ## 入口
 
-`app/src/main/cpp/glk43499/temp_entry.c`：
+`app/src/main/cpp/gl43499/temp_entry.c`：
 
 ```text
 temp_jni_create()  -> glk43499_handle_create(fixed target/config/env)

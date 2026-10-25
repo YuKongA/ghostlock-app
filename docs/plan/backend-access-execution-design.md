@@ -157,7 +157,7 @@ backend.cve43499.ktstep.discovery Cve43499DiscoverProcessor/Facts/Adapter
 backend.cve43499.ktstep.route  LandingRoute/MulticastLanding43499Port/stubs
 backend.cve43499.ktstep.victim
 jni.cve43499                 JNI facade
-glcommon discovery          libglcommon + jni.glcommon
+glgeneral discovery          libghostlock_general.so + jni.glgeneral
 ~~~
 
 43284:
@@ -191,7 +191,7 @@ UI imports only core.engine (ExecutionEngine/ExecutionState/ExecutionEngineFacto
 - 43499 parity: order/retry/Refused/Frozen/skip/precondition/empty-ready.
 - 43284 parity: stage order/partial/freeze/cleanup/restore/cancel.
 - Unified: cancellation identity, cleanup once, close reverse once, one-shot, factory mismatch.
-- Native/APK gates unchanged for glcommon/libgl43499/ghostlock43284.
+- Native/APK gates unchanged for glgeneral/libgl43499/ghostlock43284.
 
 ## 11. Non-goals
 

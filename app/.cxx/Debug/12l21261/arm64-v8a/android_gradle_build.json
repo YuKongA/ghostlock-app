@@ -31,18 +31,18 @@
       "output": "/Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/intermediates/cxx/Debug/12l21261/obj/arm64-v8a/libghostlock43499.so",
       "runtimeFiles": []
     },
-    "ghostlock_jni::@6890427a1f51a3e7e1df": {
+    "ghostlock_general::@6890427a1f51a3e7e1df": {
       "toolchain": "toolchain",
       "abi": "arm64-v8a",
-      "artifactName": "ghostlock_jni",
-      "output": "/Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/intermediates/cxx/Debug/12l21261/obj/arm64-v8a/libghostlock_jni.so",
+      "artifactName": "ghostlock_general",
+      "output": "/Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/intermediates/cxx/Debug/12l21261/obj/arm64-v8a/libghostlock_general.so",
       "runtimeFiles": []
     },
-    "gl_general::@6890427a1f51a3e7e1df": {
+    "gl_common::@6890427a1f51a3e7e1df": {
       "toolchain": "toolchain",
       "abi": "arm64-v8a",
-      "artifactName": "gl_general",
-      "output": "/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/.cxx/Debug/12l21261/arm64-v8a/libgl_general.a"
+      "artifactName": "gl_common",
+      "output": "/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/.cxx/Debug/12l21261/arm64-v8a/libgl_common.a"
     }
   },
   "toolchains": {

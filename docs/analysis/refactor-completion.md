@@ -38,7 +38,7 @@ ghostlock43284 b/B = 0
 ghostlock_jni   b/B = 0
 ```
 
-2026-10-22 43499 接入 `general/gl_log` 后新增 4 个 DSO-local `d`
+2026-10-22 43499 接入 `common/gl_log` 后新增 4 个 DSO-local `d`
 （日志库状态，非攻击/会话状态）；`b/B` 仍为 0。
 
 状态全部在调用方拥有的 `Glk43499Session` / `Glk43284State` / handle 内；

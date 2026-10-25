@@ -4,7 +4,7 @@
 > v4→v5：sigtimedwait 改零超时 {0,0}；EAGAIN/EINTR 直接返回；统一恢复 mask。
 > 当前评审：技术阻断 0；仅 P6c-14 用户接受 pre-session 非文件日志待定。
 >
-> **2026-10-22 状态变更**：43499 已改接 `general/gl_log`，`attachFd43499`
+> **2026-10-22 状态变更**：43499 已改接 `common/gl_log`，`attachFd43499`
 > 使用 dup-owned fd；本设计的 `create(logFd)` 对 43499 被取代。
 > P6c 只保留给 43284/legacy 或未来 per-handle sink。
 

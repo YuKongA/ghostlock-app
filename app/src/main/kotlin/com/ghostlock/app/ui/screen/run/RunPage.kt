@@ -59,7 +59,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ghostlock.app.R
-import com.ghostlock.app.attack.AttackClient
 import com.ghostlock.app.attack.AttackSettings
 import com.ghostlock.app.log.LogLevel
 import com.ghostlock.app.log.LogOrigin
@@ -195,14 +194,15 @@ fun RunPageMaterial(bottomInnerPadding: Dp) {
     fun startAttack() {
         entries.clear()
         runStartedAt = android.os.SystemClock.elapsedRealtime()
-        state = RunState.Running
-        AttackClient.start(
-            context.applicationContext,
-            onEvent = { origin, level, line ->
-                channel.trySend(TerminalEntry(origin, level, line, if (runStartedAt == 0L) 0L else android.os.SystemClock.elapsedRealtime() - runStartedAt))
-            },
-            onDone = { state = RunState.Done },
+        channel.trySend(
+            TerminalEntry(
+                LogOrigin.KOTLIN,
+                LogLevel.Warn,
+                context.getString(R.string.run_backend_not_wired),
+                0L,
+            ),
         )
+        state = RunState.Done
     }
     val confirmDialog = rememberConfirmDialog(onConfirm = { startAttack() })
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
@@ -279,15 +279,7 @@ fun RunPageMaterial(bottomInnerPadding: Dp) {
                             startAttack()
                         }
                         RunState.Running -> {
-                            val abortStarted = android.os.SystemClock.elapsedRealtime()
-                            state = RunState.Aborting
-                            AttackClient.abort(context.applicationContext) {
-                                val remaining = 700L - (android.os.SystemClock.elapsedRealtime() - abortStarted)
-                                scope.launch {
-                                    kotlinx.coroutines.delay(if (remaining > 0L) remaining else 0L)
-                                    state = RunState.Aborted
-                                }
-                            }
+                            state = RunState.Aborted
                         }
                         RunState.Aborting -> Unit
                         RunState.Aborted, RunState.Done -> state = RunState.RerunReady
@@ -338,14 +330,15 @@ fun RunPageMiuix(bottomInnerPadding: Dp) {
     fun startAttack() {
         entries.clear()
         runStartedAt = android.os.SystemClock.elapsedRealtime()
-        state = RunState.Running
-        AttackClient.start(
-            context.applicationContext,
-            onEvent = { origin, level, line ->
-                channel.trySend(TerminalEntry(origin, level, line, if (runStartedAt == 0L) 0L else android.os.SystemClock.elapsedRealtime() - runStartedAt))
-            },
-            onDone = { state = RunState.Done },
+        channel.trySend(
+            TerminalEntry(
+                LogOrigin.KOTLIN,
+                LogLevel.Warn,
+                context.getString(R.string.run_backend_not_wired),
+                0L,
+            ),
         )
+        state = RunState.Done
     }
     val confirmDialog = rememberConfirmDialog(onConfirm = { startAttack() })
     val scrollBehavior = MiuixScrollBehavior()
@@ -433,15 +426,7 @@ fun RunPageMiuix(bottomInnerPadding: Dp) {
                             startAttack()
                         }
                         RunState.Running -> {
-                            val abortStarted = android.os.SystemClock.elapsedRealtime()
-                            state = RunState.Aborting
-                            AttackClient.abort(context.applicationContext) {
-                                val remaining = 700L - (android.os.SystemClock.elapsedRealtime() - abortStarted)
-                                scope.launch {
-                                    kotlinx.coroutines.delay(if (remaining > 0L) remaining else 0L)
-                                    state = RunState.Aborted
-                                }
-                            }
+                            state = RunState.Aborted
                         }
                         RunState.Aborting -> Unit
                         RunState.Aborted, RunState.Done -> state = RunState.RerunReady

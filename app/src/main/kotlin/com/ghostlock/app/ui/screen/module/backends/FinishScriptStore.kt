@@ -6,7 +6,7 @@ import java.io.File
 /**
  * 收尾脚本文件：`files/finish/run.sh`。
  *
- * 只做三件事：写当前 run 的脚本、给预览写一份、完成后删除。日志文件由 [LogMemfd]
+ * 只做三件事：写当前 run 的脚本、给预览写一份、完成后删除。日志文件由后续执行层
  * 生成与转写，本对象不碰。
  */
 object FinishScriptStore {

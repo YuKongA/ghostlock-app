@@ -57,7 +57,9 @@ B 类 会话状态（线程间共享，不能变成值参数，只能变成"由�
 
 C 类 syscall 与平台原语（必须留 C 侧：跨 JNI 的每次 futex 都会破坏 PI 窗口时序）
   support::futex_op                全部 5 个函数里都出现（waiter 3 · owner 3 · consumer 3 …）
-  support::disable_rseq_for_thread waiter:21 · owner:77 · consumer:100
+  ~~support::disable_rseq_for_thread waiter:21 · owner:77 · consumer:100~~
+    → 2026-10-25 实测本机 `CONFIG_RSEQ is not set`、rseq(2)=ENOSYS，且上游与全部历史版本 body 均为
+      `return;`。已从 core 裁掉（函数 + 4 调用点），证据见 43499-rseq-probe-20261025.md。
   support::sched_setattr_tid       consumer:134
   support::fail_stop_dirty_race    run_main_route_threads:226/:239/:244
   kernel::pin_to_core              consumer:101
@@ -132,3 +134,94 @@ jni-six-targets-params-annex-fields.md（约 3 KB）。
   启动时机由 Kotlin 决定（一次 nativeRunOneWrite 触发一次尝试）；
   B 类的 14 个原子字段只被 C 侧读写；Kotlin 需要的结论经返回值带出。
 ```
+
+## 8. 实施记录：2026-10-25 参数化收口（`gl43499/core`）
+
+与 §4/§7 的边界形状无关，只落实 §3 的 A/B 类。
+
+| 目标 | 收口前残留 | 处置 |
+|---|---|---|
+| waiter_thread | `20000000`（fast-repair 窗口 ns）、`0x80000000`（ghost disarm 标记） | → `ThreadArgs::fast_repair_window_ns` / `ghost_disarm_flag` |
+| owner_thread | `sleep(1)` | → `ThreadArgs::owner_idle_sleep_s` |
+| consumer_thread | `(seq % 19) + 1`、`tv_nsec = 50000000` | → `consumer_nice_base`/`_span`、`consumer_lock_pi_spin_ns`（span=0 表示不轮转，避免除零） |
+| run_main_route_threads | `fast ? 5000 : …`（两处） | → `ThreadArgs::fast_repair_delay_us` |
+| do_kernel5_fake_lock_route | `stamp + 8`、默认 `128/16/100000000` | → `MulticastInputs::sockaddr_family_offset`；默认值删除，缺参数即 `step=62 EINVAL` 拒绝发射 |
+| attack_write | 无 | — |
+
+收口后 6 个目标内**没有配置/几何/时序字面量**，只剩 E/L 类：`0`/`1`（比较、futex 协议值、布尔）、
+`1000000`/`1000000000`（单位换算）、`20`/`58…63`（RouteStatus step 码）。
+外部常量读取扫描仅剩 `kernel::pin_to_core`（syscall 原语调用）与 `profile::MulticastWaiterLayout`（类型名），均非取值。
+
+过渡投影点：`race::race_run_params_from_session`（标 `TODO(P3-kotlin-params)`）与
+`route::do_kernel5_route_from_session` 的 `sockaddr_family_offset = 8`；Kotlin 传参落地后删除。
+
+### 8.1 真机门禁（A301SO · 5.15.189-android13-8-00016-g51bba4309aac · KernelSU 未加载 · cold boot）
+
+| variant | 结果 |
+|---|---|
+| 负向 `mcast_arm_hold=0` | `multicast execution parameters incomplete (attempts=1 arm_seq=1 arm_hold=0)` → `step=62 errno=22`、`routed=0`、`enforce_after=1`、exit=1、无 panic |
+| 正向（另一次 cold boot） | `multicast route status=0 clean=1/1 step=0 attempts=1 calls=1 success=1`；`route_done status=0 clean=1/1`；`routed=1 enforce_before=1 enforce_after=0`；exit=0 |
+
+产物：`build/ghostlock-core-dev` sha256 `62b6b8ca0b35b3809e1d821e1145ffcaafc838816cd26b6fc330454024842845`；
+`build/ghostlock-core-dev-guard` sha256 `5b5d4086f71625ef36f0788c42c44304d60db7ee09c48a6e99daa052418b5153`。
+
+### 8.2 第二批（2026-10-25）：route_tcp / route_select 参数化
+
+| 目标 | 收口前 | 处置 |
+|---|---|---|
+| `do_tcp_fake_lock_route` | `zc` 尺寸 `0x40`、偏移 `0x18/0x20/0x28/0x30`、`sendbuf` 64 + `0x33`、`spin<10000000`、`i%100`、映射填充 `0x55` | → `TcpInputs::{zerocopy_request_size, zc_*_offset, sendbuf_size, sendbuf_fill, punch_phase_spin, log_every, mapping_fill}`；两个缓冲区改为按入参定长的栈数组，并加"必须落在已映射页内"的边界拒绝（`fail(49)`） |
+| `do_pselect_fake_lock_route` | `PSELECT_ROUTE_NFDS` 宏、`attempts 4:1`、`2000×1000us` disarm、8 项延迟阶梯、`wake_prio|3`、`tree_prio 1`、`pi_prio 1`、`wake_state 3` | → `SelectInputs::{nfds, attempts_compact, attempts_plain, disarm_spin, disarm_poll_us, delay_ladder+len, waiter_*}` |
+
+**顺带修掉的未完成参数化**：`SelectInputs::nfds` 与 `profile_loaded` 此前"声明并赋值但 0 处读取"——
+路由实际用的是 `PSELECT_ROUTE_NFDS` 宏，Kotlin 传 `nfds` 会被静默忽略。本批把 `nfds` 接通到
+`destroy / words_per_set / open_selected_fds / F_DUPFD / pselect|select` 全部读取点；`profile_loaded` 无引用，删除。
+
+剩余字面量只到 E/L 类：`F_DUPFD` 的 `+16/+32/+64` 相对偏移、`nfds-1`、`<<32` 编码、`fail(30…49)` step 码、
+`1000000` 单位换算、`0/1` 布尔与协议值。
+
+**等价性证据**（`cmp_disasm` 基线仍作废，改用指令形状对比 `build/ghostlock-core-dev-baseline-c` vs 新构建）：
+6 个目标全部同形状同指令数——`waiter 215 / owner 60 / consumer 155 / run_main 285 / do_kernel5 237 /
+attack_write 112` 条指令；差异只有结构体位移与地址常量（`SelectInputs`/`TcpInputs` 增字段导致）。
+`do_tcp`(119→105) 与 `do_pselect`(81→68) 形状变化，属本批预期改动。
+
+**真机门禁**（A301SO 5.15.189 · KSU 未加载 · 每次 cold boot）：
+新构建 3 次 = **panic 1 / PASS 2**（首次 panic 与已记录的 `KERNEL-PANIC-01` 同型；基线二进制同环境 PASS，
+随后同构建连续 2 次 PASS）。PASS 读数：`routed=1 enforce_before=1 enforce_after=0`，`attempts=1 calls=1 success=1`。
+产物：`build/ghostlock-core-dev` sha256 `a8b44f1ce589b14d4522f067664c975b60fb3e32ce5b3e21cc4c90e78c4b0cd5`；
+基线 `build/ghostlock-core-dev-baseline-c` sha256 `62b6b8ca…42845`。
+
+### 8.3 未关闭
+
+- `cmp_disasm` 基线仍作废（`TARGETS` 里 6 目标的签名仍是旧形参），需重定基线后再作为门禁。
+- spray 载荷几何（`kernel::LOCK_OFF/W0_OFF/FAKE_TASK_OFF/...`、`0x100` usage、`0xe80` chunk bias）
+  仍是编译期常量表，属下一批（`PageSprayInputs` 需引 `PayloadGeometry`）。
+- 5 个 `*_from_session` 适配器待 P3 退役。
+
+### 8.4 路由命名与 multicast 封装（2026-10-25）
+
+- `do_kernel5_fake_lock_route` → **`do_mcast_fake_lock_route`**；适配器
+  `do_kernel5_route_from_session` → **`do_mcast_route_from_session`**（`route.h` 两处声明 + policy hook 调用点、
+  `race.cpp` 分发、`tools/cmp_disasm.py` 的候选表与 target 标签同批更新）。
+  `kernel5` 只剩 `very_legacy/` 的只读参照里。
+- 新增 `core/route_multicast.h`：`ghostlock::route::multicast::MulticastRoute`，与
+  `tcp_zerocopy::TcpZerocopyRoute` / `select_stack::SelectStackRoute` 同形——同样走
+  `run_route_lifecycle`（`prepare → execute → disarm → destroy`），fd 由 `support::UniqueFd` own。
+
+| 原单体函数里的外部符号 | 现在的位置 |
+|---|---|
+| `socket` + `close` | `MulticastRoute::prepare()` / `destroy()`（fd 归属 `socket_fd`） |
+| `setsockopt`（下毒拷贝）+ `memset`（stamp） | `MulticastRoute::execute()` |
+| consumer 收尾 | `MulticastRoute::disarm()` |
+| `printf` | 路由入口的判据日志（其余为 `pr_warning`） |
+
+**证据**（`llvm-objdump -dr` 读重定位）：路由入口的外部符号只剩 `printf`，与
+`do_tcp_fake_lock_route` / `do_pselect_fake_lock_route` 同型；`socket` 在 `prepare`、`setsockopt`+`memset`
+在 `execute`、`close` 走 `support::UniqueFd::reset`。入口指令数 **237 → 71**（cmp_disasm 自比 strict 解析成功）。
+
+**关键不变量未变**：`execute()` 内 `setsockopt` 到 `consumer_go->store()` 之间仍然零 syscall
+（`socket_fd.get()`、`errno`、原子 store 都不是 syscall），拷贝窗口仍在同一线程同一帧。
+
+**真机门禁**（cold boot，KSU 未加载）：正向 `multicast route status=0 clean=1/1 step=0 attempts=1
+calls=1 success=1`、`routed=1 enforce_after=0`、exit=0；负向（`arm_hold=0`）`status=2 clean=1/1
+step=62 errno=22 attempts=0`、`routed=0`、无 panic。
+产物：`build/ghostlock-core-dev` sha256 `065bd75232637bee28a0251c3638053a6f3e5b6f16a2dd67d58508478e77a8b2`。

@@ -4,11 +4,11 @@
 
 ## 新增
 
-- `glk43499/jni_exploit.c`：
+- `gl43499/jni_exploit.c`：
   `create43499(String home)` → `glk43499_handle_create_default`；
   `run43499(long)` / `destroy43499(long)`。
 - `glk43499_handle_create_default`：提取自 CLI 的 CPU/路径/root script/offset 选择，再创建句柄。
-- `glk43284/jni_exploit.c`：
+- `gl43284/jni_exploit.c`：
   `create43284(encapPort, senderPort, spi, byte[32])` →
   `Glk43284Config` → `glk43284_handle_create`；
   `run43284` / `destroy43284`。

@@ -1,9 +1,9 @@
 package com.ghostlock.app
 
 import android.app.Application
-import com.ghostlock.app.log.LogFile
 import com.ghostlock.app.attack.AttackSettings
 import com.ghostlock.app.attack.BootSettings
+import com.ghostlock.app.log.LogFile
 import com.ghostlock.app.log.LogSettings
 import com.ghostlock.app.log.NativeLogBridge
 import com.ghostlock.app.log.log

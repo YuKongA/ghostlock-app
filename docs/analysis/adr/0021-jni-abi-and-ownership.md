@@ -7,7 +7,7 @@
 
 ## 决策
 
-1. **边界**：每 backend 一个 JNI DSO；common 是仅 Kotlin 调用的独立 DSO；backend 之间以及 backend/common 不互调。
+1. **边界**：每 backend 一个 JNI DSO；general 是仅 Kotlin 调用的独立 DSO；backend 之间以及 backend/general 不互调。
 2. **调用形态**：值操作无状态；必须跨调用存活且含显式释放资源的对象使用 typed opaque handle。
 3. **wire**：具名 request/result，固定宽度 header；单一定义生成 Kotlin/C/manifest。禁止通用 opcode/map/frame。
 4. **handle**：`jlong` 是含 DSO/slot/generation/epoch 校验的 ID，不是 pointer。每 DSO 一个固定容量 registry，PI 窗口外使用。

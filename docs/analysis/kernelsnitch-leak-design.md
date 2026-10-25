@@ -135,7 +135,7 @@ static inline size_t scan_limit(size_t start, size_t span, size_t end) {
 
 ### Host 哈希/边界测试
 
-已新增 `app/src/main/cpp/glkcommon/kernelsnitch/scan_bounds.h` 与
+已新增 `app/src/main/cpp/glgeneral/kernelsnitch/scan_bounds.h` 与
 `tools/tests/kernelsnitch_hash_test.c`。
 
 测试：
@@ -155,7 +155,7 @@ pair 2048=1874 4096=3922/1874
 ```text
 clang -std=gnu11 -Wall -Wextra -Werror \
   -include tools/tests/stubs/cpu_set.h \
-  -I app/src/main/cpp/glkcommon/kernelsnitch \
+  -I app/src/main/cpp/glgeneral/kernelsnitch \
   -I tools/tests/stubs \
   tools/tests/kernelsnitch_hash_test.c \
   -o /tmp/kernelsnitch_hash_test
@@ -168,8 +168,8 @@ clang -std=gnu11 -Wall -Wextra -Werror \
 # 构建
 CC=aarch64-linux-android24-clang
 $CC -std=gnu11 -O2 -fPIE -pie -DTARGET_CONFIG_H="target.h" \
-  -I app/src/main/cpp/glk43499 -I app/src/main/cpp/glk43499/kernels \
-  -I app/src/main/cpp/glkcommon -I app/src/main/cpp/glk_log \
+  -I app/src/main/cpp/glk43499 -I app/src/main/cpp/gl43499/kernels \
+  -I app/src/main/cpp/glgeneral -I app/src/main/cpp/glk_log \
   main.c fops.c util.c offsets_json.c glk_session.c glk_log.c glk43499_api.c \
   -llog -o /tmp/glk43499
 adb push /tmp/glk43499 /data/local/tmp/glk43499

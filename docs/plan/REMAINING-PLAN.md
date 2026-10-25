@@ -133,10 +133,10 @@ destroy busy 返回 1
 
 ```text
 app/src/main/cpp/cmake-build-debug/      IDE 构建缓存
-app/src/main/cpp/glk43499/fops 2.c       重复文件
-app/src/main/cpp/glk43284/CMakeLists.txt 根 CMake 未 add_subdirectory
-glk43284/backend_stub.c / bootstrap.c    未在根 CMake 编译
-general/hmac_sha256.*                    未加入 gl_general
+app/src/main/cpp/gl43499/fops 2.c       重复文件
+app/src/main/cpp/gl43284/CMakeLists.txt 根 CMake 未 add_subdirectory
+gl43284/backend_stub.c / bootstrap.c    未在根 CMake 编译
+common/hmac_sha256.*                    未加入 gl_common
 ```
 
 ### SO 结构
@@ -149,7 +149,7 @@ libghostlock43284.so
 libghostlock_jni.so
 ```
 
-`gl_general` 仍 STATIC；不把 43284/43499 合并。
+`gl_common` 仍 STATIC；不把 43284/43499 合并。
 
 ## 门禁模板
 

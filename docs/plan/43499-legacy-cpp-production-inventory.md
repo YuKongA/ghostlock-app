@@ -8,23 +8,23 @@
 |---|---|---|---|
 | `main.cpp` | X | 无 CLI 总入口 | Flow/Lua 接线；四类清零 |
 | `common.h` | X | 无聚合头 | 窄 include；firewall 0 |
-| `attack/ops.cpp` | S/K | syscall/resource 小函数按 owner 拆；discovery 只能进 common | profile/address/script/流程进 Kotlin；逐 symbol 清零 |
-| `attack/ops.hpp` | S/X | 仅对应窄 C header | 去 common/profile 依赖 |
+| `attack/ops.cpp` | S/K | syscall/resource 小函数按 owner 拆；discovery 只能进 general | profile/address/script/流程进 Kotlin；逐 symbol 清零 |
+| `attack/ops.hpp` | S/X | 仅对应窄 C header | 去 general/profile 依赖 |
 | `kernel/constants.hpp` | S/K | mechanism 私有 UAPI 常量 | target/route/payload 常量进 Kotlin/schema |
 | `kernel/offset.h` | K/X | 无 target config | final value ABI 对拍 |
 | `kernel/runtime_struct_offsets.h` | K/X | 无 fallback offset | Kotlin fixed vector |
 | `kernel/target.h` | S/X | 必需 UAPI 形状进 mechanism 私有头 | SoC/profile/route 进 Kotlin |
 | `kernel/target_constants.hpp` | K/X | 无业务 geometry | Kotlin checked arithmetic |
-| `kernelsnitch/futex_hash.h` | R | `glkcommon/kernelsnitch/futex_hash.c/.h` | host vector |
-| `kernelsnitch/kernelsnitch.h` | S/R | `glkcommon/kernel_discovery.c/.h` | common registry；stop/join/munmap |
+| `kernelsnitch/futex_hash.h` | R | `glgeneral/kernelsnitch/futex_hash.c/.h` | host vector |
+| `kernelsnitch/kernelsnitch.h` | S/R | `glgeneral/kernel_discovery.c/.h` | general registry；stop/join/munmap |
 | `kernelsnitch/number_parse.h` | K/X | 无文本 parser | typed request |
-| `kernelsnitch/scan_bounds.h` | S/K | common 防御 validator | 策略/bounds 进 Kotlin |
-| `kernelsnitch/timeutils.h` | R/G | common 私有；双消费者后 general clock | 无业务 timeout default |
-| `kernelsnitch/utils.h` | S/G/X | process helper 留 common或 general | 删除 exit/hexdump/text/write-file 策略 |
+| `kernelsnitch/scan_bounds.h` | S/K | general 防御 validator | 策略/bounds 进 Kotlin |
+| `kernelsnitch/timeutils.h` | R/G | general 私有；双消费者后 common clock | 无业务 timeout default |
+| `kernelsnitch/utils.h` | S/G/X | process helper 留 general 或 common | 删除 exit/hexdump/text/write-file 策略 |
 | `memory/address_space.cpp` | K/X | 无 | Kotlin final address vectors |
 | `memory/address_space.h` | K/X | 无 | 同上 |
-| `memory/heap_context.cpp` | S/R | `glk43499/page_resource.c` | registry/borrow/quarantine matrix |
-| `memory/heap_context.h` | S/R | `glk43499/page_resource.h` 私有 resource | generated kind/state |
+| `memory/heap_context.cpp` | S/R | `gl43499/page_resource.c` | registry/borrow/quarantine matrix |
+| `memory/heap_context.h` | S/R | `gl43499/page_resource.h` 私有 resource | generated kind/state |
 | `memory/payload_builder.cpp` | K/X | Native 仅 validator | Kotlin payload vectors |
 | `memory/payload_builder.h` | K/X | typed request 进 Kotlin/schema | Native include 0 |
 | `profile/accessors.hpp` | K/X | 无 | Kotlin 唯一 profile |
@@ -34,8 +34,8 @@
 | `profile/entry.h` | K/X | 无 | caller 0 |
 | `profile/macros.h` | K/X | 单一 schema 生成 | 无手写第二表 |
 | `profile/model.h` | K/X | 只生成 ABI POD | Kotlin 唯一 profile |
-| `race/pi_race.cpp` | S/R | `glk43499/pi_actor.c` | 去 route/profile/global |
-| `race/pi_race.h` | S/R | `glk43499/pi_actor.h` 私有 state | handle kind/state |
+| `race/pi_race.cpp` | S/R | `gl43499/pi_actor.c` | 去 route/profile/global |
+| `race/pi_race.h` | S/R | `gl43499/pi_actor.h` 私有 state | handle kind/state |
 | `race/threads.cpp` | S/R | actor transaction + named direct calls | route/参数构造进 Kotlin；D3 |
 | `race/threads.hpp` | S/R | actor 私有 thread entry | 禁止 JNI 临时引用 |
 | `route/backend_contract.hpp` | K/X | 无 C++ catalog | Kotlin wrapper/schema |
@@ -76,13 +76,13 @@
 | `session/victim_process.hpp` | S/R/K | 私有 protocol header | 删除 forge credential / seccomp bypass context |
 | `support/decls.hpp` | S/X | owner 窄头 | 禁止新总表 |
 | `support/fatal_error.hpp` | X | status+errno+effect | 错误路径测试 |
-| `support/native_resource.cpp` | S/R/G | registry/page/actor/victim；纯 cleanup 可 general | 并发/残留 0 |
+| `support/native_resource.cpp` | S/R/G | registry/page/actor/victim；纯 cleanup 可 common | 并发/残留 0 |
 | `support/native_resource.hpp` | S/R | C11 私有 resource | C++ RAII 不跨 ABI |
-| `support/native_result.hpp` | R/G | 唯一 generated result；满足门槛后 general | 不跨 `std::expected` |
+| `support/native_result.hpp` | R/G | 唯一 generated result；满足门槛后 common | 不跨 `std::expected` |
 | `support/run_state.cpp` | K/X | 无 stdin ACK/global state | Kotlin progress |
 | `support/run_state.hpp` | K/X | 无 | caller 0 |
 | `support/status.hpp` | S/X | 通用 code 合并唯一 ABI | 禁止第二枚举 |
-| `support/time.h` | R/G | consumer 私有；双消费者后 general | timeout policy进 Kotlin |
+| `support/time.h` | R/G | consumer 私有；双消费者后 common | timeout policy进 Kotlin |
 | `support/util.cpp` | S | 逐 symbol 拆到明确 owner | 禁止整体搬成 util.c |
 
 删除任一行前必须填主指南 §6 的逐 symbol annex；“已分类”不等于允许删除。

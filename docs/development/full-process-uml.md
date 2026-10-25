@@ -728,17 +728,17 @@ caller owns Glk43499Session; destroy never frees it
 flowchart LR
   Lua[FlowLuaImpl + RunScope] --> K[Kotlin route/address/payload]
   UI[UI/default Flow] --> K
-  K --> C[common JNI discovery]
+  K --> C[general JNI discovery]
   C -->|copied DTO| K
   K --> B4[43499 mechanism JNI]
   K --> B2[43284 JNI]
-  G[general STATIC] --> C
+  G[common STATIC] --> C
   G --> B4
   G --> B2
   K --> F[FinishExecution/script]
 ```
 
-禁止边：common↔backend、backend↔backend。route 仅在 Kotlin/Lua。
+禁止边：general↔backend、backend↔backend。route 仅在 Kotlin/Lua。
 
 ### 11.2 Handle / actor state
 
@@ -772,7 +772,7 @@ Actor prepare 对 Page 建 persistent borrow；仅 clean 在 stop/join 后解除
 ```mermaid
 classDiagram
   class RunResourceScope
-  class NativeCommonJni
+  class NativeGeneralJni
   class Native43499Jni
   class Native43284Jni
   class DiscoveryHandle
@@ -787,7 +787,7 @@ classDiagram
   RunResourceScope *-- VictimHandle
   RunResourceScope *-- RootedVictimHandle
   AccessView --> PageHandle : borrowed
-  NativeCommonJni --> DiscoveryHandle
+  NativeGeneralJni --> DiscoveryHandle
   Native43499Jni --> PageHandle
   Native43499Jni --> ActorHandle
   AccessView ..> RunResourceScope : borrowed only
@@ -799,7 +799,7 @@ classDiagram
 ```mermaid
 sequenceDiagram
   participant K as Kotlin/Lua
-  participant C as common JNI
+  participant C as general JNI
   participant B as 43499 JNI
   participant F as Finish
   K->>C: scan(params)

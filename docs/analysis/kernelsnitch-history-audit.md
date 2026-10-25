@@ -28,7 +28,7 @@ fix(native): size the futex table from possible CPUs instead of online, like the
 
 该提交在 `dev-nocpp` 的祖先中，但它修的是 C++ 路径
 `src/core/kernelsnitch/kernelsnitch.h`；当前 C 副本
-`app/src/main/cpp/glkcommon/kernelsnitch/kernelsnitch.h` 没有同步这条修复，所以冷机
+`app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h` 没有同步这条修复，所以冷机
 仍以 4096 分桶匹配内核 2048，leak 恒 `-1`。
 
 本次已把该修复回移到 C 副本，并补 host 2048/4096 对比测试。
@@ -118,7 +118,7 @@ git show b0e9f499^:src/core/backend/cve_2026_43499/leak/kernelsnitch.h
 ## 7. 结论
 
 - 冷机 leak 的根因不是新问题，而是 **2026-09-20 已修复的 possible-CPU 表尺寸没有同步到
-  当前 `glkcommon` C 副本**。
+  当前 `glgeneral` C 副本**。
 - 历史记录完整可恢复：关键提交、归档文档、删除代码都在 git 中。
 - 本次修复后冷机已越过 leak，进入 W1；新的失败点是
   `W1 scratch page quarantine failed`。

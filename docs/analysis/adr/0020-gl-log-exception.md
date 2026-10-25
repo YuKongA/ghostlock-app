@@ -1,4 +1,4 @@
-# ADR-0020：日志子系统可写全局例外（general/gl_log）
+# ADR-0020：日志子系统可写全局例外（common/gl_log）
 
 - 日期：2026-10-22
 - 状态：**Proposed（待用户确认）**
@@ -7,7 +7,7 @@
 ## 背景
 
 AGENTS §4 只允许两个全局：`g_exploit_session` 与启动期只读 `g_direct_map_end`。
-43499 接入标准日志库 `general/gl_log` 后，DSO 内出现 4 个可写 `d`：
+43499 接入标准日志库 `common/gl_log` 后，DSO 内出现 4 个可写 `d`：
 
 ```text
 g_export_fd  g_min_level  g_timestamps  g_start_ms

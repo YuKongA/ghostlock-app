@@ -10,16 +10,16 @@
 ```text
 Lua -> FlowLuaImpl.run -> scope-bound Kotlin APIs
 UI/default Flow/custom Kotlin
-  ├─> common JNI -> copied DTO -> Kotlin -> any backend
+  ├─> general JNI -> copied DTO -> Kotlin -> any backend
   ├─> 43499 JNI
   └─> 43284 JNI
-general STATIC -> common/43499/43284
+common STATIC -> general/43499/43284
 ```
 
 - Kotlin/Lua 唯一拥有 profile、地址、payload、route、SELinux overwrite / forge credential / seccomp bypass、重试、fallback、跨 backend 顺序和 Finish 策略。
 - backend JNI 只拥有漏洞机制、跨调用物理资源和不可拆 transaction；不接收 `RouteKind`。
-- common JNI 只供 Kotlin 调用；backend 不调用/link common，也不接收 common handle。
-- general 是 Native 静态基础库；准入要求至少两个 DSO 已真实复用、无 backend 类型/默认/可写业务状态。
+- general JNI 只供 Kotlin 调用；backend 不调用/link general，也不接收 general handle。
+- common 是 Native 静态基础库；准入要求至少两个 DSO 已真实复用、无 backend 类型/默认/可写业务状态。
 - C11；legacy/very_legacy 只读参考，不进入 source/include list。
 
 ## 2. 同批取代
@@ -36,18 +36,18 @@ general STATIC -> common/43499/43284
 ## 3. DSO 与目录
 
 ```text
-general/                 gl_general STATIC
+common/                  gl_common STATIC
   gl_log.c native_clock.c native_result.c native_cleanup.c
-  futex_syscall.c        # 仅当 common+43499 均实际调用
-glkcommon/               libghostlock_common.so; Kotlin-only
+  futex_syscall.c        # 仅当 general+43499 均实际调用
+glgeneral/              libghostlock_general.so; Kotlin-only
   kernelsnitch/futex_hash.c kernel_discovery.c jni_kernel_discovery.c
-glk43499/                libghostlock43499.so
+gl43499/                libghostlock43499.so
   page_resource.c pi_actor.c select_mechanism.c
   tcp_zerocopy_mechanism.c multicast_mechanism.c jni_43499.c
-glk43284/                libghostlock43284.so
+gl43284/                libghostlock43284.so
 ```
 
-AES 当前仅 43284 使用，留 43284。futex helper 若只有 common 使用也留 common；达到两个真实消费者才下沉 general。64560 不建空目录；旧 stub 不进 manifest。
+AES 当前仅 43284 使用，留 43284。futex helper 若只有 general 使用也留 general；达到两个真实消费者才下沉 common。64560 不建空目录；旧 stub 不进 manifest。
 
 ## 4. ABI 与权威
 
@@ -95,22 +95,22 @@ slot 内部布局不属于跨端 ABI；至少含 kind/state/generation/epoch/inF
 
 ## 6. 资源与状态机
 
-### 6.1 common discovery
+### 6.1 general discovery
 
 `openDiscovery/scanDiscovery/readFacts/cancelDiscovery/closeDiscovery`。KernelSnitch 移除 target/profile/global/direct-map 依赖；所有 bounds、线程数、batch、timeout 由 Kotlin 输入。detached worker 改 joinable；partial-start/cancel/close 均 stop→join→munmap。
 
-continuation 只存在于 handle 内部 cursor；Kotlin 只传 batch index/receipt。close 后继续 scan=STALE。DTO 是复制值，common close 后仍有效。
+continuation 只存在于 handle 内部 cursor；Kotlin 只传 batch index/receipt。close 后继续 scan=STALE。DTO 是复制值，general close 后仍有效。
 
 ### 6.2 43499
 
 ```text
 allocatePage/mapPage/installPayload
 prepareActor
-executePselectActor / executeSendmsgActor / executeTcpZerocopyActor
+executeActor
 cancelPreparedActor / destroyActor / destroyPage
 ```
 
-每个**物理 mechanism** 使用独立命名 entry，不按 route 命名，也不接收 route/RouteKind；分派发生在 JNI 入口、PI 窗口前。三个 entry 各调用具名 C11 direct symbol（`pi_actor_execute_pselect/sendmsg/tcp_zerocopy`）；公共代码只允许宏生成或编译期 inline 展开，不传函数指针。所有差异在窗口前准备，PI 窗口内无 switch、BLR/间接 call、JNI、锁、分配、日志、首次触页及禁止 syscall。D3 用反汇编逐 entry 证明直接调用并登记窗口锚点。
+只导出一个 **route-agnostic** `executeActor`，不按 route 或 mechanism 命名，也不接收 route/RouteKind。机制差异全部由 Kotlin 传入的 typed actor 参数决定；JNI 入口在 PI 窗口前完成参数校验与直接调用准备，窗口内无 switch、BLR/间接 call、函数指针、JNI、锁、分配、日志、首次触页及禁止 syscall。D3 用反汇编证明窗口内是直接调用并登记窗口锚点。
 
 ```text
 PREPARED -> EXECUTING -> COMPLETED_CLEAN -> DESTROYABLE
@@ -146,7 +146,7 @@ disarm 属于 execute 内部；不导出外部 disarm。`QUARANTINED/LEAKED_ON_S
 | race/pi_race、threads | 43499 pi_actor；保留时序/回收，移 route/profile/global |
 | 三 route 实现 | 三 mechanism；只留物理调用/effect |
 | heap_context | page_resource；地址决策移 Kotlin |
-| kernelsnitch/* | common；纯 helper 按消费者计数决定 common/general |
+| kernelsnitch/* | general；纯 helper 按消费者计数决定 general/common |
 | payload_builder/address_space/profile/kernel offsets | Kotlin 唯一权威 |
 | route policy/catalog/orchestrator/controller | Kotlin Flow/route composition |
 | session backend/exploit_session/run_state | Kotlin run state |
@@ -162,7 +162,7 @@ D3 前必须在现有 annex 完成每个生产 symbol 的 `source file:function 
 |---|---|---|---|
 | D0 | 同批文档候选 | link/check、字节配额、critic 0阻断 | — |
 | D1 | schema/wrapper/registry | `./gradlew :app:testDebugUnitTest`；XML三桶；NDK assemble；nm/readelf/link-map | — |
-| D2 | general/common | DTO-after-close；0/1/MAX batch；backend link-map common symbol=0 | discovery 单功能 |
+| D2 | common/general | DTO-after-close；0/1/MAX batch；backend link-map general symbol=0 | discovery 单功能 |
 | D3 | page/actor/mechanisms | 并发矩阵、registry残留=0、窗口调用图 | 每 mechanism 冷机单 route |
 | D4 | Kotlin address/payload/Flow/Lua | fixed vectors、错域/截断/metadata、Lua scope | 三 route 写回读 |
 | D5 | victim/Finish/退役 | symbol manifest、旧入口=0、APK hash | uid=0、script hash/marker/SELinux |
@@ -175,6 +175,6 @@ C5 从“BSS 空”改为“仅 registry 明确符号”；每 DSO 允许表由 
 
 用户需一次确认：route-TU 旧裁定被 mechanism entry 取代；actor batch 生产启用；per-DSO registry 全局例外；victim protocol child/Finish primitive。
 
-扩展点：新增 backend 只新增自己的 DSO/schema/wrapper；新增 mechanism 只新增命名 entry、PI 直接调用版本和 Kotlin request；common 只有独立 Kotlin-called service 才可加入。未来债：quarantine 可能耗尽固定 slots，D3 后以实测 dirty 率决定是否设计 reap；偿还前 fail-closed CAPACITY。
+扩展点：新增 backend 只新增自己的 DSO/schema/wrapper；新增 mechanism 只新增命名 entry、PI 直接调用版本和 Kotlin request；general 只有独立 Kotlin-called service 才可加入。未来债：quarantine 可能耗尽固定 slots，D3 后以实测 dirty 率决定是否设计 reap；偿还前 fail-closed CAPACITY。
 
 批准标准：critic 阻断 0、用户明确批准、冻结 manifest 中七份候选（brief、plan、ADR-0019、ADR-0021、ADR-0022、approval-status、UML）同步生效；未满足时不写实现。

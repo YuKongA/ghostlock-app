@@ -3,14 +3,14 @@
 - 日期：2026-10-23；级别：L；状态：已批准 v4 的实施细化，非新架构权威。
 - 上位权威：[JNI 重写计划 v4](43499-43284-jni-rewrite-plan.md)、[ADR-0021](../analysis/adr/0021-jni-abi-and-ownership.md)、[边界摘要](../analysis/kotlin-native-boundary-brief.md)、[UML](../development/full-process-uml.md)。冲突时以上位权威为准。
 - 文件级处置：[生产文件 inventory](43499-legacy-cpp-production-inventory.md)；测试承接：[测试 inventory](43499-legacy-cpp-test-inventory.md)。
-- 当前事实：根 CMake 未编译或 include `glk43499/legacy/**`。旧树只作逐 symbol 考古来源；新 C11 禁止 include 或整段复制 legacy。
+- 当前事实：根 CMake 未编译或 include `gl43499/legacy/**`。旧树只作逐 symbol 考古来源；新 C11 禁止 include 或整段复制 legacy。
 - 本指南不定义具体地址、payload 值或机制参数，不声明设备支持。
 
 ## 1. 最终依赖与文件闭包
 
 ```text
 Kotlin/Lua
-  |-- NativeCommonJni -> libghostlock_common.so
+  |-- NativeGeneralJni -> libghostlock_general.so
   |     kernel_discovery.c  kernelsnitch/futex_hash.c
   |     handle_registry.c   jni_kernel_discovery.c
   |
@@ -20,10 +20,10 @@ Kotlin/Lua
         victim_protocol.c finish_script.c
         handle_registry.c jni_43499.c
 
-gl_general STATIC -> common/43499/43284
+gl_common STATIC -> general/43499/43284
 ```
 
-每个 DSO 的 registry 私有且 ID 域隔离，绝不跨 DSO 共享。backend 不链接、不调用 common，也不接收 common handle。common 的 copied facts 先回 Kotlin，再由 Kotlin 计算并发给任意 backend。general 只接纳至少两个 DSO 已真实复用、无 backend 类型/默认值/业务可写状态的实现。
+每个 DSO 的 registry 私有且 ID 域隔离，绝不跨 DSO 共享。backend 不链接、不调用 general，也不接收 general handle。general 的 copied facts 先回 Kotlin，再由 Kotlin 计算并发给任意 backend。common 只接纳至少两个 DSO 已真实复用、无 backend 类型/默认值/业务可写状态的实现。
 
 Kotlin/Lua 唯一拥有 profile、地址、payload、mechanism 选择、SELinux overwrite / forge credential / seccomp bypass、重试、fallback、跨 backend 顺序、结果解释与 Finish 策略。Native 只拥有 syscall、线程、fd/mmap/socket、跨调用物理资源和不可拆 actor transaction。Access 仅是 stable backend handle 的 borrowed read/write view，不包装全部 JNI。Lua 可在一次 RunScope 内跳过预制 Flow，自由组合 public wrapper 与 Access。
 
@@ -33,7 +33,7 @@ Kotlin/Lua 唯一拥有 profile、地址、payload、mechanism 选择、SELinux 
 |---|---|
 | R 改造复用 | 保留资源/时序语义，以 C11 在新 owner 文件重写 |
 | S 拆分 | Native 机制写入新 C11 owner；值计算/选择/编排另写 Kotlin |
-| G 下沉 | 两个以上 DSO 真实使用后才进入 general，否则留唯一消费者 |
+| G 下沉 | 两个以上 DSO 真实使用后才进入 common，否则留唯一消费者 |
 | K 迁移 | Kotlin 成为唯一权威；Native 仅做 ABI、边界和资源状态校验 |
 | X 退役 | 新承接测试与门禁通过、caller/symbol 清零后从源码树删除 |
 
@@ -41,11 +41,11 @@ Kotlin/Lua 唯一拥有 profile、地址、payload、mechanism 选择、SELinux 
 
 ## 3. 核心拆分
 
-### 3.1 common discovery
+### 3.1 general discovery
 
-`kernelsnitch/kernelsnitch.h` 拆成 `kernel_discovery.c`；`futex_hash.h` 迁 common 私有实现。移除 target/profile/global/direct-map、文本参数和默认策略。bounds、batch、线程数、timeout 由 Kotlin 输入；common 只复核 0/1/MAX、乘加溢出与资源上限。worker 改 joinable；partial-start/cancel/close 全部执行 stop→join→munmap。continuation cursor 只在 handle 内；facts 是复制值，close 后仍有效。
+`kernelsnitch/kernelsnitch.h` 拆成 `kernel_discovery.c`；`futex_hash.h` 迁 general 私有实现。移除 target/profile/global/direct-map、文本参数和默认策略。bounds、batch、线程数、timeout 由 Kotlin 输入；general 只复核 0/1/MAX、乘加溢出与资源上限。worker 改 joinable；partial-start/cancel/close 全部执行 stop→join→munmap。continuation cursor 只在 handle 内；facts 是复制值，close 后仍有效。
 
-`number_parse.h` 退役。clock/affinity/rlimit 等 helper 先留 common；只有另一个 DSO 真正调用同一实现后，才把纯基础部分下沉 general。hash/scan 语义始终留 common。
+`number_parse.h` 退役。clock/affinity/rlimit 等 helper 先留 general；只有另一个 DSO 真正调用同一实现后，才把纯基础部分下沉 common。hash/scan 语义始终留 general。
 
 ### 3.2 Page
 
@@ -78,7 +78,7 @@ UI 生成包含 root 管理器启动、SELinux 恢复等内容的 handoff/Finish
 
 ### 3.5 support/profile
 
-`native_resource.*` 按 owner 拆入 registry/page/actor/victim；fd/mmap/thread/child 的纯基础 cleanup 只有达到复用门槛才进 general。`native_result`、clock 同理。禁止新建万能 `util.c`、`decls.h` 或聚合头。
+`native_resource.*` 按 owner 拆入 registry/page/actor/victim；fd/mmap/thread/child 的纯基础 cleanup 只有达到复用门槛才进 common。`native_result`、clock 同理。禁止新建万能 `util.c`、`decls.h` 或聚合头。
 
 profile model/accessor/binary/entry/macros 全部迁 Kotlin；`LegacyProfileConverter.kt` 仍是唯一迁移点。Native 不读 target config、不带 fallback offsets、不解析 profile。ABI POD 只能由单一定义生成。
 
@@ -89,7 +89,7 @@ profile model/accessor/binary/entry/macros 全部迁 Kotlin；`LegacyProfileConv
 ```text
 core/nativeabi/       status/effect/result DTO
 core/nativehandle/    OwnedNativeHandle/RunResourceScope
-data/nativecommon/    internal NativeCommonJni + Discovery wrapper
+data/nativegeneral/    internal NativeGeneralJni + Discovery wrapper
 data/native43499/     internal Native43499Jni + Page/Actor/Victim wrappers
 core/access/          borrowed read/write capability
 core/flow/ + Lua      policy and composition
@@ -107,9 +107,7 @@ ABI header、status/effect、kind 与 request/result header **沿用 v4 §4 的�
 | `mapPage` | `gl43499_map_page` | 映射物理资源，不选业务地址 |
 | `installPayload` | `gl43499_install_payload` | 接收 Kotlin final bytes |
 | `prepareActor` | `gl43499_prepare_actor` | 创建 Actor 并建立 Page borrow |
-| `executePselectActor` | `gl43499_execute_pselect_actor` | pselect 物理入口；不接收 route |
-| `executeSendmsgActor` | `gl43499_execute_sendmsg_actor` | sendmsg/mcast 物理入口；不接收 route |
-| `executeTcpZerocopyActor` | `gl43499_execute_tcp_zerocopy_actor` | TCP zerocopy 物理入口；不接收 route |
+| `executeActor` | `gl43499_execute_actor` | 唯一 route-agnostic actor entry；机制差异在 Kotlin 参数，不接收 route/mechanism |
 | `cancelPreparedActor` | `gl43499_cancel_actor` | 只置 stop，不释放 |
 | `destroyActor` | `gl43499_destroy_actor` | clean 才解除 borrow并释放 |
 | `destroyPage` | `gl43499_destroy_page` | borrow>0 返回 BUSY |
@@ -120,7 +118,7 @@ ABI header、status/effect、kind 与 request/result header **沿用 v4 §4 的�
 
 禁止增加 `executeRoute`、`prepareAttack`、`run43499` 或 `invoke(opcode, bytes)`。
 
-### 4.3 common entries
+### 4.3 general entries
 
 ```text
 openDiscovery -> DiscoveryHandle
@@ -130,7 +128,7 @@ cancelDiscovery(handle) -> NativeCallResult
 closeDiscovery(handle) -> NativeCallResult
 ```
 
-Discovery ID 只在 common DSO 有效。close 后 scan/read 为 `STALE_HANDLE`；copied facts 继续有效。
+Discovery ID 只在 general DSO 有效。close 后 scan/read 为 `STALE_HANDLE`；copied facts 继续有效。
 
 ## 5. Registry、终结与并发
 
@@ -163,7 +161,7 @@ JNI 不用异常表达进入状态机后的失败，必须返回 status+errno+ef
 
 1. **A0 inventory**：填满两个 inventory 和逐 symbol annex；冻结 caller、owner/borrow/终结、old assertion→new test。
 2. **A1 ABI/registry/JNI shell**：生成 ABI、两个 DSO 私有 registry、两个 JNI bridge；跑 JVM/host 极端状态。
-3. **A2 common**：迁 discovery；backend link-map 的 common symbol=0；common 真机单功能。
+3. **A2 general**：迁 discovery；backend link-map 的 general symbol=0；general 真机单功能。
 4. **A3 page**：迁 page owner；验证 partial failure、borrow、double-close、quarantine。
 5. **A4 actor/mechanism**：一次一个 mechanism；每批 direct-call 反汇编与单机制冷机真机门禁。
 6. **A5 Kotlin**：接 address/payload/Flow/Lua；证明 mechanism 选择只在 Kotlin且 Lua 可绕过预制 Flow。
@@ -176,7 +174,7 @@ JNI 不用异常表达进入状态机后的失败，必须返回 status+errno+ef
 
 ## 7. 完成判据
 
-- 新 source/include 对 legacy 为 0；backend link-map 对 common symbol 为 0。
+- 新 source/include 对 legacy 为 0；backend link-map 对 general symbol 为 0。
 - Native entry 无 `RouteKind`；Kotlin 是 address/payload/profile/SELinux overwrite → forge credential → seccomp bypass/retry/fallback/Finish 唯一权威。
 - old main、`run43499/create43499/destroy43499`、pipeline/catalog/controller 不出现在生产 APK/DSO。
 - ABI/JNI manifest 单一生成；registry 的 unload/fork/borrow/quarantine/transfer/concurrency 矩阵通过。
