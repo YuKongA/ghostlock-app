@@ -1,12 +1,14 @@
 # 公共执行默认值
 
-这些是所有内核共用的执行调优默认值。resolver 从 `execution-tuning.conf` 与 `execution-<route>.conf`
-以 preset 形式加载它们，再与内置 profile、导入的偏移和用户覆盖合并后传给 native；profile 里省略的项就使用这里的值。
+> English: [defaults.md](defaults.md)
 
-字段名后缀表示单位：`_ms` 是毫秒，`_us` 是微秒。表中的“影响”“理由”用于解释每个值的取舍，
-不是硬性规定；确需修改 `execution` 时，请以真机实测为准。
+这些是所有内核共用的执行调优默认值。resolver 从 `execution-tuning.conf` 与
+`execution-<route>.conf` 以 preset 形式加载它们，再与内置 profile、导入的偏移和
+用户覆盖合并后传给 native。profile 里省略的项就使用这里的值。
 
-> 本表全部是建议值：只有内核几何是必填项。profile 可以省略或覆盖这些值，省略时随包默认值就是建议值。
+本表全部是建议值：只有内核几何是必填项。profile 可以省略或覆盖任意一行。
+字段名后缀表示单位：`_ms` 是毫秒，`_us` 是微秒。表中的“影响”“理由”解释每个
+值的取舍；确需修改 `execution` 时，以真机实测为准。
 
 <table>
 <thead>

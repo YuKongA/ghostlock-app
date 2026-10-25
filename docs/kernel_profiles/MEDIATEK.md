@@ -2,14 +2,17 @@
 
 > 中文版: [MEDIATEK_ZH.md](MEDIATEK_ZH.md)
 
-This guide is for MediaTek users who extract the offsets by themselves but have not yet obtained a working run. If
-the device is listed with an exact `uname -r` match and runs, this guide does
-not apply.
+This guide is for MediaTek users who extract the offsets themselves but have not
+yet had a working run. If the device has an exact `uname -r` match in the
+built-in list and runs, this guide does not apply.
 
-MediaTek kernels require two physical addresses that GhostLock cannot infer on
-its own: `kernel_phys_load` and `kernel_phys_offset`. When they are missing or
-incorrect, the attack fails during W1: it is retried to its limit and then
-fails.
+Profiles need `kernel_phys_load` and `kernel_phys_offset`. In **Parse local image**,
+attach the matching `vendor_boot.img` to `boot.img` first. The extractor reads
+the load address from the header and derives the DRAM base only when the
+alignment proves it. A readable `/proc/iomem` or a `--iomem` dump is another source.
+Use the rooted-device script below when those inputs do not supply the values.
+
+Missing or incorrect values can cause W1 to retry to the limit and stop:
 
 ```
 [*] W1 attempt 1/15
@@ -18,17 +21,18 @@ fails.
 [-] Write 1 failed
 ```
 
-## Before you start
+## Before using the script
 
 `/proc/iomem` and `/proc/kallsyms` are readable only by root, so the device must
 give you a root shell (`adb root` on a userdebug/eng build, or an equivalent
 root). No manager app is needed.
 
-Do **not** use KernelSU, ReSukiSU, or KowSU, including the form that patches the
-kernel: a KernelSU-patched kernel interferes with the exploit. The script checks
-root and KernelSU for you and stops with a message if either is not satisfied.
+Do **not** use a kernel with KernelSU patches or a loaded KernelSU module.
+This includes BakaSU/ReSukiSU and KowSU variants. These changes can interfere
+with the exploit. The script checks root access only, so confirm the kernel
+yourself before running.
 
-## Step 1 — get the two values with the script
+## Step 1: get the two values with the script
 
 `tools/mtk-phys/` reads the device and prints both values in coloured text.
 Pick the section for your setup.
@@ -42,7 +46,7 @@ app with `su`):
 su -c 'sh /data/local/tmp/mtk-phys.sh'
 ```
 
-If it is not on the phone, use the entry for your computer below instead.
+If it is not on the phone, use the entry for your computer below.
 
 ### Windows (on your PC)
 
@@ -63,9 +67,9 @@ tools/mtk-phys/extract_phys.sh
 If more than one device is connected, select one first: `set ANDROID_SERIAL=<serial>`
 on Windows, or prefix the command with `ANDROID_SERIAL=<serial>` on macOS/Linux.
 
-## Step 2 — copy the script output into the app
+## Step 2: copy the script output into the app
 
-When the script finishes, it prints the two values:
+The script prints the two values:
 
 ```
 kernel_phys_load = <value>
@@ -75,7 +79,7 @@ kernel_phys_offset = <value>
 Open the app's **Advanced parameter overrides** page and set the two fields to
 those values. Saving applies them to the next run; no rebuild is required.
 
-## Step 3 — run and verify
+## Step 3: run and verify
 
 Run the exploit once, then read the first lines of the debug log
 (`Download/ghostlock-debug-log/<time>/*.log.txt`):
@@ -85,12 +89,12 @@ Run the exploit once, then read the first lines of the debug log
 [+] p0 profile ... phys_offset=<value> kernel_phys_load=<value>
 ```
 
-If W1 keeps failing, one of the values is still incorrect; recheck the script
-output.
+If W1 keeps failing, recheck both values against the script output.
 
 ## Adding the device as a built-in (maintainers)
 
-To ship a built-in profile for this kernel, follow [README.md](README.md) and
-run the extractor with `--phys` (prefer the image's embedded kallsyms; do not
-pass a device `/proc/kallsyms`). The extractor does not emit
-`kernel_phys_offset`; fill it by hand.
+To ship a built-in profile, follow [README.md](README.md). Prefer the image's
+embedded kallsyms. Supply `--vendor-boot vendor_boot.img` or `--iomem iomem.txt`
+for the physical data. `--phys` supplies only `kernel_phys_load`.
+The extractor emits both address fields, using `null` for unknown values.
+Obtain and verify any missing value before testing the profile.
