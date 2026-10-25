@@ -57,6 +57,10 @@
 
 **计划（L 级改动必须）**
 
+涉及 Kotlin/JNI/Native 跨层契约、资源 owner 或 Native transaction 时，可在下列通用八节内按需套用
+[`kotlin-jni-native-architecture-template.md`](kotlin-jni-native-architecture-template.md) 的问题清单。该文件是专用附录，
+不得取代本节、另定计划目录或无条件引入 handle/common/Flow 等结构。
+
 ```markdown
 # <主题> 计划（<YYYY-MM-DD>）
 ## 现状与基线        # 分支、commit、当前行为、已知问题

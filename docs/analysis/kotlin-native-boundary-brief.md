@@ -1,6 +1,6 @@
-# Kotlin / JNI / Native 分层摘要（v3 批准候选）
+# Kotlin / JNI / Native 分层摘要（v3 已批准）
 
-- 日期：2026-10-23；级别：L；状态：候选，未批准不实现。
+- 日期：2026-10-23；级别：L；状态：已批准（用户指令“按照计划”）。
 - 完整权威计划：[JNI 重写计划 v4](../plan/43499-43284-jni-rewrite-plan.md)。本文只保留结构摘要，避免第二权威。
 - 生效：本文、plan、ADR-0019/0021/0022、approval-status、UML 经同一冻结快照评审且用户一次批准后同步生效。
 
@@ -15,7 +15,7 @@ UI/default Flow/custom Kotlin
 general STATIC -> common/43499/43284
 ```
 
-- **Kotlin/Lua**：profile、地址、payload、route、W1/W2/W3、重试、fallback、跨 backend 顺序、结果解释、Finish。
+- **Kotlin/Lua**：profile、地址、payload、route、SELinux overwrite / forge credential / seccomp bypass、重试、fallback、跨 backend 顺序、结果解释、Finish。
 - **backend JNI**：漏洞机制、物理资源、不可拆 transaction；不接收 `RouteKind`。
 - **common JNI**：仅 Kotlin 调用的 discovery/scan；backend 不调用/link common，也不接收 common handle。
 - **general STATIC**：至少两个 DSO 真实复用的无业务状态基础实现。
@@ -49,7 +49,7 @@ Native 不把完整攻击称作原子；只有 PI actor transaction 不可拆：
 -> stop/disarm -> join -> 清 borrowed ref -> 返回 effect
 ```
 
-三个命名 entry：`executeMulticastActor/executeSelectActor/executeTcpActor`。分派在 PI 窗口前；窗口内无 switch 间接目标、函数指针、JNI、registry 锁、分配、日志或首次触页。
+三个**物理 mechanism** entry：`executePselectActor/executeSendmsgActor/executeTcpZerocopyActor`；不按 route 命名，也不接收 route。分派在 PI 窗口前；窗口内无 switch 间接目标、函数指针、JNI、registry 锁、分配、日志或首次触页。
 
 ## 5. owner 与 dirty
 

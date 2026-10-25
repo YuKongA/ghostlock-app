@@ -61,6 +61,6 @@
 
 | 项 | 内容 |
 |---|---|
-| amendment 状态 | Proposed |
-| 批准人/指令/日期 | 待用户 |
-| 生效哈希 | 待 D0 冻结 manifest |
+| amendment 状态 | Accepted |
+| 批准人/指令/日期 | 用户；“按照计划”；2026-10-23 |
+| 生效依据 | JNI v4 D0-R5 critic 阻断 0 后的实现指令 |

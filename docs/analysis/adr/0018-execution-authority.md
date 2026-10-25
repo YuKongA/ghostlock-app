@@ -1,6 +1,6 @@
 # ADR-0018：执行权威唯一化与两条 close 路径互斥
 
-> **2026-10-23 状态变更**：决策 1/2（`PipelineEngine` 唯一、KtStep/Stage 只是 node）被 [ADR-0022](0022-flow-execution-authority.md) 取代；决策 3/4/5（close 互斥、能力视图、一次性）继续有效。
+> **2026-10-23 状态变更**：决策 1/2（`PipelineEngine` 唯一、KtStep/Stage 只是 node）被 [ADR-0022](0022-flow-execution-authority.md) 取代；决策 4 的 generation 条款被 [ADR-0023](0023-access-capability-authority.md) 取代。决策 3/4/5 的其余部分（close 互斥、非拥有/no close/缺席 null、一次性）继续有效。
 
 - 日期：2026-10-21
 - 状态：**Accepted**（三份来源设计已由 design-critic 通过：rev 7 / rev 6 / rev final，均无阻断项；本 ADR 是合并后的决策记录）
@@ -27,7 +27,7 @@
    把 `StageCode` 穷尽映射成节点结果。二者不实现编排，只做「一次节点运行 + abort/close 委托」。
 3. **两条 close 路径互斥**：`AccessSession` 只关能力/JNI 会话句柄（`close()` 取消、`shutdown()` join 后 native 清理一次）；
    `PipelineEngine` 只关 node/端口/Stage 句柄（逆序、一次、幂等）。**没有一方调用另一方的 close**。
-4. **能力是视图**：`KernelMemoryAccess`/`PageCacheAccess` 非拥有、永不 close、缺席为 `null`、换代即失效；
+4. **能力是视图**：`KernelMemoryAccess`/`PageCacheAccess` 非拥有、永不 close、缺席为 `null`；generation 条款由 [ADR-0023](0023-access-capability-authority.md) 取代，stale 由 owner/native 在调用边界拒绝；
    43499 不提供 `AccessSession`（`process_vm_*` 面向用户内存，其 prepare/route/actor 端口归 `BackendRun`）。
 5. **一次性边界**：`BackendRun` 与 `DelegatingExecutionEngine` 都一次性；`ExecutionEngineFactory` 每次 `create()` 给新引擎。
 

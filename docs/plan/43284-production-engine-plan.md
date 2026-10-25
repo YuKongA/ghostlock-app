@@ -65,7 +65,7 @@ C++：api_43284（已有）、api_43499（已有）、session_api（已有）
 
 ### P1 Kotlin 会话与 Port 契约
 
-- `KotlinAttackSession`：持有 backend handle；`initialize/snapshot/shutdown` 幂等；shutdown 顺序明确；generation 失效旧视图。
+- `KotlinAttackSession`：持有 backend handle；`initialize/snapshot/shutdown` 幂等；shutdown 顺序明确；视图无 generation，close 后由 owner/native 拒绝 stale 调用（ADR-0023）。
 - `BackendPort` 接口：`initialize/step/shutdown`，步骤由 `StepEngine` 驱动。
 - `Backend43284Port`：封装 create/initialize/snapshot/resolve/verify/writeBlock/readBlock/makeAccess/hookPlan/trigger/wait/shutdown/destroy。
 - refusal → `AccessFailure` 单一映射；unknown 写不回成功。

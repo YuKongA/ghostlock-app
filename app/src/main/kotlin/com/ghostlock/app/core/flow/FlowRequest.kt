@@ -1,9 +1,9 @@
 package com.ghostlock.app.core.flow
 
-/** UI 交给一个 backend flow 的一次请求。 */
-data class FlowRequest(
-    val backendClass: kotlin.reflect.KClass<out Flow>,
-    val pathId: String = "",
-    val payload: ByteArray? = null,
-    val values: Map<String, Any?> = emptyMap(),
-)
+/**
+ * 一次 backend flow run 的请求标记。
+ *
+ * 每个 [Flow] 实现必须声明自己的具体子类，并在 [Flow] 的泛型参数中绑定；
+ * core 不提供通用/默认 request，避免把 backend 字段解释集中到公共 DTO。
+ */
+interface FlowRequest

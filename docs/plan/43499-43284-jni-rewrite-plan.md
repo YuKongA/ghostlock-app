@@ -1,7 +1,7 @@
 # Kotlin-first JNI 重写计划 v4（批准候选）
 
 - 日期：2026-10-23；级别：L；作者：Lead；评审：design-critic。
-- 状态：**候选**。本文、ADR-0019/0021/0022、approval-status 和 UML 由用户一次批准后同步生效；此前 v3 仍是旧口径。
+- 状态：**已批准**（用户 2026-10-23 指令“按照计划”编写架构 Kotlin class）；本文与同批 ADR、approval-status、UML 同步生效。
 - 取代：v4 生效时取代 v3 的 per-route JNI、全无状态/无 handle 和 Flow 独占能力入口。
 - 摘要：[Kotlin/Native 边界](../analysis/kotlin-native-boundary-brief.md)。
 
@@ -16,7 +16,7 @@ UI/default Flow/custom Kotlin
 general STATIC -> common/43499/43284
 ```
 
-- Kotlin/Lua 唯一拥有 profile、地址、payload、route、W1/W2/W3、重试、fallback、跨 backend 顺序和 Finish 策略。
+- Kotlin/Lua 唯一拥有 profile、地址、payload、route、SELinux overwrite / forge credential / seccomp bypass、重试、fallback、跨 backend 顺序和 Finish 策略。
 - backend JNI 只拥有漏洞机制、跨调用物理资源和不可拆 transaction；不接收 `RouteKind`。
 - common JNI 只供 Kotlin 调用；backend 不调用/link common，也不接收 common handle。
 - general 是 Native 静态基础库；准入要求至少两个 DSO 已真实复用、无 backend 类型/默认/可写业务状态。
@@ -31,7 +31,7 @@ general STATIC -> common/43499/43284
 | ADR-0019：可写全局为空 | 每 DSO 一个固定容量 registry 例外 | ADR-0019/C5 |
 | ADR-0022：Flow.run 唯一入口 | UI run 仍经 Flow；Lua 脚本内部可直调 scope-bound API | ADR-0022 |
 
-代价：route TU 静态隔离减少；增加 request 误组合和 registry 状态。偿还：typed request、状态/并发反例、link firewall、三 route 单独真机门禁。该取代需用户知情确认。
+代价：route TU 静态隔离减少；增加 request 误组合和 registry 状态。偿还：typed request、状态/并发反例、link firewall、三 route 单独真机门禁。用户已于 2026-10-23 以“按照计划”知情确认。
 
 ## 3. DSO 与目录
 
@@ -106,11 +106,11 @@ continuation 只存在于 handle 内部 cursor；Kotlin 只传 batch index/recei
 ```text
 allocatePage/mapPage/installPayload
 prepareActor
-executeMulticastActor / executeSelectActor / executeTcpActor
+executePselectActor / executeSendmsgActor / executeTcpZerocopyActor
 cancelPreparedActor / destroyActor / destroyPage
 ```
 
-每 mechanism 使用独立命名 entry；分派发生在 JNI 入口、PI 窗口前。三个 entry 各调用具名 C11 direct symbol（`pi_actor_execute_multicast/select/tcp`）；公共代码只允许宏生成或编译期 inline 展开，不传函数指针。所有差异在窗口前准备，PI 窗口内无 switch、BLR/间接 call、JNI、锁、分配、日志、首次触页及禁止 syscall。D3 用反汇编逐 entry 证明直接调用并登记窗口锚点。
+每个**物理 mechanism** 使用独立命名 entry，不按 route 命名，也不接收 route/RouteKind；分派发生在 JNI 入口、PI 窗口前。三个 entry 各调用具名 C11 direct symbol（`pi_actor_execute_pselect/sendmsg/tcp_zerocopy`）；公共代码只允许宏生成或编译期 inline 展开，不传函数指针。所有差异在窗口前准备，PI 窗口内无 switch、BLR/间接 call、JNI、锁、分配、日志、首次触页及禁止 syscall。D3 用反汇编逐 entry 证明直接调用并登记窗口锚点。
 
 ```text
 PREPARED -> EXECUTING -> COMPLETED_CLEAN -> DESTROYABLE

@@ -13,7 +13,7 @@
 
 ## 决策
 
-1. **UI run 权威 = `Flow`**：UI 发起的一次 run 只经 `Flow.run(FlowRequest)`；`SequentialFlow` 是默认 backend 模板。该条不把 backend wrapper 或 Access 变成 Flow 私有能力。
+1. **UI run 权威 = `Flow`**：UI 发起的一次 run 只经 `Flow<R : FlowRequest>.run(R)`；每个 backend 声明自己的 request 子类（43499/43284/Lua 各自），core 不提供默认 request；`SequentialFlow<R>` 是默认 backend 模板。该条不把 backend wrapper 或 Access 变成 Flow 私有能力。
 2. **每个默认 backend 一个 Flow 实现**（`Flow43499Impl`/`Flow43284Impl`）；其 steps 使用 scope-bound wrapper。`FlowLuaImpl.run` 是 Lua UI run 入口，脚本内部可直接调用任意 scope-bound backend wrapper/Access，不必调用其它 backend 的预制 Flow。
 3. **语义**：
    - 失败即停：`StepResult.Failed` 立即结束，返回 `FlowResult.Failed(reason, failedStep, steps, evidence)`。
@@ -54,6 +54,6 @@
 
 | 项 | 内容 |
 |---|---|
-| amendment 状态 | Proposed |
-| 批准人/指令/日期 | 待用户 |
-| 生效哈希 | 待 D0 冻结 manifest |
+| amendment 状态 | Accepted |
+| 批准人/指令/日期 | 用户；“按照计划”；2026-10-23 |
+| 生效依据 | JNI v4 D0-R5 critic 阻断 0 后的实现指令 |

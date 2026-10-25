@@ -139,7 +139,7 @@ interface AccessCapabilities { val kernelMemory: KernelMemoryAccess?; val pageCa
 | 规则 | 内容 |
 | --- | --- |
 | 能力是视图 | `KernelMemoryAccess` / `PageCacheAccess` 只继承 `AccessCapability` 标记；**非拥有、永不 close**；缺席 = `null`，不给假实现。 |
-| 代际 | 视图带 `generation`；会话换代后旧视图一律失效（拒绝，不重试）。 |
+| 生命周期 | 视图不带 `generation`/close；owner 在 close 或重初始化后不再发布，stale 由 owner/native 在调用边界拒绝（拒绝，不重试）。 |
 | 每 backend 一个会话 | 43284：`Cve43284Session`（pageCache 视图，target 只从 `init.carrierPath` 派生）；LKM：`LkmSession`（kernelMemory 视图）；**43499 没有 AccessSession**——`process_vm_*` 面向用户内存，其 prepare/route/actor 端口归 `Cve43499Run`/`PipelineEngine`。 |
 | 组合而非继承 | 未来某 backend 同时具备两种能力 ⇒ 一个会话组合两个视图；**不建 capability 基类**。 |
 | 关闭顺序（43284） | `page.shutdown() → ops.tearDown() → jni.close()`，恰好一次，之后 `CLOSED`。 |

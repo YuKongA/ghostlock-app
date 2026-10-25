@@ -1,7 +1,7 @@
 # ADR-0021：typed JNI ABI 与资源所有权（v2 候选）
 
 - 日期：2026-10-23
-- 状态：**Proposed；随 JNI v4 一次批准后生效**
+- 状态：**Accepted（用户 2026-10-23 指令“按照计划”）**
 - 取代：生效时取代 v1 的“所有函数无状态、无 create/destroy/handle”。
 - 权威细节：[JNI v4 §4–§7](../../plan/43499-43284-jni-rewrite-plan.md)。
 

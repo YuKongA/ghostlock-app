@@ -1,6 +1,6 @@
 # 全流程 UML（**权威**）· 新架构（A0–A6）
 
-> 2026-10-23 JNI v4 候选：§11 经用户批准后取代本文件旧的 route/JNI handle/Flow/Finish 局部图；批准前旧图继续有效。此处只保留一份候选权威图，细节链接 JNI v4 plan。
+> 2026-10-23 JNI v4 已获用户“按照计划”批准：§11 取代旧的 route/JNI handle/Flow/Finish 局部图。
 
 > **本文件是唯一权威 UML**（`docs/development/full-process-uml.md`）；旧的旧实现 UML 已归档为 [old-full-process-uml.md](old-full-process-uml.md)（**仅历史对照**，结构与本件不同）。
 > 依据：`rewrite-plan-v2`（A0–A6）· `lua-surface-design`（暴露面 7 条）· `lua-surface-annex-document/-target/-route-switch` · ADR-0008/0009/0010 · `A6-baseline-approval`。日期 2026-10-08。
@@ -718,7 +718,7 @@ GlkSession* (caller-owned; no process-wide handle)
 caller owns Glk43499Session; destroy never frees it
 ```
 
-## 11. JNI v4 分层与生命周期（2026-10-23 候选）
+## 11. JNI v4 分层与生命周期（2026-10-23 现行）
 
 > 生效条件与取代范围见 [JNI v4 §2](../plan/43499-43284-jni-rewrite-plan.md)。本节是该结构唯一候选图。
 

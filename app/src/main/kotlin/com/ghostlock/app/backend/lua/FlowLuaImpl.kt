@@ -1,7 +1,6 @@
 package com.ghostlock.app.backend.lua
 
 import com.ghostlock.app.core.flow.Flow
-import com.ghostlock.app.core.flow.FlowRequest
 import com.ghostlock.app.core.flow.FlowResult
 import com.ghostlock.app.log.log as appLog
 import kotlinx.coroutines.CancellationException
@@ -20,10 +19,10 @@ import kotlin.coroutines.coroutineContext
  * run 直接启动脚本；步骤完全由脚本自己决定，不经过 SequentialFlow。
  * 脚本来源：request.payload 或 request.values["script"]。
  */
-class FlowLuaImpl : Flow {
+class FlowLuaImpl : Flow<FlowLuaRequest> {
     override val backendClass = FlowLuaImpl::class
 
-    override suspend fun run(request: FlowRequest): FlowResult {
+    override suspend fun run(request: FlowLuaRequest): FlowResult {
         val script = request.payload?.toString(Charsets.UTF_8)
             ?: request.values["script"] as? String
         if (script.isNullOrBlank()) {

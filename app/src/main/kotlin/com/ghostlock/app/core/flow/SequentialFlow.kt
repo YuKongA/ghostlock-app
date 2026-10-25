@@ -8,29 +8,30 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlin.random.Random
+import kotlin.reflect.KClass
 
 /**
  * 顺序化 Flow 的模板基类。
  *
  * 子类只提供 steps 与可选 cleanup；run 的顺序、重试、前后延时、超时、最终 cleanup
  * 固定在基类，不允许子类重写。Lua 等不需要顺序模板的实现直接实现 [Flow]。
+ *
+ * @param R 子类自己的请求类型；必须是 [FlowRequest] 的具体子类。
  */
-abstract class SequentialFlow(
-    final override val backendClass: kotlin.reflect.KClass<out Flow>,
-) : Flow {
+abstract class SequentialFlow<R : FlowRequest>(
+    final override val backendClass: KClass<out Flow<*>>,
+) : Flow<R> {
     private val lock = Any()
     private var used = false
 
-    /** 由 backend 根据请求组装本次步骤；不得在这里执行步骤。 */
-    protected abstract fun steps(request: FlowRequest): List<FlowStep>
+    /** 由 backend 根据自己的请求类型组装本次步骤；不得在这里执行步骤。 */
+    protected abstract fun steps(request: R): List<FlowStep>
 
     /** 可选清理；在成功、失败、取消路径都只执行一次。 */
     protected open suspend fun cleanup() {}
 
-    final override suspend fun run(request: FlowRequest): FlowResult {
-        require(request.backendClass == backendClass) {
-            "request backend mismatch: expected=" + backendClass + " actual=" + request.backendClass
-        }
+    final override suspend fun run(request: R): FlowResult {
+        // 请求归属由 Flow<R> 的泛型在编译期保证，不再做 backendClass 运行期比对。
         synchronized(lock) {
             check(!used) { "flow is one-shot" }
             used = true

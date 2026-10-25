@@ -12,7 +12,7 @@ import kotlin.reflect.KClass
  * 身份是实现类本身；不保存 wire string。
  * 该 enum 位于 backend 层，避免 core 反向依赖具体实现。
  */
-enum class BackendId(val clazz: KClass<out Flow>) {
+enum class BackendId(val clazz: KClass<out Flow<*>>) {
     CVE_43284(Flow43284Impl::class),
     CVE_43499(Flow43499Impl::class),
     LUA(FlowLuaImpl::class),

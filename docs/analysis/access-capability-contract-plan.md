@@ -2,6 +2,8 @@
 
 状态：契约批次已完成；2026-10-19 追加 JNI 能力包装与生产入口，仍未执行真机门禁。
 
+> **2026-10-23 取代**：本文的「能力视图 generation」条款被 [ADR-0023](adr/0023-access-capability-authority.md) 取代；能力视图改为无 generation/无 close 的纯借用标记，stale 由 owner/native 判。其余契约批次内容保留为历史。
+
 ## 计划关系
 
 - 本批是 `jni-six-targets-params-plan.md` 的上层契约补充，不替代其中的六函数参数化、JNI 帧、native 生命周期或真机门禁。

@@ -13,7 +13,7 @@
 | 基线 | **所有逻辑在 Kotlin；C++ 只保留最薄 JNI syscall 接口** | 已批准 | 用户 2026-10-20；[43499-kt-step-plan.md](43499-kt-step-plan.md) 头部 |
 | 层级拆分 | 第 1 层＝逐 syscall JNI；第 2 层＝actor batch / victim child helper | **原则＝已批准；生产启用＝仅第 1 层**（第 2 层生产启用＝待批准） | [43499-kt-step-plan.md](43499-kt-step-plan.md) §0 |
 | PI 粒度 | 每个 futex 一次 JNI 可能破坏 PI 窗口时序 ⇒ 不能直接作生产方案 | 已批准（作为约束） | `docs/analysis/jni-six-targets-params-plan.md:58-65`；`pi-window-constraints.md` |
-| JNI v4 基线取代 | 批准时把“C++只最薄 syscall”精确替换为“Kotlin/Lua拥有全部业务编排；Native可持有物理资源并完成最小不可拆transaction” | **待批准** | K1 历史薄 syscall 层继续保留；D3 新生产机制允许变厚但不得拥有 route |
+| JNI v4 基线取代 | Kotlin/Lua拥有全部业务编排；Native可持有物理资源并完成最小不可拆transaction | **已批准** | 用户 2026-10-23 指令“按照计划”；K1 历史薄层保留 |
 
 ## 2. 批次状态
 
@@ -51,13 +51,13 @@
 
 | 项 | 候选内容 | 状态 | 生效代价/偿还 |
 |---|---|---|---|
-| route 所在层 | 取代“每 route JNI/TU”：Native 只给三个命名 mechanism entry；Kotlin/Lua 组合 route | **待批准** | 静态隔离减少；typed request + 三路真机偿还 |
-| actor batch 生产 | 最小不可拆 PI actor transaction 在一次 Native call 内完成 | **待批准** | Native transaction 变厚；窗口调用图/真机门禁 |
-| typed handle | 值调用无状态；Page/Actor/Discovery/Victim 等物理资源用 handle | **待批准** | registry 状态；并发矩阵和残留检查 |
-| registry 例外 | 每 DSO 一个固定容量可写 registry，PI 窗口外访问 | **待批准** | 取代 ADR-0019 全局为空；BSS manifest/fork gate |
-| victim/Finish | protocol child 用 Native handle；普通 victim 仍 ProcessBuilder；UI脚本由 rooted child 中性触发 | **待批准** | 新 owner/清理链；pid/hash/marker/SELinux 真机门禁 |
+| route 所在层 | 取代“每 route JNI/TU”：Native 只给三个命名 mechanism entry；Kotlin/Lua 组合 route | **已批准** | 用户 2026-10-23 指令“按照计划”；typed request + 三路真机偿还 |
+| actor batch 生产 | 最小不可拆 PI actor transaction 在一次 Native call 内完成 | **已批准** | 用户 2026-10-23 指令“按照计划”；窗口调用图/真机门禁 |
+| typed handle | 值调用无状态；Page/Actor/Discovery/Victim 等物理资源用 handle | **已批准** | 用户 2026-10-23 指令“按照计划”；并发矩阵和残留检查 |
+| registry 例外 | 每 DSO 一个固定容量可写 registry，PI 窗口外访问 | **已批准** | 用户 2026-10-23 指令“按照计划”；BSS manifest/fork gate |
+| victim/Finish | protocol child 用 Native handle；普通 victim 仍 ProcessBuilder；UI脚本由 rooted child 中性触发 | **已批准** | 用户 2026-10-23 指令“按照计划”；pid/hash/marker/SELinux 真机门禁 |
 
-批准方式：用户对 JNI v4 候选一次知情确认后，§1 原“基线”行被上一候选句精确取代，“层级拆分”改为“第1层历史薄层继续保留；第2层最小transaction生产启用”；本表六个候选项同步改“已批准”，ADR/plan/UML 同批生效。此前旧裁定继续有效。
+批准方式：用户 2026-10-23 指令“按照计划”编写架构 Kotlin class；第1层历史薄层继续保留，第2层最小 transaction 生产启用。六项同步生效。
 
 ## 5. 本计划范围内明确不做
 

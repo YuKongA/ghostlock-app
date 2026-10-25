@@ -27,6 +27,8 @@
 | [0020](0020-gl-log-exception.md) | 日志子系统可写全局例外（general/gl_log） | 允许 4 个日志 DSO 状态符号；新增第 5 个即 FAIL；长期改 session API | Proposed（待用户确认） |
 | [0021](0021-jni-abi-and-ownership.md) | JNI ABI 与句柄所有权（Kotlin-first） | wire/错误码/状态机/两层线程/PI 窗口/隔离；句柄归 Kotlin，native 无全局表 | Proposed（随 JNI 计划批准） |
 | [0022](0022-flow-execution-authority.md) | Flow 为唯一执行权威 | `Flow.run` + `SequentialFlow` 的顺序/重试/超时/cleanup；PipelineEngine 归档 | Accepted（用户 2026-10-23） |
+| [0023](0023-access-capability-authority.md) | AccessCapability 是纯借用视图 | 无 generation/close；owner 发布，stale 由 owner/native 判；request 纯数据 | Accepted（用户 2026-10-23） |
+| [0024](0024-43499-backend-port.md) | 43499 BackendPort 中转层 | Flow → Cve43499BackendPort → Native43499；Port 持状态/资源/代际，Flow 只管编排 | Accepted（用户 2026-10-23） |
 
 ## 相关但与本文档无关的索引
 
