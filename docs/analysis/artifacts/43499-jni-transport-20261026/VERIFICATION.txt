@@ -1,0 +1,130 @@
+43499 JNI transport verification
+Date: 2026-10-26 America/Toronto
+HEAD: bb27b48a4be095e67f11cc949d58e5bbd0d3ed95
+
+Changed branch/field:
+- JNI surface: old singleton Flow entries replaced by nine Placement/Page/Actor entries.
+- Transport: named Kotlin DTO fields are explicitly copied into C11 POD; no C pointer/layout is exposed to Kotlin.
+- Byte ownership: final page and Carrier bytes are copied to native temporary storage, then zeroed and freed after the core call.
+- Actor binding: PrimitiveSpec is accepted only by prepareActor; executeActor receives only Actor handle and result.
+- Current implementation: api_unavailable.c rejects bad ABI/reserved fields and handle 0, otherwise returns handle 0 plus CALL_UNSUPPORTED/EFFECT_NONE/RESOURCE_INVALID.
+- Release retention: every JNI-reflected Kotlin class is @Keep; Primitive kind is assigned only by C after concrete-class identification.
+
+Transaction artifacts:
+- MODIFIED_FILE: /Users/nickji/Documents/Program/Analysis/ghostlock-app/docs/analysis/artifacts/43499-jni-transport-20261026/MODIFIED_FILE
+- DIFF_FILE: /Users/nickji/Documents/Program/Analysis/ghostlock-app/docs/analysis/artifacts/43499-jni-transport-20261026/DIFF_FILE
+- VERIFICATION.txt: /Users/nickji/Documents/Program/Analysis/ghostlock-app/docs/analysis/artifacts/43499-jni-transport-20261026/VERIFICATION.txt
+- ROLLBACK.sh: /Users/nickji/Documents/Program/Analysis/ghostlock-app/docs/analysis/artifacts/43499-jni-transport-20261026/ROLLBACK.sh
+
+Original SHA-256:
+- app/src/main/cpp/gl43499/jni43499.c: 6751884fffc34555b047ffde059ad54653f2069b0c2eef789daf214a17d0c171
+- app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt: eb0507d35767e1b102a2260c80c8a832aa7adfa946433e3e4d225ab7fc5965d2
+- app/src/main/cpp/CMakeLists.txt: c56508da7227395316682fadab77149164b508bef74804f204298385f0cbb79a
+- docs/plan/43499-approval-status.md: 43425f8c6404014b5b8d157802c181439d4d68701b611718628a5235e3ea9720
+- docs/development/full-process-uml.md: c2b5a619667fb91266a92617428b28f816fa7138ce23200c178d8f9442447fbb
+- app/src/main/cpp/gl43499/core/api_unavailable.c: ABSENT
+- docs/plan/43499-jni-transport-plan.md: ABSENT
+
+BASELINE
+Command:
+set -o pipefail; clang --target=aarch64-linux-android35 --sysroot="$NDK_SYSROOT" -std=c11 -Wall -Wextra -Werror -I app/src/main/cpp/gl43499 -c "$BASELINE/jni43499.c" -o "$BASELINE/jni43499.o" 2>&1 | tail -n 1
+Input:
+The original JNI source plus the already-approved new core/api.h contract.
+Literal output/result:
+12 errors generated.
+Exit status: 1
+Restored baseline behavior/status: old JNI names reference removed glk43499_api_* declarations and do not compile against the new contract.
+
+MODIFIED KOTLIN + NATIVE
+Command:
+./gradlew :app:compileDebugKotlin :app:externalNativeBuildDebug --no-daemon
+Input:
+Named Placement/Page/Actor request, Primitive and result classes, nine external functions, JNI translation and unavailable C core through the real Android CMake target.
+Literal output/result:
+BUILD SUCCESSFUL in 5s
+12 actionable tasks: 5 executed, 7 up-to-date
+Exit status: 0
+
+STRICT NDK COMPILE
+Command:
+clang --target=aarch64-linux-android35 --sysroot="$NDK_SYSROOT" -std=c11 -Wall -Wextra -Wconversion -Wsign-conversion -Werror -I app/src/main/cpp/gl43499 -c app/src/main/cpp/gl43499/jni43499.c && clang --target=aarch64-linux-android35 --sysroot="$NDK_SYSROOT" -std=c11 -Wall -Wextra -Wconversion -Wsign-conversion -Werror -I app/src/main/cpp/gl43499 -c app/src/main/cpp/gl43499/core/api_unavailable.c
+Input:
+Final JNI transport and unavailable implementation.
+Literal output/result:
+NDK_ZERO_WARNING_COMPILE=PASS EXIT=0
+Exit status: 0
+
+JNI/KOTLIN SYMBOL PARITY
+Command:
+Extract unique external function names from Native43499Jni.kt and unique Java_com_ghostlock_app_jni_Native43499Jni_* symbols from libghostlock43499.so, then cmp both sorted lists.
+Input:
+Compiled Kotlin declaration source and build/app/intermediates/cxx/Debug/12l21261/obj/arm64-v8a/libghostlock43499.so.
+Literal output/result:
+cancelActor
+cancelPlacement
+closeActor
+closePage
+closePlacement
+executeActor
+landPage
+prepareActor
+preparePlacement
+JNI_KOTLIN_SYMBOL_PARITY=PASS COUNT=9
+OLD_SYMBOLS=ABSENT
+KOTLIN_PRIMITIVE_IDS=ABSENT
+KOTLIN_CALL_STATUS_TABLE=ABSENT
+CORE_UNDEFINED=NONE
+Exit status: 0
+
+UNAVAILABLE IMPLEMENTATION
+Command:
+cc -std=c11 -Wall -Wextra -Werror -pedantic -I app/src/main/cpp/gl43499/core app/src/main/cpp/gl43499/core/api_unavailable.c stub_test.c -o stub_test && ./stub_test
+Input:
+All nine C ABI entries plus bad input ABI, nonzero reserved fields and handle 0 negative cases.
+Literal output/result:
+STUB_POSITIVE_BAD_ABI_RESERVED_HANDLE_AND_UNION_TAIL=PASS EXIT=0
+Exit status: 0
+
+MINIFIED RELEASE
+Command:
+./gradlew :app:assembleRelease --no-daemon
+Input:
+Final Kotlin/JNI transport with @Keep DTO/result/Primitive classes and R8 enabled.
+Literal output/result:
+BUILD SUCCESSFUL in 34s
+54 actionable tasks: 18 executed, 36 up-to-date
+Exit status: 0
+APK:
+/Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/outputs/apk/release/GhostLock-v1.3(1337)-arm64-v8a-release.apk
+APK SHA-256:
+c8debc507ae08663f18efd1829b20f5507ad38e4ce3f20a18d24b563f8e4383c
+R8 field inspection result:
+apkanalyzer reports the original Native43499PlacementRequest class and named fields including pageSize, allocationSize, requiredAlignment, scanLowerBound, scanUpperBound, scanStep, scanRoundLimit, timeoutNanos, placementCpu, measurementCpu, objectsPerSlab, prepareObjectCount, sprayObjectCount, preObjectCount and postObjectCount.
+Literal class/field gate:
+R8_JNI_CLASSES_AND_FIELDS=PASS
+KOTLIN_CALL_STATUS_TABLE=ABSENT
+
+ROLLBACK
+Command:
+/Users/nickji/Documents/Program/Analysis/ghostlock-app/docs/analysis/artifacts/43499-jni-transport-20261026/ROLLBACK.sh "$ROLLBACK_ROOT"
+Input:
+A separate temporary copy containing the modified JNI/Kotlin/CMake/docs and newly created unavailable/plan files.
+Literal output/result:
+patching file 'app/src/main/cpp/gl43499/jni43499.c'
+patching file 'app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt'
+patching file 'app/src/main/cpp/CMakeLists.txt'
+patching file 'docs/plan/43499-approval-status.md'
+patching file 'docs/development/full-process-uml.md'
+patching file 'app/src/main/cpp/gl43499/core/api_unavailable.c'
+patching file 'docs/plan/43499-jni-transport-plan.md'
+ROLLBACK_RESTORED=PASS
+Exit status: 0
+
+Restored behavior/status:
+- The rollback copy again contains the old JNI/Kotlin surface and original CMake/docs hashes.
+- api_unavailable.c and the JNI transport plan are absent after rollback.
+- The real working tree intentionally retains the new transport.
+
+Not verified:
+- No Placement/Page/Actor physical implementation exists in this batch.
+- No APK install/device, PI-window disassembly, or attack-effect claim is made.

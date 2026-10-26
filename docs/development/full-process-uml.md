@@ -718,9 +718,9 @@ GlkSession* (caller-owned; no process-wide handle)
 caller owns Glk43499Session; destroy never frees it
 ```
 
-## 11. JNI v4 分层与生命周期（2026-10-23 现行）
+## 11. 43499 Placement / Page / Actor 契约（2026-10-26 header-only）
 
-> 生效条件与取代范围见 [JNI v4 §2](../plan/43499-43284-jni-rewrite-plan.md)。本节是该结构唯一候选图。
+> 头文件批见 [43499-c11-header-contract-plan](../plan/43499-c11-header-contract-plan.md)，JNI transport 见 [43499-jni-transport-plan](../plan/43499-jni-transport-plan.md)。当前 JNI 已接入九入口，但 core 仍是显式 `UNSUPPORTED` 的 unavailable 实现；victim/Finish 不在本批。
 
 ### 11.1 IPO / dependency
 
@@ -730,7 +730,9 @@ flowchart LR
   UI[UI/default Flow] --> K
   K --> C[general JNI discovery]
   C -->|copied DTO| K
-  K --> B4[43499 mechanism JNI]
+  K --> T[具名 Kotlin DTO]
+  T --> B4[43499 JNI 显式逐字段翻译]
+  B4 --> U[api_unavailable: UNSUPPORTED]
   K --> B2[43284 JNI]
   G[common STATIC] --> C
   G --> B4
@@ -740,32 +742,26 @@ flowchart LR
 
 禁止边：general↔backend、backend↔backend。route 仅在 Kotlin/Lua。
 
-### 11.2 Handle / actor state
+### 11.2 Placement / Page / Actor state
 
 ```mermaid
 stateDiagram-v2
-  [*] --> Open
-  Open --> Closing: close linearizes
-  Closing --> Closed: inFlight=0 and borrow=0
-  Open --> Quarantined: DIRTY/LEAKED_ON_STUCK
-  Quarantined --> [*]: process exit only
+  [*] --> Placement: preparePlacement transaction
+  Placement --> Page: landPage CLEAN_SUCCESS; Placement stale
+  Placement --> Placement: precommit NOT_APPLIED
+  Placement --> Closed: close before commit
+  Placement --> Quarantined: postcommit unknown
 
-  state Actor {
-    [*] --> Prepared
-    Prepared --> Executing
-    Prepared --> CancelledClean
-    Executing --> CompletedClean
-    Executing --> CompletedDirty
-  }
-  state Victim {
-    [*] --> ProtocolChild
-    ProtocolChild --> Closed: cancel/destroy
-    ProtocolChild --> RootedTransferred: handoff; old stale
-    RootedTransferred --> Closed: wait or kill+wait
-  }
+  Page --> Borrowed: prepareActor binds Primitive
+  Borrowed --> Running: executeActor without tag/spec
+  Running --> Borrowed: clean execution completed
+  Borrowed --> Page: closeActor stop/disarm/join/release borrow
+  Page --> Closed: closePage borrow=0
+  Running --> Quarantined: reference state unknown
+  Quarantined --> [*]: process exit only
 ```
 
-Actor prepare 对 Page 建 persistent borrow；仅 clean 在 stop/join 后解除。dirty 将 Actor、Page、关联 fd 的完整依赖闭包一并 quarantine，禁 Cleaner 回收。
+Actor prepare 在创建线程前深拷贝 Primitive 并绑定具体 Carrier，同时对 Page 建 persistent borrow；仅 clean 在 stop/disarm/join 后解除。dirty 将 Actor、Carrier、Page 的完整依赖闭包一并 quarantine。
 
 ### 11.3 Class
 
@@ -774,24 +770,32 @@ classDiagram
   class RunResourceScope
   class NativeGeneralJni
   class Native43499Jni
+  class Native43499NamedDtos
+  class ApiUnavailable
   class Native43284Jni
   class DiscoveryHandle
+  class PlacementHandle
   class PageHandle
   class ActorHandle
-  class VictimHandle
-  class RootedVictimHandle
+  class PrimitiveSpec
+  class Carrier
   class AccessView
   RunResourceScope *-- DiscoveryHandle
+  RunResourceScope *-- PlacementHandle
   RunResourceScope *-- PageHandle
   RunResourceScope *-- ActorHandle
-  RunResourceScope *-- VictimHandle
-  RunResourceScope *-- RootedVictimHandle
   AccessView --> PageHandle : borrowed
   NativeGeneralJni --> DiscoveryHandle
+  Native43499Jni --> PlacementHandle
   Native43499Jni --> PageHandle
   Native43499Jni --> ActorHandle
+  Native43499NamedDtos --> Native43499Jni : explicit fields
+  Native43499Jni --> ApiUnavailable : current fail-closed target
+  PlacementHandle --> PageHandle : land consumes placement
+  ActorHandle --> PageHandle : persistent borrow
+  ActorHandle *-- Carrier : owns one bound carrier
+  PrimitiveSpec --> Carrier : prepare-time deep copy
   AccessView ..> RunResourceScope : borrowed only
-  VictimHandle --> RootedVictimHandle : transfer; old stale
 ```
 
 ### 11.4 Sequence
@@ -801,22 +805,22 @@ sequenceDiagram
   participant K as Kotlin/Lua
   participant C as general JNI
   participant B as 43499 JNI
-  participant F as Finish
   K->>C: scan(params)
   C-->>K: copied candidates DTO
-  K->>B: allocatePage/installPayload(final bytes)
-  K->>B: prepareActor(address, page)
-  K->>B: executeXActor(mechanism params)
-  B-->>K: effect/errno/counters
-  K->>F: prepare script + hash + patch
-  K->>B: create protocol VictimHandle
-  K->>B: handoff -> RootedVictimHandle; old stale
-  K->>B: executeFinishScript(rootedVictim,path,hash)
-  K->>F: await marker/log/SELinux
-  alt failure/cancel before transfer
-    K->>B: close writer, grace, kill pgid, waitpid, close pipes
-  else failure/cancel after transfer
-    K->>B: rooted wait/kill, close
+  K->>B: preparePlacement(physical request)
+  alt current unavailable implementation
+    B-->>K: UNSUPPORTED + handle 0; stop
+  else future real core
+    B-->>K: PlacementHandle + candidate facts
+    K->>K: calculate addresses and final page bytes
+    K->>B: landPage(placement, bytes, geometry)
+    B-->>K: PageHandle; Placement stale
+    K->>B: prepareActor(page, setup, PrimitiveSpec)
+    B-->>K: ActorHandle; Page borrowed; Carrier bound
+    K->>B: executeActor(actor)
+    B-->>K: call status + effect + resource state + receipt
+    K->>B: closeActor(actor)
+    B-->>K: Page borrow released
+    K->>B: closePage(page)
   end
-  K->>F: finish cleanup
 ```

@@ -1,0 +1,798 @@
+--- a/docs/plan/43499-approval-status.md
++++ b/docs/plan/43499-approval-status.md
+@@ -56,8 +56,9 @@
+ | typed handle | 值调用无状态；Page/Actor/Discovery/Victim 等物理资源用 handle | **已批准** | 用户 2026-10-23 指令“按照计划”；并发矩阵和残留检查 |
+ | registry 例外 | 每 DSO 一个固定容量可写 registry，PI 窗口外访问 | **已批准** | 用户 2026-10-23 指令“按照计划”；BSS manifest/fork gate |
+ | victim/Finish | protocol child 用 Native handle；普通 victim 仍 ProcessBuilder；UI脚本由 rooted child 中性触发 | **已批准** | 用户 2026-10-23 指令“按照计划”；pid/hash/marker/SELinux 真机门禁 |
++| C11 Page/Actor header-only 契约 | Placement→Page 所有权转移；Actor prepare 时绑定物理 Primitive；execute 无 tag；不接 CMake/JNI | **已批准（仅头文件）** | 用户 2026-10-26 明确要求从零写 `.h`；实现与生产接线仍按独立批次门禁；见 [43499-c11-header-contract-plan.md](43499-c11-header-contract-plan.md) |
+ 
+-批准方式：用户 2026-10-23 指令“按照计划”编写架构 Kotlin class；第1层历史薄层继续保留，第2层最小 transaction 生产启用。六项同步生效。
++批准方式：用户 2026-10-23 指令“按照计划”编写架构 Kotlin class；第1层历史薄层继续保留，第2层最小 transaction 生产启用。2026-10-23 六项同步生效；2026-10-26 header-only 项独立生效。
+ 
+ ## 5. 本计划范围内明确不做
+ 
+--- a/docs/development/full-process-uml.md
++++ b/docs/development/full-process-uml.md
+@@ -718,9 +718,9 @@
+ caller owns Glk43499Session; destroy never frees it
+ ```
+ 
+-## 11. JNI v4 分层与生命周期（2026-10-23 现行）
++## 11. 43499 Placement / Page / Actor 契约（2026-10-26 header-only）
+ 
+-> 生效条件与取代范围见 [JNI v4 §2](../plan/43499-43284-jni-rewrite-plan.md)。本节是该结构唯一候选图。
++> 头文件批见 [43499-c11-header-contract-plan](../plan/43499-c11-header-contract-plan.md)。当前仅生成 C11 声明，尚未接入 CMake/JNI；victim/Finish 不在本批。
+ 
+ ### 11.1 IPO / dependency
+ 
+@@ -730,7 +730,7 @@
+   UI[UI/default Flow] --> K
+   K --> C[general JNI discovery]
+   C -->|copied DTO| K
+-  K --> B4[43499 mechanism JNI]
++  K --> B4[43499 Placement / Page / Actor JNI]
+   K --> B2[43284 JNI]
+   G[common STATIC] --> C
+   G --> B4
+@@ -740,32 +740,26 @@
+ 
+ 禁止边：general↔backend、backend↔backend。route 仅在 Kotlin/Lua。
+ 
+-### 11.2 Handle / actor state
++### 11.2 Placement / Page / Actor state
+ 
+ ```mermaid
+ stateDiagram-v2
+-  [*] --> Open
+-  Open --> Closing: close linearizes
+-  Closing --> Closed: inFlight=0 and borrow=0
+-  Open --> Quarantined: DIRTY/LEAKED_ON_STUCK
+-  Quarantined --> [*]: process exit only
++  [*] --> Placement: preparePlacement transaction
++  Placement --> Page: landPage CLEAN_SUCCESS; Placement stale
++  Placement --> Placement: precommit NOT_APPLIED
++  Placement --> Closed: close before commit
++  Placement --> Quarantined: postcommit unknown
+ 
+-  state Actor {
+-    [*] --> Prepared
+-    Prepared --> Executing
+-    Prepared --> CancelledClean
+-    Executing --> CompletedClean
+-    Executing --> CompletedDirty
+-  }
+-  state Victim {
+-    [*] --> ProtocolChild
+-    ProtocolChild --> Closed: cancel/destroy
+-    ProtocolChild --> RootedTransferred: handoff; old stale
+-    RootedTransferred --> Closed: wait or kill+wait
+-  }
++  Page --> Borrowed: prepareActor binds Primitive
++  Borrowed --> Running: executeActor without tag/spec
++  Running --> Borrowed: clean execution completed
++  Borrowed --> Page: closeActor stop/disarm/join/release borrow
++  Page --> Closed: closePage borrow=0
++  Running --> Quarantined: reference state unknown
++  Quarantined --> [*]: process exit only
+ ```
+ 
+-Actor prepare 对 Page 建 persistent borrow；仅 clean 在 stop/join 后解除。dirty 将 Actor、Page、关联 fd 的完整依赖闭包一并 quarantine，禁 Cleaner 回收。
++Actor prepare 在创建线程前深拷贝 Primitive 并绑定具体 Carrier，同时对 Page 建 persistent borrow；仅 clean 在 stop/disarm/join 后解除。dirty 将 Actor、Carrier、Page 的完整依赖闭包一并 quarantine。
+ 
+ ### 11.3 Class
+ 
+@@ -776,22 +770,26 @@
+   class Native43499Jni
+   class Native43284Jni
+   class DiscoveryHandle
++  class PlacementHandle
+   class PageHandle
+   class ActorHandle
+-  class VictimHandle
+-  class RootedVictimHandle
++  class PrimitiveSpec
++  class Carrier
+   class AccessView
+   RunResourceScope *-- DiscoveryHandle
++  RunResourceScope *-- PlacementHandle
+   RunResourceScope *-- PageHandle
+   RunResourceScope *-- ActorHandle
+-  RunResourceScope *-- VictimHandle
+-  RunResourceScope *-- RootedVictimHandle
+   AccessView --> PageHandle : borrowed
+   NativeGeneralJni --> DiscoveryHandle
++  Native43499Jni --> PlacementHandle
+   Native43499Jni --> PageHandle
+   Native43499Jni --> ActorHandle
++  PlacementHandle --> PageHandle : land consumes placement
++  ActorHandle --> PageHandle : persistent borrow
++  ActorHandle *-- Carrier : owns one bound carrier
++  PrimitiveSpec --> Carrier : prepare-time deep copy
+   AccessView ..> RunResourceScope : borrowed only
+-  VictimHandle --> RootedVictimHandle : transfer; old stale
+ ```
+ 
+ ### 11.4 Sequence
+@@ -801,22 +799,22 @@
+   participant K as Kotlin/Lua
+   participant C as general JNI
+   participant B as 43499 JNI
+-  participant F as Finish
+   K->>C: scan(params)
+   C-->>K: copied candidates DTO
+-  K->>B: allocatePage/installPayload(final bytes)
+-  K->>B: prepareActor(address, page)
+-  K->>B: executeXActor(mechanism params)
+-  B-->>K: effect/errno/counters
+-  K->>F: prepare script + hash + patch
+-  K->>B: create protocol VictimHandle
+-  K->>B: handoff -> RootedVictimHandle; old stale
+-  K->>B: executeFinishScript(rootedVictim,path,hash)
+-  K->>F: await marker/log/SELinux
+-  alt failure/cancel before transfer
+-    K->>B: close writer, grace, kill pgid, waitpid, close pipes
+-  else failure/cancel after transfer
+-    K->>B: rooted wait/kill, close
++  K->>B: preparePlacement(physical request)
++  B-->>K: PlacementHandle + candidate base/facts
++  K->>K: calculate addresses and final page bytes
++  K->>B: landPage(placement, bytes, geometry)
++  B-->>K: PageHandle; Placement stale
++  K->>B: prepareActor(page, setup, PrimitiveSpec)
++  B-->>K: ActorHandle; Page borrowed; Carrier bound
++  K->>B: executeActor(actor)
++  B-->>K: call status + effect + resource state + receipt
++  K->>B: closeActor(actor)
++  B-->>K: Page borrow released
++  alt clean Page
++    K->>B: closePage(page)
++  else unknown reference state
++    B-->>K: Actor + Carrier + Page quarantined
+   end
+-  K->>F: finish cleanup
+ ```
+--- a/docs/plan/43499-c11-header-contract-plan.md
++++ b/docs/plan/43499-c11-header-contract-plan.md
+@@ -0,0 +1,44 @@
++# 43499 C11 资源原语头文件契约批
++
++- 日期：2026-10-26
++- 级别：L（跨 JNI/native 契约）
++- 状态：用户已明确要求“core 移到 legacy2 后，从零按 Page/Actor 结构完整写 `.h`”；本批只生成未接线的 C11 头文件。
++- 取代关系：本批修正 `43499-jni-v5-atomic-primitives-design.md` 中被评审指出的两处边界错误；不批准其余 rev6/rev8 实现内容。
++
++## 目标
++
++在 `app/src/main/cpp/gl43499/core/` 建立自包含的 C11 契约：Placement 是不可拆的定位事务；Landing 成功消费 Placement 并产生 Page；Actor 在 prepare 时绑定一个物理 Primitive，execute 不再接收 route/tag；Actor 借用 Page。
++
++## 改动清单
++
++- 新增 `abi.h`、`result.h`、`placement.h`、`page.h`、`primitive.h`、`actor.h`、`api.h`。
++- 更新批准状态表一行，登记本批仅为 header-only。
++- 更新 `full-process-uml.md` 的 43499 候选图，使它与新契约一致。
++- 不改 CMake、JNI、Kotlin、legacy、legacy2、victim、Finish、ksud 或任何实现文件。
++
++## 关键决策
++
++1. 当前构建是 C11，因此公开契约只使用固定宽度 POD 与 opaque `uint64_t` handle。
++2. 每个输入结构以 `glk43499_abi_header` 开头；版本为项目统一版本 3，保留位必须为零。
++3. `prepare_placement` 一次完成顺序敏感的定位；不再暴露虚假的 `allocate → scan` 物理分界。
++4. `land_page` 调用期借用 bytes；Native 不保存调用方指针。
++5. `prepare_actor` 深拷贝 PrimitiveSpec 并在线程创建前绑定；`execute_actor` 无 Primitive 参数。
++6. 调用状态、物理 effect、资源 state 正交返回。
++7. 本批不公开 fd、pid、pthread、registry slot、业务 route、W1/W2/W3、profile、victim 或 Finish。
++
++## Primitive API 的 CBN
++
++| 方案 | 当前入口触点 | 每增一种 Primitive | execute 窗口分派 | Kotlin/JNI 面 | 结论 |
++|---|---:|---:|---:|---:|---|
++| 一个 tagged `PrimitiveSpec` | 1 个 `prepare_actor` | union 增 1 支、prepare 前置解析增 1 支 | 0；prepare 时解析一次并在线程创建前绑定 | 1 套 | 本批采用 |
++| 三个具名 prepare 入口 | 3 个 prepare | 新增 1 个入口及 JNI/Kotlin 映射 | 0 | 每种机制各一套 | 当前重复面更大 |
++
++翻转条件：若实现无法用直接函数/静态状态在创建线程前完成绑定，或反汇编发现 execute/worker 仍读取 kind、出现 switch/间接分派，则废弃 tagged union，改成具名 prepare 入口；不得以窗口内动态分派换取 API 数量减少。
++
++## 验证
++
++- 七个头文件分别以 C11 和 C++23 `-fsyntax-only -Werror` 自包含编译。
++- 聚合 `api.h` 做固定宽度、ABI version、handle-zero、枚举值与函数签名静态断言。
++- 验证 legacy2 和本批文件无 include 依赖。
++- 不宣称链接、APK、真机或攻击效果验证；这些属于后续实现批。
++
+--- a/app/src/main/cpp/gl43499/core/abi.h
++++ b/app/src/main/cpp/gl43499/core/abi.h
+@@ -0,0 +1,52 @@
++/**
++ * @file abi.h
++ * @brief 43499 C11 资源原语 ABI 的基础类型与版本头。
++ *
++ * @note 本文件只描述跨 JNI 实现层传递的固定宽度 POD。句柄是 registry ID，
++ *       不是 native 指针；值 0 永远无效。
++ * @note 所有顶层 API 输入结构必须先整体清零，再填写自身 abi；所有输出结构
++ *       必须先整体清零，再填写 result.call.abi。嵌套结构由顶层 struct_size
++ *       覆盖。所有 reserved/reserved32 与未选 union 分支都必须为零，否则拒绝调用。
++ * @note callee 先验证指针、struct_size、abi_version 和保留字段，再写当前
++ *       struct_size 范围内的输出；输出 ABI 无效时，handle 入口返回 0，int32_t
++ *       入口返回 GLK43499_CALL_BAD_ABI，且不写出结构边界。调用返回后调用方仍
++ *       拥有全部输入/输出存储，callee 返回的所有保留字段也必须为零。
++ */
++#ifndef GHOSTLOCK_GL43499_CORE_ABI_H
++#define GHOSTLOCK_GL43499_CORE_ABI_H
++
++#include <stddef.h>
++#include <stdint.h>
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/** @brief 43499 公开 C ABI 版本，与项目统一版本保持一致。 */
++#define GLK43499_ABI_VERSION UINT32_C(3)
++
++/** @brief 无效句柄；任何入口收到该值都必须拒绝。 */
++#define GLK43499_INVALID_HANDLE UINT64_C(0)
++
++/** @brief registry 中带 kind/generation/epoch 的不透明资源 ID。 */
++typedef uint64_t glk43499_handle;
++
++/**
++ * @brief 每个可扩展 ABI 结构的公共前缀。
++ * @note reserved 必须全零；未来只允许在结构尾部追加字段。
++ */
++struct glk43499_abi_header {
++    uint32_t struct_size;
++    uint32_t abi_version;
++    uint64_t reserved[2];
++};
++
++/** @brief 以当前类型大小初始化 ABI 头；仅适用于零初始化的结构。 */
++#define GLK43499_ABI_HEADER_INIT(type_) \
++    { (uint32_t) sizeof(type_), GLK43499_ABI_VERSION, {UINT64_C(0), UINT64_C(0)} }
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* GHOSTLOCK_GL43499_CORE_ABI_H */
+--- a/app/src/main/cpp/gl43499/core/result.h
++++ b/app/src/main/cpp/gl43499/core/result.h
+@@ -0,0 +1,88 @@
++/**
++ * @file result.h
++ * @brief 43499 调用状态、物理效果与资源状态的正交回执。
++ */
++#ifndef GHOSTLOCK_GL43499_CORE_RESULT_H
++#define GHOSTLOCK_GL43499_CORE_RESULT_H
++
++#include <stdint.h>
++
++#include "abi.h"
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/** @brief API 调用本身的结果；存储字段固定为 int32_t。 */
++typedef int32_t glk43499_call_status;
++enum {
++    GLK43499_CALL_OK = 0,
++    GLK43499_CALL_INVALID_ARGUMENT = 1,
++    GLK43499_CALL_BAD_ABI = 2,
++    GLK43499_CALL_STALE_HANDLE = 3,
++    GLK43499_CALL_WRONG_HANDLE_KIND = 4,
++    GLK43499_CALL_BUSY = 5,
++    GLK43499_CALL_TIMEOUT = 6,
++    GLK43499_CALL_CANCELLED = 7,
++    GLK43499_CALL_SYSTEM_ERROR = 8,
++    GLK43499_CALL_UNSUPPORTED = 9,
++    GLK43499_CALL_INTERNAL_ERROR = 10
++};
++
++/** @brief 一次物理事务是否改变了受管资源；不表达业务目标是否达成。 */
++typedef int32_t glk43499_effect;
++enum {
++    GLK43499_EFFECT_NONE = 0,
++    GLK43499_EFFECT_NOT_APPLIED = 1,
++    GLK43499_EFFECT_CLEAN_SUCCESS = 2,
++    GLK43499_EFFECT_CLEAN_FAILURE = 3,
++    GLK43499_EFFECT_INDETERMINATE = 4,
++    GLK43499_EFFECT_DIRTY = 5
++};
++
++/** @brief 调用返回时的资源生命周期状态。 */
++typedef int32_t glk43499_resource_state;
++enum {
++    GLK43499_RESOURCE_INVALID = 0,
++    GLK43499_RESOURCE_OPEN = 1,
++    GLK43499_RESOURCE_PREPARED = 2,
++    GLK43499_RESOURCE_LANDING = 3,
++    GLK43499_RESOURCE_LANDED = 4,
++    GLK43499_RESOURCE_BORROWED = 5,
++    GLK43499_RESOURCE_RUNNING = 6,
++    GLK43499_RESOURCE_CONSUMED = 7,
++    GLK43499_RESOURCE_CLOSING = 8,
++    GLK43499_RESOURCE_CLOSED = 9,
++    GLK43499_RESOURCE_QUARANTINED = 10
++};
++
++/**
++ * @brief 所有入口共有的回执前缀。
++ * @note system_error 仅在 call_status 为 GLK43499_CALL_SYSTEM_ERROR 时有意义。
++ */
++struct glk43499_call_result {
++    struct glk43499_abi_header abi;
++    glk43499_call_status call_status;
++    glk43499_effect effect;
++    glk43499_resource_state resource_state;
++    int32_t system_error;
++    uint64_t generation;
++    uint64_t retained_resource_count;
++    uint64_t reserved[4];
++};
++
++/** @brief close/cancel 的资源终结回执。 */
++struct glk43499_close_result {
++    struct glk43499_call_result call;
++    uint32_t stop_requested;
++    uint32_t workers_joined;
++    uint32_t borrow_released;
++    uint32_t retained_for_process_exit;
++    uint64_t reserved[4];
++};
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* GHOSTLOCK_GL43499_CORE_RESULT_H */
+--- a/app/src/main/cpp/gl43499/core/placement.h
++++ b/app/src/main/cpp/gl43499/core/placement.h
+@@ -0,0 +1,97 @@
++/**
++ * @file placement.h
++ * @brief 顺序敏感的 43499 Placement 事务契约。
++ */
++#ifndef GHOSTLOCK_GL43499_CORE_PLACEMENT_H
++#define GHOSTLOCK_GL43499_CORE_PLACEMENT_H
++
++#include <stdint.h>
++
++#include "result.h"
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/**
++ * @brief Kotlin 已解析并验证后的 Placement 物理参数。
++ * @note Native 不读取 profile、不填默认值；所有计数和边界均须显式给出。
++ */
++struct glk43499_placement_request {
++    struct glk43499_abi_header abi;
++    uint64_t page_size;
++    uint64_t allocation_size;
++    uint64_t required_alignment;
++    uint64_t scan_lower_bound;
++    uint64_t scan_upper_bound;
++    uint64_t scan_step;
++    uint64_t scan_round_limit;
++    uint64_t timeout_ns;
++    uint32_t placement_cpu;
++    uint32_t measurement_cpu;
++    uint32_t objects_per_slab;
++    uint32_t prepare_object_count;
++    uint32_t spray_object_count;
++    uint32_t pre_object_count;
++    uint32_t post_object_count;
++    uint32_t reserved32;
++    uint64_t reserved[8];
++};
++
++/** @brief Placement 成功后复制给 Kotlin 的只读物理事实。 */
++struct glk43499_placement_facts {
++    uint64_t candidate_page_base;
++    uint64_t page_size;
++    uint64_t allocation_size;
++    uint64_t required_alignment;
++    uint64_t measured_object_address;
++    uint64_t measurement_rounds;
++    uint64_t retained_child_count;
++    uint64_t retained_descriptor_count;
++    uint64_t reserved[8];
++};
++
++/** @brief preparePlacement 的完整回执；handle 返回值为 0 时仍必须读取 call。 */
++struct glk43499_placement_result {
++    struct glk43499_call_result call;
++    struct glk43499_placement_facts facts;
++};
++
++/**
++ * @brief 创建并完成一次不可拆的定位事务。
++ *
++ * @param request 调用期借用的完整参数；返回前不再访问该指针。
++ * @param result 必填输出；调用方预先填写 result.call.abi。
++ * @return Placement handle；失败返回 GLK43499_INVALID_HANDLE。
++ * @note 成功对象拥有 placement children、memfd、staging storage 与定位资源。
++ */
++glk43499_handle glk43499_prepare_placement(
++    const struct glk43499_placement_request *request,
++    struct glk43499_placement_result *result);
++
++/**
++ * @brief 请求停止尚未进入 Landing 提交段的 Placement。
++ * @param placement 有效 Placement handle。
++ * @param result 必填输出。
++ * @return glk43499_call_status。
++ * @note cancel 只停止并排空活动工作，不销毁 handle。
++ */
++int32_t glk43499_cancel_placement(
++    glk43499_handle placement,
++    struct glk43499_close_result *result);
++
++/**
++ * @brief 终结 Placement 或报告其被保留隔离。
++ * @param placement 有效 Placement handle；成功后变为 stale。
++ * @param result 必填输出。
++ * @return glk43499_call_status；LANDING/未知引用转 QUARANTINED。
++ */
++int32_t glk43499_close_placement(
++    glk43499_handle placement,
++    struct glk43499_close_result *result);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* GHOSTLOCK_GL43499_CORE_PLACEMENT_H */
+--- a/app/src/main/cpp/gl43499/core/page.h
++++ b/app/src/main/cpp/gl43499/core/page.h
+@@ -0,0 +1,100 @@
++/**
++ * @file page.h
++ * @brief Placement 到受控内核 Page 的 Landing 契约。
++ */
++#ifndef GHOSTLOCK_GL43499_CORE_PAGE_H
++#define GHOSTLOCK_GL43499_CORE_PAGE_H
++
++#include <stddef.h>
++#include <stdint.h>
++
++#include "placement.h"
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/** @brief 调用期借用的最终页面字节；Native 必须在返回前完成复制。 */
++struct glk43499_page_bytes {
++    struct glk43499_abi_header abi;
++    const uint8_t *data;
++    uint64_t size;
++    uint64_t content_generation;
++    uint64_t reserved[4];
++};
++
++/**
++ * @brief Kotlin 决定的 Landing 几何与有界执行参数。
++ * @note expected_page_base 必须等于 PlacementFacts.candidate_page_base。
++ */
++struct glk43499_landing_request {
++    struct glk43499_abi_header abi;
++    uint64_t expected_page_base;
++    uint64_t page_size;
++    uint64_t allocation_size;
++    uint64_t required_alignment;
++    uint64_t reclaim_payload_size;
++    uint64_t socket_send_buffer_size;
++    uint64_t reclaim_send_limit;
++    uint64_t timeout_ns;
++    uint64_t reserved[8];
++};
++
++/** @brief Landing 的提交点与实际物理操作计数。 */
++struct glk43499_landing_receipt {
++    uint64_t actual_page_base;
++    uint64_t content_generation;
++    uint64_t closed_prepare_count;
++    uint64_t closed_spray_count;
++    uint64_t closed_pre_count;
++    uint64_t closed_post_count;
++    uint64_t reclaim_send_count;
++    uint32_t commit_reached;
++    uint32_t placement_consumed;
++    uint32_t reclaim_retained;
++    uint32_t reserved32;
++    uint64_t reserved[8];
++};
++
++/** @brief landPage 输出；返回 Page handle 为 0 时仍须读取 call 和 receipt。 */
++struct glk43499_landing_result {
++    struct glk43499_call_result call;
++    struct glk43499_landing_receipt receipt;
++};
++
++/**
++ * @brief 将 Kotlin 构造的最终字节落入 Placement 指定的候选位置。
++ *
++ * @param placement 有效且未被并发使用的 Placement handle。
++ * @param bytes 调用期借用；data 非空且 size 必须等于 reclaim_payload_size。
++ * @param request 调用期借用的最终几何。
++ * @param result 必填输出。
++ * @return 成功时返回新的 Page handle；其余返回 0。
++ * @note CLEAN_SUCCESS 消费 placement 并使其 stale；提交前 NOT_APPLIED 保留
++ *       placement；提交后不明状态将 placement 转为 QUARANTINED。
++ * @note allocation_size 是候选分配大小，page_size 是地址布局边界，
++ *       reclaim_payload_size 是本次内核复制字节数；三者都由 Kotlin 明列。
++ *       Native 只接受实现已证明的大小关系，且不从其中任一字段推导默认值。
++ */
++glk43499_handle glk43499_land_page(
++    glk43499_handle placement,
++    const struct glk43499_page_bytes *bytes,
++    const struct glk43499_landing_request *request,
++    struct glk43499_landing_result *result);
++
++/**
++ * @brief 关闭未被 Actor 借用的 Page。
++ * @param page 有效 Page handle。
++ * @param result 必填输出。
++ * @return GLK43499_CALL_BUSY 表示存在 persistent borrow 且本调用不等待。
++ * @note 引用状态不明时保留完整资源闭包到进程退出。
++ */
++int32_t glk43499_close_page(
++    glk43499_handle page,
++    struct glk43499_close_result *result);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* GHOSTLOCK_GL43499_CORE_PAGE_H */
+--- a/app/src/main/cpp/gl43499/core/primitive.h
++++ b/app/src/main/cpp/gl43499/core/primitive.h
+@@ -0,0 +1,91 @@
++/**
++ * @file primitive.h
++ * @brief 三种物理 Carrier 的无业务语义参数。
++ */
++#ifndef GHOSTLOCK_GL43499_CORE_PRIMITIVE_H
++#define GHOSTLOCK_GL43499_CORE_PRIMITIVE_H
++
++#include <stdint.h>
++
++#include "abi.h"
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/** @brief 物理 Carrier 种类；不是产品 route，也不表达 fallback。 */
++typedef int32_t glk43499_primitive_kind;
++enum {
++    GLK43499_PRIMITIVE_INVALID = 0,
++    GLK43499_PRIMITIVE_MULTICAST_SENDMSG = 1,
++    GLK43499_PRIMITIVE_PSELECT = 2,
++    GLK43499_PRIMITIVE_TCP_ZEROCOPY_RECEIVE = 3
++};
++
++/** @brief 三种 Carrier 共享的最终地址；Native 不再从 offset 重算。 */
++struct glk43499_primitive_addresses {
++    uint64_t final_waiter_address;
++    uint64_t final_task_address;
++    uint64_t final_lock_address;
++    uint64_t reserved[4];
++};
++
++/** @brief Multicast Carrier 的纯物理参数。 */
++struct glk43499_multicast_spec {
++    struct glk43499_primitive_addresses addresses;
++    const uint8_t *frame_bytes;
++    uint64_t frame_size;
++    uint64_t socket_buffer_size;
++    uint64_t operation_budget;
++    uint64_t timeout_ns;
++    uint32_t address_family;
++    uint32_t reserved32;
++    uint64_t reserved[6];
++};
++
++/** @brief Pselect Carrier 的纯物理参数。 */
++struct glk43499_pselect_spec {
++    struct glk43499_primitive_addresses addresses;
++    const uint8_t *frame_bytes;
++    uint64_t frame_size;
++    uint64_t descriptor_capacity;
++    uint64_t operation_budget;
++    uint64_t timeout_ns;
++    uint64_t reserved[6];
++};
++
++/** @brief TCP zerocopy receive Carrier 的纯物理参数。 */
++struct glk43499_tcp_zerocopy_spec {
++    struct glk43499_primitive_addresses addresses;
++    const uint8_t *frame_bytes;
++    uint64_t frame_size;
++    uint64_t mapping_size;
++    uint64_t receive_size;
++    uint64_t mapping_offset;
++    uint64_t operation_budget;
++    uint64_t timeout_ns;
++    uint64_t reserved[6];
++};
++
++/**
++ * @brief prepareActor 调用期借用的 tagged union。
++ * @note prepareActor 必须校验 kind、深拷贝所选分支和 frame_bytes，并在线程
++ *       创建前绑定具体 Carrier；未选分支必须保持全零。
++ */
++struct glk43499_primitive_spec {
++    struct glk43499_abi_header abi;
++    glk43499_primitive_kind kind;
++    uint32_t reserved32;
++    union {
++        struct glk43499_multicast_spec multicast_sendmsg;
++        struct glk43499_pselect_spec pselect;
++        struct glk43499_tcp_zerocopy_spec tcp_zerocopy_receive;
++    } value;
++    uint64_t reserved[8];
++};
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* GHOSTLOCK_GL43499_CORE_PRIMITIVE_H */
+--- a/app/src/main/cpp/gl43499/core/actor.h
++++ b/app/src/main/cpp/gl43499/core/actor.h
+@@ -0,0 +1,131 @@
++/**
++ * @file actor.h
++ * @brief 借用 Page、绑定一个 Carrier 的一次性 PI Actor 契约。
++ */
++#ifndef GHOSTLOCK_GL43499_CORE_ACTOR_H
++#define GHOSTLOCK_GL43499_CORE_ACTOR_H
++
++#include <stdint.h>
++
++#include "page.h"
++#include "primitive.h"
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/** @brief 三线程 Actor 的 CPU、优先级与有界等待参数。 */
++struct glk43499_actor_setup {
++    struct glk43499_abi_header abi;
++    uint32_t owner_cpu;
++    uint32_t waiter_cpu;
++    uint32_t consumer_cpu;
++    int32_t owner_priority;
++    int32_t waiter_priority;
++    int32_t consumer_priority;
++    uint32_t thread_count;
++    uint32_t reserved32;
++    uint64_t prepare_timeout_ns;
++    uint64_t parked_timeout_ns;
++    uint64_t execution_timeout_ns;
++    uint64_t shutdown_timeout_ns;
++    uint64_t reserved[8];
++};
++
++/** @brief prepareActor 返回的 Page 借用与 Carrier 绑定事实。 */
++struct glk43499_actor_prepare_receipt {
++    uint64_t page_generation;
++    glk43499_primitive_kind primitive_kind;
++    uint32_t thread_count;
++    uint32_t page_borrow_acquired;
++    uint32_t owner_ready;
++    uint32_t waiter_ready;
++    uint32_t consumer_ready;
++    uint32_t carrier_prepared;
++    uint32_t reserved32;
++    uint64_t reserved[8];
++};
++
++/** @brief 一次 Actor execute 的纯物理观测。 */
++struct glk43499_actor_execute_receipt {
++    uint64_t page_generation;
++    uint64_t consumer_call_count;
++    uint64_t consumer_success_count;
++    uint64_t consumer_inflight_at_return;
++    uint32_t owner_ready;
++    uint32_t waiter_parked;
++    uint32_t carrier_armed;
++    uint32_t window_opened;
++    uint32_t carrier_disarmed;
++    uint32_t retained_for_process_exit;
++    uint32_t reserved32;
++    uint64_t reserved[8];
++};
++
++/** @brief prepareActor 输出。 */
++struct glk43499_actor_prepare_result {
++    struct glk43499_call_result call;
++    struct glk43499_actor_prepare_receipt receipt;
++};
++
++/** @brief executeActor 输出。 */
++struct glk43499_actor_execute_result {
++    struct glk43499_call_result call;
++    struct glk43499_actor_execute_receipt receipt;
++};
++
++/**
++ * @brief 创建 Actor、借用 Page，并在线程创建前绑定具体 Carrier。
++ *
++ * @param page 有效且未被其它独占 Actor 借用的 Page handle。
++ * @param setup 调用期借用；thread_count 必须为 3。
++ * @param primitive 调用期借用；选中分支及 frame bytes 被深拷贝。
++ * @param result 必填输出。
++ * @return Actor handle；失败返回 0，且部分创建的线程必须已停止并 join。
++ */
++glk43499_handle glk43499_prepare_actor(
++    glk43499_handle page,
++    const struct glk43499_actor_setup *setup,
++    const struct glk43499_primitive_spec *primitive,
++    struct glk43499_actor_prepare_result *result);
++
++/**
++ * @brief 执行 prepare 时已绑定的物理 Carrier。
++ * @param actor PREPARED 状态的 Actor handle。
++ * @param result 必填输出。
++ * @return glk43499_call_status。
++ * @note 本入口没有 route/tag/spec 参数；PI 窗口内不读取 registry、不分配、
++ *       不打印，也不进行动态机制分派。
++ */
++int32_t glk43499_execute_actor(
++    glk43499_handle actor,
++    struct glk43499_actor_execute_result *result);
++
++/**
++ * @brief 请求停止新触发并排空正在执行的 Carrier 操作。
++ * @param actor 有效 Actor handle。
++ * @param result 必填输出。
++ * @return glk43499_call_status；不销毁 Actor。
++ */
++int32_t glk43499_cancel_actor(
++    glk43499_handle actor,
++    struct glk43499_close_result *result);
++
++/**
++ * @brief 按固定顺序终结 Actor 并归还 Page 借用。
++ * @param actor 有效 Actor handle；成功后变为 stale。
++ * @param result 必填输出。
++ * @return glk43499_call_status。
++ * @note 顺序为停止新触发、等待 consumer inflight 为零、disarm、解除 PI 关联、
++ *       按经验证顺序 join waiter/owner/consumer、关闭 Carrier、归还 Page。未知引用使 Actor、
++ *       Carrier 与 Page 整体 QUARANTINED。
++ */
++int32_t glk43499_close_actor(
++    glk43499_handle actor,
++    struct glk43499_close_result *result);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* GHOSTLOCK_GL43499_CORE_ACTOR_H */
+--- a/app/src/main/cpp/gl43499/core/api.h
++++ b/app/src/main/cpp/gl43499/core/api.h
+@@ -0,0 +1,18 @@
++/**
++ * @file api.h
++ * @brief 43499 从 Placement 到 Page、再到 Actor 的完整公开 C11 契约。
++ *
++ * @note 本文件只聚合单一权威声明，不提供第二套类型或兼容旧 Flow 的入口。
++ * @note victim、Finish、ksud、profile、route、retry 与 fallback 均不属于本契约。
++ */
++#ifndef GHOSTLOCK_GL43499_CORE_API_H
++#define GHOSTLOCK_GL43499_CORE_API_H
++
++#include "abi.h"
++#include "result.h"
++#include "placement.h"
++#include "page.h"
++#include "primitive.h"
++#include "actor.h"
++
++#endif /* GHOSTLOCK_GL43499_CORE_API_H */

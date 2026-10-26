@@ -1,0 +1,83 @@
+43499 C11 header-only contract verification
+Date: 2026-10-26 America/Toronto
+HEAD: bb27b48a4be095e67f11cc949d58e5bbd0d3ed95
+
+Changed branch/field:
+- Placement boundary: prepare_placement is one indivisible transaction; land_page consumes Placement on CLEAN_SUCCESS and returns Page.
+- Actor binding: prepare_actor receives and deep-copies primitive; execute_actor has no primitive/tag argument.
+- Result model: call_status, effect, and resource_state are independent fixed-width fields.
+- Ownership: Actor persistently borrows Page; unknown references quarantine Actor + Carrier + Page.
+
+Transaction artifacts:
+- MODIFIED_FILE: /Users/nickji/Documents/Program/Analysis/ghostlock-app/docs/analysis/artifacts/43499-header-contract-20261026/MODIFIED_FILE
+- DIFF_FILE: /Users/nickji/Documents/Program/Analysis/ghostlock-app/docs/analysis/artifacts/43499-header-contract-20261026/DIFF_FILE
+- VERIFICATION.txt: /Users/nickji/Documents/Program/Analysis/ghostlock-app/docs/analysis/artifacts/43499-header-contract-20261026/VERIFICATION.txt
+- ROLLBACK.sh: /Users/nickji/Documents/Program/Analysis/ghostlock-app/docs/analysis/artifacts/43499-header-contract-20261026/ROLLBACK.sh
+
+Original state and hashes:
+- app/src/main/cpp/gl43499/core/{abi,result,placement,page,primitive,actor}.h: ABSENT
+- app/src/main/cpp/gl43499/core/api.h: ABSENT in the user's post-move working tree
+- docs/plan/43499-c11-header-contract-plan.md: ABSENT
+- docs/plan/43499-approval-status.md: bbf962bbd27a1e44026e3baa65e36d225d5842e1980c85586628a5767c776758
+- docs/development/full-process-uml.md: 49577f002c9a907087501eb7ab63feb63cf2223fadafda3720444d1312a58a0a
+
+BASELINE
+Command:
+BASE=$(mktemp -d); printf '#include "api.h"\n' | cc -std=c11 -Wall -Wextra -Werror -pedantic -I "$BASE/app/src/main/cpp/gl43499/core" -x c -fsyntax-only -
+Input:
+#include "api.h"
+Literal output/result:
+<stdin>:1:10: fatal error: 'api.h' file not found
+    1 | #include "api.h"
+      |          ^~~~~~~
+1 error generated.
+Exit status: 1
+
+MODIFIED
+Command:
+for h in abi result placement page primitive actor api; do printf '#include "%s"\nint main(void){return 0;}\n' "$h.h" | cc -std=c11 -Wall -Wextra -Werror -pedantic -I app/src/main/cpp/gl43499/core -x c -fsyntax-only - || exit 1; printf '#include "%s"\nint main(){return 0;}\n' "$h.h" | c++ -std=c++23 -Wall -Wextra -Werror -pedantic -I app/src/main/cpp/gl43499/core -x c++ -fsyntax-only - || exit 1; done; printf 'C11_HEADERS=PASS CXX23_HEADERS=PASS ABI_VERSION=3\n'
+Input:
+Each of abi.h, result.h, placement.h, page.h, primitive.h, actor.h, and api.h as a standalone include in an otherwise empty translation unit.
+Literal output/result:
+C11_HEADERS=PASS CXX23_HEADERS=PASS ABI_VERSION=3
+Exit status: 0
+
+SUPPLEMENTAL ABI ASSERTIONS
+Command:
+cc -std=c11 -Wall -Wextra -Werror -pedantic -I app/src/main/cpp/gl43499/core abi_test.c -o abi_test && ./abi_test
+Input:
+Static assertions for ABI version 3, 64-bit handle, invalid handle 0, and primitive IDs 1/2/3; runtime check for GLK43499_ABI_HEADER_INIT struct_size.
+Literal output/result:
+ABI_ASSERTIONS=PASS EXIT=0
+OLD_CORE_DEPENDENCIES=NONE
+Exit status: 0
+
+ROLLBACK
+Command:
+/Users/nickji/Documents/Program/Analysis/ghostlock-app/docs/analysis/artifacts/43499-header-contract-20261026/ROLLBACK.sh "$ROLLBACK_ROOT"
+Input:
+A separate temporary copy containing the modified headers, plan, approval table, and UML.
+Literal output/result:
+patching file 'docs/plan/43499-approval-status.md'
+patching file 'docs/development/full-process-uml.md'
+patching file 'docs/plan/43499-c11-header-contract-plan.md'
+patching file 'app/src/main/cpp/gl43499/core/abi.h'
+patching file 'app/src/main/cpp/gl43499/core/result.h'
+patching file 'app/src/main/cpp/gl43499/core/placement.h'
+patching file 'app/src/main/cpp/gl43499/core/page.h'
+patching file 'app/src/main/cpp/gl43499/core/primitive.h'
+patching file 'app/src/main/cpp/gl43499/core/actor.h'
+patching file 'app/src/main/cpp/gl43499/core/api.h'
+ROLLBACK_RESTORED=PASS
+APPROVAL_HASH=bbf962bbd27a1e44026e3baa65e36d225d5842e1980c85586628a5767c776758
+UML_HASH=49577f002c9a907087501eb7ab63feb63cf2223fadafda3720444d1312a58a0a
+Exit status: 0
+
+Restored behavior/status:
+- The separate rollback copy again has no new 43499 core contract headers or header-only plan.
+- approval-status.md and full-process-uml.md match their original SHA-256 values exactly.
+- The real working tree intentionally retains the new headers and documentation changes.
+
+Not verified:
+- No CMake/JNI/Kotlin integration was added.
+- No link, APK, device, PI-window disassembly, or real-device behavior claim is made.

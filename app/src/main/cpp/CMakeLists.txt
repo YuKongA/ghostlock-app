@@ -74,10 +74,11 @@ set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/gl43284/exp.c PROPERTIES
 )
 
 # 43499: backend-specific payload.
-# The legacy C tree is parked under gl43499/{legacy,very_legacy}; only the new
-# JNI entry is compiled until the C11 split lands.
+# The legacy C tree is parked under gl43499/{legacy,very_legacy}; this batch
+# compiles the new JNI transport plus an explicit fail-closed unavailable core.
 add_library(ghostlock43499 SHARED
     gl43499/jni43499.c
+    gl43499/core/api_unavailable.c
 )
 target_include_directories(ghostlock43499 PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/gl43499

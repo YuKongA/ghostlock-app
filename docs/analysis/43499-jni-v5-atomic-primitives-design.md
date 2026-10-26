@@ -1,254 +1,279 @@
-# 43499 JNI v5：资源句柄面（rev4，2026-10-25）
+# 43499 JNI v5：资源句柄面（rev6，2026-10-25）
 
-> **状态**：设计稿（L 级）。rev3 **已被否决**（8 项阻断），本稿逐条回应，**不进入 J1**。
-> **权威（收敛后）**：`docs/analysis/adr/0021-jni-abi-and-ownership.md`（Accepted）——
-> ID 不是 pointer、每 DSO 固定 registry、inFlight/borrow/transfer/quarantine、
-> fork epoch、PI 窗口内零 registry 访问；`jni-actual-attack-contract.md` §1–§4。
-> **本稿取代**：rev3 全文；`43499-kotlin-logic-rewrite-plan.md` §1.4 与 §三。
-> **与 v4 的关系**：wire 生成器、registry 规则沿用 `43499-43284-jni-rewrite-plan.md` v4，
-> 本稿只改 43499 的资源面；ADR-0021 不改；UML（组件/状态/序列）在批准后**同批**更新。
-> **基线**：HEAD `be0f2737`。工作树有 289 个非 build 改动、多线并行，
-> 见 §十二 G0——**基线未隔离前任何门禁都不可归因**。
+> **状态**：设计稿（L 级）。rev5 评审 7 项阻断，本稿按物理边界重写；**不进入 J1，不改 CMake**。
+> **权威**：`adr/0021-jni-abi-and-ownership.md`（ID≠pointer、registry、inFlight/borrow/transfer/
+> quarantine、fork epoch、PI 窗口零 registry）＋`jni-actual-attack-contract.md` §1–§4。
+> **取代**：rev3/rev4/rev5 全文；`43499-kotlin-logic-rewrite-plan.md` §1.4 与 §三。
+> **本轮修订（rev8）**：victim **实现**迁 `common` 静态库（第 2 消费者＝64560 计划），registry 仍属
+> 消费方 DSO；`execute_finish_script` **不校验哈希**（用户 2026-10-25 明确强制，记录见 §十三），
+> 但保留 open-once 同 fd 执行以消除路径替换。
+> **基线**：`bb27b48a`（2.0.8）。G0 未过不跑门禁；本轮不执行 `git add -A`、不链 core。
 
-## 一、总判与撤回
+## 一、相对 rev5 的变更
 
-rev3 唯一可保留的一句：**状态属于具体资源句柄，Kotlin 持有 ID 并决定下一步调用谁**。
-其余全部撤回：raw pointer、无 registry、echo 同一 h、巨型 session、
-profile/addresses/runtime 进 handle、route/mode/leaf/fast_repair、discovery 并入 prepare、
-Finish 并入 backend、重复 close 可崩溃、失败默认可重试。
+placement 留 43499（KS 算法进 common）；Page 12 类资源/8 状态；
+`install_payload` → `land_page`（提交点四段 + 四类失败）；actor 单入口 + 物理 tag + 最终地址；
+victim **实现在 common、registry 留 43499**；finish **不校验哈希**（强制）+ 同 fd 执行；
+registry 按 ADR-0021 写全。
 
-本稿改为 **ADR-0021 已冻结的资源模型**，不再新造 ABI。
-
-## 二、逐条回应（按审查章节）
-
-| # | 审查意见 | 本稿处置 | 位置 |
-|---|---|---|---|
-| 一 | raw-pointer `jlong` 无法防 UAF | `jlong` = `slot|generation|epoch` 的 **ID**；每 DSO 固定 registry；解引用前先查表 | §六 |
-| 二 | echo 同一个 h 无所有权语义 | 普通操作返回 result；factory 返回新 ID；transfer 返回新 kind + 旧 ID STALE；close 等 inFlight 归零后释放一次 | §六 |
-| 三 | 巨型 `glk43499_handle` = 换名 session | 拆成 Discovery / Page / Actor / Victim / RootedVictim 五种小资源；各自独立 close | §四、§五 |
-| 四 | Kotlin 权威被搬回 Native | Native 收 `finalAddress` + `finalPayloadBytes` + 中性 metadata + 物理 mechanism 参数；无 profile/route/mode/leaf/fast_repair/attempts 语义 | §五、§十 |
-| 五 | discovery 并入 prepare；KernelSnitch 归属错误 | discovery 独立到 general DSO；43499 不链接/include KernelSnitch、不持 cursor；只收 copied facts。KernelSnitch 必须先修 stop→wake→join→munmap | §八、§九 |
-| 六 | `prepareProcess` 混三种生命周期 | 拆成 `queryProcess`（只读 DTO）/ `bootstrapProcess`（幂等进程级）/ Actor 自带 affinity；stdio 移出 43499 | §五 |
-| 七 | 失败不总能回滚重试 | 结果带 `cleanliness ∈ CLEAN/CANCELLED_CLEAN/DIRTY/INDETERMINATE`；只有前两者允许重试 | §七 |
-| 八 | 双槽两套 owner | 不存在槽：每页一个独立 PageHandle，Kotlin 决定哪个 ID 给谁；Native 无 CURRENT/PREBUILT 名字 | §四 |
-| 九 | Finish/PARK/HANDOFF 并回 backend | Victim 只做 `create/command/handoff/destroy`；finish 脚本是 `executeFinishScript(rooted, path, hash)`；策略在 Kotlin | §五 |
-| 十 | 工作树不可作基线 | G0：单 writer + 基线快照 + 目录迁移/43284/UI finish 分批隔离；CMake 未链 `core/*.cpp` 前不跑任何 43499 门禁 | §十二 |
-
-## 三、三层边界
+## 二、边界与判据
 
 ```text
-general DSO（仅 Kotlin 调用）   discovery：KernelSnitch 扫描 → copied facts
-43499 DSO                        page + actor：物理页与 PI 事务
-43499 DSO（victim 资源组）       protocol victim → handoff → rooted
+general DSO   facts / process bootstrap（应用级）
+43499 DSO     page（placement + landing）/ actor（一次物理原语）/ victim registry
+common STATIC KernelSnitch 算法、victim 管道协议与 perf task 泄漏、通用 fd/pid helper
 ```
 
-- backend 之间、backend↔general **不互调**（ADR-0021 §1）。
-- 跨层只走 **值**：general 的 `{found, mmStruct}` 经 Kotlin 变成 43499 的入参；
-  不传句柄、不传指针、不传 fd。
-- 43499 不再 include `kernelsnitch/`，也不再需要 `ks_bridge.c`（J4 删除）。
+**Native 禁止**：`RouteKind`、`select_stack/tcp_zerocopy/multicast_waiter route`、route catalog、
+supported、fallback、W1/W2/W3、repair/credential。
+**Native 允许**：`PSELECT` / `TCP_ZEROCOPY_RECEIVE` / `MCAST_SENDMSG` / futex PI / socket / fd。
 
-## 四、资源与所有权
+**移植性判据**：把这段 C++ 放到另一个 backend，是否仍是完全相同的物理动作？是 → 可留；
+若它知道 43499 的 W1/W2/W3/route/credential/repair/profile → 迁 Kotlin；必须连续执行否则
+线程/内核引用失控 → 留在一个 transaction；只为决定下一步 → 迁 Kotlin。
 
-| 资源 | DSO | 代表什么 | 终结 | 借用关系 |
+跨层：general 与 43499 **不互传对方的 handle/fd**；Kotlin 可持有各 DSO 的 opaque registry ID；
+跨 DSO 协调只经 Kotlin 复制的明列 DTO 值。
+
+## 三、资源与所有权
+
+| 资源 | DSO | 持有 | 终结 |
+|---|---|---|---|
+| `Page` | 43499 | 下表的 12 类物理资源 | 见 §三.2 |
+| `Actor` | 43499 | PI futex、三线程、arm 状态 | execute/cancel 后 close；borrow Page |
+| `Victim` | 43499（实现 common） | protocol child（pid + 2 fd + task） | destroy：SIGKILL+waitpid+关 fd |
+| `RootedVictim` | 43499（实现 common） | handoff 后的 root child（新 kind） | destroy / 脚本结束 |
+
+### 3.1 Page 内的物理资源（`support.cpp` 实测）
+
+| 资源 | 数量/来源 | 创建 | 消费/终结 | 现位置 |
 |---|---|---|---|---|
-| `Discovery` | general | 一次 KernelSnitch 会话（共享映射 + 工作线程） | close：stop→wake→join→munmap | 无 |
-| `Page` | 43499 | 一次 mm 喷射（死 mm 的 `/proc/pid/mem` fd 集合） | close：杀子进程/关 fd | Actor 借用 |
-| `Actor` | 43499 | 一次 PI 事务（futex、三线程、arm 状态） | execute 或 cancel 后 close | **persistent borrow Page** |
-| `Victim` | 43499 | protocol child（pid + 2 fd + task） | destroy：SIGKILL+waitpid+关 fd | 无 |
-| `RootedVictim` | 43499 | handoff 后的 root child（新 kind，旧 ID STALE） | destroy / script 结束 | 无 |
+| `prepare` children | `8 × mm_objs_per_slab` | `clone_child` | **landing 结束**才 kill | `:750`、`:1029` |
+| `prepare` memfd | 同上 | `open("/proc/<pid>/mem")` | **landing 结束**才 close | `:751`、`:1027` |
+| `spray` children | `(1+MM_PARTIALS) × mm_objs_per_slab` | `clone_child` | 开 fd 后**立即** kill | `:755`、`:819` |
+| `spray` memfd | 同上 | `open_memfd` | landing 中按 slab 步长 close | `:756`、`:999` |
+| `pre` children/memfd | `mm_objs_per_slab-1` | `clone_child`+`open_memfd` | 开 fd 后 kill；landing 关 fd | `:797-805`、`:991` |
+| `post` children/memfd | `mm_objs_per_slab` | 同上 | 开 fd 后 kill；landing 关前 n-1 个 | `:801-809`、`:995` |
+| `leak` child | 1 | `clone_leak_child`（**定位 fork**） | `waitpid` 收尸 | `:799`、`:831` |
+| `leak` memfd | 1 | `open_memfd(leak child)` | landing 里 `close`（真正放 mm） | `:807`、`:1012` |
+| KS 共享映射 | 1 | `glk_ks_dev_create` | placement 返回前 `destroy` | `:778` |
+| reclaim socketpair | 2 fd | `socketpair` + `SO_SNDBUF` | Page 终结时关 | `:964`、`:967` |
+| shaping socketpair | 2 fd | `socketpair` + 空 `sendmsg` | landing 内关 | `:973`、`:1003-1004` |
+| skb 缓冲 | `skb_send_size` | `make_unique<unsigned char[]>` | Page 终结时释放 | `:746` |
 
-`Page` 与 `Actor` 是可独立关闭的资源：Kotlin 可以丢掉一个 Page 而保留另一个
-（legacy 的 prebuilt 只是"另一个 PageHandle"，不再是 native 内部槽位）。
+### 3.2 Page 状态与 close
 
-## 五、入口（按 DSO 分组）
+`ALLOCATED → PLACEMENT_READY → PREPARED → LANDING → LANDED → CONSUMED`；
+旁支 `QUARANTINED`、`CLOSED`。
 
-### 5.1 general（仅 Kotlin 调用）
+| 状态 | close 做什么 | 备注 |
+|---|---|---|
+| ALLOCATED | 释放 skb | 无 pid/fd |
+| PLACEMENT_READY | kill prepare children、close 全部 ctx/leak fd、释放 skb | 泄漏候选整组回收 |
+| PREPARED | 同 + close reclaim pair | |
+| LANDING | **不释放**，转 QUARANTINED | 不可逆段 |
+| LANDED / CONSUMED | close reclaim pair、释放 skb（ctx fd 已在 landing 关完） | |
+| QUARANTINED | 不解映射、不关 fd、不交给 allocator，钉到进程退出 | |
+| CLOSED | 幂等；ID 已 STALE | |
+
+### 3.3 victim：实现在 common，所有权在 43499
+
+| 归 `common/victim` | 归 43499 |
+|---|---|
+| pipe×3/fork/setpgid/PR_SET_NAME；子进程命令循环（5 种通用探针：getuid / syscall errno / 读 comm / park / handoff）；`perf_find_task`（带 `dm_base/dm_end`）；CLOEXEC 清扫、`/proc/self/fd/N` exec、waitpid | 协议字节与命令表的绑定（C/F/M/P/G）；探针结果的业务判定；registry slot/ID/kind 转移；handoff 后的 root 策略 |
+
+`victim_spec { comm[16], dm_base, dm_end, protocol_table[] }`，**不含 43499 类型/profile/route/W1–W3**；
+命令表在 `create` 时深拷贝，运行中不可改（子进程不是 PI 窗口，静态表可接受）。
+
+**为什么不是 general**：general 服务要跨 DSO 协调 ID；此处共享的只是实现，静态库即可。
+manifest 记 `common/victim (1 consumer + 1 planned)`；64560 未启动也不构成过度抽象。
+
+## 四、入口
+
+### 4.1 general（应用级，仅 Kotlin）
 
 ```c
-int32_t  glk_general_query_target(glk_facts *out);              /* 只读 DTO */
-uint64_t glk_general_open_discovery(const glk_discovery_params *p, int32_t *code);
-int32_t  glk_general_scan_discovery(uint64_t id, const glk_scan_params *p,
-                                    glk_discovery_result *out);
-int32_t  glk_general_cancel_discovery(uint64_t id, glk_call_result *out);
-void     glk_general_close_discovery(uint64_t id, glk_call_result *out);
+int32_t glk_general_query_facts(glk_facts *out);
+int32_t glk_general_bootstrap_process(const glk_bootstrap *p);   /* 幂等，仅 rlimit */
 ```
 
-`glk_discovery_result` 是**复制出来的值**：`found`、`mm_struct`、`probes`、`rounds`、`errno`。
-DLL 内不保留任何 cursor/指针；调用方拿不到映射地址。
+`glk_facts` 只回原始事实：`release/page_size/cpu_online/rlimit_*/syscall_exists[]/
+kernel_option[]/socket_option_probe[]`。**禁止** supported/route/SoC/offset/地址/profile 推导。
 
-### 5.2 43499：page
+### 4.2 43499：page（五步）
 
 ```c
 uint64_t glk43499_allocate_page(const glk_spray_params *p, glk_call_result *out);
-int32_t  glk43499_install_payload(uint64_t page, const glk_payload *p,
-                                   glk_call_result *out);
+int32_t  glk43499_prepare_placement(uint64_t page, const glk_scan_params *p,
+                                    glk_placement_result *out);   /* 出 mm_struct */
+int32_t  glk43499_prepare_page(uint64_t page, const glk_page_geometry *g,
+                                glk_call_result *out);
+int32_t  glk43499_land_page(uint64_t page, const glk_payload *p, glk_land_result *out);
 void     glk43499_close_page(uint64_t page, glk_call_result *out);
 ```
 
-- `allocate_page`：只做 mm 喷射（死 mm + fd），**不做泄漏**（discovery 在 general）。
-- `install_payload`：`{base, finalBytes, metadata}` → 校验 → 关 fd 释放 → socketpair 回收
-  → 逐字节拷入 → 建立 `Page.state = INSTALLED`。只允许一次。
-- `glk_payload.metadata`（中性，无业务含义）：
-  `abi_version / length / required_alignment / layout_tag / range_count /
-  target_offset / write_width / stored_value` + `range_count × {offset,len}`。
-  Native 只校验：长度、对齐、range 在界内、`target_offset+write_width ≤ length`、
-  该偏移的字节解码后等于 `stored_value`。**不解释** Credential/W1/W2/W3。
+- `allocate_page`：建资源壳 + skb；按 §3.1 顺序建 children/fd（pre/post 夹住 leak child）。
+- `prepare_placement`：在定位点 fork leak child → child 内跑 KS 扫描 → parent wait/read →
+  保留 leak memfd；返回 `mm_struct`（复制值）。KS 共享映射在返回前销毁。
+- `prepare_page`：Kotlin 算好 `base` + 几何 → 建 reclaim/shaping socket，校验 base 对齐/范围。
+- `land_page`：见 §五。
+- `close_page`：见 §三.2。
 
-### 5.3 43499：actor
+### 4.3 43499：actor
 
 ```c
 uint64_t glk43499_prepare_actor(uint64_t page, const glk_actor_setup *p, glk_call_result *out);
-int32_t  glk43499_execute_actor(uint64_t actor, const glk_mechanism *m, glk_call_result *out);
+int32_t  glk43499_execute_actor(uint64_t actor, const glk_primitive *p, glk_call_result *out);
 int32_t  glk43499_cancel_actor(uint64_t actor, glk_call_result *out);
 void     glk43499_close_actor(uint64_t actor, glk_call_result *out);
 ```
 
-- `prepare_actor`：登记 persistent borrow（Page），按 `setup.cpu` 绑核、建三线程并 park。
-- `execute_actor`：plant → arm → disarm → join，一次调用一笔事务；返回
-  `status/step/errno/effect/cleanliness/attempts/calls/successes/userspace_clean/kernel_disarmed`。
-- `glk_mechanism` 是**物理机制**的 typed union（multicast/tcp/select）：
-  waiter/task/lock offset、buffer size、sockaddr family offset、nfds、arm sequence/hold、
-  timeout。没有 fallback 列表——一次调用只跑 Kotlin 指定的那一个。
+`glk_actor_setup`：`cpu / park_timeout_us / thread_count(=3) / priority`。
+`glk_primitive`：`tag ∈ {PSELECT, TCP_ZEROCOPY_RECEIVE, MCAST_SENDMSG}` + 该机制的物理参数，
+**全部是最终地址**：`final_waiter_addr / final_task_addr / final_lock_addr`、
+`buffer_size / nfds / timeout_us / arm_sequence / arm_hold / sockaddr_family_offset / zc_map_len`。
+Native 只校验域、对齐、溢出、与 Page 的归属；**不再用 offset+base 重算地址**。
 
-### 5.4 43499：victim 资源组
+### 4.4 43499：victim
 
 ```c
-uint64_t glk43499_create_protocol_victim(const glk_victim_request *p, glk_call_result *out);
-int32_t  glk43499_command_victim(uint64_t victim, int32_t cmd, glk_call_result *out);
-uint64_t glk43499_handoff_victim(uint64_t victim, const glk_handoff *p, glk_call_result *out);
-void     glk43499_destroy_victim(uint64_t id, glk_call_result *out);
+uint64_t glk43499_create_victim(const glk_victim_request *p, glk_call_result *out);
+int32_t  glk43499_command_victim(uint64_t victim, uint8_t protocol_code, glk_call_result *out);
+uint64_t glk43499_handoff_victim(uint64_t victim, glk_call_result *out);
 int32_t  glk43499_execute_finish_script(uint64_t rooted, const glk_finish *p,
                                         glk_call_result *out);
+void     glk43499_destroy_victim(uint64_t id, glk_call_result *out);
 ```
 
-`handoff_victim` 在 registry 内**原子**完成 `Victim(OPEN) → STALE` 与
-`RootedVictim(OPEN)` 的替换；旧 ID 立即失效。PARK 是 `command_victim` 的一个命令，
-句柄保持 OPEN。脚本内容/权限/SELinux 恢复/marker 校验由 Kotlin 负责；
-native 只传同一 fd 并触发、校验 `expected_hash`。
+- `handoff_victim` 只做 kind 转移（锁内完成，旧 ID STALE），不带脚本。
+- `glk_finish`：`path` + `timeout`，**不校验哈希**（用户强制，见 §十三）。
+  Native 仍做**路径→对象**闭环：`openat(O_RDONLY|O_NOFOLLOW)` → `fstat`（regular/owner/mode）
+  → 通过 `/proc/self/fd/N` 执行**同一个 fd**。这只消除"检查后被换路径"，不认证内容；
+  脚本内容、完整性、权限、SELinux、marker、解释全部由 Kotlin 负责。
+- 以上五个入口是 **43499 的 JNI 面**；实现委托 `common/victim`。`perf_find_task`
+  （`attack.cpp:444`）迁 `common/perf`，以 `{dm_base, dm_end}` 为参数；43499 不再保留副本。
 
-### 5.5 进程级
-
-```c
-int32_t glk43499_query_process(glk_process_facts *out);        /* 只读：rlimit/cpu/release/selinux */
-int32_t glk43499_bootstrap_process(const glk_bootstrap *p);    /* 幂等；只改 rlimit */
-```
-
-affinity 不进 bootstrap：它是 `Actor.setup.cpu` 的调用内 scoped 设置，执行完恢复。
-stdio 不进 43499（日志由 Kotlin/上层决定）。
-
-## 六、句柄协议（照抄 ADR-0021，不再自创）
-
-- **ID 编码**：`slot(12b) | generation(20b) | epoch(16b) | dso(8b) | kind(8b)`；
-  任何一项不符 → `STALE`。每 DSO 一张固定容量表（容量与半满阈值见 ADR CBN）。
-- **并发**：入口先 try-lock slot；占用 → `BUSY`。**PI 窗口内不访问 registry**
-  （`execute_actor` 在进入窗口前把全部参数与指针取到栈上）。
-- **borrow**：`Actor → Page` 是 persistent borrow；只有 CLEAN 结束才解除；
-  dirty 时整条依赖闭包一起 quarantine。
-- **close**：`OPEN → CLOSING → 等 inFlight=0 且 borrow=0 → 释放一次 → generation++`。
-  旧 ID 再调用一律 `STALE`，**永不崩溃**。
-- **transfer**：`handoff_victim` 在锁内完成 kind 替换，旧 ID STALE。
-- **fork**：atfork child 重建 mutex、epoch++、清空 slots；pre-fork ID 全 STALE。
-- **quarantine**：dirty/unknown 的 slot 不移交 allocator，钉到进程退出；容量耗尽 fail-closed。
-- **不保存业务状态**：registry 只有 `kind/state/generation/资源指针/dirty 原因`；
-  不知道 route、不知道 W1/W2/W3、不决定下一步。
-
-## 七、失败分类
-
-| 结果 | 含义 | 允许重试 | 资源处置 |
-|---|---|---|---|
-| `CLEAN / NOT_APPLIED` | 确定未写入内核 | 是 | 本次资源已终结 |
-| `CANCELLED_CLEAN` | 调用方取消，确定未写 | 是（按定义） | 已终结 |
-| `DIRTY` | 用户态脏或内核未 disarm | **否** | 整条闭包 quarantine，fail-stop |
-| `INDETERMINATE` | 无法证明是否写入 | **否** | quarantine + fail-stop |
-
-`execute_actor` 是唯一能产生 DIRTY/INDETERMINATE 的入口；其余入口只有前两类。
-"失败即可重试"从规则里删除。
-
-## 八、discovery 与 page 的物理顺序（可分离性证据）
-
-必须按 `allocate_page → general.scan → install_payload` 三段走，依据：
-
-1. 喷射产生的是**死 mm + fd**：`clone_memfd` = fork → `open("/proc/<pid>/mem")` →
-   `kill_child`（`support.cpp:575-580`）；fd 关闭才释放 mm 与页（`:991-1028`）。
-2. 泄漏必须发生在"死 mm 还在"的时候；回收必须在泄漏之后。
-3. general 的扫描只需要"系统里存在这些候选 mm"这个事实，不需要 43499 的任何资源
-   ⇒ 跨层只传 `mm_struct` **值**，不传 fd/指针。
-
-门禁：真机记录 `mm_struct` 落在本进程喷射区间内，且 `install_payload` 的页接受
-结果与 legacy `land_with` 一致（同一 profile、同一轮、A/B 各 1 次）。
-
-## 九、KernelSnitch 前置修复（阻断 J4）
-
-现状（实证）：`__increase` 用 `pthread_create` + `pthread_detach`
-（`glgeneral/kernelsnitch/kernelsnitch.h:141-146`），线程阻塞在
-`ks->inc_futex[id]` 的 `FUTEX_WAIT_PRIVATE`（`:124`）；`kernelsnitch_cleanup`
-直接 `munmap` 共享区（`:606-616`，含 `munmap(ks, ...)`）。残留线程仍在
-已解除映射的 futex 上等待 → 复用地址/唤醒后可访问失效内存。
-
-迁入 general JNI **之前**必须改成：
+## 五、`land_page` 是 landing transaction
 
 ```text
-stop(置 volatile stop) → wake(FUTEX_WAKE 每个 inc_futex[id]) → join(保存 tid) → munmap
+P0 preflight   校验 bytes/metadata/geometry/socket；不改任何内核可见资源
+P1 commit      关闭第一个 memfd（或第一个不可逆 sendmsg）= 提交点
+P2 irreversible 关剩余 ctx/leak fd → shaping → N 次 reclaim sendmsg
+P3 receipt     报告实际 facts：closed_counts / sendmsg_counts / base / 校验结果
 ```
 
-判据：
-- `open→cancel→close` 100 次循环，`/proc/self/task` 线程数回到基线；
-- cancel 与 close 并发 ×100，无泄漏线程、无 SIGSEGV；
-- ASan/hwasan（host 或 AVD）下 `munmap` 后无残留访问；
-- 修复前，general discovery 不得接 JNI，43499 也不得调用它。
+| 失败位置 | effect | Page 状态 | 可否重试 |
+|---|---|---|---|
+| P0 任一校验 | `NOT_APPLIED` | PREPARED | 可（同 Page） |
+| P1/P2 且清理全部可证 | `CLEAN_FAILURE` | CONSUMED | **否**（换 Page） |
+| P1/P2 中途，引用状态不明 | `INDETERMINATE` | QUARANTINED | 否 |
+| 可能有异步引用 | `DIRTY` | QUARANTINED（闭包） | 否，fail-stop |
 
-## 十、Kotlin 权威清单
+**"页接受判据"的准确表述**：Kotlin 负责期望条件、payload bytes 与结果解释；
+Native 负责报告实际 `sendmsg/reclaim/landing` facts（含实际 base 与计数）；
+**Kotlin 不能仅凭输入宣布物理落页成功**。
 
-| Kotlin 负责 | Native 只做 |
+## 六、actor 窗口纪律
+
+`execute_actor` 必须满足（作为反汇编门禁）：
+
+Kotlin 选 primitive；无 AUTO/默认/supported/fallback；不据地址推断；tag 只在窗口前解析一次；
+参数深拷贝到固定结构；窗口内不读 tag、无 switch；worker 只调已选定的直接物理函数；
+结果只报物理 facts/effect。
+
+`prepare_actor` 建三线程并 park；`execute_actor` = `plant → arm → disarm → join`；
+PI 窗口内零 JNI、零 registry、零分配、零打印、零间接分派。
+
+## 七、registry 协议
+
+```text
+lock:  lookup → scope/kind/generation/epoch/state 校验 → inFlight++
+unlock: 执行物理操作
+lock:  inFlight-- → 发布 effect/state
+```
+
+- 普通锁竞争**不返回 BUSY**；BUSY 只用于业务上不允许并发的情形（见下）。
+- `close`：`OPEN→CLOSING`（锁内）→ 锁外等 `inFlight==0` → 锁内释放一次 → `generation++`。
+- `close_page` 遇到 persistent borrow（Actor 还借 Page）→ `BUSY`，**不在锁内等 borrow**。
+- 保留：generation 回绕→永久退役 slot；scope owner；`JNI_OnUnload` 仅 clean；
+  dirty/unknown/inFlight/borrowed 钉住；atfork prepare/parent/child；CLOEXEC/fd allowlist；
+  close×close 恰一次；execute×close 等待；prepareActor×closePage= BUSY。
+
+## 八、KernelSnitch 与 placement
+
+`clone_leak_child` 在 spray 之后、pre/post 之前 fork（`support.cpp:797-801`），child 内跑 KS
+（`:511`），parent `waitpid`（`:831`）后保留该 child 的 `/proc/pid/mem` fd（`:807`），
+landing 才 close（`:1012`）⇒ 扫描身份绑定**这个定位 child 的 mm**，不是任意 dead mm；
+在 JVM 线程另起 general 扫描无法命中。
+
+因此 KS 算法进 `common/kernelsnitch`（C11 静态库），placement 留 43499；`ks_bridge.c` 撤销。
+KS 生命周期必须先是 `stop(volatile) → wake → join(保存 tid) → munmap`
+（`kernelsnitch.h:141-146` detached、`:124` futex wait、`:606-616` munmap）。
+
+判据：placement 的 `mm_struct` 落在本进程喷射区间；landing facts 与 legacy `land_with` 一致；
+KS `open→cancel→close` ×100 后线程数回基线。
+
+## 九、Kotlin 权威
+
+| Kotlin | Native |
 |---|---|
-| profile 解析、地址计算（含 image→direct-map 别名） | 地址域/对齐/溢出校验 |
-| 生成 **final payload bytes** + metadata + 页接受判据 | 复制字节、结构校验、声明区间校验 |
-| 选择物理 mechanism、重试/fallback、settle、验证判定 | 执行一次不可拆 actor 事务 |
-| victim 脚本、root 管理、SELinux 恢复、marker | 同一 fd 触发 + hash 校验 |
-| 资源编排（哪个 ID 交给谁、何时 close） | 资源 registry + inFlight/borrow |
+| profile、SoC、offset、最终地址（含 waiter/task/lock） | 域/对齐/溢出/归属校验 |
+| 生成 final bytes + metadata + 页接受期望 | 复制字节、结构校验、报告 landing facts |
+| 选 primitive、重试/fallback/settle、结果解释 | 执行一次不可拆 actor 事务 |
+| victim 步骤、脚本内容与完整性、root/SELinux/marker | 协议字节、同 fd 执行与 fstat 检查 |
+| 资源编排（ID 交给谁、何时 close） | registry + inFlight/borrow |
 
-## 十一、撤回/删除清单
+## 十、删除/迁移
 
-`glk43499_handle` 巨型对象、raw pointer ID、`stage/spray/page[2]` 槽位、
-`profile/addresses/runtime` 入 handle、`mode/leaf/route/fast_repair/attempts` 语义、
-`prepareProcess` 三合一、`g_exploit_session`、`ApiState`、`attack::exploit_t0`、
+巨型 handle、raw pointer、`page[2]` 槽、`profile/addresses/runtime` 入 handle、
+`mode/leaf/route/fast_repair/attempts`、`g_exploit_session`、`ApiState`、`attack::exploit_t0`、
 `ks_bridge.c`、`lastStep/lastErrno`、`runMulticast`、`landWithPayload`、`skbPayloadSize`。
+迁移：KS → `common/kernelsnitch`；victim_process + perf_find_task → `common/victim`、`common/perf`。
 
-## 十二、G0 基线隔离（先于 J1）
+**文件级标记**见 `43499-migration-markers.md`：13 个文件已 `.disabled`，保留 TU 符号自闭合
+（`nm` 交集为空）；另有 route class 的每调用状态待拆（marker §七）；只剩 4 处内嵌逻辑。
 
-现状：`git status` 有 **289** 个非 build 改动，混有 `glk*→gl*` 目录迁移、
-`common/general` 角色对调、43284 大范围替换、`legacy/` 删除、UI finish 删除、
-多份 plan/ADR/UML 同时修改；`CMakeLists.txt` 的 `ghostlock43499` 仍只列
-`jni43499.c`，未链 `core/*.cpp`。任何门禁失败都无法归因。
+## 十一、G0：不改 CMake
 
-G0 出关条件（每条都需用户确认）：
+根 CMake 是 `LANGUAGES C ASM`，`core/*.cpp` 需 C++ 工具链；当前 core 仍含
+`g_exploit_session/ApiState/route controller/fallback/ks_bridge`，整体链入会把要删的层带回
+生产 DSO，且无 manifest → 无法做 include/link firewall。
 
-1. 当前树打成带标签的快照（不 push），作为唯一可归因基线；
-2. 目录迁移、43284、UI finish 各自单独批次/提交，不与 JNI 设计同批；
-3. `CMakeLists.txt` 能构建出"包含 core 实现"的 `libghostlock43499.so`；
-4. 单 writer：同一时刻只有一条写入流。
+现在只做：冻结 `bb27b48a` + hash；单 writer；迁移/43284/UI Finish/JNI 分批；
+写精确 manifest；写逐资源所有权表；修订 v4/ADR/UML/legacy guide 的取代关系。
 
-## 十三、批次（J1 之前的门）
+manifest（逐文件加入，禁 glob）：`registry / result_abi / page_resource / placement / landing /
+actor / primitive_pselect / primitive_tcp_zerocopy / primitive_multicast / victim_resource /
+jni_bridge` + 静态库 `common/kernelsnitch`、`common/victim`、`common/perf`。
+每 TU 禁依赖 old session / profile / route controller / ks_bridge / legacy 聚合头。
+现有 `core/*.cpp` 只作只读迁移源或独立 dev reference target。
+
+## 十二、批次
 
 | 批 | 内容 | 门禁 |
 |---|---|---|
-| **G0** | §十二 四项 | 基线可复现；`nm` 能定位每个符号的来处 |
-| **J1** | general `query/…` + 43499 `query_process/bootstrap_process` + ID registry 骨架 + receipt/wire 生成器（含 ADR 判据：0/1/MAX、wrap、wrong kind、stale epoch） | host 协议矩阵；无业务符号 |
-| **J2** | `allocate_page/install_payload/close_page`（payload 由 Kotlin 给） | 真机：页接受 A/B、字节级一致 |
-| **J3** | `prepare_actor/execute_actor/cancel/close` + borrow/quarantine | 真机 W1；execute×cancel/close 负例 |
-| **J4** | general discovery（含 §九 修复） | §九 判据 + 真机扫描 |
-| **J5** | victim 资源组 + handoff kind 转移 | `uid` 前≠0 后=0；旧 ID STALE |
-| **J6** | W3 + finish script + `cmp_disasm` 重冻结 | `enforce_after=0`、`uid=0`、无可写全局 |
+| **G0** | §十一 | 基线可复现、manifest 可审 |
+| **J1** | registry + result ABI + jni bridge 骨架 | ADR 判据：0/1/MAX、wrap、wrong kind、stale epoch |
+| **J2** | page：allocate/placement/prepare/land/close | 真机：placement 落点 + landing facts A/B |
+| **J3** | actor + primitive + 窗口纪律 | 反汇编（窗口内无 switch/BLR/tag 读取）+ W1 |
+| **J4** | victim：common 实现 + 43499 registry（协议/handoff/finish） | `uid` 前≠0 后=0；O_NOFOLLOW/同 fd 负例 |
+| **J5** | W3 + 端到端 + `cmp_disasm` 重冻结 | `enforce_after=0`、`uid=0`、无可写全局 |
 
-## 十四、风险
+## 十三、风险与沿革
 
 | # | 风险 | 处置 |
 |---|---|---|
-| R1 | general 扫描与 43499 喷射的时序（§八） | 真机 A/B，记录 leaked 落点 |
-| R2 | registry 在 PI 窗口被访问 | 编译期开关 + 窗口内符号引用=0 的门禁 |
-| R3 | JVM 内 fork/clone 与 GC | APK `:exploit` 进程门禁，20 次冷机统计 |
-| R4 | 固定容量 registry 耗尽（dirty 钉住） | 半满告警；超限 fail-closed |
-| R5 | 基线混杂导致假红/假绿 | G0 未过不跑门禁 |
+| R1 | placement 与 landing 的可分离性 | 真机记录落点/facts；不通过则合并两段 |
+| R2 | registry 进 PI 窗口 | 编译期开关 + 窗口符号引用=0 |
+| R3 | JVM 内 fork/clone 与 GC | `:exploit` 进程门禁，20 次冷机 |
+| R4 | landing 的 INDETERMINATE 不可回收 | quarantine 钉住，容量 fail-closed |
+| R5 | 基线混杂 | G0 未过不跑门禁 |
 
-**未决**：`execute_finish_script` 的 `expected_hash` 是脚本内容哈希还是产物哈希，
-需在 J6 前定；本稿不假设。
+**沿革**：
+
+- victim 归属三改（43499→general→43499→common）：共享的是**实现**不是**所有权**；
+  ID 按 ADR-0021 留消费方 DSO，JNI 面仍是 `glk43499_*`。
+- **强制确认（2026-10-25 · 用户）**：finish **不校验内容哈希**。依据 §4.4/评审 B6；
+  代价＝同一 inode 在检查后被写入则执行新内容（路径替换已由 open-once +
+  `/proc/self/fd/N` 消除）。缓解＝脚本只在 app 私有目录、Kotlin 独占写权限。
+  债务 `D-FINISH-HASH-01`；偿还＝出现非私有路径/跨进程可写/下次 Finish 改动时重评。

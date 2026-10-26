@@ -1,0 +1,1533 @@
+--- a/app/src/main/cpp/gl43499/jni43499.c
++++ b/app/src/main/cpp/gl43499/jni43499.c
+@@ -1,182 +1,615 @@
+ /**
+  * @file jni43499.c
+- * @brief `com.ghostlock.app.jni.Native43499Jni` 的 JNI 边界（DSO `ghostlock43499`）。
++ * @brief Kotlin 具名 DTO 与 43499 C11 Placement/Page/Actor ABI 的无状态翻译层。
+  *
+- * 本文件只做三件事：JNI 参数校验、把 Kotlin 的标量搬进 `core/api.h`、把结果原样
+- * 带回。策略、步骤、判定全部在 Kotlin（`Native43499Jni` + `Cve43499BackendPort`）；
+- * 攻击原语在 `core/`。
+- *
+- * @note 会话是**单例**（`glk43499_api_create` 幂等失败返回 `-EALREADY`），句柄因此
+- *       没有实质内容；Kotlin 侧仍按"句柄"使用，等 P3 多实例落地后改为真句柄。
+- * @note 所有调用都是阻塞的，且 `discover → land → (execute)` 之间不允许有其它写：
+- *       Kotlin 必须在同一后台线程上顺序调用。
+- * @note 失败语义：`discover`/`land` 返回 0 表示失败；`runMulticast`/`executeMulticast`
+- *       返回 0 表示未写入，具体可读 `lastStep`/`lastErrno`。
++ * @note 本文件不缓存 jobject、数组、handle 或 native 状态。页面与 Carrier 字节先
++ *       复制到 native 临时缓冲；core 调用期间不持有 pinned array/raw elements。
++ * @note 当前 core 是 fail-closed unavailable 实现；所有入口明确返回 UNSUPPORTED。
+  */
+ #include <jni.h>
+ 
++#include <errno.h>
+ #include <stdint.h>
++#include <stdlib.h>
++#include <string.h>
+ 
+ #include "core/api.h"
+ 
++/** @brief 初始化由 JNI 拥有的顶层 ABI 结构。 */
++#define GLK43499_INIT_ABI(value_, type_) \
++    ((value_).abi = (struct glk43499_abi_header) GLK43499_ABI_HEADER_INIT(type_))
++
+ /**
+- * @brief 初始化单会话（装载写死的 5.15.189 dev profile）。
+- *
+- * @return 0 成功；负数为 `-errno`。
+- * @note profile blob 契约落地前，这里不接受配置参数。
++ * @brief 获取对象字段 ID。
++ * @param env 当前 JNI 环境。
++ * @param object 非空 Kotlin DTO。
++ * @param name JVM 字段名。
++ * @param signature JVM 字段签名。
++ * @return 字段 ID；查找失败时保留 JVM 异常并返回 NULL。
+  */
+-JNIEXPORT jint JNICALL
+-Java_com_ghostlock_app_jni_Native43499Jni_create(JNIEnv *env, jclass clazz) {
+-    (void) env;
+-    (void) clazz;
+-    return (jint) glk43499_api_create();
++static jfieldID glk43499_field(JNIEnv *env, jobject object, const char *name,
++                              const char *signature) {
++    if (object == NULL) return NULL;
++    jclass type = (*env)->GetObjectClass(env, object);
++    if (type == NULL) return NULL;
++    jfieldID field = (*env)->GetFieldID(env, type, name, signature);
++    (*env)->DeleteLocalRef(env, type);
++    return field;
+ }
+ 
+-/**
+- * @brief 喷页 + 泄漏。
+- *
+- * @param target 目标地址的 direct-map 别名。
+- * @return `mm_struct`；0 表示失败。
+- */
+-JNIEXPORT jlong JNICALL
+-Java_com_ghostlock_app_jni_Native43499Jni_discover(JNIEnv *env, jclass clazz,
+-                                                   jlong target) {
+-    (void) env;
+-    (void) clazz;
+-    if (target <= 0) return 0;
+-    return (jlong) glk43499_api_discover((uint64_t) target);
++/** @brief 按被 @Keep 固定的 JVM 类名识别 Kotlin Primitive 实现。 */
++static int32_t glk43499_is_instance(JNIEnv *env, jobject object,
++                                   const char *class_name) {
++    jclass type = (*env)->FindClass(env, class_name);
++    if (type == NULL) return 0;
++    const jboolean matches = (*env)->IsInstanceOf(env, object, type);
++    (*env)->DeleteLocalRef(env, type);
++    return matches == JNI_TRUE;
+ }
+ 
+-/**
+- * @brief 用 `mm_struct` 落页。
+- *
+- * @param mmStruct [discover] 的返回值。
+- * @param target   与 [discover] 相同的目标地址。
+- * @return 页基址；0 表示拒绝或失败。
+- */
+-JNIEXPORT jlong JNICALL
+-Java_com_ghostlock_app_jni_Native43499Jni_land(JNIEnv *env, jclass clazz,
+-                                               jlong mmStruct, jlong target) {
+-    (void) env;
+-    (void) clazz;
+-    if (mmStruct <= 0 || target <= 0) return 0;
+-    return (jlong) glk43499_api_land((uint64_t) mmStruct, (uint64_t) target);
++/** @brief 读取一个 Kotlin Long 字段。 */
++static int32_t glk43499_get_long(JNIEnv *env, jobject object, const char *name,
++                                uint64_t *out) {
++    jfieldID field = glk43499_field(env, object, name, "J");
++    if (field == NULL) return 0;
++    *out = (uint64_t) (*env)->GetLongField(env, object, field);
++    return (*env)->ExceptionCheck(env) == JNI_FALSE;
+ }
+ 
+-/**
+- * @brief 与 [land] 相同，但页载荷字节由 Kotlin 提供。
+- *
+- * @param mmStruct    [discover] 的返回值。
+- * @param target      与 [discover] 相同的目标地址。
+- * @param skbPayload  全量页载荷；长度必须等于 native 的 `SKB_SEND_SIZE`。
+- * @return 页基址；0 表示拒绝（长度不符 / 页被拒收 / 地址不匹配）。
+- */
+-JNIEXPORT jlong JNICALL
+-Java_com_ghostlock_app_jni_Native43499Jni_landWithPayload(JNIEnv *env, jclass clazz,
+-                                                         jlong mmStruct, jlong target,
+-                                                         jbyteArray skbPayload) {
+-    (void) clazz;
+-    if (mmStruct <= 0 || target <= 0 || skbPayload == NULL) return 0;
+-    const jsize len = (*env)->GetArrayLength(env, skbPayload);
+-    if (len <= 0) return 0;
+-    jbyte *bytes = (*env)->GetByteArrayElements(env, skbPayload, NULL);
+-    if (bytes == NULL) return 0;
+-    /* 拷贝在调用前完成：plant→arm 窗口内不允许任何 syscall / JNI 动作。 */
+-    const uint64_t base = glk43499_api_land_with_payload(
+-        (uint64_t) mmStruct, (uint64_t) target,
+-        (const uint8_t *) bytes, (size_t) len);
+-    (*env)->ReleaseByteArrayElements(env, skbPayload, bytes, JNI_ABORT);
+-    return (jlong) base;
++/** @brief 读取一个 Kotlin Int 字段。 */
++static int32_t glk43499_get_int(JNIEnv *env, jobject object, const char *name,
++                               uint32_t *out) {
++    jfieldID field = glk43499_field(env, object, name, "I");
++    if (field == NULL) return 0;
++    *out = (uint32_t) (*env)->GetIntField(env, object, field);
++    return (*env)->ExceptionCheck(env) == JNI_FALSE;
+ }
+ 
+-/**
+- * @brief select 物理入口（保留面占位）。
+- *
+- * @return `-ENOSYS`：该 route 无自有真机门禁，未证明前拒绝。
+- */
+-JNIEXPORT jint JNICALL
+-Java_com_ghostlock_app_jni_Native43499Jni_executeSelect(JNIEnv *env, jclass clazz,
+-                                                        jlong target) {
+-    (void) env;
+-    (void) clazz;
+-    if (target <= 0) return 0;
+-    return (jint) glk43499_api_execute_select((uint64_t) target);
++/** @brief 读取 PrimitiveSpec 的 ByteArray 字段。 */
++static jbyteArray glk43499_get_byte_array(JNIEnv *env, jobject object,
++                                         const char *name) {
++    jfieldID field = glk43499_field(env, object, name, "[B");
++    if (field == NULL) return NULL;
++    return (jbyteArray) (*env)->GetObjectField(env, object, field);
+ }
+ 
+-/**
+- * @brief tcp 物理入口（保留面占位）。
+- *
+- * @return `-ENOSYS`：同上。
+- */
+-JNIEXPORT jint JNICALL
+-Java_com_ghostlock_app_jni_Native43499Jni_executeTcp(JNIEnv *env, jclass clazz,
+-                                                     jlong target) {
+-    (void) env;
+-    (void) clazz;
+-    if (target <= 0) return 0;
+-    return (jint) glk43499_api_execute_tcp((uint64_t) target);
++/** @brief 写回 Kotlin Int 字段。 */
++static int32_t glk43499_set_int(JNIEnv *env, jobject object, const char *name,
++                               int32_t value) {
++    jfieldID field = glk43499_field(env, object, name, "I");
++    if (field == NULL) return 0;
++    (*env)->SetIntField(env, object, field, (jint) value);
++    return (*env)->ExceptionCheck(env) == JNI_FALSE;
+ }
+ 
+-/**
+- * @brief 执行已落页的 multicast 单发（PI 三线程 + 一次下毒）。
+- *
+- * @param target 目标地址。
+- * @return 1 成功；0 失败（配合 [lastStep]/[lastErrno]）。
+- */
+-JNIEXPORT jint JNICALL
+-Java_com_ghostlock_app_jni_Native43499Jni_executeMulticast(JNIEnv *env,
+-                                                           jclass clazz,
+-                                                           jlong target) {
+-    (void) env;
+-    (void) clazz;
+-    if (target <= 0) return 0;
+-    return (jint) glk43499_api_execute_mcast((uint64_t) target);
++/** @brief 写回 Kotlin Long 字段。 */
++static int32_t glk43499_set_long(JNIEnv *env, jobject object, const char *name,
++                                uint64_t value) {
++    jfieldID field = glk43499_field(env, object, name, "J");
++    if (field == NULL) return 0;
++    (*env)->SetLongField(env, object, field, (jlong) value);
++    return (*env)->ExceptionCheck(env) == JNI_FALSE;
+ }
+ 
++/** @brief 写回 Kotlin Boolean 字段。 */
++static int32_t glk43499_set_bool(JNIEnv *env, jobject object, const char *name,
++                                uint32_t value) {
++    jfieldID field = glk43499_field(env, object, name, "Z");
++    if (field == NULL) return 0;
++    (*env)->SetBooleanField(env, object, field, value != 0 ? JNI_TRUE : JNI_FALSE);
++    return (*env)->ExceptionCheck(env) == JNI_FALSE;
++}
++
++/** @brief 初始化 core 输出结构的 ABI 前缀。 */
++static void glk43499_init_call_result(struct glk43499_call_result *result,
++                                     uint32_t struct_size) {
++    memset(result, 0, struct_size);
++    result->abi.struct_size = struct_size;
++    result->abi.abi_version = GLK43499_ABI_VERSION;
++}
++
++/** @brief 生成 JNI 参数拒绝回执。 */
++static void glk43499_invalid_call(struct glk43499_call_result *result,
++                                 uint32_t struct_size) {
++    glk43499_init_call_result(result, struct_size);
++    result->call_status = GLK43499_CALL_INVALID_ARGUMENT;
++    result->effect = GLK43499_EFFECT_NOT_APPLIED;
++    result->resource_state = GLK43499_RESOURCE_INVALID;
++}
++
++/** @brief 生成 native 临时内存分配失败回执。 */
++static void glk43499_nomem_call(struct glk43499_call_result *result,
++                               uint32_t struct_size) {
++    glk43499_init_call_result(result, struct_size);
++    result->call_status = GLK43499_CALL_SYSTEM_ERROR;
++    result->effect = GLK43499_EFFECT_NOT_APPLIED;
++    result->resource_state = GLK43499_RESOURCE_INVALID;
++    result->system_error = ENOMEM;
++}
++
++/** @brief 将公共 core 回执逐字段写回具名 Kotlin result。 */
++static int32_t glk43499_write_call_result(
++    JNIEnv *env, jobject target, const struct glk43499_call_result *source) {
++    return glk43499_set_int(env, target, "callStatus", source->call_status) &&
++           glk43499_set_int(env, target, "effect", source->effect) &&
++           glk43499_set_int(env, target, "resourceState", source->resource_state) &&
++           glk43499_set_int(env, target, "systemError", source->system_error) &&
++           glk43499_set_long(env, target, "generation", source->generation) &&
++           glk43499_set_long(env, target, "retainedResourceCount",
++                             source->retained_resource_count);
++}
++
++/** @brief 将 close/cancel 回执逐字段写回 Kotlin。 */
++static int32_t glk43499_write_close_result(
++    JNIEnv *env, jobject target, const struct glk43499_close_result *source) {
++    return glk43499_write_call_result(env, target, &source->call) &&
++           glk43499_set_bool(env, target, "stopRequested", source->stop_requested) &&
++           glk43499_set_bool(env, target, "workersJoined", source->workers_joined) &&
++           glk43499_set_bool(env, target, "borrowReleased", source->borrow_released) &&
++           glk43499_set_bool(env, target, "retainedForProcessExit",
++                             source->retained_for_process_exit);
++}
++
+ /**
+- * @brief 一次完整写：discover + land + multicast 单发。
+- *
+- * @param target 目标地址。
+- * @return 1 成功；0 失败。
+- * @note 供"单入口"对拍使用；生产由 Kotlin 分步驱动。
++ * @brief 把 Java ByteArray 复制到 native-owned 临时缓冲。
++ * @param env 当前 JNI 环境。
++ * @param source 非空数组。
++ * @param out_data 成功时接收缓冲地址。
++ * @param out_size 成功时接收字节数。
++ * @return 1 成功；0 表示空数组、分配失败或 JVM 异常。
+  */
+-JNIEXPORT jint JNICALL
+-Java_com_ghostlock_app_jni_Native43499Jni_runMulticast(JNIEnv *env, jclass clazz,
+-                                                       jlong target) {
+-    (void) env;
+-    (void) clazz;
+-    if (target <= 0) return 0;
+-    return (jint) glk43499_api_run_mcast((uint64_t) target);
++typedef int32_t glk43499_copy_status;
++enum {
++    GLK43499_COPY_INVALID = 0,
++    GLK43499_COPY_OK = 1,
++    GLK43499_COPY_NO_MEMORY = 2
++};
++
++static glk43499_copy_status glk43499_copy_bytes(
++    JNIEnv *env, jbyteArray source, uint8_t **out_data, uint64_t *out_size) {
++    *out_data = NULL;
++    *out_size = 0;
++    if (source == NULL) return GLK43499_COPY_INVALID;
++    const jsize length = (*env)->GetArrayLength(env, source);
++    if (length <= 0 || (*env)->ExceptionCheck(env) == JNI_TRUE) {
++        return GLK43499_COPY_INVALID;
++    }
++    uint8_t *copy = (uint8_t *) malloc((size_t) length);
++    if (copy == NULL) return GLK43499_COPY_NO_MEMORY;
++    (*env)->GetByteArrayRegion(env, source, 0, length, (jbyte *) copy);
++    if ((*env)->ExceptionCheck(env) == JNI_TRUE) {
++        memset(copy, 0, (size_t) length);
++        free(copy);
++        return GLK43499_COPY_INVALID;
++    }
++    *out_data = copy;
++    *out_size = (uint64_t) length;
++    return GLK43499_COPY_OK;
+ }
+ 
+-/** @brief 页载荷要求的字节数（Kotlin 构造时用）。 */
+-JNIEXPORT jint JNICALL
+-Java_com_ghostlock_app_jni_Native43499Jni_skbPayloadSize(JNIEnv *env, jclass clazz) {
+-    (void) env;
+-    (void) clazz;
+-    return (jint) glk43499_api_skb_payload_size();
++/** @brief 清零并释放调用期字节副本。 */
++static void glk43499_clear_free(uint8_t *data, uint64_t size) {
++    if (data == NULL) return;
++    volatile uint8_t *cursor = data;
++    for (uint64_t index = 0; index < size; ++index) cursor[index] = 0;
++    free(data);
+ }
+ 
+-/** @brief 最近一次 route step（0 = 无失败）。 */
+-JNIEXPORT jint JNICALL
+-Java_com_ghostlock_app_jni_Native43499Jni_lastStep(JNIEnv *env, jclass clazz) {
+-    (void) env;
+-    (void) clazz;
+-    return (jint) glk43499_api_last_step();
++/** @brief Kotlin PlacementRequest 到 C11 POD 的逐字段翻译。 */
++static int32_t glk43499_read_placement_request(
++    JNIEnv *env, jobject source, struct glk43499_placement_request *target) {
++    memset(target, 0, sizeof(*target));
++    GLK43499_INIT_ABI(*target, struct glk43499_placement_request);
++    return source != NULL &&
++           glk43499_get_long(env, source, "pageSize", &target->page_size) &&
++           glk43499_get_long(env, source, "allocationSize", &target->allocation_size) &&
++           glk43499_get_long(env, source, "requiredAlignment", &target->required_alignment) &&
++           glk43499_get_long(env, source, "scanLowerBound", &target->scan_lower_bound) &&
++           glk43499_get_long(env, source, "scanUpperBound", &target->scan_upper_bound) &&
++           glk43499_get_long(env, source, "scanStep", &target->scan_step) &&
++           glk43499_get_long(env, source, "scanRoundLimit", &target->scan_round_limit) &&
++           glk43499_get_long(env, source, "timeoutNanos", &target->timeout_ns) &&
++           glk43499_get_int(env, source, "placementCpu", &target->placement_cpu) &&
++           glk43499_get_int(env, source, "measurementCpu", &target->measurement_cpu) &&
++           glk43499_get_int(env, source, "objectsPerSlab", &target->objects_per_slab) &&
++           glk43499_get_int(env, source, "prepareObjectCount", &target->prepare_object_count) &&
++           glk43499_get_int(env, source, "sprayObjectCount", &target->spray_object_count) &&
++           glk43499_get_int(env, source, "preObjectCount", &target->pre_object_count) &&
++           glk43499_get_int(env, source, "postObjectCount", &target->post_object_count);
+ }
+ 
+-/** @brief 最近一次 errno（0 = 无失败）。 */
+-JNIEXPORT jint JNICALL
+-Java_com_ghostlock_app_jni_Native43499Jni_lastErrno(JNIEnv *env, jclass clazz) {
+-    (void) env;
+-    (void) clazz;
+-    return (jint) glk43499_api_last_errno();
++/** @brief Kotlin LandingRequest 到 C11 POD 的逐字段翻译。 */
++static int32_t glk43499_read_landing_request(
++    JNIEnv *env, jobject source, struct glk43499_landing_request *target) {
++    memset(target, 0, sizeof(*target));
++    GLK43499_INIT_ABI(*target, struct glk43499_landing_request);
++    return source != NULL &&
++           glk43499_get_long(env, source, "expectedPageBase", &target->expected_page_base) &&
++           glk43499_get_long(env, source, "pageSize", &target->page_size) &&
++           glk43499_get_long(env, source, "allocationSize", &target->allocation_size) &&
++           glk43499_get_long(env, source, "requiredAlignment", &target->required_alignment) &&
++           glk43499_get_long(env, source, "reclaimPayloadSize", &target->reclaim_payload_size) &&
++           glk43499_get_long(env, source, "socketSendBufferSize",
++                             &target->socket_send_buffer_size) &&
++           glk43499_get_long(env, source, "reclaimSendLimit", &target->reclaim_send_limit) &&
++           glk43499_get_long(env, source, "timeoutNanos", &target->timeout_ns);
+ }
+ 
+-/** @brief 释放会话（幂等）。 */
+-JNIEXPORT void JNICALL
+-Java_com_ghostlock_app_jni_Native43499Jni_close(JNIEnv *env, jclass clazz) {
+-    (void) env;
++/** @brief Kotlin ActorSetup 到 C11 POD 的逐字段翻译。 */
++static int32_t glk43499_read_actor_setup(
++    JNIEnv *env, jobject source, struct glk43499_actor_setup *target) {
++    memset(target, 0, sizeof(*target));
++    GLK43499_INIT_ABI(*target, struct glk43499_actor_setup);
++    uint32_t owner_priority = 0;
++    uint32_t waiter_priority = 0;
++    uint32_t consumer_priority = 0;
++    if (source == NULL ||
++        !glk43499_get_int(env, source, "ownerCpu", &target->owner_cpu) ||
++        !glk43499_get_int(env, source, "waiterCpu", &target->waiter_cpu) ||
++        !glk43499_get_int(env, source, "consumerCpu", &target->consumer_cpu) ||
++        !glk43499_get_int(env, source, "ownerPriority", &owner_priority) ||
++        !glk43499_get_int(env, source, "waiterPriority", &waiter_priority) ||
++        !glk43499_get_int(env, source, "consumerPriority", &consumer_priority) ||
++        !glk43499_get_int(env, source, "threadCount", &target->thread_count) ||
++        !glk43499_get_long(env, source, "prepareTimeoutNanos", &target->prepare_timeout_ns) ||
++        !glk43499_get_long(env, source, "parkedTimeoutNanos", &target->parked_timeout_ns) ||
++        !glk43499_get_long(env, source, "executionTimeoutNanos", &target->execution_timeout_ns) ||
++        !glk43499_get_long(env, source, "shutdownTimeoutNanos", &target->shutdown_timeout_ns)) {
++        return 0;
++    }
++    target->owner_priority = (int32_t) owner_priority;
++    target->waiter_priority = (int32_t) waiter_priority;
++    target->consumer_priority = (int32_t) consumer_priority;
++    return 1;
++}
++
++/** @brief 读取三个 Carrier 共用的最终地址。 */
++static int32_t glk43499_read_primitive_addresses(
++    JNIEnv *env, jobject source, struct glk43499_primitive_addresses *target) {
++    return glk43499_get_long(env, source, "finalWaiterAddress",
++                             &target->final_waiter_address) &&
++           glk43499_get_long(env, source, "finalTaskAddress",
++                             &target->final_task_address) &&
++           glk43499_get_long(env, source, "finalLockAddress",
++                             &target->final_lock_address);
++}
++
++/** @brief Kotlin sealed PrimitiveSpec 到 C11 tagged union 的 prepare-time 翻译。 */
++static int32_t glk43499_read_primitive(
++    JNIEnv *env, jobject source, struct glk43499_primitive_spec *target,
++    uint8_t **frame_copy, uint64_t *frame_size,
++    glk43499_copy_status *copy_status) {
++    memset(target, 0, sizeof(*target));
++    GLK43499_INIT_ABI(*target, struct glk43499_primitive_spec);
++    if (source == NULL) return 0;
++    jbyteArray frame = glk43499_get_byte_array(env, source, "frameBytes");
++    if (frame == NULL) return 0;
++    *copy_status = glk43499_copy_bytes(env, frame, frame_copy, frame_size);
++    if (*copy_status != GLK43499_COPY_OK) {
++        if (frame != NULL) (*env)->DeleteLocalRef(env, frame);
++        return 0;
++    }
++    (*env)->DeleteLocalRef(env, frame);
++
++    if (glk43499_is_instance(env, source,
++            "com/ghostlock/app/jni/Native43499MulticastSpec")) {
++        target->kind = GLK43499_PRIMITIVE_MULTICAST_SENDMSG;
++    } else if (glk43499_is_instance(env, source,
++                   "com/ghostlock/app/jni/Native43499PselectSpec")) {
++        target->kind = GLK43499_PRIMITIVE_PSELECT;
++    } else if (glk43499_is_instance(env, source,
++                   "com/ghostlock/app/jni/Native43499TcpZerocopySpec")) {
++        target->kind = GLK43499_PRIMITIVE_TCP_ZEROCOPY_RECEIVE;
++    } else {
++        return 0;
++    }
++
++    switch (target->kind) {
++        case GLK43499_PRIMITIVE_MULTICAST_SENDMSG: {
++            struct glk43499_multicast_spec *spec = &target->value.multicast_sendmsg;
++            spec->frame_bytes = *frame_copy;
++            spec->frame_size = *frame_size;
++            return glk43499_read_primitive_addresses(env, source, &spec->addresses) &&
++                   glk43499_get_long(env, source, "socketBufferSize",
++                                     &spec->socket_buffer_size) &&
++                   glk43499_get_long(env, source, "operationBudget",
++                                     &spec->operation_budget) &&
++                   glk43499_get_long(env, source, "timeoutNanos", &spec->timeout_ns) &&
++                   glk43499_get_int(env, source, "addressFamily", &spec->address_family);
++        }
++        case GLK43499_PRIMITIVE_PSELECT: {
++            struct glk43499_pselect_spec *spec = &target->value.pselect;
++            spec->frame_bytes = *frame_copy;
++            spec->frame_size = *frame_size;
++            return glk43499_read_primitive_addresses(env, source, &spec->addresses) &&
++                   glk43499_get_long(env, source, "descriptorCapacity",
++                                     &spec->descriptor_capacity) &&
++                   glk43499_get_long(env, source, "operationBudget",
++                                     &spec->operation_budget) &&
++                   glk43499_get_long(env, source, "timeoutNanos", &spec->timeout_ns);
++        }
++        case GLK43499_PRIMITIVE_TCP_ZEROCOPY_RECEIVE: {
++            struct glk43499_tcp_zerocopy_spec *spec =
++                &target->value.tcp_zerocopy_receive;
++            spec->frame_bytes = *frame_copy;
++            spec->frame_size = *frame_size;
++            return glk43499_read_primitive_addresses(env, source, &spec->addresses) &&
++                   glk43499_get_long(env, source, "mappingSize", &spec->mapping_size) &&
++                   glk43499_get_long(env, source, "receiveSize", &spec->receive_size) &&
++                   glk43499_get_long(env, source, "mappingOffset", &spec->mapping_offset) &&
++                   glk43499_get_long(env, source, "operationBudget",
++                                     &spec->operation_budget) &&
++                   glk43499_get_long(env, source, "timeoutNanos", &spec->timeout_ns);
++        }
++        default:
++            return 0;
++    }
++}
++
++/** @brief 写回 preparePlacement 的候选页事实。 */
++static int32_t glk43499_write_placement_result(
++    JNIEnv *env, jobject target, const struct glk43499_placement_result *source) {
++    return glk43499_write_call_result(env, target, &source->call) &&
++           glk43499_set_long(env, target, "candidatePageBase",
++                             source->facts.candidate_page_base) &&
++           glk43499_set_long(env, target, "pageSize", source->facts.page_size) &&
++           glk43499_set_long(env, target, "allocationSize",
++                             source->facts.allocation_size) &&
++           glk43499_set_long(env, target, "requiredAlignment",
++                             source->facts.required_alignment) &&
++           glk43499_set_long(env, target, "measuredObjectAddress",
++                             source->facts.measured_object_address) &&
++           glk43499_set_long(env, target, "measurementRounds",
++                             source->facts.measurement_rounds) &&
++           glk43499_set_long(env, target, "retainedChildCount",
++                             source->facts.retained_child_count) &&
++           glk43499_set_long(env, target, "retainedDescriptorCount",
++                             source->facts.retained_descriptor_count);
++}
++
++/** @brief 写回 Landing 提交点和计数。 */
++static int32_t glk43499_write_landing_result(
++    JNIEnv *env, jobject target, const struct glk43499_landing_result *source) {
++    return glk43499_write_call_result(env, target, &source->call) &&
++           glk43499_set_long(env, target, "actualPageBase",
++                             source->receipt.actual_page_base) &&
++           glk43499_set_long(env, target, "contentGeneration",
++                             source->receipt.content_generation) &&
++           glk43499_set_long(env, target, "closedPrepareCount",
++                             source->receipt.closed_prepare_count) &&
++           glk43499_set_long(env, target, "closedSprayCount",
++                             source->receipt.closed_spray_count) &&
++           glk43499_set_long(env, target, "closedPreCount",
++                             source->receipt.closed_pre_count) &&
++           glk43499_set_long(env, target, "closedPostCount",
++                             source->receipt.closed_post_count) &&
++           glk43499_set_long(env, target, "reclaimSendCount",
++                             source->receipt.reclaim_send_count) &&
++           glk43499_set_bool(env, target, "commitReached",
++                             source->receipt.commit_reached) &&
++           glk43499_set_bool(env, target, "placementConsumed",
++                             source->receipt.placement_consumed) &&
++           glk43499_set_bool(env, target, "reclaimRetained",
++                             source->receipt.reclaim_retained);
++}
++
++/** @brief 写回 prepareActor 的准备事实。 */
++static int32_t glk43499_write_actor_prepare_result(
++    JNIEnv *env, jobject target, const struct glk43499_actor_prepare_result *source) {
++    return glk43499_write_call_result(env, target, &source->call) &&
++           glk43499_set_long(env, target, "pageGeneration",
++                             source->receipt.page_generation) &&
++           glk43499_set_int(env, target, "primitiveKind",
++                            source->receipt.primitive_kind) &&
++           glk43499_set_int(env, target, "threadCount",
++                            (int32_t) source->receipt.thread_count) &&
++           glk43499_set_bool(env, target, "pageBorrowAcquired",
++                             source->receipt.page_borrow_acquired) &&
++           glk43499_set_bool(env, target, "ownerReady", source->receipt.owner_ready) &&
++           glk43499_set_bool(env, target, "waiterReady", source->receipt.waiter_ready) &&
++           glk43499_set_bool(env, target, "consumerReady",
++                             source->receipt.consumer_ready) &&
++           glk43499_set_bool(env, target, "carrierPrepared",
++                             source->receipt.carrier_prepared);
++}
++
++/** @brief 写回 executeActor 的物理事实。 */
++static int32_t glk43499_write_actor_execute_result(
++    JNIEnv *env, jobject target, const struct glk43499_actor_execute_result *source) {
++    return glk43499_write_call_result(env, target, &source->call) &&
++           glk43499_set_long(env, target, "pageGeneration",
++                             source->receipt.page_generation) &&
++           glk43499_set_long(env, target, "consumerCallCount",
++                             source->receipt.consumer_call_count) &&
++           glk43499_set_long(env, target, "consumerSuccessCount",
++                             source->receipt.consumer_success_count) &&
++           glk43499_set_long(env, target, "consumerInflightAtReturn",
++                             source->receipt.consumer_inflight_at_return) &&
++           glk43499_set_bool(env, target, "ownerReady", source->receipt.owner_ready) &&
++           glk43499_set_bool(env, target, "waiterParked",
++                             source->receipt.waiter_parked) &&
++           glk43499_set_bool(env, target, "carrierArmed",
++                             source->receipt.carrier_armed) &&
++           glk43499_set_bool(env, target, "windowOpened",
++                             source->receipt.window_opened) &&
++           glk43499_set_bool(env, target, "carrierDisarmed",
++                             source->receipt.carrier_disarmed) &&
++           glk43499_set_bool(env, target, "retainedForProcessExit",
++                             source->receipt.retained_for_process_exit);
++}
++
++JNIEXPORT jlong JNICALL
++Java_com_ghostlock_app_jni_Native43499Jni_preparePlacement(
++    JNIEnv *env, jclass clazz, jobject request_object, jobject result_object) {
+     (void) clazz;
+-    glk43499_api_close();
++    struct glk43499_placement_request request;
++    struct glk43499_placement_result result;
++    glk43499_init_call_result(&result.call, (uint32_t) sizeof(result));
++    glk43499_handle handle = GLK43499_INVALID_HANDLE;
++    if (request_object != NULL && result_object != NULL &&
++        glk43499_read_placement_request(env, request_object, &request)) {
++        handle = glk43499_prepare_placement(&request, &result);
++    } else {
++        glk43499_invalid_call(&result.call, (uint32_t) sizeof(result));
++    }
++    (void) glk43499_write_placement_result(env, result_object, &result);
++    return (jlong) handle;
+ }
++
++/** @brief cancel/close Placement 的公共 JNI 搬运。 */
++static jint glk43499_placement_close_call(JNIEnv *env, jlong handle,
++                                         jobject result_object, int32_t close_call) {
++    struct glk43499_close_result result;
++    glk43499_init_call_result(&result.call, (uint32_t) sizeof(result));
++    int32_t status = GLK43499_CALL_INVALID_ARGUMENT;
++    if (handle != 0 && result_object != NULL) {
++        status = close_call != 0
++                     ? glk43499_close_placement((glk43499_handle) handle, &result)
++                     : glk43499_cancel_placement((glk43499_handle) handle, &result);
++    } else {
++        glk43499_invalid_call(&result.call, (uint32_t) sizeof(result));
++    }
++    (void) glk43499_write_close_result(env, result_object, &result);
++    return (jint) status;
++}
++
++JNIEXPORT jint JNICALL
++Java_com_ghostlock_app_jni_Native43499Jni_cancelPlacement(
++    JNIEnv *env, jclass clazz, jlong handle, jobject result_object) {
++    (void) clazz;
++    return glk43499_placement_close_call(env, handle, result_object, 0);
++}
++
++JNIEXPORT jint JNICALL
++Java_com_ghostlock_app_jni_Native43499Jni_closePlacement(
++    JNIEnv *env, jclass clazz, jlong handle, jobject result_object) {
++    (void) clazz;
++    return glk43499_placement_close_call(env, handle, result_object, 1);
++}
++
++JNIEXPORT jlong JNICALL
++Java_com_ghostlock_app_jni_Native43499Jni_landPage(
++    JNIEnv *env, jclass clazz, jlong placement, jobject request_object,
++    jbyteArray final_bytes, jlong content_generation, jobject result_object) {
++    (void) clazz;
++    struct glk43499_landing_request request;
++    struct glk43499_landing_result result;
++    struct glk43499_page_bytes bytes;
++    uint8_t *bytes_copy = NULL;
++    uint64_t bytes_size = 0;
++    glk43499_copy_status copy_status = GLK43499_COPY_INVALID;
++    memset(&bytes, 0, sizeof(bytes));
++    GLK43499_INIT_ABI(bytes, struct glk43499_page_bytes);
++    glk43499_init_call_result(&result.call, (uint32_t) sizeof(result));
++    glk43499_handle page = GLK43499_INVALID_HANDLE;
++
++    if (placement != 0 && request_object != NULL && result_object != NULL &&
++        glk43499_read_landing_request(env, request_object, &request)) {
++        copy_status = glk43499_copy_bytes(env, final_bytes, &bytes_copy, &bytes_size);
++    }
++    if (copy_status == GLK43499_COPY_OK) {
++        bytes.data = bytes_copy;
++        bytes.size = bytes_size;
++        bytes.content_generation = (uint64_t) content_generation;
++        page = glk43499_land_page((glk43499_handle) placement, &bytes, &request, &result);
++    } else if (copy_status == GLK43499_COPY_NO_MEMORY) {
++        glk43499_nomem_call(&result.call, (uint32_t) sizeof(result));
++    } else {
++        glk43499_invalid_call(&result.call, (uint32_t) sizeof(result));
++    }
++    glk43499_clear_free(bytes_copy, bytes_size);
++    (void) glk43499_write_landing_result(env, result_object, &result);
++    return (jlong) page;
++}
++
++JNIEXPORT jint JNICALL
++Java_com_ghostlock_app_jni_Native43499Jni_closePage(
++    JNIEnv *env, jclass clazz, jlong page, jobject result_object) {
++    (void) clazz;
++    struct glk43499_close_result result;
++    glk43499_init_call_result(&result.call, (uint32_t) sizeof(result));
++    int32_t status = GLK43499_CALL_INVALID_ARGUMENT;
++    if (page != 0 && result_object != NULL) {
++        status = glk43499_close_page((glk43499_handle) page, &result);
++    } else {
++        glk43499_invalid_call(&result.call, (uint32_t) sizeof(result));
++    }
++    (void) glk43499_write_close_result(env, result_object, &result);
++    return (jint) status;
++}
++
++JNIEXPORT jlong JNICALL
++Java_com_ghostlock_app_jni_Native43499Jni_prepareActor(
++    JNIEnv *env, jclass clazz, jlong page, jobject setup_object,
++    jobject primitive_object, jobject result_object) {
++    (void) clazz;
++    struct glk43499_actor_setup setup;
++    struct glk43499_primitive_spec primitive;
++    struct glk43499_actor_prepare_result result;
++    uint8_t *frame_copy = NULL;
++    uint64_t frame_size = 0;
++    glk43499_copy_status copy_status = GLK43499_COPY_INVALID;
++    glk43499_init_call_result(&result.call, (uint32_t) sizeof(result));
++    glk43499_handle actor = GLK43499_INVALID_HANDLE;
++
++    if (page != 0 && setup_object != NULL && primitive_object != NULL &&
++        result_object != NULL && glk43499_read_actor_setup(env, setup_object, &setup) &&
++        glk43499_read_primitive(env, primitive_object, &primitive,
++                                &frame_copy, &frame_size, &copy_status)) {
++        actor = glk43499_prepare_actor((glk43499_handle) page, &setup, &primitive, &result);
++    } else if (copy_status == GLK43499_COPY_NO_MEMORY) {
++        glk43499_nomem_call(&result.call, (uint32_t) sizeof(result));
++    } else {
++        glk43499_invalid_call(&result.call, (uint32_t) sizeof(result));
++    }
++    glk43499_clear_free(frame_copy, frame_size);
++    (void) glk43499_write_actor_prepare_result(env, result_object, &result);
++    return (jlong) actor;
++}
++
++JNIEXPORT jint JNICALL
++Java_com_ghostlock_app_jni_Native43499Jni_executeActor(
++    JNIEnv *env, jclass clazz, jlong actor, jobject result_object) {
++    (void) clazz;
++    struct glk43499_actor_execute_result result;
++    glk43499_init_call_result(&result.call, (uint32_t) sizeof(result));
++    int32_t status = GLK43499_CALL_INVALID_ARGUMENT;
++    if (actor != 0 && result_object != NULL) {
++        status = glk43499_execute_actor((glk43499_handle) actor, &result);
++    } else {
++        glk43499_invalid_call(&result.call, (uint32_t) sizeof(result));
++    }
++    (void) glk43499_write_actor_execute_result(env, result_object, &result);
++    return (jint) status;
++}
++
++/** @brief cancel/close Actor 的公共 JNI 搬运。 */
++static jint glk43499_actor_close_call(JNIEnv *env, jlong handle,
++                                     jobject result_object, int32_t close_call) {
++    struct glk43499_close_result result;
++    glk43499_init_call_result(&result.call, (uint32_t) sizeof(result));
++    int32_t status = GLK43499_CALL_INVALID_ARGUMENT;
++    if (handle != 0 && result_object != NULL) {
++        status = close_call != 0
++                     ? glk43499_close_actor((glk43499_handle) handle, &result)
++                     : glk43499_cancel_actor((glk43499_handle) handle, &result);
++    } else {
++        glk43499_invalid_call(&result.call, (uint32_t) sizeof(result));
++    }
++    (void) glk43499_write_close_result(env, result_object, &result);
++    return (jint) status;
++}
++
++JNIEXPORT jint JNICALL
++Java_com_ghostlock_app_jni_Native43499Jni_cancelActor(
++    JNIEnv *env, jclass clazz, jlong actor, jobject result_object) {
++    (void) clazz;
++    return glk43499_actor_close_call(env, actor, result_object, 0);
++}
++
++JNIEXPORT jint JNICALL
++Java_com_ghostlock_app_jni_Native43499Jni_closeActor(
++    JNIEnv *env, jclass clazz, jlong actor, jobject result_object) {
++    (void) clazz;
++    return glk43499_actor_close_call(env, actor, result_object, 1);
++}
+--- a/app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt
++++ b/app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt
+@@ -1,114 +1,232 @@
+ package com.ghostlock.app.jni
+ 
++import androidx.annotation.Keep
++
++/** Placement 不可拆事务的显式物理参数；不包含 profile 或 route。 */
++@Keep
++internal data class Native43499PlacementRequest(
++    val pageSize: Long,
++    val allocationSize: Long,
++    val requiredAlignment: Long,
++    val scanLowerBound: Long,
++    val scanUpperBound: Long,
++    val scanStep: Long,
++    val scanRoundLimit: Long,
++    val timeoutNanos: Long,
++    val placementCpu: Int,
++    val measurementCpu: Int,
++    val objectsPerSlab: Int,
++    val prepareObjectCount: Int,
++    val sprayObjectCount: Int,
++    val preObjectCount: Int,
++    val postObjectCount: Int,
++)
++
++/** Landing 的显式几何；最终页面字节由 [Native43499Jni.landPage] 单独传入。 */
++@Keep
++internal data class Native43499LandingRequest(
++    val expectedPageBase: Long,
++    val pageSize: Long,
++    val allocationSize: Long,
++    val requiredAlignment: Long,
++    val reclaimPayloadSize: Long,
++    val socketSendBufferSize: Long,
++    val reclaimSendLimit: Long,
++    val timeoutNanos: Long,
++)
++
++/** 三线程 Actor 的物理调度与有界等待参数。 */
++@Keep
++internal data class Native43499ActorSetup(
++    val ownerCpu: Int,
++    val waiterCpu: Int,
++    val consumerCpu: Int,
++    val ownerPriority: Int,
++    val waiterPriority: Int,
++    val consumerPriority: Int,
++    val threadCount: Int = 3,
++    val prepareTimeoutNanos: Long,
++    val parkedTimeoutNanos: Long,
++    val executionTimeoutNanos: Long,
++    val shutdownTimeoutNanos: Long,
++)
++
++/** prepareActor 时绑定的物理 Carrier；executeActor 不再接收该对象。 */
++@Keep
++internal sealed interface Native43499PrimitiveSpec {
++    val finalWaiterAddress: Long
++    val finalTaskAddress: Long
++    val finalLockAddress: Long
++    val frameBytes: ByteArray
++}
++
++/** Multicast sendmsg Carrier 参数。 */
++@Keep
++internal data class Native43499MulticastSpec(
++    override val finalWaiterAddress: Long,
++    override val finalTaskAddress: Long,
++    override val finalLockAddress: Long,
++    override val frameBytes: ByteArray,
++    val socketBufferSize: Long,
++    val operationBudget: Long,
++    val timeoutNanos: Long,
++    val addressFamily: Int,
++) : Native43499PrimitiveSpec
++
++/** Pselect Carrier 参数。 */
++@Keep
++internal data class Native43499PselectSpec(
++    override val finalWaiterAddress: Long,
++    override val finalTaskAddress: Long,
++    override val finalLockAddress: Long,
++    override val frameBytes: ByteArray,
++    val descriptorCapacity: Long,
++    val operationBudget: Long,
++    val timeoutNanos: Long,
++) : Native43499PrimitiveSpec
++
++/** TCP zerocopy receive Carrier 参数。 */
++@Keep
++internal data class Native43499TcpZerocopySpec(
++    override val finalWaiterAddress: Long,
++    override val finalTaskAddress: Long,
++    override val finalLockAddress: Long,
++    override val frameBytes: ByteArray,
++    val mappingSize: Long,
++    val receiveSize: Long,
++    val mappingOffset: Long,
++    val operationBudget: Long,
++    val timeoutNanos: Long,
++) : Native43499PrimitiveSpec
++
++/** JNI 写回的公共调用回执；业务层不得只凭该对象宣布目标效果成功。 */
++@Keep
++internal open class Native43499CallResult {
++    /** Native 尚未写回时的非协议哨兵；具名状态表必须由后续生成任务产生。 */
++    var callStatus: Int = Int.MIN_VALUE
++    var effect: Int = 0
++    var resourceState: Int = 0
++    var systemError: Int = 0
++    var generation: Long = 0
++    var retainedResourceCount: Long = 0
++}
++
++/** cancel/close 回执。 */
++@Keep
++internal class Native43499CloseResult : Native43499CallResult() {
++    var stopRequested: Boolean = false
++    var workersJoined: Boolean = false
++    var borrowReleased: Boolean = false
++    var retainedForProcessExit: Boolean = false
++}
++
++/** preparePlacement 回执和候选页事实。 */
++@Keep
++internal class Native43499PlacementResult : Native43499CallResult() {
++    var candidatePageBase: Long = 0
++    var pageSize: Long = 0
++    var allocationSize: Long = 0
++    var requiredAlignment: Long = 0
++    var measuredObjectAddress: Long = 0
++    var measurementRounds: Long = 0
++    var retainedChildCount: Long = 0
++    var retainedDescriptorCount: Long = 0
++}
++
++/** landPage 的提交点和物理操作事实。 */
++@Keep
++internal class Native43499LandingResult : Native43499CallResult() {
++    var actualPageBase: Long = 0
++    var contentGeneration: Long = 0
++    var closedPrepareCount: Long = 0
++    var closedSprayCount: Long = 0
++    var closedPreCount: Long = 0
++    var closedPostCount: Long = 0
++    var reclaimSendCount: Long = 0
++    var commitReached: Boolean = false
++    var placementConsumed: Boolean = false
++    var reclaimRetained: Boolean = false
++}
++
++/** prepareActor 的 Page borrow、三线程和 Carrier 准备事实。 */
++@Keep
++internal class Native43499ActorPrepareResult : Native43499CallResult() {
++    var pageGeneration: Long = 0
++    var primitiveKind: Int = 0
++    var threadCount: Int = 0
++    var pageBorrowAcquired: Boolean = false
++    var ownerReady: Boolean = false
++    var waiterReady: Boolean = false
++    var consumerReady: Boolean = false
++    var carrierPrepared: Boolean = false
++}
++
++/** executeActor 的纯物理事实；线程终结与 borrow 归还只看 close 回执。 */
++@Keep
++internal class Native43499ActorExecuteResult : Native43499CallResult() {
++    var pageGeneration: Long = 0
++    var consumerCallCount: Long = 0
++    var consumerSuccessCount: Long = 0
++    var consumerInflightAtReturn: Long = 0
++    var ownerReady: Boolean = false
++    var waiterParked: Boolean = false
++    var carrierArmed: Boolean = false
++    var windowOpened: Boolean = false
++    var carrierDisarmed: Boolean = false
++    var retainedForProcessExit: Boolean = false
++}
++
+ /**
+- * 43499 的 native 边界（`libghostlock43499.so`）。
++ * 43499 的无状态 JNI transport。
+  *
+- * 只做标量搬运：策略、步骤顺序、重试与判定全部在 Kotlin（`Cve43499BackendPort`
+- * 及其上层 Flow）；本对象不缓存状态，句柄由调用方持有。
+- *
+- * 调用序（一次写）：
+- * ```
+- * create() → discover(target) → land(mmStruct, target) → executeMulticast(target) → close()
+- * ```
+- * 也可以 `runMulticast(target)` 一次走完（仅用于与 native 直连路径对拍）。
+- *
+- * @note 会话是**单例**：`create` 重复调用返回 `-EALREADY`（-17）；`close` 幂等。
+- * @note `discover → executeMulticast` 之间不允许有其它写，且必须在**同一后台线程**
+- *       顺序调用（喷页状态是进程级单例）。
+- * @note 全部调用阻塞；`discover` 内含喷页与 leak，通常 1–3 s。
+- * @note 失败语义：`discover`/`land` 返回 0；`execute`/`run` 返回 0，
+- *       原因用 [lastStep]/[lastErrno] 读。
+- * @note profile 目前写死在 native（5.15.189 dev profile），`create` 不接受配置；
+- *       profile blob 契约落地后本对象签名会变。
++ * 本对象不缓存 handle、Page、Actor 或结果；资源 ID 由调用者显式持有和关闭。
++ * 当前 native core 仅接入 fail-closed unavailable 实现，因此九个入口均返回
++ * native 的 raw `UNSUPPORTED` 状态，不会产生伪成功或伪句柄。
+  */
++@Keep
+ internal object Native43499Jni {
+-    /** 会话已存在时的返回值（`-EALREADY`）。 */
+-    const val ALREADY_CREATED: Int = -17
+-
+     init {
+         System.loadLibrary("ghostlock43499")
+     }
+ 
+-    /**
+-     * 初始化单会话。
+-     *
+-     * @return 0 成功；负数为 `-errno`。
+-     */
+-    external fun create(): Int
++    /** 创建并完成一次不可拆 Placement；失败返回 0。 */
++    external fun preparePlacement(
++        request: Native43499PlacementRequest,
++        result: Native43499PlacementResult,
++    ): Long
+ 
+-    /**
+-     * 喷页 + 泄漏。
+-     *
+-     * @param target 目标地址的 direct-map 别名。
+-     * @return `mm_struct`；0 表示失败。
+-     */
+-    external fun discover(target: Long): Long
++    /** 请求停止 Placement；不销毁 handle。 */
++    external fun cancelPlacement(handle: Long, result: Native43499CloseResult): Int
+ 
+-    /**
+-     * 用 `mm_struct` 落页。
+-     *
+-     * @param mmStruct [discover] 的返回值。
+-     * @param target   与 [discover] 相同的目标地址。
+-     * @return 页基址；0 表示拒绝或失败。
+-     */
+-    external fun land(mmStruct: Long, target: Long): Long
++    /** 关闭 Placement；成功后 handle stale。 */
++    external fun closePlacement(handle: Long, result: Native43499CloseResult): Int
+ 
+-    /**
+-     * 与 [land] 相同，但页载荷字节由 Kotlin 提供（P-2 之后 Kotlin 负责构造）。
+-     *
+-     * @param mmStruct   [discover] 的返回值。
+-     * @param target     与 [discover] 相同的目标地址。
+-     * @param skbPayload 全量页载荷；长度必须等于 native 的 `SKB_SEND_SIZE`
+-     *                   （当前 1 MiB，由 `prepare_skb_payload` 决定）。
+-     * @return 页基址；0 表示拒绝（长度不符 / 页被拒收 / 地址不匹配）。
+-     */
+-    external fun landWithPayload(mmStruct: Long, target: Long, skbPayload: ByteArray): Long
++    /** 消费 Placement 并产生 Page；[finalBytes] 只在本次调用期间借用。 */
++    external fun landPage(
++        placement: Long,
++        request: Native43499LandingRequest,
++        finalBytes: ByteArray,
++        contentGeneration: Long,
++        result: Native43499LandingResult,
++    ): Long
+ 
+-    /**
+-     * 页载荷要求的字节数。
+-     *
+-     * @return native 的 `SKB_SEND_SIZE`（当前 1 MiB）；Kotlin 构造 `skbPayload` 时用它。
+-     */
+-    external fun skbPayloadSize(): Int
++    /** 关闭未被 Actor 借用的 Page。 */
++    external fun closePage(page: Long, result: Native43499CloseResult): Int
+ 
+-    /**
+-     * select 物理入口（保留面占位）。
+-     *
+-     * @param target 目标地址。
+-     * @return `-ENOSYS`：该 route 无自有真机门禁，未证明前一律拒绝。
+-     */
+-    external fun executeSelect(target: Long): Int
++    /** 借用 Page，并在线程创建前绑定、深拷贝 [primitive]。 */
++    external fun prepareActor(
++        page: Long,
++        setup: Native43499ActorSetup,
++        primitive: Native43499PrimitiveSpec,
++        result: Native43499ActorPrepareResult,
++    ): Long
+ 
+-    /**
+-     * tcp 物理入口（保留面占位）。
+-     *
+-     * @param target 目标地址。
+-     * @return `-ENOSYS`：同上。
+-     */
+-    external fun executeTcp(target: Long): Int
++    /** 执行 prepare 时已经绑定的 Carrier；本入口没有 tag/spec 参数。 */
++    external fun executeActor(actor: Long, result: Native43499ActorExecuteResult): Int
+ 
+-    /**
+-     * 执行已落页的 multicast 单发。
+-     *
+-     * @param target 目标地址。
+-     * @return 1 成功；0 失败。
+-     */
+-    external fun executeMulticast(target: Long): Int
++    /** 请求停止新触发并排空 Actor；不销毁 handle。 */
++    external fun cancelActor(actor: Long, result: Native43499CloseResult): Int
+ 
+-    /**
+-     * 一次完整写（discover + land + multicast），仅用于对拍。
+-     *
+-     * @param target 目标地址。
+-     * @return 1 成功；0 失败。
+-     */
+-    external fun runMulticast(target: Long): Int
+-
+-    /** @return 最近一次 route step（0 = 无失败）。 */
+-    external fun lastStep(): Int
+-
+-    /** @return 最近一次 errno（0 = 无失败）。 */
+-    external fun lastErrno(): Int
+-
+-    /** 释放会话（幂等）。 */
+-    external fun close()
++    /** 终结 Actor、销毁 Carrier，并在 clean 状态归还 Page borrow。 */
++    external fun closeActor(actor: Long, result: Native43499CloseResult): Int
+ }
+--- a/app/src/main/cpp/CMakeLists.txt
++++ b/app/src/main/cpp/CMakeLists.txt
+@@ -74,10 +74,11 @@
+ )
+ 
+ # 43499: backend-specific payload.
+-# The legacy C tree is parked under gl43499/{legacy,very_legacy}; only the new
+-# JNI entry is compiled until the C11 split lands.
++# The legacy C tree is parked under gl43499/{legacy,very_legacy}; this batch
++# compiles the new JNI transport plus an explicit fail-closed unavailable core.
+ add_library(ghostlock43499 SHARED
+     gl43499/jni43499.c
++    gl43499/core/api_unavailable.c
+ )
+ target_include_directories(ghostlock43499 PRIVATE
+     ${CMAKE_CURRENT_SOURCE_DIR}/gl43499
+--- a/docs/plan/43499-approval-status.md
++++ b/docs/plan/43499-approval-status.md
+@@ -57,6 +57,7 @@
+ | registry 例外 | 每 DSO 一个固定容量可写 registry，PI 窗口外访问 | **已批准** | 用户 2026-10-23 指令“按照计划”；BSS manifest/fork gate |
+ | victim/Finish | protocol child 用 Native handle；普通 victim 仍 ProcessBuilder；UI脚本由 rooted child 中性触发 | **已批准** | 用户 2026-10-23 指令“按照计划”；pid/hash/marker/SELinux 真机门禁 |
+ | C11 Page/Actor header-only 契约 | Placement→Page 所有权转移；Actor prepare 时绑定物理 Primitive；execute 无 tag；不接 CMake/JNI | **已批准（仅头文件）** | 用户 2026-10-26 明确要求从零写 `.h`；实现与生产接线仍按独立批次门禁；见 [43499-c11-header-contract-plan.md](43499-c11-header-contract-plan.md) |
++| JNI transport | 具名 Kotlin DTO ↔ 显式 JNI 字段翻译 ↔ C11 九入口；当前 core 用 fail-closed unavailable 实现 | **已批准（仅 transport）** | 用户 2026-10-26 明确要求“修改jni”；不批准物理原语实现；见 [43499-jni-transport-plan.md](43499-jni-transport-plan.md) |
+ 
+ 批准方式：用户 2026-10-23 指令“按照计划”编写架构 Kotlin class；第1层历史薄层继续保留，第2层最小 transaction 生产启用。2026-10-23 六项同步生效；2026-10-26 header-only 项独立生效。
+ 
+--- a/docs/development/full-process-uml.md
++++ b/docs/development/full-process-uml.md
+@@ -720,7 +720,7 @@
+ 
+ ## 11. 43499 Placement / Page / Actor 契约（2026-10-26 header-only）
+ 
+-> 头文件批见 [43499-c11-header-contract-plan](../plan/43499-c11-header-contract-plan.md)。当前仅生成 C11 声明，尚未接入 CMake/JNI；victim/Finish 不在本批。
++> 头文件批见 [43499-c11-header-contract-plan](../plan/43499-c11-header-contract-plan.md)，JNI transport 见 [43499-jni-transport-plan](../plan/43499-jni-transport-plan.md)。当前 JNI 已接入九入口，但 core 仍是显式 `UNSUPPORTED` 的 unavailable 实现；victim/Finish 不在本批。
+ 
+ ### 11.1 IPO / dependency
+ 
+@@ -730,7 +730,9 @@
+   UI[UI/default Flow] --> K
+   K --> C[general JNI discovery]
+   C -->|copied DTO| K
+-  K --> B4[43499 Placement / Page / Actor JNI]
++  K --> T[具名 Kotlin DTO]
++  T --> B4[43499 JNI 显式逐字段翻译]
++  B4 --> U[api_unavailable: UNSUPPORTED]
+   K --> B2[43284 JNI]
+   G[common STATIC] --> C
+   G --> B4
+@@ -768,6 +770,8 @@
+   class RunResourceScope
+   class NativeGeneralJni
+   class Native43499Jni
++  class Native43499NamedDtos
++  class ApiUnavailable
+   class Native43284Jni
+   class DiscoveryHandle
+   class PlacementHandle
+@@ -785,6 +789,8 @@
+   Native43499Jni --> PlacementHandle
+   Native43499Jni --> PageHandle
+   Native43499Jni --> ActorHandle
++  Native43499NamedDtos --> Native43499Jni : explicit fields
++  Native43499Jni --> ApiUnavailable : current fail-closed target
+   PlacementHandle --> PageHandle : land consumes placement
+   ActorHandle --> PageHandle : persistent borrow
+   ActorHandle *-- Carrier : owns one bound carrier
+@@ -802,19 +808,19 @@
+   K->>C: scan(params)
+   C-->>K: copied candidates DTO
+   K->>B: preparePlacement(physical request)
+-  B-->>K: PlacementHandle + candidate base/facts
+-  K->>K: calculate addresses and final page bytes
+-  K->>B: landPage(placement, bytes, geometry)
+-  B-->>K: PageHandle; Placement stale
+-  K->>B: prepareActor(page, setup, PrimitiveSpec)
+-  B-->>K: ActorHandle; Page borrowed; Carrier bound
+-  K->>B: executeActor(actor)
+-  B-->>K: call status + effect + resource state + receipt
+-  K->>B: closeActor(actor)
+-  B-->>K: Page borrow released
+-  alt clean Page
++  alt current unavailable implementation
++    B-->>K: UNSUPPORTED + handle 0; stop
++  else future real core
++    B-->>K: PlacementHandle + candidate facts
++    K->>K: calculate addresses and final page bytes
++    K->>B: landPage(placement, bytes, geometry)
++    B-->>K: PageHandle; Placement stale
++    K->>B: prepareActor(page, setup, PrimitiveSpec)
++    B-->>K: ActorHandle; Page borrowed; Carrier bound
++    K->>B: executeActor(actor)
++    B-->>K: call status + effect + resource state + receipt
++    K->>B: closeActor(actor)
++    B-->>K: Page borrow released
+     K->>B: closePage(page)
+-  else unknown reference state
+-    B-->>K: Actor + Carrier + Page quarantined
+   end
+ ```
+--- a/app/src/main/cpp/gl43499/core/api_unavailable.c
++++ b/app/src/main/cpp/gl43499/core/api_unavailable.c
+@@ -0,0 +1,300 @@
++/**
++ * @file api_unavailable.c
++ * @brief 43499 资源原语尚未实现时的 fail-closed C ABI。
++ *
++ * @note 本文件不创建资源、不保存指针、不生成句柄。真实实现批必须从 CMake 删除
++ *       本文件，禁止 unavailable 与真实定义共存。
++ */
++#include "api.h"
++
++#include <stddef.h>
++
++/** @brief 检查调用方初始化的顶层 ABI 头，失败时不写输出。 */
++static int32_t glk43499_valid_header(const struct glk43499_abi_header *header,
++                                    uint32_t minimum_size) {
++    return header != NULL && header->struct_size >= minimum_size &&
++           header->abi_version == GLK43499_ABI_VERSION &&
++           header->reserved[0] == 0 && header->reserved[1] == 0;
++}
++
++/** @brief 检查固定宽度保留字段是否全零。 */
++static int32_t glk43499_zero_u64(const uint64_t *values, size_t count) {
++    for (size_t index = 0; index < count; ++index) {
++        if (values[index] != 0) return 0;
++    }
++    return 1;
++}
++
++/** @brief 检查 Placement 顶层 ABI 和保留字段。 */
++static int32_t glk43499_valid_placement(
++    const struct glk43499_placement_request *request) {
++    return request != NULL &&
++           glk43499_valid_header(&request->abi, (uint32_t) sizeof(*request)) &&
++           request->reserved32 == 0 &&
++           glk43499_zero_u64(request->reserved,
++                             sizeof(request->reserved) / sizeof(request->reserved[0]));
++}
++
++/** @brief 检查 PageBytes 顶层 ABI 和保留字段。 */
++static int32_t glk43499_valid_page_bytes(const struct glk43499_page_bytes *bytes) {
++    return bytes != NULL &&
++           glk43499_valid_header(&bytes->abi, (uint32_t) sizeof(*bytes)) &&
++           glk43499_zero_u64(bytes->reserved,
++                             sizeof(bytes->reserved) / sizeof(bytes->reserved[0]));
++}
++
++/** @brief 检查 Landing 顶层 ABI 和保留字段。 */
++static int32_t glk43499_valid_landing(
++    const struct glk43499_landing_request *request) {
++    return request != NULL &&
++           glk43499_valid_header(&request->abi, (uint32_t) sizeof(*request)) &&
++           glk43499_zero_u64(request->reserved,
++                             sizeof(request->reserved) / sizeof(request->reserved[0]));
++}
++
++/** @brief 检查 ActorSetup 顶层 ABI 和保留字段。 */
++static int32_t glk43499_valid_actor_setup(const struct glk43499_actor_setup *setup) {
++    return setup != NULL &&
++           glk43499_valid_header(&setup->abi, (uint32_t) sizeof(*setup)) &&
++           setup->reserved32 == 0 &&
++           glk43499_zero_u64(setup->reserved,
++                             sizeof(setup->reserved) / sizeof(setup->reserved[0]));
++}
++
++/** @brief 检查 Primitive 公共地址和所选 union 分支的保留字段。 */
++static int32_t glk43499_valid_primitive(
++    const struct glk43499_primitive_spec *primitive) {
++    if (primitive == NULL ||
++        !glk43499_valid_header(&primitive->abi, (uint32_t) sizeof(*primitive)) ||
++        primitive->reserved32 != 0 ||
++        !glk43499_zero_u64(primitive->reserved,
++                           sizeof(primitive->reserved) / sizeof(primitive->reserved[0]))) {
++        return 0;
++    }
++    const struct glk43499_primitive_addresses *addresses = NULL;
++    const uint64_t *reserved = NULL;
++    size_t reserved_count = 0;
++    size_t selected_size = 0;
++    switch (primitive->kind) {
++        case GLK43499_PRIMITIVE_MULTICAST_SENDMSG:
++            addresses = &primitive->value.multicast_sendmsg.addresses;
++            reserved = primitive->value.multicast_sendmsg.reserved;
++            reserved_count = sizeof(primitive->value.multicast_sendmsg.reserved) /
++                             sizeof(primitive->value.multicast_sendmsg.reserved[0]);
++            selected_size = sizeof(primitive->value.multicast_sendmsg);
++            if (primitive->value.multicast_sendmsg.reserved32 != 0) return 0;
++            break;
++        case GLK43499_PRIMITIVE_PSELECT:
++            addresses = &primitive->value.pselect.addresses;
++            reserved = primitive->value.pselect.reserved;
++            reserved_count = sizeof(primitive->value.pselect.reserved) /
++                             sizeof(primitive->value.pselect.reserved[0]);
++            selected_size = sizeof(primitive->value.pselect);
++            break;
++        case GLK43499_PRIMITIVE_TCP_ZEROCOPY_RECEIVE:
++            addresses = &primitive->value.tcp_zerocopy_receive.addresses;
++            reserved = primitive->value.tcp_zerocopy_receive.reserved;
++            reserved_count = sizeof(primitive->value.tcp_zerocopy_receive.reserved) /
++                             sizeof(primitive->value.tcp_zerocopy_receive.reserved[0]);
++            selected_size = sizeof(primitive->value.tcp_zerocopy_receive);
++            break;
++        default:
++            return 0;
++    }
++    const uint8_t *union_bytes = (const uint8_t *) &primitive->value;
++    for (size_t index = selected_size; index < sizeof(primitive->value); ++index) {
++        if (union_bytes[index] != 0) return 0;
++    }
++    return glk43499_zero_u64(addresses->reserved,
++                             sizeof(addresses->reserved) / sizeof(addresses->reserved[0])) &&
++           glk43499_zero_u64(reserved, reserved_count);
++}
++
++/**
++ * @brief 写入统一的 unavailable 回执。
++ * @param result 已由 JNI 初始化并校验容量的调用回执。
++ */
++static void glk43499_set_unavailable(struct glk43499_call_result *result) {
++    if (result == NULL) return;
++    result->call_status = GLK43499_CALL_UNSUPPORTED;
++    result->effect = GLK43499_EFFECT_NONE;
++    result->resource_state = GLK43499_RESOURCE_INVALID;
++    result->system_error = 0;
++    result->generation = 0;
++    result->retained_resource_count = 0;
++}
++
++/** @brief 输出 ABI 有效时记录输入 ABI/保留字段错误。 */
++static void glk43499_set_bad_abi(struct glk43499_call_result *result) {
++    result->call_status = GLK43499_CALL_BAD_ABI;
++    result->effect = GLK43499_EFFECT_NOT_APPLIED;
++    result->resource_state = GLK43499_RESOURCE_INVALID;
++    result->system_error = 0;
++    result->generation = 0;
++    result->retained_resource_count = 0;
++}
++
++/** @brief 输出 ABI 有效时记录无效 handle。 */
++static void glk43499_set_invalid_handle(struct glk43499_call_result *result) {
++    result->call_status = GLK43499_CALL_INVALID_ARGUMENT;
++    result->effect = GLK43499_EFFECT_NOT_APPLIED;
++    result->resource_state = GLK43499_RESOURCE_INVALID;
++    result->system_error = 0;
++    result->generation = 0;
++    result->retained_resource_count = 0;
++}
++
++glk43499_handle glk43499_prepare_placement(
++    const struct glk43499_placement_request *request,
++    struct glk43499_placement_result *result) {
++    if (result == NULL ||
++        !glk43499_valid_header(&result->call.abi, (uint32_t) sizeof(*result))) {
++        return GLK43499_INVALID_HANDLE;
++    }
++    if (!glk43499_valid_placement(request)) {
++        glk43499_set_bad_abi(&result->call);
++        return GLK43499_INVALID_HANDLE;
++    }
++    glk43499_set_unavailable(&result->call);
++    return GLK43499_INVALID_HANDLE;
++}
++
++int32_t glk43499_cancel_placement(
++    glk43499_handle placement,
++    struct glk43499_close_result *result) {
++    (void) placement;
++    if (result == NULL ||
++        !glk43499_valid_header(&result->call.abi, (uint32_t) sizeof(*result))) {
++        return GLK43499_CALL_BAD_ABI;
++    }
++    if (placement == GLK43499_INVALID_HANDLE) {
++        glk43499_set_invalid_handle(&result->call);
++        return GLK43499_CALL_INVALID_ARGUMENT;
++    }
++    glk43499_set_unavailable(&result->call);
++    return GLK43499_CALL_UNSUPPORTED;
++}
++
++int32_t glk43499_close_placement(
++    glk43499_handle placement,
++    struct glk43499_close_result *result) {
++    (void) placement;
++    if (result == NULL ||
++        !glk43499_valid_header(&result->call.abi, (uint32_t) sizeof(*result))) {
++        return GLK43499_CALL_BAD_ABI;
++    }
++    if (placement == GLK43499_INVALID_HANDLE) {
++        glk43499_set_invalid_handle(&result->call);
++        return GLK43499_CALL_INVALID_ARGUMENT;
++    }
++    glk43499_set_unavailable(&result->call);
++    return GLK43499_CALL_UNSUPPORTED;
++}
++
++glk43499_handle glk43499_land_page(
++    glk43499_handle placement,
++    const struct glk43499_page_bytes *bytes,
++    const struct glk43499_landing_request *request,
++    struct glk43499_landing_result *result) {
++    (void) placement;
++    if (result == NULL ||
++        !glk43499_valid_header(&result->call.abi, (uint32_t) sizeof(*result))) {
++        return GLK43499_INVALID_HANDLE;
++    }
++    if (!glk43499_valid_page_bytes(bytes) || !glk43499_valid_landing(request)) {
++        glk43499_set_bad_abi(&result->call);
++        return GLK43499_INVALID_HANDLE;
++    }
++    if (placement == GLK43499_INVALID_HANDLE) {
++        glk43499_set_invalid_handle(&result->call);
++        return GLK43499_INVALID_HANDLE;
++    }
++    glk43499_set_unavailable(&result->call);
++    return GLK43499_INVALID_HANDLE;
++}
++
++int32_t glk43499_close_page(
++    glk43499_handle page,
++    struct glk43499_close_result *result) {
++    (void) page;
++    if (result == NULL ||
++        !glk43499_valid_header(&result->call.abi, (uint32_t) sizeof(*result))) {
++        return GLK43499_CALL_BAD_ABI;
++    }
++    if (page == GLK43499_INVALID_HANDLE) {
++        glk43499_set_invalid_handle(&result->call);
++        return GLK43499_CALL_INVALID_ARGUMENT;
++    }
++    glk43499_set_unavailable(&result->call);
++    return GLK43499_CALL_UNSUPPORTED;
++}
++
++glk43499_handle glk43499_prepare_actor(
++    glk43499_handle page,
++    const struct glk43499_actor_setup *setup,
++    const struct glk43499_primitive_spec *primitive,
++    struct glk43499_actor_prepare_result *result) {
++    (void) page;
++    if (result == NULL ||
++        !glk43499_valid_header(&result->call.abi, (uint32_t) sizeof(*result))) {
++        return GLK43499_INVALID_HANDLE;
++    }
++    if (!glk43499_valid_actor_setup(setup) || !glk43499_valid_primitive(primitive)) {
++        glk43499_set_bad_abi(&result->call);
++        return GLK43499_INVALID_HANDLE;
++    }
++    if (page == GLK43499_INVALID_HANDLE) {
++        glk43499_set_invalid_handle(&result->call);
++        return GLK43499_INVALID_HANDLE;
++    }
++    glk43499_set_unavailable(&result->call);
++    return GLK43499_INVALID_HANDLE;
++}
++
++int32_t glk43499_execute_actor(
++    glk43499_handle actor,
++    struct glk43499_actor_execute_result *result) {
++    (void) actor;
++    if (result == NULL ||
++        !glk43499_valid_header(&result->call.abi, (uint32_t) sizeof(*result))) {
++        return GLK43499_CALL_BAD_ABI;
++    }
++    if (actor == GLK43499_INVALID_HANDLE) {
++        glk43499_set_invalid_handle(&result->call);
++        return GLK43499_CALL_INVALID_ARGUMENT;
++    }
++    glk43499_set_unavailable(&result->call);
++    return GLK43499_CALL_UNSUPPORTED;
++}
++
++int32_t glk43499_cancel_actor(
++    glk43499_handle actor,
++    struct glk43499_close_result *result) {
++    (void) actor;
++    if (result == NULL ||
++        !glk43499_valid_header(&result->call.abi, (uint32_t) sizeof(*result))) {
++        return GLK43499_CALL_BAD_ABI;
++    }
++    if (actor == GLK43499_INVALID_HANDLE) {
++        glk43499_set_invalid_handle(&result->call);
++        return GLK43499_CALL_INVALID_ARGUMENT;
++    }
++    glk43499_set_unavailable(&result->call);
++    return GLK43499_CALL_UNSUPPORTED;
++}
++
++int32_t glk43499_close_actor(
++    glk43499_handle actor,
++    struct glk43499_close_result *result) {
++    (void) actor;
++    if (result == NULL ||
++        !glk43499_valid_header(&result->call.abi, (uint32_t) sizeof(*result))) {
++        return GLK43499_CALL_BAD_ABI;
++    }
++    if (actor == GLK43499_INVALID_HANDLE) {
++        glk43499_set_invalid_handle(&result->call);
++        return GLK43499_CALL_INVALID_ARGUMENT;
++    }
++    glk43499_set_unavailable(&result->call);
++    return GLK43499_CALL_UNSUPPORTED;
++}
+--- a/docs/plan/43499-jni-transport-plan.md
++++ b/docs/plan/43499-jni-transport-plan.md
+@@ -0,0 +1,36 @@
++# 43499 JNI transport 批
++
++- 日期：2026-10-26
++- 级别：L（Kotlin/JNI/C ABI 跨端契约）
++- 状态：用户已明确要求“修改jni”；本批只建立 fail-closed transport，不实现 Placement/Page/Actor 物理原语。
++- 依赖：[43499-c11-header-contract-plan.md](43499-c11-header-contract-plan.md)。
++
++## 范围
++
++- 用 Placement/Page/Actor 九入口整体替换旧 `create/discover/land/executeRoute/runFlow/last*` JNI。
++- Kotlin 公开具名 request/result/Primitive 类型；JNI 显式逐字段翻译，不把 C struct padding、指针或数组下标暴露给 Kotlin/Lua。
++- 页面与 Carrier 字节先复制到 native 临时缓冲；core 调用期间不持有 pinned array/raw elements，返回后清零释放。
++- 三种 Kotlin Primitive 实现以 `@Keep` 固定类/字段名；JNI 按具体类判型并在 C 侧赋唯一 Primitive enum，Kotlin 不手抄跨端 ID。
++- 新增 `core/api_unavailable.c`：九入口完整存在但统一返回 `UNSUPPORTED`，确保 DSO 可链接、可装载且不伪造能力。
++- CMake 仅加入 unavailable 实现；后续真实实现批必须删除/取代它，禁止 weak symbol 或 stub/real 共存。
++
++## 不改
++
++- 不实现 Placement、Landing、Actor、Carrier、registry 或攻击效果。
++- 不改 Flow、BackendPort、victim、Finish、profile、legacy、legacy2。
++- 不保留旧 JNI 兼容入口或一次完整 Flow 入口。
++
++## 所有权与失败语义
++
++- Kotlin 持有所有对象、ByteArray 与 opaque handle 数值。
++- JNI 只持有调用期局部副本；不缓存 `jobject`、数组指针或句柄。
++- handle 0 直接拒绝；非零 ID 的 kind/generation/stale 由未来 core registry 权威判断。
++- unavailable 实现不创建 fd/pid/thread、不保存指针，返回 handle 0、`CALL_UNSUPPORTED`、`EFFECT_NONE`、`RESOURCE_INVALID`。
++
++## 验证
++
++- C11 `-Wall -Wextra -Werror` 编译 JNI 与 unavailable 实现。
++- Kotlin 编译；JNI 名称与 external 方法一一对拍，旧 symbol 全部消失。
++- DSO 链接并检查九个新 JNI symbol；stub 九入口均为显式 UNSUPPORTED。
++- 该批不产生真机攻击能力声明；APK load/device gate 属后续接线批。
++

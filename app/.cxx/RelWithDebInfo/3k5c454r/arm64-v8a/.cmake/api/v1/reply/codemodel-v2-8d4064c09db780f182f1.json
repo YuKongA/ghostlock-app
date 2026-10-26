@@ -1,0 +1,87 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"jsonFile" : "directory-.-RelWithDebInfo-f5ebdc15457944623624.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.10.0"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3
+					]
+				}
+			],
+			"name" : "RelWithDebInfo",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "ghostlock_native",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "ghostlock43284::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-ghostlock43284-RelWithDebInfo-7ec9a792dd78c53c3bec.json",
+					"name" : "ghostlock43284",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "ghostlock43499::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-ghostlock43499-RelWithDebInfo-581f71efce61ea88abc6.json",
+					"name" : "ghostlock43499",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "ghostlock_general::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-ghostlock_general-RelWithDebInfo-fecc07fb324107c07814.json",
+					"name" : "ghostlock_general",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "gl_common::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-gl_common-RelWithDebInfo-2d94ec1fa8245af284bc.json",
+					"name" : "gl_common",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/.cxx/RelWithDebInfo/3k5c454r/arm64-v8a",
+		"source" : "/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 3
+	}
+}

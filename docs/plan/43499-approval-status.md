@@ -56,8 +56,10 @@
 | typed handle | 值调用无状态；Page/Actor/Discovery/Victim 等物理资源用 handle | **已批准** | 用户 2026-10-23 指令“按照计划”；并发矩阵和残留检查 |
 | registry 例外 | 每 DSO 一个固定容量可写 registry，PI 窗口外访问 | **已批准** | 用户 2026-10-23 指令“按照计划”；BSS manifest/fork gate |
 | victim/Finish | protocol child 用 Native handle；普通 victim 仍 ProcessBuilder；UI脚本由 rooted child 中性触发 | **已批准** | 用户 2026-10-23 指令“按照计划”；pid/hash/marker/SELinux 真机门禁 |
+| C11 Page/Actor header-only 契约 | Placement→Page 所有权转移；Actor prepare 时绑定物理 Primitive；execute 无 tag；不接 CMake/JNI | **已批准（仅头文件）** | 用户 2026-10-26 明确要求从零写 `.h`；实现与生产接线仍按独立批次门禁；见 [43499-c11-header-contract-plan.md](43499-c11-header-contract-plan.md) |
+| JNI transport | 具名 Kotlin DTO ↔ 显式 JNI 字段翻译 ↔ C11 九入口；当前 core 用 fail-closed unavailable 实现 | **已批准（仅 transport）** | 用户 2026-10-26 明确要求“修改jni”；不批准物理原语实现；见 [43499-jni-transport-plan.md](43499-jni-transport-plan.md) |
 
-批准方式：用户 2026-10-23 指令“按照计划”编写架构 Kotlin class；第1层历史薄层继续保留，第2层最小 transaction 生产启用。六项同步生效。
+批准方式：用户 2026-10-23 指令“按照计划”编写架构 Kotlin class；第1层历史薄层继续保留，第2层最小 transaction 生产启用。2026-10-23 六项同步生效；2026-10-26 header-only 项独立生效。
 
 ## 5. 本计划范围内明确不做
 

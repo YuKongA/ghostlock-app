@@ -1,0 +1,18 @@
+# ninja log v5
+1	53	1793017749716306266	CMakeFiles/ghostlock43284.dir/gl43284/glk43284_api.c.o	95c831f98d0210eb
+2	53	1793017749716245474	CMakeFiles/ghostlock43284.dir/gl43284/jni_attach.c.o	df46aa208cf8345e
+2	54	1793017749717410980	CMakeFiles/ghostlock43284.dir/gl43284/jni_exploit.c.o	d5ff06b64c02e57f
+1	56	1793017749719897951	CMakeFiles/ghostlock43284.dir/gl43284/df_log.c.o	e242ea091c1adf21
+0	72	1793017749736216578	CMakeFiles/gl_common.dir/common/gl_log.c.o	e473aac089cfef80
+3	73	1793017749737249208	CMakeFiles/ghostlock43499.dir/gl43499/core/api_unavailable.c.o	e9a465df4b156648
+1	75	1793017749739134218	CMakeFiles/ghostlock43284.dir/gl43284/libcxx.S.o	5d67890a7c6eeda8
+1	76	1793017749740435892	CMakeFiles/ghostlock43284.dir/gl43284/elf_parser.c.o	9d30d16d0531252c
+73	137	1793017749802699000	libgl_common.a	3799fcf0c9116517
+1	144	1793017749807734408	CMakeFiles/ghostlock_general.dir/glgeneral/general_jni.c.o	bb46b88c793d2108
+2	150	1793017749814464068	CMakeFiles/ghostlock43499.dir/gl43499/jni43499.c.o	d06c50f6e7a266d
+144	183	1793017749846602152	/Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/intermediates/cxx/RelWithDebInfo/3k5c454r/obj/arm64-v8a/libghostlock_general.so	7d7e921a6d105963
+150	188	1793017749852331723	/Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/intermediates/cxx/RelWithDebInfo/3k5c454r/obj/arm64-v8a/libghostlock43499.so	95e70d2841bba29c
+1	201	1793017749864774496	CMakeFiles/ghostlock43284.dir/gl43284/exp.c.o	43925d16ace80af
+201	239	1793017749901409853	/Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/intermediates/cxx/RelWithDebInfo/3k5c454r/obj/arm64-v8a/libghostlock43284.so	5a7150af113c374d
+1	66	1793018085020558599	CMakeFiles/ghostlock43499.dir/gl43499/core/api_unavailable.c.o	e9a465df4b156648
+66	102	1793018085055589121	/Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/intermediates/cxx/RelWithDebInfo/3k5c454r/obj/arm64-v8a/libghostlock43499.so	95e70d2841bba29c
