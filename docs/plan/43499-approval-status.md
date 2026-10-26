@@ -39,6 +39,9 @@
 
 ## 4. route 状态
 
+> 本节只保留历史 route 方向与实验证据，不再定义现行实现边界；43499 的现行资源/JNI边界以 §4.1
+> 已批准项和线性资源实施计划为准。
+
 | route | 方向 | 状态 | 实现 / 门禁 |
 | --- | --- | --- | --- |
 | `multicast_waiter` | PI-futex 三演员 + stamp/page tuple | **已批准**（含 **PI 例外**） | [43499-route-port-plan.md](43499-route-port-plan.md) §7a：用户 2026-10-20 接受 PI panic 为概率性、非破坏事件（后果＝重启），明确批准进入该 route；AVD route gate PASS（`cve43499-route-avd-20261020-1619.md`） |
@@ -51,13 +54,14 @@
 
 | 项 | 候选内容 | 状态 | 生效代价/偿还 |
 |---|---|---|---|
-| route 所在层 | 取代“每 route JNI/TU”：Native 只给三个命名 mechanism entry；Kotlin/Lua 组合 route | **已批准** | 用户 2026-10-23 指令“按照计划”；typed request + 三路真机偿还 |
+| route 所在层 | Kotlin/Lua组合route；Native由`prepareActor`的typed `PrimitiveSpec`绑定一个Carrier，`executeActor`无tag/spec；旧“三个命名entry”已被C11契约取代 | **已批准** | 用户2026-10-26批准C11契约；typed request + 三路真机偿还 |
 | actor batch 生产 | 最小不可拆 PI actor transaction 在一次 Native call 内完成 | **已批准** | 用户 2026-10-23 指令“按照计划”；窗口调用图/真机门禁 |
-| typed handle | 值调用无状态；Page/Actor/Discovery/Victim 等物理资源用 handle | **已批准** | 用户 2026-10-23 指令“按照计划”；并发矩阵和残留检查 |
-| registry 例外 | 每 DSO 一个固定容量可写 registry，PI 窗口外访问 | **已批准** | 用户 2026-10-23 指令“按照计划”；BSS manifest/fork gate |
+| typed token | Placement→Page→Actor线性唯一owner；token可由Native对象地址转换，转移/终结后Kotlin置0 | **已批准** | 用户2026-10-26裁定“就这样吧，修订”；raw误用不提供stale/wrong-kind保护 |
+| registry 例外 | 每 DSO 固定容量registry | **不做（已取代）** | 用户2026-10-26确认无多Actor/多Flow共享场景；改线性owner |
 | victim/Finish | protocol child 用 Native handle；普通 victim 仍 ProcessBuilder；UI脚本由 rooted child 中性触发 | **已批准** | 用户 2026-10-23 指令“按照计划”；pid/hash/marker/SELinux 真机门禁 |
 | C11 Page/Actor header-only 契约 | Placement→Page 所有权转移；Actor prepare 时绑定物理 Primitive；execute 无 tag；不接 CMake/JNI | **已批准（仅头文件）** | 用户 2026-10-26 明确要求从零写 `.h`；实现与生产接线仍按独立批次门禁；见 [43499-c11-header-contract-plan.md](43499-c11-header-contract-plan.md) |
 | JNI transport | 具名 Kotlin DTO ↔ 显式 JNI 字段翻译 ↔ C11 九入口；当前 core 用 fail-closed unavailable 实现 | **已批准（仅 transport）** | 用户 2026-10-26 明确要求“修改jni”；不批准物理原语实现；见 [43499-jni-transport-plan.md](43499-jni-transport-plan.md) |
+| 资源原语实施 | G4L-0线性契约→Placement→Page→Actor→独立Primitive→wrapper→最终接线 | **已批准（仅线性设计与G4L-0契约修订）** | 用户2026-10-26“就这样吧，修订”；物理实现仍逐批批准；见 [43499-resource-primitives-implementation-plan.md](43499-resource-primitives-implementation-plan.md) |
 
 批准方式：用户 2026-10-23 指令“按照计划”编写架构 Kotlin class；第1层历史薄层继续保留，第2层最小 transaction 生产启用。2026-10-23 六项同步生效；2026-10-26 header-only 项独立生效。
 
@@ -68,7 +72,7 @@
 | UI / 配置 / profile 接线 | **不做**（本阶段） | kt-step 头部与 §9 |
 | 43284 / 64560 | **不做** | kt-step §9 |
 | CLI / 临时旁路 | **不做** | MASTER-PLAN §0.1；kt-step §9 |
-| Lua 自由跨 backend 编排 | **待批准（JNI v4）** | UI run 仍经 FlowLuaImpl；脚本内部可直调 scope-bound API |
+| Lua 自由跨 backend 编排 | **已批准（公开Access/JNI原语）** | 用户2026-10-26接受反射raw误用为开发者责任；raw holder不进受支持ABI |
 | 删除 legacy C++ 43499 | **不做**（隔离保留，`git show 92d55d3e:<path>` 恢复清单） | kt-step §7 CBN / §9 |
 | 把 fixture 当生产成功 | **不做**（禁止） | MASTER-PLAN §13；kt-step §16 |
 
@@ -76,12 +80,13 @@
 
 | 计划 | 角色 | 状态 |
 | --- | --- | --- |
-| [43499-kt-step-plan.md](43499-kt-step-plan.md) | **唯一生产计划** | 在办（K1/K2 已实现，K3–K5 待批准） |
-| [43499-43284-jni-rewrite-plan.md](43499-43284-jni-rewrite-plan.md) | JNI 重写（Kotlin-first） | **待批**（design-critic v1 不可进；v2 待复核）。批准后接管 kt-step 的生产计划地位；本表仍是批准状态唯一权威 |
-| [43499-route-port-plan.md](43499-route-port-plan.md) | multicast 生产 route | 在办（PI 例外已批；页面落点未证） |
-| [43499-three-routes-production-plan.md](43499-three-routes-production-plan.md) | 三 route 生产化 | 阻断（design-critic）；select 已 AVD pass、tcp 未通 |
+| [43499-kt-step-plan.md](43499-kt-step-plan.md) | K1/K2历史实现与syscall依据 | K1/K2已实现；K3以后实施权威已被线性资源计划取代 |
+| [43499-43284-jni-rewrite-plan.md](43499-43284-jni-rewrite-plan.md) | JNI重写架构历史 | 不作生产实施权威；43499资源段已被线性计划取代 |
+| [43499-resource-primitives-implementation-plan.md](43499-resource-primitives-implementation-plan.md) | **K2后43499资源实施唯一权威** | 设计/G4L-0已批；G4L-1以后逐批批准，当前保持unavailable |
+| [43499-route-port-plan.md](43499-route-port-plan.md) | multicast历史证据 | 仅保留PI例外与页面落点证据，不作实施权威 |
+| [43499-three-routes-production-plan.md](43499-three-routes-production-plan.md) | 三route历史证据 | 仅保留select AVD/tcp未通证据，不作实施权威 |
 | [43499-production-victim-plan.md](43499-production-victim-plan.md) | victim 生命周期（Kotlin） | 已实现（host + AVD lifecycle） |
-| [43499-prepare-port-plan.md](43499-prepare-port-plan.md) | prepare 端口 | 已实现（AVD `status=0`/`shapingFd`），页落点未证 |
+| [43499-prepare-port-plan.md](43499-prepare-port-plan.md) | prepare历史证据 | 仅保留AVD `status=0`/`shapingFd`与页落点未证，不作实施权威 |
 | [43499-tcp-native-port-plan.md](43499-tcp-native-port-plan.md) | tcp route | planning only |
 | [43499-ktstep-architecture-plan.md](43499-ktstep-architecture-plan.md) | route JNI 家族与包结构 | 设计已批准；实现分批 |
 | [43499-kotlin-package-refactor-plan.md](43499-kotlin-package-refactor-plan.md) | 包结构重构 | 设计已批准；部分落地 |

@@ -12,7 +12,8 @@
 - 页面与 Carrier 字节先复制到 native 临时缓冲；core 调用期间不持有 pinned array/raw elements，返回后清零释放。
 - 三种 Kotlin Primitive 实现以 `@Keep` 固定类/字段名；JNI 按具体类判型并在 C 侧赋唯一 Primitive enum，Kotlin 不手抄跨端 ID。
 - 新增 `core/api_unavailable.c`：九入口完整存在但统一返回 `UNSUPPORTED`，确保 DSO 可链接、可装载且不伪造能力。
-- CMake 仅加入 unavailable 实现；后续真实实现批必须删除/取代它，禁止 weak symbol 或 stub/real 共存。
+- CMake 仅加入 unavailable 实现。后续按公开符号逐批迁移：同一符号不得 stub/real 共存；未实现符号
+  迁到具名 pending TU，由manifest从9递减到0，最后删除pending TU。禁止weak symbol或运行时选择。
 
 ## 不改
 
@@ -24,7 +25,8 @@
 
 - Kotlin 持有所有对象、ByteArray 与 opaque handle 数值。
 - JNI 只持有调用期局部副本；不缓存 `jobject`、数组指针或句柄。
-- handle 0 直接拒绝；非零 ID 的 kind/generation/stale 由未来 core registry 权威判断。
+- token 0直接拒绝；非零token由Kotlin wrapper唯一持有并线性转移。Native不提供kind/generation/stale
+  防护；伪造、复制、复用或并发释放raw token不属于受支持调用。
 - unavailable 实现不创建 fd/pid/thread、不保存指针，返回 handle 0、`CALL_UNSUPPORTED`、`EFFECT_NONE`、`RESOURCE_INVALID`。
 
 ## 验证

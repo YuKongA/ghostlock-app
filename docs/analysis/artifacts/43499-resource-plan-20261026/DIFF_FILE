@@ -1,0 +1,407 @@
+--- /dev/null
++++ b/docs/plan/43499-resource-primitives-implementation-plan.md
+@@ -0,0 +1,324 @@
++# 43499 资源原语实施计划（批准候选）
++
++- 日期：2026-10-26
++- 基线：`d9b180310ae35cf697843c64c7f2b26756036ef4`
++- 级别：L（攻击关键路径、跨 JNI 契约、公共资源状态机）
++- 状态：**待用户批准；本文只冻结设计与批次，不授权写实现代码或接入生产**。
++- 前置：[43499-c11-header-contract-plan.md](43499-c11-header-contract-plan.md) 与
++  [43499-jni-transport-plan.md](43499-jni-transport-plan.md) 已完成；当前九入口仍由
++  `api_unavailable.c` 显式返回 `UNSUPPORTED`。
++- 批准状态唯一权威：[43499-approval-status.md](43499-approval-status.md)。
++
++## 0. 活跃计划审计与取代关系
++
++本计划不是第二条并行生产线。它是 43499 新 Placement/Page/Actor 契约的唯一候选实施细化；
++**只有本计划获用户批准后**，下表的旧实施部分才降为历史证据。未批准前，现有 fail-closed
++实现保持不变。
++
++获批后：保留`kt-step` K1/K2证据并取代K3实施；细化`43499-43284-jni-rewrite-plan`的43499
++§5/§6.2/§9；route/three-routes/prepare计划只留证据；header/JNI transport继续作为前置。
++
++冲突按 `软件工程守则 > AGENTS.md > approval-status > 本计划` 裁决。旧源码/计划仅作证据。
++
++## 1. 目标与非目标
++
++### 1.1 目标
++
++在不把产品route、W1/W2/W3、凭据、repair、retry或fallback放回Native的前提下，将当前九个
++fail-closed JNI入口逐批替换为真实资源原语：
++
++```text
++Kotlin/Lua决策
++  -> preparePlacement(request) -> PlacementHandle
++  -> Kotlin计算地址与最终页面字节
++  -> landPage(placement, bytes, geometry) -> PageHandle
++  -> prepareActor(page, setup, one PrimitiveSpec) -> ActorHandle
++  -> executeActor(actor)
++  -> closeActor(actor)
++  -> closePage(page)
++```
++
++Native只拥有物理资源与不可暂停事务；Kotlin/Lua拥有参数计算、Primitive选择、调用顺序、
++多Page组合、重试、fallback、跨backend组合以及是否继续到victim/Finish。
++
++### 1.2 明确不做
++
++不恢复旧session/backend/route/Flow或Native fallback；不让Native读profile、生成payload、算地址、选择
++Primitive；不把JNI包成`Access.prepare`；不改general/43284/64560/UI/handoff，不依赖`legacy2/`；
++host、AVD、`requeue=1`和非零handle均不代替真机效果。
++
++## 2. 实施前必须关闭的契约缺口（G4I-0）
++
++当前header/JNI transport已经冻结边界，但真实registry实现前还有三项必须显式裁定：
++
++1. **状态不足**：新增`core/contract_status.def`作为状态名/值唯一源；Gradle KTS生成C枚举片段、Kotlin
++   语义类型和对拍清单。追加`INVALID_STATE/CAPACITY`且不改ABI v3布局/既有值，禁止手抄映射。
++2. **容量未量化**：首次按允许的静态最大并存模型含隔离闭包乘2；真机峰值仅供后续复核。各kind上限
++   进入单一manifest，禁止动态扩容。
++3. **关闭等待语义未冻结**：`closePlacement/closeActor`允许有界等待活动调用；`closePage`遇persistent
++   borrow立即返回`BUSY`。各close超时后只能转`QUARANTINED`或保留原owner，不得猜测释放。
++
++G4I-0只改`.def`、生成器、契约、Kotlin生成类型、清单、UML与测试。若追加值不能兼容ABI v3则停止并
++重做设计；本计划不提高版本，也不允许实现旁路。
++
++## 3. 单一Native资源模型
++
++### 3.1 Handle不是指针
++
++`glk43499_handle`是`DSO tag + kind + slot + generation + epoch校验`的不透明ID，0无效。唯一可写全局
++是每DSO固定registry；它保存物理资源，不保存route、Kotlin流程或“会话”。
++
++slot含kind/state/generation/epoch、inFlight/borrow、close/cancel、resource/quarantine closure。
++generation回绕永久退役；epoch变化后旧handle均stale。
++
++### 3.2 Registry线性化规则
++
++acquire锁内校验并增`inFlight`、返回前减；create先预留再构造，失败清slot；cancel只置stop；close先
++OPEN→CLOSING阻止新acquire，再有界等待并终结；Page borrow与close线性化，clean closeActor恰一次归还。
++
++registry锁、分配、日志、JNI和kind分派均在PI窗口外；`executeActor`在窗口外acquire/release Actor。
++
++### 3.3 并发矩阵
++
++execute×execute只一方进入；cancel只置stop；closeActor阻止新execute并等待旧execute；close×close只一方
++释放；prepareActor×closePage由borrow线性化；borrowed Page close立即BUSY；stale/wrong-kind在访问前拒绝；
++fork后旧handle全stale。
++
++## 4. Rust式所有权清单
++
++| 资源/owner | 借用 | 正常终结 | 异常终结 |
++|---|---|---|---|
++| slot/registry | entry inFlight | clean close清slot | retire/quarantine |
++| child/fd/staging/Placement | worker | land消费或close | stop→join→close；未知quarantine |
++| 定位资源/Page | Actor borrow | borrow=0后close | 随dirty Actor闭包quarantine |
++| 线程/PI/Carrier/Actor | execute/workers | stop→drain→disarm→解关联→join→close→还borrow | 整体quarantine |
++| ByteArray/Kotlin | JNI调用 | 副本清零释放 | OOM且不发布资源 |
++
++仅研究目标可有意UAF；辅助线程、PI内存、waiter、buffer、mapping、fd、slot均不得UAF。转移后旧owner不得访问/释放。
++
++## 5. 唯一实施序列
++
++每批只做一类事；上一批全绿才进入下一批，连续失败两次停回debug。
++
++### G4I-0：契约闭合
++
++**改动范围**：`contract_status.def`、`result.h`、Gradle KTS生成器、Kotlin生成类型、对拍测试、manifest、
++transport计划、本文与UML。冻结清单须列输入、生成器、三类输出路径和清理规则；状态只从`.def`读取。
++
++**行为差异**：只增加真实实现所需的状态表达和固定容量权威；九入口仍全部`UNSUPPORTED`。
++
++**门禁**：header自包含、ABI静态断言、Debug/Release构建、R8全量对拍、既有枚举值不变及新值映射测试。
++
++### G4I-1：Registry与生命周期骨架
++
++**候选文件**：
++
++```text
++app/src/main/cpp/gl43499/core/internal/registry.h
++app/src/main/cpp/gl43499/core/registry.c
++app/src/main/cpp/gl43499/core/tests/host/registry_test.c
++app/src/main/cpp/gl43499/core/registry_manifest.def
++app/src/main/cpp/CMakeLists.txt
++```
++
++**范围**：slot编码、kind/generation/epoch、inFlight、borrow、cancel、close、atfork与BSS manifest。
++九入口仍`UNSUPPORTED`，不创建fd/pid/thread/map。
++
++**进程端点**：OnLoad只初始化registry/atfork；OnUnload仅回收已证`inFlight=borrow=0`的clean slot，
++dirty/unknown钉到进程退出；fork prepare/parent只锁/解锁，child执行已验证的异步安全epoch失效；所有
++非协议fd设CLOEXEC，exec前按预生成allowlist关闭。CBN沿用`43499-43284-jni-rewrite-plan.md` §5.1。
++
++**极端值**：零/篡改kind/旧generation/旧epoch、容量0/1/MAX、重复close、close/acquire竞争、generation回绕、fork后旧ID。
++
++### G4I-2：Placement真实事务
++
++**候选文件**：`placement.c`、`placement_resource.h`及host/Android资源失败注入测试。
++
++**范围**：只实现`prepare/cancel/closePlacement`。Kotlin给出范围、计数、CPU、超时；Native完成定位
++并返回facts，不构造payload、Carrier或选择Primitive。
++
++**资源顺序**：创建即登记owner；partial-start逆序`stop→join→unmap/close→reap child`；成功发布前
++不得返回handle，取消只发生在具名边界。
++
++**stub迁移**：`api_unavailable.c`改为只定义尚未实现的六个Page/Actor符号；Placement符号只在
++`placement.c`定义。禁止weak symbol、同名stub/real或运行时选择。
++
++### G4I-3：Landing与Page
++
++**候选文件**：`page.c`、`page_resource.h`、landing commit测试。
++
++**范围**：实现`landPage/closePage`。JNI先复制bytes；Native只校验ABI、长度、边界、对齐、溢出和
++契约物理约束，不解释payload。
++
++Landing固定分段：
++
++```text
++preflight（可安全返回，Placement仍有效）
++  -> commit point（禁止重新解释参数）
++  -> consume Placement physical resources
++  -> publish Page or quarantine complete closure
++```
++
++| 结果 | Placement | Page | effect |
++|---|---|---|---|
++| precommit拒绝/失败 | 保持可用 | 0 | NOT_APPLIED/CLEAN_FAILURE |
++| clean commit成功 | stale | 新Page | CLEAN_SUCCESS |
++| postcommit已知清洁失败 | stale | 0 | CLEAN_FAILURE |
++| postcommit状态未知 | quarantined | 0 | INDETERMINATE/DIRTY |
++
++### G4I-4：Actor生命周期壳
++
++**候选文件**：`actor.c`、`actor_resource.h`、`actor_workers.c`、同步与失败注入测试。
++
++**范围**：实现Page borrow、三个joinable worker、CPU/优先级、屏障、cancel/close及partial-start回滚；
++测试Carrier不进APK。
++
++**不可改变的终结顺序**：
++
++```text
++stop new trigger
++ -> wait consumer in-flight == 0
++ -> disarm Carrier
++ -> detach PI relation / synchronize waiter state
++ -> join in已验证顺序
++ -> close Carrier resources
++ -> release Page borrow exactly once
++```
++
++测试Carrier仅进host test；首个真实Primitive通过前，生产`prepareActor`仍返回`UNSUPPORTED`。
++
++### G4I-5M：MulticastSendmsg Primitive
++
++实现Multicast的深拷贝、静态绑定、arm/execute/disarm/close。PI窗口反汇编须证明无kind读取、动态
++分派、JNI、锁、分配、日志或首次触页；单机制真机门通过后才启用。
++
++### G4I-5P：Pselect Primitive
++
++独立批次、独立资源表、独立失败注入和真机门禁。不得复用Multicast的“成功”证明；共享代码仅限已有
++common准入规则允许且至少两个真实消费者完全相同的物理helper。
++
++### G4I-5T：TcpZerocopyReceive Primitive
++
++独立批次；仍需单独批准，旧AVD结果不证明FakePage。无法证明物理效果则保持`UNSUPPORTED`。
++
++每个G4I-5批完成后，`api_unavailable.c`只删除该已实现符号；最后一个真实符号接管后删除整个文件。
++
++### G4I-6：Kotlin/Lua资源包装与自由编排
++
++G4I-4后实现Kotlin owner class：保存opaque handle、串行close、关闭后原子置0并提供`close()`/`use`。
++Lua可显式选择公开Access或JNI原语；raw holder不进受支持脚本ABI，但反射可达不作为安全边界。scope
++只约束owner创建/回收和兼容承诺。测试覆盖反射调用与close后stale。各Primitive仅在自身G4I-5通过后
++从`UNSUPPORTED`变为可调用；G4I-6不等待三者全部完成。
++
++Kotlin/Lua负责：地址与payload计算、Primitive选择、A/B Page组合、重试/fallback、跨backend先后顺序。
++Native负责：资源有效性、物理动作、effect/state回执和清洁/隔离。
++
++### G4I-7：victim、Finish与ksud接线
++
++此批依赖至少一个Primitive真机门。victim继续Kotlin `ProcessBuilder`；handoff用UI生成脚本，Native不
++生成/选择/解释脚本。成功须由uid、脚本对象、ksud/marker、SELinux恢复和资源归零共同证明。
++
++## 6. 每批验证矩阵
++
++### 6.1 所有实现批共同门槛
++
++```text
++git diff --check
++./gradlew nativeTestHost nativeBuildAndroid :app:testDebugUnitTest --console=plain
++./gradlew :app:compileDebugKotlin :app:externalNativeBuildDebug :app:assembleRelease --no-daemon
++```
++
++`AGENTS.md` §8仍列已删除的Make入口，而§4要求构建逻辑只用Gradle KTS；`introduction.md`已给上面映射。
++批准本计划须知情裁定采用Gradle映射，并在激活批同步修订AGENTS §8；裁定前不得开始G4I-0。
++
++记录输入、literal output、exit；从`build/test-results/**/*.xml`全量统计。核对APK/DSO路径、SHA-256、
++`nm/readelf`、link map、九个JNI符号对拍与旧Flow符号为0。共享build目录串行。
++
++### 6.2 Registry门
++
++- host并发矩阵重复运行；TSAN只作附加证据。
++- BSS仅允许manifest列出的registry符号；无route/session/global current对象。
++- 每个测试结束统计EMPTY、OPEN、BORROWED、CLOSING、QUARANTINED slot及fd/thread/map/child数量。
++- clean测试残留必须为0；故意dirty测试必须精确等于receipt中的retained count。
++
++### 6.3 攻击关键路径真机门
++
++G4I-2起凡触及真实攻击资源，当批执行：冷机、固定CPU对、单Primitive、KernelSU未加载；日志归档到
++`docs/analysis/device-gates/`且单份不超过8KB。验证成功/失败/超时/取消/提前返回；重点逐项证明：
++
++```text
++访问者停止
++ -> 同步或解除关联
++ -> 资源回收
++```
++
++每个Primitive单独证明命中和写验证；panic按`KERNEL-PANIC-01`冷机复跑。未过门不得标supported、
++接默认Flow或进入ksud批。
++
++## 7. 批次文件纪律与回滚
++
++- 每批计划先冻结影响文件；实现只触碰冻结清单。
++- 旧码参考只留在`legacy2/`，新文件禁止套入整段legacy；若必须改现有代码，按AGENTS要求套旧码、
++  `TODO(reason)`、新码、同批全绿后清除临时旧码块。
++- `api_unavailable.c`按“一个符号一个owner”逐步缩小；任何时刻每个公开C符号恰有一个强定义。
++- 每批保存原始hash与四事务产物，并在独立副本实测回滚。
++- 攻击资源批回滚到上一批已验证的fail-closed状态，不保留半接线入口。
++
++## 8. 停止条件与翻转条件
++
++遇到任一条件立即停止当前批：
++
++1. execute/worker窗口仍读取Primitive kind、出现动态分派或访问registry；
++2. 无法证明PI内存与waiter按“停止访问→解除关联→回收”结束；
++3. dirty资源无法形成完整依赖闭包，或clean close仍有残留；
++4. Kotlin/JNI/C ABI出现第二份字段或状态权威；
++5. 为通过门禁需要恢复route/session/Flow入口或修改判据；
++6. 同批门禁连续失败两次。
++
++若tagged Primitive导致窗口内分派，则按header计划的翻转条件改成三个具名prepare入口，并重新走
++跨端契约批准；不得偷偷在实现内部保留switch或函数指针。
++
++## 9. 批准门
++
++本计划进入实现前必须同时满足：
++
++1. design-critic冻结快照评审为阻断0；
++2. 用户明确批准本计划及其取代关系；
++3. `43499-approval-status.md`把本计划从“待批准”改为“已批准”；
++4. G4I-0单独实施，门禁全绿后才进入G4I-1；
++5. G4I-5T和G4I-7仍保留各自独立批准点。
++
++未满足时，当前`api_unavailable.c`和九入口fail-closed行为保持不变。
++
++### 9.1 批准激活清单
++
++批准与激活必须同批完成，否则本文仍为待批：
++
++1. `approval-status`：本文改已批准；kt-step K3、route-port、three-routes对应实施项改“被本文取代/证据”。
++2. `43499-43284-jni-rewrite-plan.md`：头部只引用approval-status；§5/§6.2/§9指向本文。
++3. `43499-kt-step-plan.md`与三个旧route/prepare计划：头部登记取代范围，保留沿革，不删除历史。
++4. `43499-jni-transport-plan.md`：冻结“同一符号不得stub/real共存”；未实现符号迁具名pending TU，
++   由manifest从9递减到0，最后删除pending TU。
++5. `AGENTS.md` §8：按§4和`introduction.md`同步为Gradle KTS真实门禁。
++6. `approval-status`的Lua行同步批准scope-bound公开Access/JNI组合；raw holder不进受支持ABI。
++
++每个G4I批开工前另建冻结清单，完整列出生产源、测试、生成器、CMake/Gradle、Kotlin、UML和门禁记录；
++当前“候选文件”不能直接授权写码，清单外全部冻结。
++
++## 10. 扩展点与技术债
++
++| 未来变化 | 扩展触点 | 预估技术债 | 偿还时机 |
++|---|---|---|---|
++| 新Primitive | C spec、Kotlin DTO、JNI翻译、独立Carrier批各1处 | tagged union和R8对拍面增长 | 第4种Primitive提案时重算CBN |
++| quarantine回收 | registry具名reap状态与真机证明 | 未实现前可能耗尽固定slot | G4I-5实测dirty率非零后设计 |
++| registry容量调整 | 单一manifest | 静态上限可能浪费或不足 | 每个真机门记录峰值后复核 |
++| 新backend组合 | Kotlin/Lua scope API | facade清单增长 | 新backend接线批偿还 |
++
++## 11. 评审记录
++
++| 时间 | 冻结版本 | 总判 | 阻断数 | 备注 |
++|---|---|---|---:|---|
++| 2026-10-26 | 初稿，待design-critic | 待评审 | — | 只写计划，未改实现 |
++| 2026-10-26 | `c8a3db7e…` | 需修订 | 6 | C1–C8已关闭 |
++| 2026-10-26 | `d0fa2502…` | 可进批准gate | 0 | 原阻断关闭；1重要待激活批 |
++| 2026-10-26 | `7248e916…` | 可进批准gate | 0 | 最终复评：重要0、建议0 |
+--- a/docs/plan/43499-jni-transport-plan.md
++++ b/docs/plan/43499-jni-transport-plan.md
+@@ -12,7 +12,8 @@
+ - 页面与 Carrier 字节先复制到 native 临时缓冲；core 调用期间不持有 pinned array/raw elements，返回后清零释放。
+ - 三种 Kotlin Primitive 实现以 `@Keep` 固定类/字段名；JNI 按具体类判型并在 C 侧赋唯一 Primitive enum，Kotlin 不手抄跨端 ID。
+ - 新增 `core/api_unavailable.c`：九入口完整存在但统一返回 `UNSUPPORTED`，确保 DSO 可链接、可装载且不伪造能力。
+-- CMake 仅加入 unavailable 实现；后续真实实现批必须删除/取代它，禁止 weak symbol 或 stub/real 共存。
++- CMake 仅加入 unavailable 实现。后续按公开符号逐批迁移：同一符号不得 stub/real 共存；未实现符号
++  迁到具名 pending TU，由manifest从9递减到0，最后删除pending TU。禁止weak symbol或运行时选择。
+ 
+ ## 不改
+ 
+--- a/docs/plan/43499-43284-jni-rewrite-plan.md
++++ b/docs/plan/43499-43284-jni-rewrite-plan.md
+@@ -1,7 +1,9 @@
+-# Kotlin-first JNI 重写计划 v4（批准候选）
++# Kotlin-first JNI 重写计划 v4（架构依据）
+ 
+ - 日期：2026-10-23；级别：L；作者：Lead；评审：design-critic。
+-- 状态：**已批准**（用户 2026-10-23 指令“按照计划”编写架构 Kotlin class）；本文与同批 ADR、approval-status、UML 同步生效。
++- 状态：架构裁定逐项只以 [43499-approval-status.md](43499-approval-status.md) 为准；本文不得独立声明
++  生产批准。43499真实资源实施候选见
++  [43499-resource-primitives-implementation-plan.md](43499-resource-primitives-implementation-plan.md)。
+ - 取代：v4 生效时取代 v3 的 per-route JNI、全无状态/无 handle 和 Flow 独占能力入口。
+ - 摘要：[Kotlin/Native 边界](../analysis/kotlin-native-boundary-brief.md)。
+ 
+--- a/docs/plan/43499-approval-status.md
++++ b/docs/plan/43499-approval-status.md
+@@ -58,6 +58,7 @@
+ | victim/Finish | protocol child 用 Native handle；普通 victim 仍 ProcessBuilder；UI脚本由 rooted child 中性触发 | **已批准** | 用户 2026-10-23 指令“按照计划”；pid/hash/marker/SELinux 真机门禁 |
+ | C11 Page/Actor header-only 契约 | Placement→Page 所有权转移；Actor prepare 时绑定物理 Primitive；execute 无 tag；不接 CMake/JNI | **已批准（仅头文件）** | 用户 2026-10-26 明确要求从零写 `.h`；实现与生产接线仍按独立批次门禁；见 [43499-c11-header-contract-plan.md](43499-c11-header-contract-plan.md) |
+ | JNI transport | 具名 Kotlin DTO ↔ 显式 JNI 字段翻译 ↔ C11 九入口；当前 core 用 fail-closed unavailable 实现 | **已批准（仅 transport）** | 用户 2026-10-26 明确要求“修改jni”；不批准物理原语实现；见 [43499-jni-transport-plan.md](43499-jni-transport-plan.md) |
++| 资源原语实施 | G4I-0→1→2→3→4；随后Kotlin/Lua wrapper与三个独立Primitive批；wrapper + 任一已过门Primitive才可进最终接线 | **待批准（仅计划）** | 用户 2026-10-26 要求“做计划”；实现前须 critic 阻断0并明确批准；见 [43499-resource-primitives-implementation-plan.md](43499-resource-primitives-implementation-plan.md) |
+ 
+ 批准方式：用户 2026-10-23 指令“按照计划”编写架构 Kotlin class；第1层历史薄层继续保留，第2层最小 transaction 生产启用。2026-10-23 六项同步生效；2026-10-26 header-only 项独立生效。
+ 
+@@ -78,6 +79,7 @@
+ | --- | --- | --- |
+ | [43499-kt-step-plan.md](43499-kt-step-plan.md) | **唯一生产计划** | 在办（K1/K2 已实现，K3–K5 待批准） |
+ | [43499-43284-jni-rewrite-plan.md](43499-43284-jni-rewrite-plan.md) | JNI 重写（Kotlin-first） | **待批**（design-critic v1 不可进；v2 待复核）。批准后接管 kt-step 的生产计划地位；本表仍是批准状态唯一权威 |
++| [43499-resource-primitives-implementation-plan.md](43499-resource-primitives-implementation-plan.md) | 43499 Placement/Page/Actor真实实现批次候选 | **待批**；获批后接管kt-step K3及旧route实施部分，未批前保持unavailable |
+ | [43499-route-port-plan.md](43499-route-port-plan.md) | multicast 生产 route | 在办（PI 例外已批；页面落点未证） |
+ | [43499-three-routes-production-plan.md](43499-three-routes-production-plan.md) | 三 route 生产化 | 阻断（design-critic）；select 已 AVD pass、tcp 未通 |
+ | [43499-production-victim-plan.md](43499-production-victim-plan.md) | victim 生命周期（Kotlin） | 已实现（host + AVD lifecycle） |
+--- a/docs/development/full-process-uml.md
++++ b/docs/development/full-process-uml.md
+@@ -721,6 +721,7 @@
+ ## 11. 43499 Placement / Page / Actor 契约（2026-10-26 header-only）
+ 
+ > 头文件批见 [43499-c11-header-contract-plan](../plan/43499-c11-header-contract-plan.md)，JNI transport 见 [43499-jni-transport-plan](../plan/43499-jni-transport-plan.md)。当前 JNI 已接入九入口，但 core 仍是显式 `UNSUPPORTED` 的 unavailable 实现；victim/Finish 不在本批。
++> 后续真实实现的批准候选与唯一批次顺序见 [43499-resource-primitives-implementation-plan](../plan/43499-resource-primitives-implementation-plan.md)；未批准前下图中的实现阶段均不生效。
+ 
+ ### 11.1 IPO / dependency
+ 
+@@ -824,3 +825,25 @@
+     K->>B: closePage(page)
+   end
+ ```
++
++### 11.5 Implementation gates（proposal）
++
++```mermaid
++flowchart LR
++  G0[G4I-0 contract closure] --> G1[G4I-1 fixed registry]
++  G1 --> G2[G4I-2 Placement]
++  G2 --> G3[G4I-3 Landing and Page]
++  G3 --> G4[G4I-4 Actor lifecycle]
++  G4 --> G6[G4I-6 Kotlin Lua wrappers]
++  G4 --> GM[G4I-5M Multicast]
++  G4 --> GP[G4I-5P Pselect]
++  G4 --> GT[G4I-5T TCP zerocopy]
++  GM --> ANY{Any supported Primitive}
++  GP --> ANY
++  GT -. independent approval .-> ANY
++  G6 --> G7[G4I-7 victim Finish ksud]
++  ANY --> G7
++```
++
++G4I-6不等待三个Primitive全部完成；它只暴露各自已过门的能力。G4I-7至少依赖一个已过真机门的
++Primitive，TCP仍有独立批准点。Native只绑定物理Primitive，route与跨backend顺序由Kotlin/Lua决定。

@@ -19,7 +19,9 @@ enum {
     GLK43499_CALL_OK = 0,
     GLK43499_CALL_INVALID_ARGUMENT = 1,
     GLK43499_CALL_BAD_ABI = 2,
+    /** @brief ABI v3保留值；线性owner实现不返回。 */
     GLK43499_CALL_STALE_HANDLE = 3,
+    /** @brief ABI v3保留值；线性owner实现不返回。 */
     GLK43499_CALL_WRONG_HANDLE_KIND = 4,
     GLK43499_CALL_BUSY = 5,
     GLK43499_CALL_TIMEOUT = 6,
@@ -48,6 +50,7 @@ enum {
     GLK43499_RESOURCE_PREPARED = 2,
     GLK43499_RESOURCE_LANDING = 3,
     GLK43499_RESOURCE_LANDED = 4,
+    /** @brief ABI v3保留值；线性owner实现不建立Page borrow状态。 */
     GLK43499_RESOURCE_BORROWED = 5,
     GLK43499_RESOURCE_RUNNING = 6,
     GLK43499_RESOURCE_CONSUMED = 7,
@@ -66,7 +69,8 @@ struct glk43499_call_result {
     glk43499_effect effect;
     glk43499_resource_state resource_state;
     int32_t system_error;
-    uint64_t generation;
+    /** @brief ABI v3布局保留；线性owner实现必须写0。 */
+    uint64_t reserved_resource_serial;
     uint64_t retained_resource_count;
     uint64_t reserved[4];
 };
@@ -76,7 +80,7 @@ struct glk43499_close_result {
     struct glk43499_call_result call;
     uint32_t stop_requested;
     uint32_t workers_joined;
-    uint32_t borrow_released;
+    uint32_t owned_chain_released;
     uint32_t retained_for_process_exit;
     uint64_t reserved[4];
 };

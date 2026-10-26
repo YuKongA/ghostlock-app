@@ -107,7 +107,6 @@ internal open class Native43499CallResult {
     var effect: Int = 0
     var resourceState: Int = 0
     var systemError: Int = 0
-    var generation: Long = 0
     var retainedResourceCount: Long = 0
 }
 
@@ -116,7 +115,7 @@ internal open class Native43499CallResult {
 internal class Native43499CloseResult : Native43499CallResult() {
     var stopRequested: Boolean = false
     var workersJoined: Boolean = false
-    var borrowReleased: Boolean = false
+    var ownedChainReleased: Boolean = false
     var retainedForProcessExit: Boolean = false
 }
 
@@ -148,23 +147,23 @@ internal class Native43499LandingResult : Native43499CallResult() {
     var reclaimRetained: Boolean = false
 }
 
-/** prepareActor 的 Page borrow、三线程和 Carrier 准备事实。 */
+/** prepareActor 的 Page 所有权转移、三线程和 Carrier 准备事实。 */
 @Keep
 internal class Native43499ActorPrepareResult : Native43499CallResult() {
-    var pageGeneration: Long = 0
+    var pageContentGeneration: Long = 0
     var primitiveKind: Int = 0
     var threadCount: Int = 0
-    var pageBorrowAcquired: Boolean = false
+    var pageConsumed: Boolean = false
     var ownerReady: Boolean = false
     var waiterReady: Boolean = false
     var consumerReady: Boolean = false
     var carrierPrepared: Boolean = false
 }
 
-/** executeActor 的纯物理事实；线程终结与 borrow 归还只看 close 回执。 */
+/** executeActor 的纯物理事实；线程和所拥有Page的终结只看close回执。 */
 @Keep
 internal class Native43499ActorExecuteResult : Native43499CallResult() {
-    var pageGeneration: Long = 0
+    var pageContentGeneration: Long = 0
     var consumerCallCount: Long = 0
     var consumerSuccessCount: Long = 0
     var consumerInflightAtReturn: Long = 0
@@ -179,7 +178,8 @@ internal class Native43499ActorExecuteResult : Native43499CallResult() {
 /**
  * 43499 的无状态 JNI transport。
  *
- * 本对象不缓存 handle、Page、Actor 或结果；资源 ID 由调用者显式持有和关闭。
+ * 本对象不缓存token、Page、Actor或结果；Kotlin wrapper唯一持有token并按
+ * Placement→Page→Actor线性转移。伪造、复制或复用token不属于受支持调用。
  * 当前 native core 仅接入 fail-closed unavailable 实现，因此九个入口均返回
  * native 的 raw `UNSUPPORTED` 状态，不会产生伪成功或伪句柄。
  */
@@ -198,7 +198,7 @@ internal object Native43499Jni {
     /** 请求停止 Placement；不销毁 handle。 */
     external fun cancelPlacement(handle: Long, result: Native43499CloseResult): Int
 
-    /** 关闭 Placement；成功后 handle stale。 */
+    /** 终结Placement；wrapper必须先置0，回执区分释放或保留。 */
     external fun closePlacement(handle: Long, result: Native43499CloseResult): Int
 
     /** 消费 Placement 并产生 Page；[finalBytes] 只在本次调用期间借用。 */
@@ -210,10 +210,10 @@ internal object Native43499Jni {
         result: Native43499LandingResult,
     ): Long
 
-    /** 关闭未被 Actor 借用的 Page。 */
+    /** 终结尚未转移给Actor的Page；wrapper必须先置0。 */
     external fun closePage(page: Long, result: Native43499CloseResult): Int
 
-    /** 借用 Page，并在线程创建前绑定、深拷贝 [primitive]。 */
+    /** 成功时消费Page，并在线程创建前绑定、深拷贝[primitive]。 */
     external fun prepareActor(
         page: Long,
         setup: Native43499ActorSetup,
@@ -227,6 +227,6 @@ internal object Native43499Jni {
     /** 请求停止新触发并排空 Actor；不销毁 handle。 */
     external fun cancelActor(actor: Long, result: Native43499CloseResult): Int
 
-    /** 终结 Actor、销毁 Carrier，并在 clean 状态归还 Page borrow。 */
+    /** 终结Actor、Carrier及Actor拥有的Page；wrapper必须先置0。 */
     external fun closeActor(actor: Long, result: Native43499CloseResult): Int
 }

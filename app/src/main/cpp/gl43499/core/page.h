@@ -70,8 +70,10 @@ struct glk43499_landing_result {
  * @param request 调用期借用的最终几何。
  * @param result 必填输出。
  * @return 成功时返回新的 Page handle；其余返回 0。
- * @note CLEAN_SUCCESS 消费 placement 并使其 stale；提交前 NOT_APPLIED 保留
- *       placement；提交后不明状态将 placement 转为 QUARANTINED。
+ * @note CLEAN_SUCCESS 消费 placement，调用方必须立即将旧 token 置 0；提交前
+ *       NOT_APPLIED 仍由调用方持有。提交后的 CLEAN_FAILURE、DIRTY 或
+ *       INDETERMINATE 均设置 receipt.placement_consumed，旧 token 不得复用；
+ *       Native 清洁释放或将无法安全释放的资源保留到进程退出。
  * @note allocation_size 是候选分配大小，page_size 是地址布局边界，
  *       reclaim_payload_size 是本次内核复制字节数；三者都由 Kotlin 明列。
  *       Native 只接受实现已证明的大小关系，且不从其中任一字段推导默认值。
@@ -83,11 +85,12 @@ glk43499_handle glk43499_land_page(
     struct glk43499_landing_result *result);
 
 /**
- * @brief 关闭未被 Actor 借用的 Page。
- * @param page 有效 Page handle。
+ * @brief 关闭尚未转移给 Actor 的 Page。
+ * @param page 仍由调用方唯一持有的 Page token。
  * @param result 必填输出。
- * @return GLK43499_CALL_BUSY 表示存在 persistent borrow 且本调用不等待。
- * @note 引用状态不明时保留完整资源闭包到进程退出。
+ * @return glk43499_call_status；调用方保证不与其它 Page 调用并发。
+ * @note wrapper 在调用前置 0。输出 ABI 无效或 token 为 0 时入口未接受，调用方
+ *       恢复原 token；一旦接受，无论回执为完整释放或保留到进程退出都消费 token。
  */
 int32_t glk43499_close_page(
     glk43499_handle page,

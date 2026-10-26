@@ -1,7 +1,9 @@
-# Kotlin-first JNI 重写计划 v4（批准候选）
+# Kotlin-first JNI 重写计划 v4（架构依据）
 
 - 日期：2026-10-23；级别：L；作者：Lead；评审：design-critic。
-- 状态：**已批准**（用户 2026-10-23 指令“按照计划”编写架构 Kotlin class）；本文与同批 ADR、approval-status、UML 同步生效。
+- 状态：架构裁定逐项只以 [43499-approval-status.md](43499-approval-status.md) 为准；本文不得独立声明
+  生产批准。43499真实资源实施候选见
+  [43499-resource-primitives-implementation-plan.md](43499-resource-primitives-implementation-plan.md)。
 - 取代：v4 生效时取代 v3 的 per-route JNI、全无状态/无 handle 和 Flow 独占能力入口。
 - 摘要：[Kotlin/Native 边界](../analysis/kotlin-native-boundary-brief.md)。
 
@@ -28,10 +30,11 @@ common STATIC -> general/43499/43284
 |---|---|---|
 | v3 §4.1、approval §4：per-route JNI/TU | 每个物理 mechanism 命名 entry；route 在 Kotlin | approval route 表 |
 | v3 §4.2、ADR-0021：无 handle | 值调用无状态；资源用 typed handle | approval handle 表 |
-| ADR-0019：可写全局为空 | 每 DSO 一个固定容量 registry 例外 | ADR-0019/C5 |
+| ADR-0019：可写全局为空 | 历史候选：每 DSO 固定 registry；43499 已取代为线性 owner | ADR-0019/C5；线性计划 §4 |
 | ADR-0022：Flow.run 唯一入口 | UI run 仍经 Flow；Lua 脚本内部可直调 scope-bound API | ADR-0022 |
 
-代价：route TU 静态隔离减少；增加 request 误组合和 registry 状态。偿还：typed request、状态/并发反例、link firewall、三 route 单独真机门禁。用户已于 2026-10-23 以“按照计划”知情确认。
+代价：route TU 静态隔离减少；增加 request 误组合。43499 不再增加 registry 状态，改由线性 owner 承担
+raw token 误用风险。偿还：typed request、状态/并发反例、link firewall、三 route 单独真机门禁。
 
 ## 3. DSO 与目录
 
@@ -63,22 +66,28 @@ ResultHeader  { version:u16, size:u16, status:u32, errnoValue:i32, effect:u32 }
 | finalAddress/domain bounds/tag | Kotlin | 非零、上下界、对齐、溢出 |
 | finalPayloadBytes/metadata | Kotlin | 长度、ABI tag、列入 ABI 表的 byte-offset invariant |
 | scan params/bounds | Kotlin | 0/1/MAX、乘加溢出、资源上限 |
-| handle state/effect | Native | registry 状态机 |
+| handle state/effect | Native | 43499对象内状态；无registry；其它backend另行裁定 |
 
 Native 禁止用 route/offset/profile 重算地址或 payload。未列入 ABI 表的 payload invariant 不得检查。requestId 只作观测，不提供重放幂等。
 
-状态：`OK/BAD_ARGUMENT/STALE_HANDLE/WRONG_KIND/INVALID_STATE/BUSY/CAPACITY/UNSUPPORTED/CANCELLED_CLEAN/CLEAN_FAILURE/DIRTY_FAILURE/INDETERMINATE`；errno 独立返回。
+状态数值表保持 ABI v3；43499 实现只返回线性契约适用的状态，`STALE_HANDLE/WRONG_KIND/BORROWED/CAPACITY`
+只作保留值且不返回；errno 独立返回。
 
 ## 5. handle registry
+
+> **2026-10-26取代**：本节针对43499的registry选择已被
+> [43499-resource-primitives-implementation-plan.md](43499-resource-primitives-implementation-plan.md)
+> 取代。43499采用Kotlin唯一owner与Placement→Page→Actor线性token；本节只保留历史CBN，43284/general
+> 不因该裁定自动改变。raw token误用不提供stale/wrong-kind保护。
 
 ### 5.1 选择与 CBN
 
 | 方案 | 收益 | 成本/边际 |
 |---|---|---|
-| A 每 DSO 固定 registry（选） | raw pointer 0 次跨 JNI；wrong-kind/stale 可统一拒绝 | 1 个锁+固定 slots；每新 handle kind 改定义/生成物各 1 处 |
+| A 每 DSO 固定 registry（43499历史候选，未采用） | raw pointer 0 次跨 JNI；wrong-kind/stale 可统一拒绝 | 1 个锁+固定 slots；每新 handle kind 改定义/生成物各 1 处 |
 | B caller-owned arena pointer | 无 registry 全局 | 必须安全映射 pointer token；每 entry 增加 arena 参数，仍需生命周期表 |
 
-翻转条件：registry 使 PI 窗口新增锁/间接分派，或固定容量不足以覆盖“一次 run 最大资源数×2”时重评。所有 registry 操作在 PI 窗口外。
+43499 的现行翻转条件与结论见线性计划 §4；以下私有实现仅保存被取代方案的历史推理，不是实施要求。
 
 ### 5.2 私有实现
 
@@ -103,6 +112,8 @@ continuation 只存在于 handle 内部 cursor；Kotlin 只传 batch index/recei
 
 ### 6.2 43499
 
+> **2026-10-26取代**：本节资源状态机仅作历史依据；43499当前权威为线性owner计划§3–§5。
+
 ```text
 allocatePage/mapPage/installPayload
 prepareActor
@@ -118,7 +129,8 @@ PREPARED -> EXECUTING -> COMPLETED_CLEAN -> DESTROYABLE
 PREPARED -> CANCELLED_CLEAN -> DESTROYABLE
 ```
 
-disarm 属于 execute 内部；不导出外部 disarm。`QUARANTINED/LEAKED_ON_STUCK` 采用进程生命周期保留策略，Cleaner 禁止回收；registry 记录资源清单和 effect，当前 run fail-stop。容量耗尽返回 CAPACITY，不再攻击。进程退出是最终终结点；D3 真机后才可设计具名 reap，未经证据不得释放。旧 T-LEAK 的 `pipefd[2]`/`block_fd` 归 Actor owner。
+历史方案曾由 registry 记录资源清单并以 CAPACITY fail-stop；43499 现行方案不采用该机制。现行
+dirty/unknown 完整闭包保留、终结点与 owner 规则只以线性计划 §3 为准。
 
 ### 6.3 43284 与 Access
 
@@ -161,20 +173,24 @@ D3 前必须在现有 annex 完成每个生产 symbol 的 `source file:function 
 | 批次 | 内容 | 离线/构建 | 真机 |
 |---|---|---|---|
 | D0 | 同批文档候选 | link/check、字节配额、critic 0阻断 | — |
-| D1 | schema/wrapper/registry | `./gradlew :app:testDebugUnitTest`；XML三桶；NDK assemble；nm/readelf/link-map | — |
+| D1 | schema/wrapper/线性token | `./gradlew :app:testDebugUnitTest`；XML三桶；NDK assemble；nm/readelf/link-map | — |
 | D2 | common/general | DTO-after-close；0/1/MAX batch；backend link-map general symbol=0 | discovery 单功能 |
-| D3 | page/actor/mechanisms | 并发矩阵、registry残留=0、窗口调用图 | 每 mechanism 冷机单 route |
+| D3 | page/actor/mechanisms | 并发矩阵、全局资源表=0、窗口调用图 | 每 mechanism 冷机单 route |
 | D4 | Kotlin address/payload/Flow/Lua | fixed vectors、错域/截断/metadata、Lua scope | 三 route 写回读 |
 | D5 | victim/Finish/退役 | symbol manifest、旧入口=0、APK hash | uid=0、script hash/marker/SELinux |
 
 D0 只冻结命令，不把 task-list 查询当构建证据：先运行 `./gradlew :app:tasks --all --console=plain > <evidence>` 并记录 Gradle exit，再对 evidence 单独 `rg` 并记录 rg exit。实现批命令为 `./gradlew :app:testDebugUnitTest --console=plain`、`./gradlew :app:externalNativeBuildDebug --console=plain`、`./gradlew :app:assembleDebug --console=plain`。每批保存完整 literal output、exact exit、XML三桶、NDK零告警、APK/DSO sha。共享构建串行；攻击批当批真机；连续失败两次停回 debug。
 
-C5 从“BSS 空”改为“仅 registry 明确符号”；每 DSO 允许表由 manifest 生成，其余可写符号为 0。registry 不得在 PI 窗口访问。
+C5 对43499保持可写全局业务状态为0；对象内状态不计作全局。其它DSO若需例外须各自重新设计批准。
 
 ## 10. 批准项与扩展
 
-用户需一次确认：route-TU 旧裁定被 mechanism entry 取代；actor batch 生产启用；per-DSO registry 全局例外；victim protocol child/Finish primitive。
+用户需一次确认：route-TU 旧裁定被 mechanism entry 取代；actor batch 生产启用；43499线性owner；
+victim protocol child/Finish primitive。43499 registry 全局例外已明确撤销。
 
-扩展点：新增 backend 只新增自己的 DSO/schema/wrapper；新增 mechanism 只新增命名 entry、PI 直接调用版本和 Kotlin request；general 只有独立 Kotlin-called service 才可加入。未来债：quarantine 可能耗尽固定 slots，D3 后以实测 dirty 率决定是否设计 reap；偿还前 fail-closed CAPACITY。
+扩展点：新增 backend 只新增自己的 DSO/schema/wrapper；43499新增Primitive默认扩展`PrimitiveSpec` tagged
+union，并继续由单一`prepareActor`绑定、`executeActor`无tag/spec；只有满足C11计划的翻转条件才改为具名prepare
+入口。general只有独立Kotlin-called service才可加入。43499未来债是raw token误用可崩溃；若出现共享或
+fail-closed需求，按线性计划翻转条件重设安全句柄层。
 
 批准标准：critic 阻断 0、用户明确批准、冻结 manifest 中七份候选（brief、plan、ADR-0019、ADR-0021、ADR-0022、approval-status、UML）同步生效；未满足时不写实现。

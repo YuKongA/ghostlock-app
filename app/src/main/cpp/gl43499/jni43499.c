@@ -134,7 +134,6 @@ static int32_t glk43499_write_call_result(
            glk43499_set_int(env, target, "effect", source->effect) &&
            glk43499_set_int(env, target, "resourceState", source->resource_state) &&
            glk43499_set_int(env, target, "systemError", source->system_error) &&
-           glk43499_set_long(env, target, "generation", source->generation) &&
            glk43499_set_long(env, target, "retainedResourceCount",
                              source->retained_resource_count);
 }
@@ -145,7 +144,8 @@ static int32_t glk43499_write_close_result(
     return glk43499_write_call_result(env, target, &source->call) &&
            glk43499_set_bool(env, target, "stopRequested", source->stop_requested) &&
            glk43499_set_bool(env, target, "workersJoined", source->workers_joined) &&
-           glk43499_set_bool(env, target, "borrowReleased", source->borrow_released) &&
+           glk43499_set_bool(env, target, "ownedChainReleased",
+                             source->owned_chain_released) &&
            glk43499_set_bool(env, target, "retainedForProcessExit",
                              source->retained_for_process_exit);
 }
@@ -397,14 +397,14 @@ static int32_t glk43499_write_landing_result(
 static int32_t glk43499_write_actor_prepare_result(
     JNIEnv *env, jobject target, const struct glk43499_actor_prepare_result *source) {
     return glk43499_write_call_result(env, target, &source->call) &&
-           glk43499_set_long(env, target, "pageGeneration",
-                             source->receipt.page_generation) &&
+           glk43499_set_long(env, target, "pageContentGeneration",
+                             source->receipt.page_content_generation) &&
            glk43499_set_int(env, target, "primitiveKind",
                             source->receipt.primitive_kind) &&
            glk43499_set_int(env, target, "threadCount",
                             (int32_t) source->receipt.thread_count) &&
-           glk43499_set_bool(env, target, "pageBorrowAcquired",
-                             source->receipt.page_borrow_acquired) &&
+           glk43499_set_bool(env, target, "pageConsumed",
+                             source->receipt.page_consumed) &&
            glk43499_set_bool(env, target, "ownerReady", source->receipt.owner_ready) &&
            glk43499_set_bool(env, target, "waiterReady", source->receipt.waiter_ready) &&
            glk43499_set_bool(env, target, "consumerReady",
@@ -417,8 +417,8 @@ static int32_t glk43499_write_actor_prepare_result(
 static int32_t glk43499_write_actor_execute_result(
     JNIEnv *env, jobject target, const struct glk43499_actor_execute_result *source) {
     return glk43499_write_call_result(env, target, &source->call) &&
-           glk43499_set_long(env, target, "pageGeneration",
-                             source->receipt.page_generation) &&
+           glk43499_set_long(env, target, "pageContentGeneration",
+                             source->receipt.page_content_generation) &&
            glk43499_set_long(env, target, "consumerCallCount",
                              source->receipt.consumer_call_count) &&
            glk43499_set_long(env, target, "consumerSuccessCount",

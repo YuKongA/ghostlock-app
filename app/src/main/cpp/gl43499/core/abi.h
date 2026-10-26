@@ -2,8 +2,12 @@
  * @file abi.h
  * @brief 43499 C11 资源原语 ABI 的基础类型与版本头。
  *
- * @note 本文件只描述跨 JNI 实现层传递的固定宽度 POD。句柄是 registry ID，
- *       不是 native 指针；值 0 永远无效。
+ * @note 本文件只描述跨 JNI 实现层传递的固定宽度 POD。句柄是不透明的
+ *       Native 资源对象 token；当前实现允许由对象地址转换，值 0 永远无效。
+ *       调用方必须保持唯一所有权，不得伪造、复制、复用已消费或已关闭的 token。
+ * @note owned-entry 只有在输出 ABI 校验成功且输入 token 非零后才接受 token。
+ *       接受前失败时所有权仍归调用方；接受后 close 无论返回 released 或 retained
+ *       都消费 token，调用方不得恢复或重试同一值。
  * @note 所有顶层 API 输入结构必须先整体清零，再填写自身 abi；所有输出结构
  *       必须先整体清零，再填写 result.call.abi。嵌套结构由顶层 struct_size
  *       覆盖。所有 reserved/reserved32 与未选 union 分支都必须为零，否则拒绝调用。
@@ -28,8 +32,16 @@ extern "C" {
 /** @brief 无效句柄；任何入口收到该值都必须拒绝。 */
 #define GLK43499_INVALID_HANDLE UINT64_C(0)
 
-/** @brief registry 中带 kind/generation/epoch 的不透明资源 ID。 */
+/** @brief 由 Kotlin 唯一 owner 持有的不透明 Native 资源 token。 */
 typedef uint64_t glk43499_handle;
+
+#ifdef __cplusplus
+static_assert(sizeof(uintptr_t) <= sizeof(glk43499_handle),
+              "glk43499_handle must preserve a Native pointer token");
+#else
+_Static_assert(sizeof(uintptr_t) <= sizeof(glk43499_handle),
+               "glk43499_handle must preserve a Native pointer token");
+#endif
 
 /**
  * @brief 每个可扩展 ABI 结构的公共前缀。

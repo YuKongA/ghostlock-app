@@ -16,3 +16,9 @@
 201	239	1793017749901409853	/Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/intermediates/cxx/RelWithDebInfo/3k5c454r/obj/arm64-v8a/libghostlock43284.so	5a7150af113c374d
 1	66	1793018085020558599	CMakeFiles/ghostlock43499.dir/gl43499/core/api_unavailable.c.o	e9a465df4b156648
 66	102	1793018085055589121	/Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/intermediates/cxx/RelWithDebInfo/3k5c454r/obj/arm64-v8a/libghostlock43499.so	95e70d2841bba29c
+5	74	1793046007574541572	CMakeFiles/ghostlock43499.dir/gl43499/core/api_unavailable.c.o	e9a465df4b156648
+4	143	1793046007643519291	CMakeFiles/ghostlock43499.dir/gl43499/jni43499.c.o	d06c50f6e7a266d
+143	183	1793046007682622426	/Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/intermediates/cxx/RelWithDebInfo/3k5c454r/obj/arm64-v8a/libghostlock43499.so	95e70d2841bba29c
+2	242	1793047323438097556	CMakeFiles/ghostlock43499.dir/gl43499/core/api_unavailable.c.o	e9a465df4b156648
+1	291	1793047323486418964	CMakeFiles/ghostlock43499.dir/gl43499/jni43499.c.o	d06c50f6e7a266d
+291	431	1793047323626579322	/Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/intermediates/cxx/RelWithDebInfo/3k5c454r/obj/arm64-v8a/libghostlock43499.so	95e70d2841bba29c

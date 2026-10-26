@@ -81,10 +81,11 @@ int32_t glk43499_cancel_placement(
     struct glk43499_close_result *result);
 
 /**
- * @brief 终结 Placement 或报告其被保留隔离。
- * @param placement 有效 Placement handle；成功后变为 stale。
+ * @brief 终结 Placement 或报告其被保留到进程退出。
+ * @param placement 仍由调用方唯一持有的 Placement token；wrapper 在调用前置 0。
  * @param result 必填输出。
- * @return glk43499_call_status；LANDING/未知引用转 QUARANTINED。
+ * @return glk43499_call_status；输出 ABI 无效或 token 为 0 时未接受、调用方恢复
+ *         原 token；一旦接受，无论回执为完整释放或保留到进程退出都消费 token。
  */
 int32_t glk43499_close_placement(
     glk43499_handle placement,

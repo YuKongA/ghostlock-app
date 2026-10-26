@@ -7,7 +7,7 @@
 
 ## 目标
 
-在 `app/src/main/cpp/gl43499/core/` 建立自包含的 C11 契约：Placement 是不可拆的定位事务；Landing 成功消费 Placement 并产生 Page；Actor 在 prepare 时绑定一个物理 Primitive，execute 不再接收 route/tag；Actor 借用 Page。
+在 `app/src/main/cpp/gl43499/core/` 建立自包含的 C11 契约：Placement 是不可拆的定位事务；Landing 成功消费 Placement 并产生 Page；Actor 在 prepare 时绑定一个物理 Primitive，execute 不再接收 route/tag；Actor 成功接管并拥有 Page，旧借用方案已取代。
 
 ## 改动清单
 
@@ -19,12 +19,14 @@
 ## 关键决策
 
 1. 当前构建是 C11，因此公开契约只使用固定宽度 POD 与 opaque `uint64_t` handle。
-2. 每个输入结构以 `glk43499_abi_header` 开头；版本为项目统一版本 3，保留位必须为零。
+2. 每个输入结构以 `glk43499_abi_header` 开头；版本为项目统一版本3，保留位必须为零。
 3. `prepare_placement` 一次完成顺序敏感的定位；不再暴露虚假的 `allocate → scan` 物理分界。
 4. `land_page` 调用期借用 bytes；Native 不保存调用方指针。
-5. `prepare_actor` 深拷贝 PrimitiveSpec 并在线程创建前绑定；`execute_actor` 无 Primitive 参数。
+5. `prepare_actor`深拷贝PrimitiveSpec并在线程创建前绑定；成功消费Page，Actor成为Page唯一owner；
+   `execute_actor`无Primitive参数。
 6. 调用状态、物理 effect、资源 state 正交返回。
-7. 本批不公开 fd、pid、pthread、registry slot、业务 route、W1/W2/W3、profile、victim 或 Finish。
+7. handle是不透明Native对象token；不使用registry slot，也不公开fd、pid、pthread、业务route、
+   W1/W2/W3、profile、victim或Finish。raw token误用不属于受支持契约。
 
 ## Primitive API 的 CBN
 

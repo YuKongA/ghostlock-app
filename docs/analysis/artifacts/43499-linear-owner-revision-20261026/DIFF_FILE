@@ -1,0 +1,955 @@
+diff --git a/app/src/main/cpp/gl43499/core/abi.h b/app/src/main/cpp/gl43499/core/abi.h
+index 40bd6f7b..a9a6126f 100644
+--- a/app/src/main/cpp/gl43499/core/abi.h
++++ b/app/src/main/cpp/gl43499/core/abi.h
+@@ -2,8 +2,12 @@
+  * @file abi.h
+  * @brief 43499 C11 资源原语 ABI 的基础类型与版本头。
+  *
+- * @note 本文件只描述跨 JNI 实现层传递的固定宽度 POD。句柄是 registry ID，
+- *       不是 native 指针；值 0 永远无效。
++ * @note 本文件只描述跨 JNI 实现层传递的固定宽度 POD。句柄是不透明的
++ *       Native 资源对象 token；当前实现允许由对象地址转换，值 0 永远无效。
++ *       调用方必须保持唯一所有权，不得伪造、复制、复用已消费或已关闭的 token。
++ * @note owned-entry 只有在输出 ABI 校验成功且输入 token 非零后才接受 token。
++ *       接受前失败时所有权仍归调用方；接受后 close 无论返回 released 或 retained
++ *       都消费 token，调用方不得恢复或重试同一值。
+  * @note 所有顶层 API 输入结构必须先整体清零，再填写自身 abi；所有输出结构
+  *       必须先整体清零，再填写 result.call.abi。嵌套结构由顶层 struct_size
+  *       覆盖。所有 reserved/reserved32 与未选 union 分支都必须为零，否则拒绝调用。
+@@ -28,9 +32,17 @@ extern "C" {
+ /** @brief 无效句柄；任何入口收到该值都必须拒绝。 */
+ #define GLK43499_INVALID_HANDLE UINT64_C(0)
+ 
+-/** @brief registry 中带 kind/generation/epoch 的不透明资源 ID。 */
++/** @brief 由 Kotlin 唯一 owner 持有的不透明 Native 资源 token。 */
+ typedef uint64_t glk43499_handle;
+ 
++#ifdef __cplusplus
++static_assert(sizeof(uintptr_t) <= sizeof(glk43499_handle),
++              "glk43499_handle must preserve a Native pointer token");
++#else
++_Static_assert(sizeof(uintptr_t) <= sizeof(glk43499_handle),
++               "glk43499_handle must preserve a Native pointer token");
++#endif
++
+ /**
+  * @brief 每个可扩展 ABI 结构的公共前缀。
+  * @note reserved 必须全零；未来只允许在结构尾部追加字段。
+diff --git a/app/src/main/cpp/gl43499/core/actor.h b/app/src/main/cpp/gl43499/core/actor.h
+index e6b056b8..d1fcb6a1 100644
+--- a/app/src/main/cpp/gl43499/core/actor.h
++++ b/app/src/main/cpp/gl43499/core/actor.h
+@@ -1,6 +1,6 @@
+ /**
+  * @file actor.h
+- * @brief 借用 Page、绑定一个 Carrier 的一次性 PI Actor 契约。
++ * @brief 消费 Page、绑定一个 Carrier 的一次性 PI Actor 契约。
+  */
+ #ifndef GHOSTLOCK_GL43499_CORE_ACTOR_H
+ #define GHOSTLOCK_GL43499_CORE_ACTOR_H
+@@ -32,12 +32,12 @@ struct glk43499_actor_setup {
+     uint64_t reserved[8];
+ };
+ 
+-/** @brief prepareActor 返回的 Page 借用与 Carrier 绑定事实。 */
++/** @brief prepareActor 返回的 Page 所有权转移与 Carrier 绑定事实。 */
+ struct glk43499_actor_prepare_receipt {
+-    uint64_t page_generation;
++    uint64_t page_content_generation;
+     glk43499_primitive_kind primitive_kind;
+     uint32_t thread_count;
+-    uint32_t page_borrow_acquired;
++    uint32_t page_consumed;
+     uint32_t owner_ready;
+     uint32_t waiter_ready;
+     uint32_t consumer_ready;
+@@ -48,7 +48,7 @@ struct glk43499_actor_prepare_receipt {
+ 
+ /** @brief 一次 Actor execute 的纯物理观测。 */
+ struct glk43499_actor_execute_receipt {
+-    uint64_t page_generation;
++    uint64_t page_content_generation;
+     uint64_t consumer_call_count;
+     uint64_t consumer_success_count;
+     uint64_t consumer_inflight_at_return;
+@@ -75,13 +75,15 @@ struct glk43499_actor_execute_result {
+ };
+ 
+ /**
+- * @brief 创建 Actor、借用 Page，并在线程创建前绑定具体 Carrier。
++ * @brief 创建 Actor、消费 Page，并在线程创建前绑定具体 Carrier。
+  *
+- * @param page 有效且未被其它独占 Actor 借用的 Page handle。
++ * @param page 由调用方唯一持有且尚未消费的 Page token。
+  * @param setup 调用期借用；thread_count 必须为 3。
+  * @param primitive 调用期借用；选中分支及 frame bytes 被深拷贝。
+  * @param result 必填输出。
+- * @return Actor handle；失败返回 0，且部分创建的线程必须已停止并 join。
++ * @return Actor token；成功时 Actor 接管 Page，调用方必须将 Page token 置 0；
++ *         clean 失败返回 0 且 Page 仍归调用方；dirty/indeterminate 失败时
++ *         receipt.page_consumed 为 1，调用方也必须置 0，Native 保留资源到进程退出。
+  */
+ glk43499_handle glk43499_prepare_actor(
+     glk43499_handle page,
+@@ -94,8 +96,7 @@ glk43499_handle glk43499_prepare_actor(
+  * @param actor PREPARED 状态的 Actor handle。
+  * @param result 必填输出。
+  * @return glk43499_call_status。
+- * @note 本入口没有 route/tag/spec 参数；PI 窗口内不读取 registry、不分配、
+- *       不打印，也不进行动态机制分派。
++ * @note 本入口没有 route/tag/spec 参数；PI 窗口内不分配、不打印，也不进行动态机制分派。
+  */
+ int32_t glk43499_execute_actor(
+     glk43499_handle actor,
+@@ -112,13 +113,14 @@ int32_t glk43499_cancel_actor(
+     struct glk43499_close_result *result);
+ 
+ /**
+- * @brief 按固定顺序终结 Actor 并归还 Page 借用。
+- * @param actor 有效 Actor handle；成功后变为 stale。
++ * @brief 按固定顺序终结 Actor 及其拥有的 Page。
++ * @param actor 由调用方唯一持有的 Actor token；wrapper 在调用前置 0。
+  * @param result 必填输出。
+- * @return glk43499_call_status。
++ * @return glk43499_call_status；输出 ABI 无效或 token 为 0 时未接受、调用方恢复
++ *         原 token；一旦接受，无论释放或保留结果都消费 token。
+  * @note 顺序为停止新触发、等待 consumer inflight 为零、disarm、解除 PI 关联、
+- *       按经验证顺序 join waiter/owner/consumer、关闭 Carrier、归还 Page。未知引用使 Actor、
+- *       Carrier 与 Page 整体 QUARANTINED。
++ *       按经验证顺序 join waiter/owner/consumer、关闭 Carrier、释放其拥有的 Page。
++ *       未知引用使 Actor、Carrier 与 Page 整体保留到进程退出。
+  */
+ int32_t glk43499_close_actor(
+     glk43499_handle actor,
+diff --git a/app/src/main/cpp/gl43499/core/api_unavailable.c b/app/src/main/cpp/gl43499/core/api_unavailable.c
+index daea47eb..bba0be3e 100644
+--- a/app/src/main/cpp/gl43499/core/api_unavailable.c
++++ b/app/src/main/cpp/gl43499/core/api_unavailable.c
+@@ -120,7 +120,7 @@ static void glk43499_set_unavailable(struct glk43499_call_result *result) {
+     result->effect = GLK43499_EFFECT_NONE;
+     result->resource_state = GLK43499_RESOURCE_INVALID;
+     result->system_error = 0;
+-    result->generation = 0;
++    result->reserved_resource_serial = 0;
+     result->retained_resource_count = 0;
+ }
+ 
+@@ -130,7 +130,7 @@ static void glk43499_set_bad_abi(struct glk43499_call_result *result) {
+     result->effect = GLK43499_EFFECT_NOT_APPLIED;
+     result->resource_state = GLK43499_RESOURCE_INVALID;
+     result->system_error = 0;
+-    result->generation = 0;
++    result->reserved_resource_serial = 0;
+     result->retained_resource_count = 0;
+ }
+ 
+@@ -140,7 +140,7 @@ static void glk43499_set_invalid_handle(struct glk43499_call_result *result) {
+     result->effect = GLK43499_EFFECT_NOT_APPLIED;
+     result->resource_state = GLK43499_RESOURCE_INVALID;
+     result->system_error = 0;
+-    result->generation = 0;
++    result->reserved_resource_serial = 0;
+     result->retained_resource_count = 0;
+ }
+ 
+diff --git a/app/src/main/cpp/gl43499/core/page.h b/app/src/main/cpp/gl43499/core/page.h
+index 3006b896..d8244ca5 100644
+--- a/app/src/main/cpp/gl43499/core/page.h
++++ b/app/src/main/cpp/gl43499/core/page.h
+@@ -70,8 +70,10 @@ struct glk43499_landing_result {
+  * @param request 调用期借用的最终几何。
+  * @param result 必填输出。
+  * @return 成功时返回新的 Page handle；其余返回 0。
+- * @note CLEAN_SUCCESS 消费 placement 并使其 stale；提交前 NOT_APPLIED 保留
+- *       placement；提交后不明状态将 placement 转为 QUARANTINED。
++ * @note CLEAN_SUCCESS 消费 placement，调用方必须立即将旧 token 置 0；提交前
++ *       NOT_APPLIED 仍由调用方持有。提交后的 CLEAN_FAILURE、DIRTY 或
++ *       INDETERMINATE 均设置 receipt.placement_consumed，旧 token 不得复用；
++ *       Native 清洁释放或将无法安全释放的资源保留到进程退出。
+  * @note allocation_size 是候选分配大小，page_size 是地址布局边界，
+  *       reclaim_payload_size 是本次内核复制字节数；三者都由 Kotlin 明列。
+  *       Native 只接受实现已证明的大小关系，且不从其中任一字段推导默认值。
+@@ -83,11 +85,12 @@ glk43499_handle glk43499_land_page(
+     struct glk43499_landing_result *result);
+ 
+ /**
+- * @brief 关闭未被 Actor 借用的 Page。
+- * @param page 有效 Page handle。
++ * @brief 关闭尚未转移给 Actor 的 Page。
++ * @param page 仍由调用方唯一持有的 Page token。
+  * @param result 必填输出。
+- * @return GLK43499_CALL_BUSY 表示存在 persistent borrow 且本调用不等待。
+- * @note 引用状态不明时保留完整资源闭包到进程退出。
++ * @return glk43499_call_status；调用方保证不与其它 Page 调用并发。
++ * @note wrapper 在调用前置 0。输出 ABI 无效或 token 为 0 时入口未接受，调用方
++ *       恢复原 token；一旦接受，无论回执为完整释放或保留到进程退出都消费 token。
+  */
+ int32_t glk43499_close_page(
+     glk43499_handle page,
+diff --git a/app/src/main/cpp/gl43499/core/placement.h b/app/src/main/cpp/gl43499/core/placement.h
+index 9aaf94a7..b232e94e 100644
+--- a/app/src/main/cpp/gl43499/core/placement.h
++++ b/app/src/main/cpp/gl43499/core/placement.h
+@@ -81,10 +81,11 @@ int32_t glk43499_cancel_placement(
+     struct glk43499_close_result *result);
+ 
+ /**
+- * @brief 终结 Placement 或报告其被保留隔离。
+- * @param placement 有效 Placement handle；成功后变为 stale。
++ * @brief 终结 Placement 或报告其被保留到进程退出。
++ * @param placement 仍由调用方唯一持有的 Placement token；wrapper 在调用前置 0。
+  * @param result 必填输出。
+- * @return glk43499_call_status；LANDING/未知引用转 QUARANTINED。
++ * @return glk43499_call_status；输出 ABI 无效或 token 为 0 时未接受、调用方恢复
++ *         原 token；一旦接受，无论回执为完整释放或保留到进程退出都消费 token。
+  */
+ int32_t glk43499_close_placement(
+     glk43499_handle placement,
+diff --git a/app/src/main/cpp/gl43499/core/result.h b/app/src/main/cpp/gl43499/core/result.h
+index 28a27dfb..610523e0 100644
+--- a/app/src/main/cpp/gl43499/core/result.h
++++ b/app/src/main/cpp/gl43499/core/result.h
+@@ -19,7 +19,9 @@ enum {
+     GLK43499_CALL_OK = 0,
+     GLK43499_CALL_INVALID_ARGUMENT = 1,
+     GLK43499_CALL_BAD_ABI = 2,
++    /** @brief ABI v3保留值；线性owner实现不返回。 */
+     GLK43499_CALL_STALE_HANDLE = 3,
++    /** @brief ABI v3保留值；线性owner实现不返回。 */
+     GLK43499_CALL_WRONG_HANDLE_KIND = 4,
+     GLK43499_CALL_BUSY = 5,
+     GLK43499_CALL_TIMEOUT = 6,
+@@ -48,6 +50,7 @@ enum {
+     GLK43499_RESOURCE_PREPARED = 2,
+     GLK43499_RESOURCE_LANDING = 3,
+     GLK43499_RESOURCE_LANDED = 4,
++    /** @brief ABI v3保留值；线性owner实现不建立Page borrow状态。 */
+     GLK43499_RESOURCE_BORROWED = 5,
+     GLK43499_RESOURCE_RUNNING = 6,
+     GLK43499_RESOURCE_CONSUMED = 7,
+@@ -66,7 +69,8 @@ struct glk43499_call_result {
+     glk43499_effect effect;
+     glk43499_resource_state resource_state;
+     int32_t system_error;
+-    uint64_t generation;
++    /** @brief ABI v3布局保留；线性owner实现必须写0。 */
++    uint64_t reserved_resource_serial;
+     uint64_t retained_resource_count;
+     uint64_t reserved[4];
+ };
+@@ -76,7 +80,7 @@ struct glk43499_close_result {
+     struct glk43499_call_result call;
+     uint32_t stop_requested;
+     uint32_t workers_joined;
+-    uint32_t borrow_released;
++    uint32_t owned_chain_released;
+     uint32_t retained_for_process_exit;
+     uint64_t reserved[4];
+ };
+diff --git a/app/src/main/cpp/gl43499/jni43499.c b/app/src/main/cpp/gl43499/jni43499.c
+index 93cc041c..fc2ccbce 100644
+--- a/app/src/main/cpp/gl43499/jni43499.c
++++ b/app/src/main/cpp/gl43499/jni43499.c
+@@ -134,7 +134,6 @@ static int32_t glk43499_write_call_result(
+            glk43499_set_int(env, target, "effect", source->effect) &&
+            glk43499_set_int(env, target, "resourceState", source->resource_state) &&
+            glk43499_set_int(env, target, "systemError", source->system_error) &&
+-           glk43499_set_long(env, target, "generation", source->generation) &&
+            glk43499_set_long(env, target, "retainedResourceCount",
+                              source->retained_resource_count);
+ }
+@@ -145,7 +144,8 @@ static int32_t glk43499_write_close_result(
+     return glk43499_write_call_result(env, target, &source->call) &&
+            glk43499_set_bool(env, target, "stopRequested", source->stop_requested) &&
+            glk43499_set_bool(env, target, "workersJoined", source->workers_joined) &&
+-           glk43499_set_bool(env, target, "borrowReleased", source->borrow_released) &&
++           glk43499_set_bool(env, target, "ownedChainReleased",
++                             source->owned_chain_released) &&
+            glk43499_set_bool(env, target, "retainedForProcessExit",
+                              source->retained_for_process_exit);
+ }
+@@ -397,14 +397,14 @@ static int32_t glk43499_write_landing_result(
+ static int32_t glk43499_write_actor_prepare_result(
+     JNIEnv *env, jobject target, const struct glk43499_actor_prepare_result *source) {
+     return glk43499_write_call_result(env, target, &source->call) &&
+-           glk43499_set_long(env, target, "pageGeneration",
+-                             source->receipt.page_generation) &&
++           glk43499_set_long(env, target, "pageContentGeneration",
++                             source->receipt.page_content_generation) &&
+            glk43499_set_int(env, target, "primitiveKind",
+                             source->receipt.primitive_kind) &&
+            glk43499_set_int(env, target, "threadCount",
+                             (int32_t) source->receipt.thread_count) &&
+-           glk43499_set_bool(env, target, "pageBorrowAcquired",
+-                             source->receipt.page_borrow_acquired) &&
++           glk43499_set_bool(env, target, "pageConsumed",
++                             source->receipt.page_consumed) &&
+            glk43499_set_bool(env, target, "ownerReady", source->receipt.owner_ready) &&
+            glk43499_set_bool(env, target, "waiterReady", source->receipt.waiter_ready) &&
+            glk43499_set_bool(env, target, "consumerReady",
+@@ -417,8 +417,8 @@ static int32_t glk43499_write_actor_prepare_result(
+ static int32_t glk43499_write_actor_execute_result(
+     JNIEnv *env, jobject target, const struct glk43499_actor_execute_result *source) {
+     return glk43499_write_call_result(env, target, &source->call) &&
+-           glk43499_set_long(env, target, "pageGeneration",
+-                             source->receipt.page_generation) &&
++           glk43499_set_long(env, target, "pageContentGeneration",
++                             source->receipt.page_content_generation) &&
+            glk43499_set_long(env, target, "consumerCallCount",
+                              source->receipt.consumer_call_count) &&
+            glk43499_set_long(env, target, "consumerSuccessCount",
+diff --git a/app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt b/app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt
+index 8f72a9a4..73ddf3bc 100644
+--- a/app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt
++++ b/app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt
+@@ -107,7 +107,6 @@ internal open class Native43499CallResult {
+     var effect: Int = 0
+     var resourceState: Int = 0
+     var systemError: Int = 0
+-    var generation: Long = 0
+     var retainedResourceCount: Long = 0
+ }
+ 
+@@ -116,7 +115,7 @@ internal open class Native43499CallResult {
+ internal class Native43499CloseResult : Native43499CallResult() {
+     var stopRequested: Boolean = false
+     var workersJoined: Boolean = false
+-    var borrowReleased: Boolean = false
++    var ownedChainReleased: Boolean = false
+     var retainedForProcessExit: Boolean = false
+ }
+ 
+@@ -148,23 +147,23 @@ internal class Native43499LandingResult : Native43499CallResult() {
+     var reclaimRetained: Boolean = false
+ }
+ 
+-/** prepareActor 的 Page borrow、三线程和 Carrier 准备事实。 */
++/** prepareActor 的 Page 所有权转移、三线程和 Carrier 准备事实。 */
+ @Keep
+ internal class Native43499ActorPrepareResult : Native43499CallResult() {
+-    var pageGeneration: Long = 0
++    var pageContentGeneration: Long = 0
+     var primitiveKind: Int = 0
+     var threadCount: Int = 0
+-    var pageBorrowAcquired: Boolean = false
++    var pageConsumed: Boolean = false
+     var ownerReady: Boolean = false
+     var waiterReady: Boolean = false
+     var consumerReady: Boolean = false
+     var carrierPrepared: Boolean = false
+ }
+ 
+-/** executeActor 的纯物理事实；线程终结与 borrow 归还只看 close 回执。 */
++/** executeActor 的纯物理事实；线程和所拥有Page的终结只看close回执。 */
+ @Keep
+ internal class Native43499ActorExecuteResult : Native43499CallResult() {
+-    var pageGeneration: Long = 0
++    var pageContentGeneration: Long = 0
+     var consumerCallCount: Long = 0
+     var consumerSuccessCount: Long = 0
+     var consumerInflightAtReturn: Long = 0
+@@ -179,7 +178,8 @@ internal class Native43499ActorExecuteResult : Native43499CallResult() {
+ /**
+  * 43499 的无状态 JNI transport。
+  *
+- * 本对象不缓存 handle、Page、Actor 或结果；资源 ID 由调用者显式持有和关闭。
++ * 本对象不缓存token、Page、Actor或结果；Kotlin wrapper唯一持有token并按
++ * Placement→Page→Actor线性转移。伪造、复制或复用token不属于受支持调用。
+  * 当前 native core 仅接入 fail-closed unavailable 实现，因此九个入口均返回
+  * native 的 raw `UNSUPPORTED` 状态，不会产生伪成功或伪句柄。
+  */
+@@ -198,7 +198,7 @@ internal object Native43499Jni {
+     /** 请求停止 Placement；不销毁 handle。 */
+     external fun cancelPlacement(handle: Long, result: Native43499CloseResult): Int
+ 
+-    /** 关闭 Placement；成功后 handle stale。 */
++    /** 终结Placement；wrapper必须先置0，回执区分释放或保留。 */
+     external fun closePlacement(handle: Long, result: Native43499CloseResult): Int
+ 
+     /** 消费 Placement 并产生 Page；[finalBytes] 只在本次调用期间借用。 */
+@@ -210,10 +210,10 @@ internal object Native43499Jni {
+         result: Native43499LandingResult,
+     ): Long
+ 
+-    /** 关闭未被 Actor 借用的 Page。 */
++    /** 终结尚未转移给Actor的Page；wrapper必须先置0。 */
+     external fun closePage(page: Long, result: Native43499CloseResult): Int
+ 
+-    /** 借用 Page，并在线程创建前绑定、深拷贝 [primitive]。 */
++    /** 成功时消费Page，并在线程创建前绑定、深拷贝[primitive]。 */
+     external fun prepareActor(
+         page: Long,
+         setup: Native43499ActorSetup,
+@@ -227,6 +227,6 @@ internal object Native43499Jni {
+     /** 请求停止新触发并排空 Actor；不销毁 handle。 */
+     external fun cancelActor(actor: Long, result: Native43499CloseResult): Int
+ 
+-    /** 终结 Actor、销毁 Carrier，并在 clean 状态归还 Page borrow。 */
++    /** 终结Actor、Carrier及Actor拥有的Page；wrapper必须先置0。 */
+     external fun closeActor(actor: Long, result: Native43499CloseResult): Int
+ }
+diff --git a/docs/development/full-process-uml.md b/docs/development/full-process-uml.md
+index 7c0648ed..6e732b71 100644
+--- a/docs/development/full-process-uml.md
++++ b/docs/development/full-process-uml.md
+@@ -721,6 +721,7 @@ caller owns Glk43499Session; destroy never frees it
+ ## 11. 43499 Placement / Page / Actor 契约（2026-10-26 header-only）
+ 
+ > 头文件批见 [43499-c11-header-contract-plan](../plan/43499-c11-header-contract-plan.md)，JNI transport 见 [43499-jni-transport-plan](../plan/43499-jni-transport-plan.md)。当前 JNI 已接入九入口，但 core 仍是显式 `UNSUPPORTED` 的 unavailable 实现；victim/Finish 不在本批。
++> 真实实现的线性所有权权威与批次顺序见 [43499-resource-primitives-implementation-plan](../plan/43499-resource-primitives-implementation-plan.md)。G4L-0已批准；物理实现仍未开始。
+ 
+ ### 11.1 IPO / dependency
+ 
+@@ -747,21 +748,25 @@ flowchart LR
+ ```mermaid
+ stateDiagram-v2
+   [*] --> Placement: preparePlacement transaction
+-  Placement --> Page: landPage CLEAN_SUCCESS; Placement stale
++  Placement --> Page: landPage success; consume Placement token
+   Placement --> Placement: precommit NOT_APPLIED
++  Placement --> Closed: postcommit CLEAN_FAILURE; consumed and released
+   Placement --> Closed: close before commit
+-  Placement --> Quarantined: postcommit unknown
+-
+-  Page --> Borrowed: prepareActor binds Primitive
+-  Borrowed --> Running: executeActor without tag/spec
+-  Running --> Borrowed: clean execution completed
+-  Borrowed --> Page: closeActor stop/disarm/join/release borrow
+-  Page --> Closed: closePage borrow=0
+-  Running --> Quarantined: reference state unknown
+-  Quarantined --> [*]: process exit only
++  Placement --> Retained: postcommit DIRTY/INDETERMINATE; consumed
++
++  Page --> Actor: prepareActor success; consume Page token
++  Page --> Page: prepareActor clean failure
++  Page --> Retained: prepareActor dirty; token consumed
++  Page --> Closed: closePage before transfer
++  Actor --> Running: executeActor without tag/spec
++  Running --> Actor: clean execution completed
++  Actor --> Closed: closeActor releases Actor Carrier Page
++  Running --> Retained: reference state unknown
++  Retained --> [*]: process exit only
+ ```
+ 
+-Actor prepare 在创建线程前深拷贝 Primitive 并绑定具体 Carrier，同时对 Page 建 persistent borrow；仅 clean 在 stop/disarm/join 后解除。dirty 将 Actor、Carrier、Page 的完整依赖闭包一并 quarantine。
++每个token只有一个Kotlin owner。`placementConsumed=1`时Placement置0；`pageConsumed=1`时Page置0；
++仅非零Actor token直接拥有Page与Carrier。raw token误用不提供stale/wrong-kind保护。
+ 
+ ### 11.3 Class
+ 
+@@ -781,21 +786,21 @@ classDiagram
+   class Carrier
+   class AccessView
+   RunResourceScope *-- DiscoveryHandle
+-  RunResourceScope *-- PlacementHandle
+-  RunResourceScope *-- PageHandle
+-  RunResourceScope *-- ActorHandle
+-  AccessView --> PageHandle : borrowed
++  RunResourceScope *-- PlacementHandle : current owner only
++  RunResourceScope *-- PageHandle : current owner only
++  RunResourceScope *-- ActorHandle : current owner only
+   NativeGeneralJni --> DiscoveryHandle
+   Native43499Jni --> PlacementHandle
+   Native43499Jni --> PageHandle
+   Native43499Jni --> ActorHandle
+   Native43499NamedDtos --> Native43499Jni : explicit fields
+   Native43499Jni --> ApiUnavailable : current fail-closed target
+-  PlacementHandle --> PageHandle : land consumes placement
+-  ActorHandle --> PageHandle : persistent borrow
++  PlacementHandle --> PageHandle : ownership move
++  PageHandle --> ActorHandle : ownership move
++  ActorHandle *-- PageHandle : owns
+   ActorHandle *-- Carrier : owns one bound carrier
+   PrimitiveSpec --> Carrier : prepare-time deep copy
+-  AccessView ..> RunResourceScope : borrowed only
++  AccessView ..> RunResourceScope : independent public primitive
+ ```
+ 
+ ### 11.4 Sequence
+@@ -814,13 +819,43 @@ sequenceDiagram
+     B-->>K: PlacementHandle + candidate facts
+     K->>K: calculate addresses and final page bytes
+     K->>B: landPage(placement, bytes, geometry)
+-    B-->>K: PageHandle; Placement stale
++    B-->>K: Page token + placementConsumed receipt
++    alt placementConsumed = 1
++      K->>K: zero Placement; own Page only when token is nonzero
++    else placementConsumed = 0
++      K->>K: retain Placement for close or retry
++    end
+     K->>B: prepareActor(page, setup, PrimitiveSpec)
+-    B-->>K: ActorHandle; Page borrowed; Carrier bound
++    B-->>K: Actor token + pageConsumed receipt
++    alt pageConsumed = 1
++      K->>K: zero Page; Actor owns Page only when token is nonzero
++    else pageConsumed = 0
++      K->>K: retain Page for close or retry
++    end
+     K->>B: executeActor(actor)
+     B-->>K: call status + effect + resource state + receipt
+     K->>B: closeActor(actor)
+-    B-->>K: Page borrow released
+-    K->>B: closePage(page)
++    B-->>K: Actor Carrier Page chain released or retained
+   end
+ ```
++
++### 11.5 Implementation gates
++
++```mermaid
++flowchart LR
++  G0[G4L-0 linear contract] --> G1[G4L-1 Placement]
++  G1 --> G2[G4L-2 Landing and Page]
++  G2 --> G3[G4L-3 Actor owns Page]
++  G3 --> G5[G4L-5 Kotlin Lua wrappers]
++  G3 --> GM[G4L-4M Multicast]
++  G3 --> GP[G4L-4P Pselect]
++  G3 --> GT[G4L-4T TCP zerocopy]
++  GM --> ANY{Any supported Primitive}
++  GP --> ANY
++  GT -. independent approval .-> ANY
++  G5 --> G6[G4L-6 victim Finish ksud]
++  ANY --> G6
++```
++
++G4L-5不等待三个Primitive全部完成；G4L-6至少依赖一个已过真机门的Primitive，TCP仍有独立批准点。
++Native不含registry，只绑定物理Primitive；route与跨backend顺序由Kotlin/Lua决定。
+diff --git a/docs/plan/43499-43284-jni-rewrite-plan.md b/docs/plan/43499-43284-jni-rewrite-plan.md
+index 9877aa6e..27f48a21 100644
+--- a/docs/plan/43499-43284-jni-rewrite-plan.md
++++ b/docs/plan/43499-43284-jni-rewrite-plan.md
+@@ -1,7 +1,9 @@
+-# Kotlin-first JNI 重写计划 v4（批准候选）
++# Kotlin-first JNI 重写计划 v4（架构依据）
+ 
+ - 日期：2026-10-23；级别：L；作者：Lead；评审：design-critic。
+-- 状态：**已批准**（用户 2026-10-23 指令“按照计划”编写架构 Kotlin class）；本文与同批 ADR、approval-status、UML 同步生效。
++- 状态：架构裁定逐项只以 [43499-approval-status.md](43499-approval-status.md) 为准；本文不得独立声明
++  生产批准。43499真实资源实施候选见
++  [43499-resource-primitives-implementation-plan.md](43499-resource-primitives-implementation-plan.md)。
+ - 取代：v4 生效时取代 v3 的 per-route JNI、全无状态/无 handle 和 Flow 独占能力入口。
+ - 摘要：[Kotlin/Native 边界](../analysis/kotlin-native-boundary-brief.md)。
+ 
+@@ -28,10 +30,11 @@ common STATIC -> general/43499/43284
+ |---|---|---|
+ | v3 §4.1、approval §4：per-route JNI/TU | 每个物理 mechanism 命名 entry；route 在 Kotlin | approval route 表 |
+ | v3 §4.2、ADR-0021：无 handle | 值调用无状态；资源用 typed handle | approval handle 表 |
+-| ADR-0019：可写全局为空 | 每 DSO 一个固定容量 registry 例外 | ADR-0019/C5 |
++| ADR-0019：可写全局为空 | 历史候选：每 DSO 固定 registry；43499 已取代为线性 owner | ADR-0019/C5；线性计划 §4 |
+ | ADR-0022：Flow.run 唯一入口 | UI run 仍经 Flow；Lua 脚本内部可直调 scope-bound API | ADR-0022 |
+ 
+-代价：route TU 静态隔离减少；增加 request 误组合和 registry 状态。偿还：typed request、状态/并发反例、link firewall、三 route 单独真机门禁。用户已于 2026-10-23 以“按照计划”知情确认。
++代价：route TU 静态隔离减少；增加 request 误组合。43499 不再增加 registry 状态，改由线性 owner 承担
++raw token 误用风险。偿还：typed request、状态/并发反例、link firewall、三 route 单独真机门禁。
+ 
+ ## 3. DSO 与目录
+ 
+@@ -63,22 +66,28 @@ ResultHeader  { version:u16, size:u16, status:u32, errnoValue:i32, effect:u32 }
+ | finalAddress/domain bounds/tag | Kotlin | 非零、上下界、对齐、溢出 |
+ | finalPayloadBytes/metadata | Kotlin | 长度、ABI tag、列入 ABI 表的 byte-offset invariant |
+ | scan params/bounds | Kotlin | 0/1/MAX、乘加溢出、资源上限 |
+-| handle state/effect | Native | registry 状态机 |
++| handle state/effect | Native | 43499对象内状态；无registry；其它backend另行裁定 |
+ 
+ Native 禁止用 route/offset/profile 重算地址或 payload。未列入 ABI 表的 payload invariant 不得检查。requestId 只作观测，不提供重放幂等。
+ 
+-状态：`OK/BAD_ARGUMENT/STALE_HANDLE/WRONG_KIND/INVALID_STATE/BUSY/CAPACITY/UNSUPPORTED/CANCELLED_CLEAN/CLEAN_FAILURE/DIRTY_FAILURE/INDETERMINATE`；errno 独立返回。
++状态数值表保持 ABI v3；43499 实现只返回线性契约适用的状态，`STALE_HANDLE/WRONG_KIND/BORROWED/CAPACITY`
++只作保留值且不返回；errno 独立返回。
+ 
+ ## 5. handle registry
+ 
++> **2026-10-26取代**：本节针对43499的registry选择已被
++> [43499-resource-primitives-implementation-plan.md](43499-resource-primitives-implementation-plan.md)
++> 取代。43499采用Kotlin唯一owner与Placement→Page→Actor线性token；本节只保留历史CBN，43284/general
++> 不因该裁定自动改变。raw token误用不提供stale/wrong-kind保护。
++
+ ### 5.1 选择与 CBN
+ 
+ | 方案 | 收益 | 成本/边际 |
+ |---|---|---|
+-| A 每 DSO 固定 registry（选） | raw pointer 0 次跨 JNI；wrong-kind/stale 可统一拒绝 | 1 个锁+固定 slots；每新 handle kind 改定义/生成物各 1 处 |
++| A 每 DSO 固定 registry（43499历史候选，未采用） | raw pointer 0 次跨 JNI；wrong-kind/stale 可统一拒绝 | 1 个锁+固定 slots；每新 handle kind 改定义/生成物各 1 处 |
+ | B caller-owned arena pointer | 无 registry 全局 | 必须安全映射 pointer token；每 entry 增加 arena 参数，仍需生命周期表 |
+ 
+-翻转条件：registry 使 PI 窗口新增锁/间接分派，或固定容量不足以覆盖“一次 run 最大资源数×2”时重评。所有 registry 操作在 PI 窗口外。
++43499 的现行翻转条件与结论见线性计划 §4；以下私有实现仅保存被取代方案的历史推理，不是实施要求。
+ 
+ ### 5.2 私有实现
+ 
+@@ -103,6 +112,8 @@ continuation 只存在于 handle 内部 cursor；Kotlin 只传 batch index/recei
+ 
+ ### 6.2 43499
+ 
++> **2026-10-26取代**：本节资源状态机仅作历史依据；43499当前权威为线性owner计划§3–§5。
++
+ ```text
+ allocatePage/mapPage/installPayload
+ prepareActor
+@@ -118,7 +129,8 @@ PREPARED -> EXECUTING -> COMPLETED_CLEAN -> DESTROYABLE
+ PREPARED -> CANCELLED_CLEAN -> DESTROYABLE
+ ```
+ 
+-disarm 属于 execute 内部；不导出外部 disarm。`QUARANTINED/LEAKED_ON_STUCK` 采用进程生命周期保留策略，Cleaner 禁止回收；registry 记录资源清单和 effect，当前 run fail-stop。容量耗尽返回 CAPACITY，不再攻击。进程退出是最终终结点；D3 真机后才可设计具名 reap，未经证据不得释放。旧 T-LEAK 的 `pipefd[2]`/`block_fd` 归 Actor owner。
++历史方案曾由 registry 记录资源清单并以 CAPACITY fail-stop；43499 现行方案不采用该机制。现行
++dirty/unknown 完整闭包保留、终结点与 owner 规则只以线性计划 §3 为准。
+ 
+ ### 6.3 43284 与 Access
+ 
+@@ -161,20 +173,24 @@ D3 前必须在现有 annex 完成每个生产 symbol 的 `source file:function
+ | 批次 | 内容 | 离线/构建 | 真机 |
+ |---|---|---|---|
+ | D0 | 同批文档候选 | link/check、字节配额、critic 0阻断 | — |
+-| D1 | schema/wrapper/registry | `./gradlew :app:testDebugUnitTest`；XML三桶；NDK assemble；nm/readelf/link-map | — |
++| D1 | schema/wrapper/线性token | `./gradlew :app:testDebugUnitTest`；XML三桶；NDK assemble；nm/readelf/link-map | — |
+ | D2 | common/general | DTO-after-close；0/1/MAX batch；backend link-map general symbol=0 | discovery 单功能 |
+-| D3 | page/actor/mechanisms | 并发矩阵、registry残留=0、窗口调用图 | 每 mechanism 冷机单 route |
++| D3 | page/actor/mechanisms | 并发矩阵、全局资源表=0、窗口调用图 | 每 mechanism 冷机单 route |
+ | D4 | Kotlin address/payload/Flow/Lua | fixed vectors、错域/截断/metadata、Lua scope | 三 route 写回读 |
+ | D5 | victim/Finish/退役 | symbol manifest、旧入口=0、APK hash | uid=0、script hash/marker/SELinux |
+ 
+ D0 只冻结命令，不把 task-list 查询当构建证据：先运行 `./gradlew :app:tasks --all --console=plain > <evidence>` 并记录 Gradle exit，再对 evidence 单独 `rg` 并记录 rg exit。实现批命令为 `./gradlew :app:testDebugUnitTest --console=plain`、`./gradlew :app:externalNativeBuildDebug --console=plain`、`./gradlew :app:assembleDebug --console=plain`。每批保存完整 literal output、exact exit、XML三桶、NDK零告警、APK/DSO sha。共享构建串行；攻击批当批真机；连续失败两次停回 debug。
+ 
+-C5 从“BSS 空”改为“仅 registry 明确符号”；每 DSO 允许表由 manifest 生成，其余可写符号为 0。registry 不得在 PI 窗口访问。
++C5 对43499保持可写全局业务状态为0；对象内状态不计作全局。其它DSO若需例外须各自重新设计批准。
+ 
+ ## 10. 批准项与扩展
+ 
+-用户需一次确认：route-TU 旧裁定被 mechanism entry 取代；actor batch 生产启用；per-DSO registry 全局例外；victim protocol child/Finish primitive。
++用户需一次确认：route-TU 旧裁定被 mechanism entry 取代；actor batch 生产启用；43499线性owner；
++victim protocol child/Finish primitive。43499 registry 全局例外已明确撤销。
+ 
+-扩展点：新增 backend 只新增自己的 DSO/schema/wrapper；新增 mechanism 只新增命名 entry、PI 直接调用版本和 Kotlin request；general 只有独立 Kotlin-called service 才可加入。未来债：quarantine 可能耗尽固定 slots，D3 后以实测 dirty 率决定是否设计 reap；偿还前 fail-closed CAPACITY。
++扩展点：新增 backend 只新增自己的 DSO/schema/wrapper；43499新增Primitive默认扩展`PrimitiveSpec` tagged
++union，并继续由单一`prepareActor`绑定、`executeActor`无tag/spec；只有满足C11计划的翻转条件才改为具名prepare
++入口。general只有独立Kotlin-called service才可加入。43499未来债是raw token误用可崩溃；若出现共享或
++fail-closed需求，按线性计划翻转条件重设安全句柄层。
+ 
+ 批准标准：critic 阻断 0、用户明确批准、冻结 manifest 中七份候选（brief、plan、ADR-0019、ADR-0021、ADR-0022、approval-status、UML）同步生效；未满足时不写实现。
+diff --git a/docs/plan/43499-approval-status.md b/docs/plan/43499-approval-status.md
+index 70291bd8..307cec44 100644
+--- a/docs/plan/43499-approval-status.md
++++ b/docs/plan/43499-approval-status.md
+@@ -39,6 +39,9 @@
+ 
+ ## 4. route 状态
+ 
++> 本节只保留历史 route 方向与实验证据，不再定义现行实现边界；43499 的现行资源/JNI边界以 §4.1
++> 已批准项和线性资源实施计划为准。
++
+ | route | 方向 | 状态 | 实现 / 门禁 |
+ | --- | --- | --- | --- |
+ | `multicast_waiter` | PI-futex 三演员 + stamp/page tuple | **已批准**（含 **PI 例外**） | [43499-route-port-plan.md](43499-route-port-plan.md) §7a：用户 2026-10-20 接受 PI panic 为概率性、非破坏事件（后果＝重启），明确批准进入该 route；AVD route gate PASS（`cve43499-route-avd-20261020-1619.md`） |
+@@ -51,13 +54,14 @@
+ 
+ | 项 | 候选内容 | 状态 | 生效代价/偿还 |
+ |---|---|---|---|
+-| route 所在层 | 取代“每 route JNI/TU”：Native 只给三个命名 mechanism entry；Kotlin/Lua 组合 route | **已批准** | 用户 2026-10-23 指令“按照计划”；typed request + 三路真机偿还 |
++| route 所在层 | Kotlin/Lua组合route；Native由`prepareActor`的typed `PrimitiveSpec`绑定一个Carrier，`executeActor`无tag/spec；旧“三个命名entry”已被C11契约取代 | **已批准** | 用户2026-10-26批准C11契约；typed request + 三路真机偿还 |
+ | actor batch 生产 | 最小不可拆 PI actor transaction 在一次 Native call 内完成 | **已批准** | 用户 2026-10-23 指令“按照计划”；窗口调用图/真机门禁 |
+-| typed handle | 值调用无状态；Page/Actor/Discovery/Victim 等物理资源用 handle | **已批准** | 用户 2026-10-23 指令“按照计划”；并发矩阵和残留检查 |
+-| registry 例外 | 每 DSO 一个固定容量可写 registry，PI 窗口外访问 | **已批准** | 用户 2026-10-23 指令“按照计划”；BSS manifest/fork gate |
++| typed token | Placement→Page→Actor线性唯一owner；token可由Native对象地址转换，转移/终结后Kotlin置0 | **已批准** | 用户2026-10-26裁定“就这样吧，修订”；raw误用不提供stale/wrong-kind保护 |
++| registry 例外 | 每 DSO 固定容量registry | **不做（已取代）** | 用户2026-10-26确认无多Actor/多Flow共享场景；改线性owner |
+ | victim/Finish | protocol child 用 Native handle；普通 victim 仍 ProcessBuilder；UI脚本由 rooted child 中性触发 | **已批准** | 用户 2026-10-23 指令“按照计划”；pid/hash/marker/SELinux 真机门禁 |
+ | C11 Page/Actor header-only 契约 | Placement→Page 所有权转移；Actor prepare 时绑定物理 Primitive；execute 无 tag；不接 CMake/JNI | **已批准（仅头文件）** | 用户 2026-10-26 明确要求从零写 `.h`；实现与生产接线仍按独立批次门禁；见 [43499-c11-header-contract-plan.md](43499-c11-header-contract-plan.md) |
+ | JNI transport | 具名 Kotlin DTO ↔ 显式 JNI 字段翻译 ↔ C11 九入口；当前 core 用 fail-closed unavailable 实现 | **已批准（仅 transport）** | 用户 2026-10-26 明确要求“修改jni”；不批准物理原语实现；见 [43499-jni-transport-plan.md](43499-jni-transport-plan.md) |
++| 资源原语实施 | G4L-0线性契约→Placement→Page→Actor→独立Primitive→wrapper→最终接线 | **已批准（仅线性设计与G4L-0契约修订）** | 用户2026-10-26“就这样吧，修订”；物理实现仍逐批批准；见 [43499-resource-primitives-implementation-plan.md](43499-resource-primitives-implementation-plan.md) |
+ 
+ 批准方式：用户 2026-10-23 指令“按照计划”编写架构 Kotlin class；第1层历史薄层继续保留，第2层最小 transaction 生产启用。2026-10-23 六项同步生效；2026-10-26 header-only 项独立生效。
+ 
+@@ -68,7 +72,7 @@
+ | UI / 配置 / profile 接线 | **不做**（本阶段） | kt-step 头部与 §9 |
+ | 43284 / 64560 | **不做** | kt-step §9 |
+ | CLI / 临时旁路 | **不做** | MASTER-PLAN §0.1；kt-step §9 |
+-| Lua 自由跨 backend 编排 | **待批准（JNI v4）** | UI run 仍经 FlowLuaImpl；脚本内部可直调 scope-bound API |
++| Lua 自由跨 backend 编排 | **已批准（公开Access/JNI原语）** | 用户2026-10-26接受反射raw误用为开发者责任；raw holder不进受支持ABI |
+ | 删除 legacy C++ 43499 | **不做**（隔离保留，`git show 92d55d3e:<path>` 恢复清单） | kt-step §7 CBN / §9 |
+ | 把 fixture 当生产成功 | **不做**（禁止） | MASTER-PLAN §13；kt-step §16 |
+ 
+@@ -76,12 +80,13 @@
+ 
+ | 计划 | 角色 | 状态 |
+ | --- | --- | --- |
+-| [43499-kt-step-plan.md](43499-kt-step-plan.md) | **唯一生产计划** | 在办（K1/K2 已实现，K3–K5 待批准） |
+-| [43499-43284-jni-rewrite-plan.md](43499-43284-jni-rewrite-plan.md) | JNI 重写（Kotlin-first） | **待批**（design-critic v1 不可进；v2 待复核）。批准后接管 kt-step 的生产计划地位；本表仍是批准状态唯一权威 |
+-| [43499-route-port-plan.md](43499-route-port-plan.md) | multicast 生产 route | 在办（PI 例外已批；页面落点未证） |
+-| [43499-three-routes-production-plan.md](43499-three-routes-production-plan.md) | 三 route 生产化 | 阻断（design-critic）；select 已 AVD pass、tcp 未通 |
++| [43499-kt-step-plan.md](43499-kt-step-plan.md) | K1/K2历史实现与syscall依据 | K1/K2已实现；K3以后实施权威已被线性资源计划取代 |
++| [43499-43284-jni-rewrite-plan.md](43499-43284-jni-rewrite-plan.md) | JNI重写架构历史 | 不作生产实施权威；43499资源段已被线性计划取代 |
++| [43499-resource-primitives-implementation-plan.md](43499-resource-primitives-implementation-plan.md) | **K2后43499资源实施唯一权威** | 设计/G4L-0已批；G4L-1以后逐批批准，当前保持unavailable |
++| [43499-route-port-plan.md](43499-route-port-plan.md) | multicast历史证据 | 仅保留PI例外与页面落点证据，不作实施权威 |
++| [43499-three-routes-production-plan.md](43499-three-routes-production-plan.md) | 三route历史证据 | 仅保留select AVD/tcp未通证据，不作实施权威 |
+ | [43499-production-victim-plan.md](43499-production-victim-plan.md) | victim 生命周期（Kotlin） | 已实现（host + AVD lifecycle） |
+-| [43499-prepare-port-plan.md](43499-prepare-port-plan.md) | prepare 端口 | 已实现（AVD `status=0`/`shapingFd`），页落点未证 |
++| [43499-prepare-port-plan.md](43499-prepare-port-plan.md) | prepare历史证据 | 仅保留AVD `status=0`/`shapingFd`与页落点未证，不作实施权威 |
+ | [43499-tcp-native-port-plan.md](43499-tcp-native-port-plan.md) | tcp route | planning only |
+ | [43499-ktstep-architecture-plan.md](43499-ktstep-architecture-plan.md) | route JNI 家族与包结构 | 设计已批准；实现分批 |
+ | [43499-kotlin-package-refactor-plan.md](43499-kotlin-package-refactor-plan.md) | 包结构重构 | 设计已批准；部分落地 |
+diff --git a/docs/plan/43499-c11-header-contract-plan.md b/docs/plan/43499-c11-header-contract-plan.md
+index c4cf6291..e02566ed 100644
+--- a/docs/plan/43499-c11-header-contract-plan.md
++++ b/docs/plan/43499-c11-header-contract-plan.md
+@@ -7,7 +7,7 @@
+ 
+ ## 目标
+ 
+-在 `app/src/main/cpp/gl43499/core/` 建立自包含的 C11 契约：Placement 是不可拆的定位事务；Landing 成功消费 Placement 并产生 Page；Actor 在 prepare 时绑定一个物理 Primitive，execute 不再接收 route/tag；Actor 借用 Page。
++在 `app/src/main/cpp/gl43499/core/` 建立自包含的 C11 契约：Placement 是不可拆的定位事务；Landing 成功消费 Placement 并产生 Page；Actor 在 prepare 时绑定一个物理 Primitive，execute 不再接收 route/tag；Actor 成功接管并拥有 Page，旧借用方案已取代。
+ 
+ ## 改动清单
+ 
+@@ -19,12 +19,14 @@
+ ## 关键决策
+ 
+ 1. 当前构建是 C11，因此公开契约只使用固定宽度 POD 与 opaque `uint64_t` handle。
+-2. 每个输入结构以 `glk43499_abi_header` 开头；版本为项目统一版本 3，保留位必须为零。
++2. 每个输入结构以 `glk43499_abi_header` 开头；版本为项目统一版本3，保留位必须为零。
+ 3. `prepare_placement` 一次完成顺序敏感的定位；不再暴露虚假的 `allocate → scan` 物理分界。
+ 4. `land_page` 调用期借用 bytes；Native 不保存调用方指针。
+-5. `prepare_actor` 深拷贝 PrimitiveSpec 并在线程创建前绑定；`execute_actor` 无 Primitive 参数。
++5. `prepare_actor`深拷贝PrimitiveSpec并在线程创建前绑定；成功消费Page，Actor成为Page唯一owner；
++   `execute_actor`无Primitive参数。
+ 6. 调用状态、物理 effect、资源 state 正交返回。
+-7. 本批不公开 fd、pid、pthread、registry slot、业务 route、W1/W2/W3、profile、victim 或 Finish。
++7. handle是不透明Native对象token；不使用registry slot，也不公开fd、pid、pthread、业务route、
++   W1/W2/W3、profile、victim或Finish。raw token误用不属于受支持契约。
+ 
+ ## Primitive API 的 CBN
+ 
+diff --git a/docs/plan/43499-jni-transport-plan.md b/docs/plan/43499-jni-transport-plan.md
+index 1bcd6d67..0b255fcf 100644
+--- a/docs/plan/43499-jni-transport-plan.md
++++ b/docs/plan/43499-jni-transport-plan.md
+@@ -12,7 +12,8 @@
+ - 页面与 Carrier 字节先复制到 native 临时缓冲；core 调用期间不持有 pinned array/raw elements，返回后清零释放。
+ - 三种 Kotlin Primitive 实现以 `@Keep` 固定类/字段名；JNI 按具体类判型并在 C 侧赋唯一 Primitive enum，Kotlin 不手抄跨端 ID。
+ - 新增 `core/api_unavailable.c`：九入口完整存在但统一返回 `UNSUPPORTED`，确保 DSO 可链接、可装载且不伪造能力。
+-- CMake 仅加入 unavailable 实现；后续真实实现批必须删除/取代它，禁止 weak symbol 或 stub/real 共存。
++- CMake 仅加入 unavailable 实现。后续按公开符号逐批迁移：同一符号不得 stub/real 共存；未实现符号
++  迁到具名 pending TU，由manifest从9递减到0，最后删除pending TU。禁止weak symbol或运行时选择。
+ 
+ ## 不改
+ 
+@@ -24,7 +25,8 @@
+ 
+ - Kotlin 持有所有对象、ByteArray 与 opaque handle 数值。
+ - JNI 只持有调用期局部副本；不缓存 `jobject`、数组指针或句柄。
+-- handle 0 直接拒绝；非零 ID 的 kind/generation/stale 由未来 core registry 权威判断。
++- token 0直接拒绝；非零token由Kotlin wrapper唯一持有并线性转移。Native不提供kind/generation/stale
++  防护；伪造、复制、复用或并发释放raw token不属于受支持调用。
+ - unavailable 实现不创建 fd/pid/thread、不保存指针，返回 handle 0、`CALL_UNSUPPORTED`、`EFFECT_NONE`、`RESOURCE_INVALID`。
+ 
+ ## 验证
+diff --git a/docs/plan/43499-resource-primitives-implementation-plan.md b/docs/plan/43499-resource-primitives-implementation-plan.md
+new file mode 100644
+index 00000000..4a1c2f76
+--- /dev/null
++++ b/docs/plan/43499-resource-primitives-implementation-plan.md
+@@ -0,0 +1,205 @@
++# 43499 线性资源原语实施计划
++
++- 日期：2026-10-26
++- 基线：`d9b180310ae35cf697843c64c7f2b26756036ef4`
++- 级别：L（攻击关键路径、跨JNI契约、Native资源所有权）
++- 状态：**线性唯一所有权设计已获用户批准；本批只修订契约/transport/UML，不实现物理原语**。
++- 批准状态唯一权威：[43499-approval-status.md](43499-approval-status.md)。
++
++## 0. 裁定与取代
++
++用户于2026-10-26裁定：目标是单次root；Page没有跨Actor或跨Flow共享场景；Lua绕过wrapper造成的
++token误用由脚本开发者负责。故取消每DSO registry、generation/epoch、wrong-kind/stale/capacity检测和
++persistent borrow，改为Kotlin唯一owner与Native对象的线性转移。
++
++本文取代上一版同名计划的registry方案，并细化`43499-43284-jni-rewrite-plan.md`中43499的§5、§6.2、
++§9 D1/D3。`kt-step` K1/K2证据保留；旧route/prepare计划只作物理顺序证据。header/JNI transport仍是
++前置，但其registry/borrow文字由本批同步修订。
++
++**知情越权记录**：该裁定放弃raw token误用的Native防护。受支持wrapper路径仍禁止辅助对象UAF；若
++反射代码伪造、复制、复用或并发释放raw token，可能导致进程崩溃或辅助UAF，不作为Native契约缺陷。
++技术债登记于§9；未来若要求不可信脚本隔离，必须重新引入安全句柄层并重新批准。
++
++## 1. 边界
++
++```text
++Kotlin/Lua决定route、地址、payload、调用顺序、重试、fallback与跨backend组合
++  -> Placement token
++  -> land成功消费Placement，产生Page token
++  -> prepareActor成功消费Page，产生Actor token
++  -> executeActor仅使用prepare时绑定的Primitive
++  -> closeActor终结Actor + Carrier + Page完整所有权链
++```
++
++Native只做物理资源准备、不可暂停事务与正确终结。Native不读profile、不生成payload、不计算最终地址、
++不选择下一Primitive、不保存业务session。Access仍是Lua可单独调用的读写接口，不包装完整攻击prepare。
++
++不恢复旧session/backend/route controller/runFlow；不改general、43284、64560、UI或handoff脚本；不依赖
++`legacy2/`；host、AVD、非零token与`requeue=1`均不代替真机效果。
++
++## 2. Handle与调用约束
++
++`glk43499_handle`是0以外的不透明Native对象token，允许由对象地址转换为`uint64_t`。JNI只检查0；不读取
++token指向对象来猜测kind或存活性。每个token只有一个Kotlin owner：
++
++- 禁止复制、伪造、缓存已转移token或把一种资源token传给另一入口；
++- wrapper串行化同一对象的所有调用，execute/cancel/close不并发；
++- close是终结调用，wrapper先将字段置0再进入JNI；只有输出ABI无效或token为0的未接受失败才恢复
++  原token；入口接受后无论released/retained都消费；转移调用按receipt决定保留或置0；
++- raw JNI holder不进入受支持脚本ABI；反射可达不是安全边界；
++- JNI不提供通用`malloc/free`，只提供类型化factory/transaction/close，以执行fd、child、mapping、线程和PI
++  资源的正确终结顺序。
++
++无全局registry、资源表、current session或可写业务状态。Actor对象内部的线程/原子停止标志不是全局
++状态；它们只在该Actor生命周期内存在。
++
++## 3. 所有权与失败语义
++
++### 3.1 Placement → Page
++
++`landPage`的commit point之前，失败为`NOT_APPLIED/CLEAN_FAILURE`，Placement仍归Kotlin。commit成功后
++旧Placement token被消费，Kotlin必须置0并接收Page。commit后的clean failure同样设置
++`placement_consumed=1`并清洁释放；dirty/indeterminate也设置该字段，但Native将无法安全释放的闭包
++保留到进程退出。只有precommit失败允许继续持有旧token。
++
++### 3.2 Page → Actor
++
++`prepareActor`在线程创建前深拷贝Primitive和frame。所有Carrier、同步对象和线程准备完成后才提交Page
++所有权：
++
++| 结果 | `page_consumed` | Kotlin动作 |
++|---|---:|---|
++| success + Actor token | 1 | Page置0，Actor成为唯一owner |
++| clean failure | 0 | Page仍可close或重试 |
++| dirty/indeterminate | 1 | Page置0，Native保留完整闭包到进程退出 |
++
++不存在Page borrow、共享Page、Page归还或`closePage(BUSY)`。`closePage`只用于尚未成功转移的Page。
++
++### 3.3 Actor终结
++
++Actor拥有Page、Carrier、三个joinable worker和PI状态。固定顺序为：
++
++```text
++stop new trigger
++ -> wait consumer in-flight == 0
++ -> disarm Carrier
++ -> detach PI relation / synchronize waiter state
++ -> join in已验证顺序
++ -> close Carrier resources
++ -> release owned Page
++ -> release Actor
++```
++
++clean close回执`owned_chain_released=1`；dirty/unknown时为0并保留完整闭包到进程退出。无论哪种终结结果，
++调用方都不得再次使用该Actor token。仅漏洞目标允许有意UAF；受支持路径中的线程、PI内存、waiter、
++buffer、mapping、fd和资源对象不得UAF。
++
++三个`close*`的接受点统一为“输出ABI校验成功且输入token非零”。wrapper先原子取出token并置0；接受前的
++ABI/零token失败恢复原token，接受后无论回执是clean released还是retained都不恢复、不重试。
++`cancel*`不消费token。
++
++## 4. CBN：Registry与线性owner
++
++| 方案 | 收益 | 成本与扩展边际 | 结论 |
++|---|---|---|---|
++| 固定registry | raw误用可返回stale/wrong-kind；支持共享 | 全局表、锁、slot、generation、fork/unload、容量门；每资源kind改表/manifest/并发测试 | 不采用 |
++| Kotlin唯一owner + typed token | 无全局状态；所有权路径只有2次转移；无Page共享协议 | raw误用可崩溃；每新增资源只增加factory/close与wrapper各1处 | 采用 |
++| 通用malloc/free | API少 | 无法表达fd/child/thread/PI终结；每调用方重复析构知识 | 不采用 |
++
++翻转条件：出现真实的多Actor/多Flow共享需求，或要求任意反射/raw JNI误用必须fail-closed而不能崩溃时，
++重新设计安全句柄层；不得在现结构上添加magic读取，因为读取已释放对象本身就是UAF。
++
++## 5. 唯一实施序列
++
++每批只做一类事；上一批全绿才进入下一批，连续失败两次停回debug。
++
++### G4L-0：线性契约修订（本批）
++
++修改C header、Kotlin DTO注释/receipt字段、JNI字段翻译、unavailable stub、批准表、旧计划指针与UML。
++删除generation/borrow语义；九入口仍全部`UNSUPPORTED`，不创建fd/pid/thread/map或非零token。
++ABI v3既有枚举数值和结构宽度保持不变；stale/wrong-kind/borrowed仅保留数值占位，真实实现不返回。
++
++### G4L-1：Placement
++
++实现`prepare/cancel/closePlacement`。Kotlin给出范围、数量、CPU与超时；Native只完成定位并返回facts。
++partial-start按`stop→join→unmap/close→reap child`逆序清理。每个公开符号始终只有一个强定义，pending
++TU按符号递减。
++
++### G4L-2：Landing与Page
++
++实现`landPage/closePage`，冻结preflight、commit和`placement_consumed`。JNI先复制最终bytes；Native只
++验证ABI、长度、边界、对齐、溢出和契约物理约束，不解释payload。
++
++### G4L-3：Actor与线性接管
++
++实现Page消费、Carrier准备、三个worker、CPU/优先级、屏障、cancel/close和partial-start回滚。首个真实
++Primitive通过前生产`prepareActor`保持`UNSUPPORTED`。终结顺序冻结于
++`legacy2/core/race.cpp:361-363,413-415`与
++`docs/analysis/43499-43284-resource-ownership.md:10-14,59-61`；任何顺序改变都须独立物证与真机批准，
++不得以重构名义改动。
++
++### G4L-4M / G4L-4P / G4L-4T：三个Primitive
++
++Multicast、Pselect、TCP zerocopy分别独立资源表、失败注入、反汇编和冷机真机门。PI窗口无kind读取、
++动态分派、JNI、锁、分配、日志或首次触页。TCP仍需单独批准；失败不得自动换Primitive。
++
++### G4L-5：Kotlin/Lua wrapper
++
++每种资源一个`AutoCloseable` owner class；字段私有，转移/close后置0，方法用单对象锁串行化。Lua可自由
++选择公开Access或JNI原语；scope只管理owner与兼容承诺。测试正常链、每个clean失败保留owner、dirty
++失败消费owner、close/use后的wrapper拒绝，以及反射raw误用不属于受支持保证的文档契约。
++
++### G4L-6：victim、Finish与ksud
++
++依赖wrapper与至少一个已过真机门Primitive。victim继续Kotlin `ProcessBuilder`；handoff使用UI生成脚本，
++Native不生成/选择/解释脚本。成功由uid、脚本对象、ksud/marker、SELinux恢复和资源终结共同证明。
++
++## 6. 每批门禁
++
++```text
++git diff --check
++./gradlew nativeTestHost nativeBuildAndroid :app:testDebugUnitTest --console=plain
++./gradlew :app:compileDebugKotlin :app:externalNativeBuildDebug :app:assembleRelease --no-daemon
++```
++
++记录literal output与exit；从`build/test-results/**/*.xml`全量统计失败。核对APK/DSO路径、SHA-256、
++`nm/readelf`、link map、九JNI符号对拍、旧Flow符号为0、除const外无43499可写全局。共享build目录串行。
++`AGENTS.md` §8仍列已删除Make入口；用户批准本计划同时确认按§4与`introduction.md`使用上述Gradle映射，
++激活批同步修订AGENTS §8。
++
++G4L-1起触及真实攻击资源时，当批执行冷机、固定CPU对、单Primitive、KernelSU未加载的真机门；覆盖
++成功/失败/超时/取消/提前返回，归档`docs/analysis/device-gates/`。每个Primitive单独证明命中和写验证；
++未过门不得标supported、接默认Flow或进入ksud批。
++
++每批开工前冻结完整文件清单，含生产源、测试、CMake/Gradle、Kotlin、UML和门禁记录；清单外冻结。
++每批保存原始hash与四事务产物，并在独立副本实测回滚。
++
++## 7. 批准与激活
++
++本次用户批准只覆盖线性所有权架构与G4L-0契约修订；不自动批准G4L-1之后的物理实现或生产接线。
++同步状态：registry改为“不采用”；typed token改为“调用方唯一owner”；Lua公开Access/JNI自由组合获批，
++raw holder仍不属于受支持ABI。旧计划头部登记被取代范围，不删除历史。
++
++G4L-1前仍须：design-critic阻断0、用户批准该实现批、冻结文件清单。G4L-4T与G4L-6保留独立批准点。
++
++## 8. 停止条件
++
++出现任一项立即停批：PI窗口动态分派；无法证明“停止访问→解除关联→回收”；clean路径残留资源；
++第二份地址/payload权威；为过门恢复route/session/Flow或修改判据；同批门禁连续失败两次。
++
++## 9. 技术债
++
++| 债 | 代价 | 偿还时机 |
++|---|---|---|
++| raw token无stale/wrong-kind保护 | 绕过wrapper可能崩溃/UAF | 不可信脚本隔离或共享需求出现时重建安全句柄层 |
++| dirty闭包保留到进程退出 | 多次失败可能增长RSS/fd | 真机测得dirty率非零后设计具名reap |
++| 单owner禁止Page复用 | 未来复用需新所有权协议 | 出现有证据的第二消费者时重新CBN |
++| 第4种Primitive扩展tagged union | DTO/JNI/R8对拍面增长 | 第4种提案时重算具名入口CBN |
++
++## 10. 评审记录
++
++| 时间 | 版本 | 总判 | 阻断数 | 备注 |
++|---|---|---|---:|---|
++| 2026-10-26 | registry版`7248e916…` | 被取代 | 0 | 用户裁定无共享场景 |
++| 2026-10-26 | 线性owner初稿 | 待评审 | — | G4L-0 only |
++| 2026-10-26 | 线性owner修订稿 | 通过G4L-0设计批准gate | 0 | design-critic：重要0、建议0 |

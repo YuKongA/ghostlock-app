@@ -1,0 +1,81 @@
+43499 resource primitives implementation plan verification
+Date: 2026-10-26 America/Toronto
+HEAD: d9b180310ae35cf697843c64c7f2b26756036ef4
+
+CHANGED BRANCH/FIELD
+- Plan branch: G4I-0 -> G4I-1 -> G4I-2 -> G4I-3 -> G4I-4.
+- From G4I-4, Kotlin/Lua wrappers and G4I-5M/P/T are independent gated branches.
+- G4I-7 requires wrappers plus any one supported Primitive; TCP keeps a separate approval.
+- Native owns physical resources and indivisible transactions. Kotlin/Lua owns route,
+  address/payload calculation, ordering, retry, fallback, and cross-backend composition.
+- Approval remains pending. Current JNI behavior remains fail-closed UNSUPPORTED.
+
+BASELINE
+Command:
+awk line-range reconstruction of the inspected turn-entry versions, followed by
+shasum -a 256 for the four pre-existing documents; the new plan path was absent.
+Input:
+docs/plan/43499-jni-transport-plan.md
+docs/plan/43499-43284-jni-rewrite-plan.md
+docs/plan/43499-approval-status.md
+docs/development/full-process-uml.md
+Literal output/result:
+docs/plan/43499-jni-transport-plan.md bccf6826f3d43060a125796c5cbe481fd5f75c2c564a5157d2acd5cc04818afb
+docs/plan/43499-43284-jni-rewrite-plan.md 6458189d7b63ba7d5fa8cffa5c177442e44791bbd75d4904cdfda03ec456563e
+docs/plan/43499-approval-status.md ab71ab3172a35ff2882d2390e288b4ff84c1d8e21d3e10efcebc6b6e28bd9131
+docs/development/full-process-uml.md 971ed5b3006bccc0af74192b978f9200e277434320c0c4e40166fe3fb5a27079
+New plan: ABSENT
+Exit status: 0
+
+MODIFIED
+Command:
+Python plan validator plus git diff --check for the plan, transport plan,
+rewrite architecture basis, approval-status and full-process UML.
+Input:
+Final five-document snapshot at HEAD d9b180310ae35cf697843c64c7f2b26756036ef4.
+Literal output/result:
+PLAN_STRUCTURE_LINKS_SIZE=PASS
+PLAN_BYTES=16255
+APPROVAL_REMAINS_PENDING=PASS
+DESIGN_CRITIC_BLOCKERS=0
+GIT_DIFF_CHECK=PASS EXIT=0
+Exit status: 0
+
+DESIGN CRITIC
+Command/input:
+Read-only final review of plan SHA-256
+7248e91680d76e7e0046d923baac183630b422b11f0cc9948b6cf8fef858a9ac.
+Literal output/result:
+BLOCKERS=0 IMPORTANT=0 SUGGESTIONS=0 VERDICT=可进批准gate
+The plan then only appended this review record; final plan SHA-256 is
+3a1770a0afe9078697f07daa79f3c222b4fd343fc8854addfc2290f95d93e2f3.
+Exit status: 0
+
+ROLLBACK
+Command:
+/Users/nickji/Documents/Program/Analysis/ghostlock-app/docs/analysis/artifacts/43499-resource-plan-20261026/ROLLBACK.sh /var/folders/4r/3kzkcr7d6773msn42l9t90n40000gn/T/tmp.0WGxvcLU5C
+Input:
+A separate copy containing the final five changed documents and transaction artifacts.
+Literal output/result:
+patching file 'docs/plan/43499-resource-primitives-implementation-plan.md'
+patching file 'docs/plan/43499-jni-transport-plan.md'
+patching file 'docs/plan/43499-43284-jni-rewrite-plan.md'
+patching file 'docs/plan/43499-approval-status.md'
+patching file 'docs/development/full-process-uml.md'
+FINAL_ROLLBACK_RESTORED=PASS EXIT=0
+Exit status: 0
+
+RESTORED BEHAVIOR/STATUS
+- The candidate resource plan is absent in the rollback copy.
+- The other four documents exactly match their turn-entry SHA-256 values above.
+- The real working tree intentionally retains the candidate plan and synchronized docs.
+
+HARNESS CORRECTIONS
+- First validator incorrectly searched the plan body for a UML-only node; corrected the
+  assertion to inspect full-process-uml.md.
+- First rollback hash loop used shell word splitting incompatible with zsh; rollback had
+  already applied, then four hashes were verified explicitly. No production file changed.
+
+NOT VERIFIED
+- No implementation, Gradle build, NDK build, APK, device, Primitive effect, victim,
+  handoff, ksud or SELinux behavior was run or claimed in this plan-only batch.

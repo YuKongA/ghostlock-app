@@ -1,6 +1,6 @@
 /**
  * @file actor.h
- * @brief 借用 Page、绑定一个 Carrier 的一次性 PI Actor 契约。
+ * @brief 消费 Page、绑定一个 Carrier 的一次性 PI Actor 契约。
  */
 #ifndef GHOSTLOCK_GL43499_CORE_ACTOR_H
 #define GHOSTLOCK_GL43499_CORE_ACTOR_H
@@ -32,12 +32,12 @@ struct glk43499_actor_setup {
     uint64_t reserved[8];
 };
 
-/** @brief prepareActor 返回的 Page 借用与 Carrier 绑定事实。 */
+/** @brief prepareActor 返回的 Page 所有权转移与 Carrier 绑定事实。 */
 struct glk43499_actor_prepare_receipt {
-    uint64_t page_generation;
+    uint64_t page_content_generation;
     glk43499_primitive_kind primitive_kind;
     uint32_t thread_count;
-    uint32_t page_borrow_acquired;
+    uint32_t page_consumed;
     uint32_t owner_ready;
     uint32_t waiter_ready;
     uint32_t consumer_ready;
@@ -48,7 +48,7 @@ struct glk43499_actor_prepare_receipt {
 
 /** @brief 一次 Actor execute 的纯物理观测。 */
 struct glk43499_actor_execute_receipt {
-    uint64_t page_generation;
+    uint64_t page_content_generation;
     uint64_t consumer_call_count;
     uint64_t consumer_success_count;
     uint64_t consumer_inflight_at_return;
@@ -75,13 +75,15 @@ struct glk43499_actor_execute_result {
 };
 
 /**
- * @brief 创建 Actor、借用 Page，并在线程创建前绑定具体 Carrier。
+ * @brief 创建 Actor、消费 Page，并在线程创建前绑定具体 Carrier。
  *
- * @param page 有效且未被其它独占 Actor 借用的 Page handle。
+ * @param page 由调用方唯一持有且尚未消费的 Page token。
  * @param setup 调用期借用；thread_count 必须为 3。
  * @param primitive 调用期借用；选中分支及 frame bytes 被深拷贝。
  * @param result 必填输出。
- * @return Actor handle；失败返回 0，且部分创建的线程必须已停止并 join。
+ * @return Actor token；成功时 Actor 接管 Page，调用方必须将 Page token 置 0；
+ *         clean 失败返回 0 且 Page 仍归调用方；dirty/indeterminate 失败时
+ *         receipt.page_consumed 为 1，调用方也必须置 0，Native 保留资源到进程退出。
  */
 glk43499_handle glk43499_prepare_actor(
     glk43499_handle page,
@@ -94,8 +96,7 @@ glk43499_handle glk43499_prepare_actor(
  * @param actor PREPARED 状态的 Actor handle。
  * @param result 必填输出。
  * @return glk43499_call_status。
- * @note 本入口没有 route/tag/spec 参数；PI 窗口内不读取 registry、不分配、
- *       不打印，也不进行动态机制分派。
+ * @note 本入口没有 route/tag/spec 参数；PI 窗口内不分配、不打印，也不进行动态机制分派。
  */
 int32_t glk43499_execute_actor(
     glk43499_handle actor,
@@ -112,13 +113,14 @@ int32_t glk43499_cancel_actor(
     struct glk43499_close_result *result);
 
 /**
- * @brief 按固定顺序终结 Actor 并归还 Page 借用。
- * @param actor 有效 Actor handle；成功后变为 stale。
+ * @brief 按固定顺序终结 Actor 及其拥有的 Page。
+ * @param actor 由调用方唯一持有的 Actor token；wrapper 在调用前置 0。
  * @param result 必填输出。
- * @return glk43499_call_status。
+ * @return glk43499_call_status；输出 ABI 无效或 token 为 0 时未接受、调用方恢复
+ *         原 token；一旦接受，无论释放或保留结果都消费 token。
  * @note 顺序为停止新触发、等待 consumer inflight 为零、disarm、解除 PI 关联、
- *       按经验证顺序 join waiter/owner/consumer、关闭 Carrier、归还 Page。未知引用使 Actor、
- *       Carrier 与 Page 整体 QUARANTINED。
+ *       按经验证顺序 join waiter/owner/consumer、关闭 Carrier、释放其拥有的 Page。
+ *       未知引用使 Actor、Carrier 与 Page 整体保留到进程退出。
  */
 int32_t glk43499_close_actor(
     glk43499_handle actor,

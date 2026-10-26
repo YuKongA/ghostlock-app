@@ -1,0 +1,207 @@
+# 43499 线性资源原语实施计划
+
+- 日期：2026-10-26
+- 基线：`d9b180310ae35cf697843c64c7f2b26756036ef4`
+- 级别：L（攻击关键路径、跨JNI契约、Native资源所有权）
+- 状态：**线性唯一所有权设计已获用户批准；本批只修订契约/transport/UML，不实现物理原语**。
+- 批准状态唯一权威：[43499-approval-status.md](43499-approval-status.md)。
+
+## 0. 裁定与取代
+
+用户于2026-10-26裁定：目标是单次root；Page没有跨Actor或跨Flow共享场景；Lua绕过wrapper造成的
+token误用由脚本开发者负责。故取消每DSO registry、generation/epoch、wrong-kind/stale/capacity检测和
+persistent borrow，改为Kotlin唯一owner与Native对象的线性转移。
+
+本文取代上一版同名计划的registry方案，并细化`43499-43284-jni-rewrite-plan.md`中43499的§5、§6.2、
+§9 D1/D3。`kt-step` K1/K2证据保留；旧route/prepare计划只作物理顺序证据。header/JNI transport仍是
+前置，但其registry/borrow文字由本批同步修订。
+
+**知情越权记录**：该裁定放弃raw token误用的Native防护。受支持wrapper路径仍禁止辅助对象UAF；若
+反射代码伪造、复制、复用或并发释放raw token，可能导致进程崩溃或辅助UAF，不作为Native契约缺陷。
+技术债登记于§9；未来若要求不可信脚本隔离，必须重新引入安全句柄层并重新批准。
+
+## 1. 边界
+
+```text
+Kotlin/Lua决定route、地址、payload、调用顺序、重试、fallback与跨backend组合
+  -> Placement token
+  -> land成功消费Placement，产生Page token
+  -> prepareActor成功消费Page，产生Actor token
+  -> executeActor仅使用prepare时绑定的Primitive
+  -> closeActor终结Actor + Carrier + Page完整所有权链
+```
+
+Native只做物理资源准备、不可暂停事务与正确终结。Native不读profile、不生成payload、不计算最终地址、
+不选择下一Primitive、不保存业务session。Access仍是Lua可单独调用的读写接口，不包装完整攻击prepare。
+
+不恢复旧session/backend/route controller/runFlow；不改general、43284、64560、UI或handoff脚本；不依赖
+`legacy2/`；host、AVD、非零token与`requeue=1`均不代替真机效果。
+
+## 2. Handle与调用约束
+
+`glk43499_handle`是0以外的不透明Native对象token，允许由对象地址转换为`uint64_t`。JNI只检查0；不读取
+token指向对象来猜测kind或存活性。每个token只有一个Kotlin owner：
+
+- 禁止复制、伪造、缓存已转移token或把一种资源token传给另一入口；
+- wrapper串行化同一对象的所有调用，execute/cancel/close不并发；
+- close是终结调用，wrapper先将字段置0再进入JNI；只有输出ABI无效或token为0的未接受失败才恢复
+  原token；入口接受后无论released/retained都消费；转移调用按receipt决定保留或置0；
+- raw JNI holder不进入受支持脚本ABI；反射可达不是安全边界；
+- JNI不提供通用`malloc/free`，只提供类型化factory/transaction/close，以执行fd、child、mapping、线程和PI
+  资源的正确终结顺序。
+
+无全局registry、资源表、current session或可写业务状态。Actor对象内部的线程/原子停止标志不是全局
+状态；它们只在该Actor生命周期内存在。
+
+## 3. 所有权与失败语义
+
+### 3.1 Placement → Page
+
+`landPage`的commit point之前，失败为`NOT_APPLIED/CLEAN_FAILURE`，Placement仍归Kotlin。commit成功后
+旧Placement token被消费，Kotlin必须置0并接收Page。commit后的clean failure同样设置
+`placement_consumed=1`并清洁释放；dirty/indeterminate也设置该字段，但Native将无法安全释放的闭包
+保留到进程退出。只有precommit失败允许继续持有旧token。
+
+### 3.2 Page → Actor
+
+`prepareActor`在线程创建前深拷贝Primitive和frame。所有Carrier、同步对象和线程准备完成后才提交Page
+所有权：
+
+| 结果 | `page_consumed` | Kotlin动作 |
+|---|---:|---|
+| success + Actor token | 1 | Page置0，Actor成为唯一owner |
+| clean failure | 0 | Page仍可close或重试 |
+| dirty/indeterminate | 1 | Page置0，Native保留完整闭包到进程退出 |
+
+不存在Page borrow、共享Page、Page归还或`closePage(BUSY)`。`closePage`只用于尚未成功转移的Page。
+
+### 3.3 Actor终结
+
+Actor拥有Page、Carrier、三个joinable worker和PI状态。固定顺序为：
+
+```text
+stop new trigger
+ -> wait consumer in-flight == 0
+ -> disarm Carrier
+ -> detach PI relation / synchronize waiter state
+ -> join in已验证顺序
+ -> close Carrier resources
+ -> release owned Page
+ -> release Actor
+```
+
+clean close回执`owned_chain_released=1`；dirty/unknown时为0并保留完整闭包到进程退出。无论哪种终结结果，
+调用方都不得再次使用该Actor token。仅漏洞目标允许有意UAF；受支持路径中的线程、PI内存、waiter、
+buffer、mapping、fd和资源对象不得UAF。
+
+三个`close*`的接受点统一为“输出ABI校验成功且输入token非零”。wrapper先原子取出token并置0；接受前的
+ABI/零token失败恢复原token，接受后无论回执是clean released还是retained都不恢复、不重试。
+`cancel*`不消费token。
+
+## 4. CBN：Registry与线性owner
+
+| 方案 | 收益 | 成本与扩展边际 | 结论 |
+|---|---|---|---|
+| 固定registry | raw误用可返回stale/wrong-kind；支持共享 | 全局表、锁、slot、generation、fork/unload、容量门；每资源kind改表/manifest/并发测试 | 不采用 |
+| Kotlin唯一owner + typed token | 无全局状态；所有权路径只有2次转移；无Page共享协议 | raw误用可崩溃；每新增资源只增加factory/close与wrapper各1处 | 采用 |
+| 通用malloc/free | API少 | 无法表达fd/child/thread/PI终结；每调用方重复析构知识 | 不采用 |
+
+翻转条件：出现真实的多Actor/多Flow共享需求，或要求任意反射/raw JNI误用必须fail-closed而不能崩溃时，
+重新设计安全句柄层；不得在现结构上添加magic读取，因为读取已释放对象本身就是UAF。
+
+## 5. 唯一实施序列
+
+每批只做一类事；上一批全绿才进入下一批，连续失败两次停回debug。
+委派写范围、自验返回格式与Lead终验按
+[43499-agent-coding-and-self-acceptance-guide.md](43499-agent-coding-and-self-acceptance-guide.md)执行；该指南不改变本计划权威或批准状态。
+
+### G4L-0：线性契约修订（本批）
+
+修改C header、Kotlin DTO注释/receipt字段、JNI字段翻译、unavailable stub、批准表、旧计划指针与UML。
+删除generation/borrow语义；九入口仍全部`UNSUPPORTED`，不创建fd/pid/thread/map或非零token。
+ABI v3既有枚举数值和结构宽度保持不变；stale/wrong-kind/borrowed仅保留数值占位，真实实现不返回。
+
+### G4L-1：Placement
+
+实现`prepare/cancel/closePlacement`。Kotlin给出范围、数量、CPU与超时；Native只完成定位并返回facts。
+partial-start按`stop→join→unmap/close→reap child`逆序清理。每个公开符号始终只有一个强定义，pending
+TU按符号递减。
+
+### G4L-2：Landing与Page
+
+实现`landPage/closePage`，冻结preflight、commit和`placement_consumed`。JNI先复制最终bytes；Native只
+验证ABI、长度、边界、对齐、溢出和契约物理约束，不解释payload。
+
+### G4L-3：Actor与线性接管
+
+实现Page消费、Carrier准备、三个worker、CPU/优先级、屏障、cancel/close和partial-start回滚。首个真实
+Primitive通过前生产`prepareActor`保持`UNSUPPORTED`。终结顺序冻结于
+`legacy2/core/race.cpp:361-363,413-415`与
+`docs/analysis/43499-43284-resource-ownership.md:10-14,59-61`；任何顺序改变都须独立物证与真机批准，
+不得以重构名义改动。
+
+### G4L-4M / G4L-4P / G4L-4T：三个Primitive
+
+Multicast、Pselect、TCP zerocopy分别独立资源表、失败注入、反汇编和冷机真机门。PI窗口无kind读取、
+动态分派、JNI、锁、分配、日志或首次触页。TCP仍需单独批准；失败不得自动换Primitive。
+
+### G4L-5：Kotlin/Lua wrapper
+
+每种资源一个`AutoCloseable` owner class；字段私有，转移/close后置0，方法用单对象锁串行化。Lua可自由
+选择公开Access或JNI原语；scope只管理owner与兼容承诺。测试正常链、每个clean失败保留owner、dirty
+失败消费owner、close/use后的wrapper拒绝，以及反射raw误用不属于受支持保证的文档契约。
+
+### G4L-6：victim、Finish与ksud
+
+依赖wrapper与至少一个已过真机门Primitive。victim继续Kotlin `ProcessBuilder`；handoff使用UI生成脚本，
+Native不生成/选择/解释脚本。成功由uid、脚本对象、ksud/marker、SELinux恢复和资源终结共同证明。
+
+## 6. 每批门禁
+
+```text
+git diff --check
+./gradlew nativeTestHost nativeBuildAndroid :app:testDebugUnitTest --console=plain
+./gradlew :app:compileDebugKotlin :app:externalNativeBuildDebug :app:assembleRelease --no-daemon
+```
+
+记录literal output与exit；从`build/test-results/**/*.xml`全量统计失败。核对APK/DSO路径、SHA-256、
+`nm/readelf`、link map、九JNI符号对拍、旧Flow符号为0、除const外无43499可写全局。共享build目录串行。
+`AGENTS.md` §8仍列已删除Make入口；用户批准本计划同时确认按§4与`introduction.md`使用上述Gradle映射，
+激活批同步修订AGENTS §8。
+
+G4L-1起触及真实攻击资源时，当批执行冷机、固定CPU对、单Primitive、KernelSU未加载的真机门；覆盖
+成功/失败/超时/取消/提前返回，归档`docs/analysis/device-gates/`。每个Primitive单独证明命中和写验证；
+未过门不得标supported、接默认Flow或进入ksud批。
+
+每批开工前冻结完整文件清单，含生产源、测试、CMake/Gradle、Kotlin、UML和门禁记录；清单外冻结。
+每批保存原始hash与四事务产物，并在独立副本实测回滚。
+
+## 7. 批准与激活
+
+本次用户批准只覆盖线性所有权架构与G4L-0契约修订；不自动批准G4L-1之后的物理实现或生产接线。
+同步状态：registry改为“不采用”；typed token改为“调用方唯一owner”；Lua公开Access/JNI自由组合获批，
+raw holder仍不属于受支持ABI。旧计划头部登记被取代范围，不删除历史。
+
+G4L-1前仍须：design-critic阻断0、用户批准该实现批、冻结文件清单。G4L-4T与G4L-6保留独立批准点。
+
+## 8. 停止条件
+
+出现任一项立即停批：PI窗口动态分派；无法证明“停止访问→解除关联→回收”；clean路径残留资源；
+第二份地址/payload权威；为过门恢复route/session/Flow或修改判据；同批门禁连续失败两次。
+
+## 9. 技术债
+
+| 债 | 代价 | 偿还时机 |
+|---|---|---|
+| raw token无stale/wrong-kind保护 | 绕过wrapper可能崩溃/UAF | 不可信脚本隔离或共享需求出现时重建安全句柄层 |
+| dirty闭包保留到进程退出 | 多次失败可能增长RSS/fd | 真机测得dirty率非零后设计具名reap |
+| 单owner禁止Page复用 | 未来复用需新所有权协议 | 出现有证据的第二消费者时重新CBN |
+| 第4种Primitive扩展tagged union | DTO/JNI/R8对拍面增长 | 第4种提案时重算具名入口CBN |
+
+## 10. 评审记录
+
+| 时间 | 版本 | 总判 | 阻断数 | 备注 |
+|---|---|---|---:|---|
+| 2026-10-26 | registry版`7248e916…` | 被取代 | 0 | 用户裁定无共享场景 |
+| 2026-10-26 | 线性owner初稿 | 待评审 | — | G4L-0 only |
+| 2026-10-26 | 线性owner修订稿 | 通过G4L-0设计批准gate | 0 | design-critic：重要0、建议0 |

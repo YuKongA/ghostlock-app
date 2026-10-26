@@ -721,6 +721,7 @@ caller owns Glk43499Session; destroy never frees it
 ## 11. 43499 Placement / Page / Actor 契约（2026-10-26 header-only）
 
 > 头文件批见 [43499-c11-header-contract-plan](../plan/43499-c11-header-contract-plan.md)，JNI transport 见 [43499-jni-transport-plan](../plan/43499-jni-transport-plan.md)。当前 JNI 已接入九入口，但 core 仍是显式 `UNSUPPORTED` 的 unavailable 实现；victim/Finish 不在本批。
+> 真实实现的线性所有权权威与批次顺序见 [43499-resource-primitives-implementation-plan](../plan/43499-resource-primitives-implementation-plan.md)。G4L-0已批准；物理实现仍未开始。
 
 ### 11.1 IPO / dependency
 
@@ -747,21 +748,25 @@ flowchart LR
 ```mermaid
 stateDiagram-v2
   [*] --> Placement: preparePlacement transaction
-  Placement --> Page: landPage CLEAN_SUCCESS; Placement stale
+  Placement --> Page: landPage success; consume Placement token
   Placement --> Placement: precommit NOT_APPLIED
+  Placement --> Closed: postcommit CLEAN_FAILURE; consumed and released
   Placement --> Closed: close before commit
-  Placement --> Quarantined: postcommit unknown
+  Placement --> Retained: postcommit DIRTY/INDETERMINATE; consumed
 
-  Page --> Borrowed: prepareActor binds Primitive
-  Borrowed --> Running: executeActor without tag/spec
-  Running --> Borrowed: clean execution completed
-  Borrowed --> Page: closeActor stop/disarm/join/release borrow
-  Page --> Closed: closePage borrow=0
-  Running --> Quarantined: reference state unknown
-  Quarantined --> [*]: process exit only
+  Page --> Actor: prepareActor success; consume Page token
+  Page --> Page: prepareActor clean failure
+  Page --> Retained: prepareActor dirty; token consumed
+  Page --> Closed: closePage before transfer
+  Actor --> Running: executeActor without tag/spec
+  Running --> Actor: clean execution completed
+  Actor --> Closed: closeActor releases Actor Carrier Page
+  Running --> Retained: reference state unknown
+  Retained --> [*]: process exit only
 ```
 
-Actor prepare 在创建线程前深拷贝 Primitive 并绑定具体 Carrier，同时对 Page 建 persistent borrow；仅 clean 在 stop/disarm/join 后解除。dirty 将 Actor、Carrier、Page 的完整依赖闭包一并 quarantine。
+每个token只有一个Kotlin owner。`placementConsumed=1`时Placement置0；`pageConsumed=1`时Page置0；
+仅非零Actor token直接拥有Page与Carrier。raw token误用不提供stale/wrong-kind保护。
 
 ### 11.3 Class
 
@@ -781,21 +786,21 @@ classDiagram
   class Carrier
   class AccessView
   RunResourceScope *-- DiscoveryHandle
-  RunResourceScope *-- PlacementHandle
-  RunResourceScope *-- PageHandle
-  RunResourceScope *-- ActorHandle
-  AccessView --> PageHandle : borrowed
+  RunResourceScope *-- PlacementHandle : current owner only
+  RunResourceScope *-- PageHandle : current owner only
+  RunResourceScope *-- ActorHandle : current owner only
   NativeGeneralJni --> DiscoveryHandle
   Native43499Jni --> PlacementHandle
   Native43499Jni --> PageHandle
   Native43499Jni --> ActorHandle
   Native43499NamedDtos --> Native43499Jni : explicit fields
   Native43499Jni --> ApiUnavailable : current fail-closed target
-  PlacementHandle --> PageHandle : land consumes placement
-  ActorHandle --> PageHandle : persistent borrow
+  PlacementHandle --> PageHandle : ownership move
+  PageHandle --> ActorHandle : ownership move
+  ActorHandle *-- PageHandle : owns
   ActorHandle *-- Carrier : owns one bound carrier
   PrimitiveSpec --> Carrier : prepare-time deep copy
-  AccessView ..> RunResourceScope : borrowed only
+  AccessView ..> RunResourceScope : independent public primitive
 ```
 
 ### 11.4 Sequence
@@ -814,13 +819,43 @@ sequenceDiagram
     B-->>K: PlacementHandle + candidate facts
     K->>K: calculate addresses and final page bytes
     K->>B: landPage(placement, bytes, geometry)
-    B-->>K: PageHandle; Placement stale
+    B-->>K: Page token + placementConsumed receipt
+    alt placementConsumed = 1
+      K->>K: zero Placement; own Page only when token is nonzero
+    else placementConsumed = 0
+      K->>K: retain Placement for close or retry
+    end
     K->>B: prepareActor(page, setup, PrimitiveSpec)
-    B-->>K: ActorHandle; Page borrowed; Carrier bound
+    B-->>K: Actor token + pageConsumed receipt
+    alt pageConsumed = 1
+      K->>K: zero Page; Actor owns Page only when token is nonzero
+    else pageConsumed = 0
+      K->>K: retain Page for close or retry
+    end
     K->>B: executeActor(actor)
     B-->>K: call status + effect + resource state + receipt
     K->>B: closeActor(actor)
-    B-->>K: Page borrow released
-    K->>B: closePage(page)
+    B-->>K: Actor Carrier Page chain released or retained
   end
 ```
+
+### 11.5 Implementation gates
+
+```mermaid
+flowchart LR
+  G0[G4L-0 linear contract] --> G1[G4L-1 Placement]
+  G1 --> G2[G4L-2 Landing and Page]
+  G2 --> G3[G4L-3 Actor owns Page]
+  G3 --> G5[G4L-5 Kotlin Lua wrappers]
+  G3 --> GM[G4L-4M Multicast]
+  G3 --> GP[G4L-4P Pselect]
+  G3 --> GT[G4L-4T TCP zerocopy]
+  GM --> ANY{Any supported Primitive}
+  GP --> ANY
+  GT -. independent approval .-> ANY
+  G5 --> G6[G4L-6 victim Finish ksud]
+  ANY --> G6
+```
+
+G4L-5不等待三个Primitive全部完成；G4L-6至少依赖一个已过真机门的Primitive，TCP仍有独立批准点。
+Native不含registry，只绑定物理Primitive；route与跨backend顺序由Kotlin/Lua决定。

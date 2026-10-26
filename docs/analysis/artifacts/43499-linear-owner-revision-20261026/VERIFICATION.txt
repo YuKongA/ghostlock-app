@@ -1,0 +1,66 @@
+43499 LINEAR OWNER REVISION VERIFICATION
+DATE=2026-10-26
+BRANCH=working-tree@d9b180310ae35cf697843c64c7f2b26756036ef4
+CHANGED_FIELD=registry/borrow ownership -> Kotlin unique owner with Placement->Page->Actor terminal transfer; close acceptance point; PrimitiveSpec single prepareActor
+
+ARTIFACTS
+MODIFIED_FILE=/Users/nickji/Documents/Program/Analysis/ghostlock-app/docs/analysis/artifacts/43499-linear-owner-revision-20261026/MODIFIED_FILE
+DIFF_FILE=/Users/nickji/Documents/Program/Analysis/ghostlock-app/docs/analysis/artifacts/43499-linear-owner-revision-20261026/DIFF_FILE
+VERIFICATION=/Users/nickji/Documents/Program/Analysis/ghostlock-app/docs/analysis/artifacts/43499-linear-owner-revision-20261026/VERIFICATION.txt
+ROLLBACK=/Users/nickji/Documents/Program/Analysis/ghostlock-app/docs/analysis/artifacts/43499-linear-owner-revision-20261026/ROLLBACK.sh
+
+ORIGINAL
+HEAD=d9b180310ae35cf697843c64c7f2b26756036ef4
+abi.h.sha256=be6c2385e29d340a4452dd6075f59b7f1c3d04e490a468cf2db8e86f39a852c3
+result.h.sha256=76aa8e02a4fc3964beaf9e6ad40eb3ce989b29b11cb974cba92466c580ebd6e
+placement.h.sha256=4b4614df11bcfd62973063cb1dbfa898fd37b283ceb74429fbb0561fe1bd4cad
+page.h.sha256=a779a9244365db4d449e232f16a590589530674ed38513a393bb3b9b7d6aec99
+actor.h.sha256=bdaf395da171c618fef1ffdf47f81cb437ce5ef457bc25c7b00b8f6d45d27298
+
+BASELINE
+COMMAND=./gradlew :app:compileDebugKotlin :app:externalNativeBuildDebug --no-daemon
+INPUT=working tree before linear-owner revision
+LITERAL_OUTPUT=BUILD SUCCESSFUL in 7s; 12 actionable tasks: 6 executed, 6 up-to-date
+EXIT_STATUS=0
+RESULT=PASS
+
+MODIFIED
+COMMAND=./gradlew :app:compileDebugKotlin :app:externalNativeBuildDebug --no-daemon
+INPUT=working tree after linear-owner revision
+LITERAL_OUTPUT=BUILD SUCCESSFUL in 5s; 12 actionable tasks: 5 executed, 7 up-to-date; Configuration cache entry reused.
+EXIT_STATUS=0
+RESULT=PASS
+
+HEADER
+COMMAND=clang -std=c11 and clang++ -std=c++23 -Wall -Wextra -Werror -fsyntax-only for abi/result/placement/page/actor/primitive/api headers
+INPUT=7 headers x 2 languages
+LITERAL_OUTPUT=HEADER_C11_CXX23_SELF_CONTAINED=PASS COUNT=7x2 EXIT=0
+EXIT_STATUS=0
+RESULT=PASS
+
+DESIGN_CRITIC
+COMMAND=design-critic frozen read-only review
+INPUT=14 target files at HEAD d9b180310ae35cf697843c64c7f2b26756036ef4
+LITERAL_OUTPUT=通过G4L-0设计批准 gate；阻断 0、重要 0、建议 0。
+EXIT_STATUS=0
+RESULT=PASS
+
+ROLLBACK
+COMMAND=/Users/nickji/Documents/Program/Analysis/ghostlock-app/docs/analysis/artifacts/43499-linear-owner-revision-20261026/ROLLBACK.sh /var/folders/4r/3kzkcr7d6773msn42l9t90n40000gn/T/tmp.q8oO5Tou5O
+INPUT=independent HEAD archive copy with DIFF_FILE applied
+LITERAL_OUTPUT=patching 13 tracked files and removing the added authoritative plan; RESTORED_TREE_DIFF_EXIT=0; ROLLBACK_RESULT=PASS RESTORED=HEAD:d9b180310ae35cf697843c64c7f2b26756036ef4 EXIT=0
+EXIT_STATUS=0
+RESTORED_BEHAVIOR=tree byte-identical to HEAD archive; unavailable runtime behavior restored
+RESULT=PASS
+
+FINAL
+DIFF_CHECK_COMMAND=git diff --check
+DIFF_CHECK_LITERAL_OUTPUT=<empty>
+DIFF_CHECK_EXIT_STATUS=0
+PLAN_SIZE_COMMAND=wc -c docs/plan/43499-resource-primitives-implementation-plan.md
+PLAN_SIZE_LITERAL_OUTPUT=11446 docs/plan/43499-resource-primitives-implementation-plan.md
+PLAN_SIZE_EXIT_STATUS=0
+MODIFIED_FILE_SHA256=0800c8aefc069b370b28bc83955511da82edd1a0019184292965bd98c9d43e09
+DIFF_FILE_SHA256=e4b88c00f459c0a24db9caee8b8b90532f73e63b5a29ae874b595a5a7c88bb20
+ROLLBACK_SHA256=d2cea7f13a46748a17e35c22d8db9d6e15af93d57e992d787e1ff49c9940623f
+CURRENT_RUNTIME=all nine 43499 entries remain explicit UNSUPPORTED; no physical primitive implementation or production wiring added

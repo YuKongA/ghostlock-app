@@ -120,7 +120,7 @@ static void glk43499_set_unavailable(struct glk43499_call_result *result) {
     result->effect = GLK43499_EFFECT_NONE;
     result->resource_state = GLK43499_RESOURCE_INVALID;
     result->system_error = 0;
-    result->generation = 0;
+    result->reserved_resource_serial = 0;
     result->retained_resource_count = 0;
 }
 
@@ -130,7 +130,7 @@ static void glk43499_set_bad_abi(struct glk43499_call_result *result) {
     result->effect = GLK43499_EFFECT_NOT_APPLIED;
     result->resource_state = GLK43499_RESOURCE_INVALID;
     result->system_error = 0;
-    result->generation = 0;
+    result->reserved_resource_serial = 0;
     result->retained_resource_count = 0;
 }
 
@@ -140,7 +140,7 @@ static void glk43499_set_invalid_handle(struct glk43499_call_result *result) {
     result->effect = GLK43499_EFFECT_NOT_APPLIED;
     result->resource_state = GLK43499_RESOURCE_INVALID;
     result->system_error = 0;
-    result->generation = 0;
+    result->reserved_resource_serial = 0;
     result->retained_resource_count = 0;
 }
 
