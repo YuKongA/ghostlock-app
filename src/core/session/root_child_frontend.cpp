@@ -27,6 +27,10 @@ namespace ghostlock::session::frontend {
         const int32_t child_alive = chain.child_alive;
         const int32_t seccomp_ok = chain.seccomp_ok;
         const int32_t ever_rooted = chain.ever_rooted;
+        if (attack::process_has_seccomp() && !seccomp_ok) {
+            pr_error("handoff blocked: W3 seccomp verification was not successful\n");
+            return StageResult::Failed;
+        }
         /* SESSION-02: the victim protocol pipes and parked handoff state are owned
          * by the session; the child pid is owned by the victim context. */
         victim::VictimContext &pipes = session.victim;

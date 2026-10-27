@@ -2,13 +2,16 @@ package com.ghostlock.app.data
 
 import android.annotation.SuppressLint
 import android.content.ContentValues
+import android.content.ComponentName
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.MediaStore
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import com.ghostlock.app.BuildConfig
 import com.ghostlock.app.BuildInfo
+import com.ghostlock.app.boot.AutorootBootGuard
 import com.ghostlock.app.data.ManagerScanner
 import com.ghostlock.app.domain.model.CpuPair
 import com.ghostlock.app.domain.model.DebugSettings
@@ -46,6 +49,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         const val ExtractBinaryName = "libextract.so"
         const val DefaultDebugLocation = "Download/ghostlock-debug-log"
         const val PrefForceAttackTest = "force_attack_test"
+        const val PrefAutoSoftRestart = "auto_soft_restart"
         const val PrefDebugExportEnabled = "debug_export_enabled"
         const val PrefDebugExportLocation = "debug_export_location"
         const val PrefDebugKernelLogEnabled = "debug_kernel_log_enabled"
@@ -92,6 +96,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
     private var safeModeEnabled = false
     private var forceAttackTest = false
     private var shizukuEnabled = false
+    private var autoRootEnabled = false
     /** True once the user flipped the toggle; only then does it override the
      * profile suggestion (PROFILE-SUGGEST-01). */
     private var shizukuPreferenceSet = false
@@ -102,6 +107,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         buildCpuPairs()
         restoreCpuPair()
         restoreShizukuPreference()
+        restoreAutoRootPreference()
         restoreForceAttackTest()
         dropLegacyOffsetsCache()
         migrateLegacyOffsetsStore()
@@ -190,6 +196,13 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         preferences.edit { putBoolean(PrefForceAttackTest, enabled) }
     }
 
+    override fun autoSoftRestartEnabled(): Boolean =
+        preferences.getBoolean(PrefAutoSoftRestart, true)
+
+    override fun setAutoSoftRestartEnabled(enabled: Boolean) {
+        preferences.edit { putBoolean(PrefAutoSoftRestart, enabled) }
+    }
+
     override fun setShizukuEnabled(enabled: Boolean) {
         shizukuEnabled = enabled
         shizukuPreferenceSet = true
@@ -199,6 +212,28 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 putBoolean("shizuku_explicit", true)
             }
         if (enabled) shizukuRunner.requestPermission()
+    }
+
+    override fun autoRootEnabled(): Boolean {
+        val component = ComponentName(appContext, com.ghostlock.app.boot.BootCompletedReceiver::class.java)
+        return when (appContext.packageManager.getComponentEnabledSetting(component)) {
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED -> false
+            else -> autoRootEnabled
+        }
+    }
+
+    override fun setAutoRootEnabled(enabled: Boolean) {
+        autoRootEnabled = enabled
+        if (enabled) AutorootBootGuard.reset(appContext)
+        appContext.packageManager.setComponentEnabledSetting(
+            ComponentName(appContext, com.ghostlock.app.boot.BootCompletedReceiver::class.java),
+            if (enabled) PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+            PackageManager.DONT_KILL_APP,
+        )
+        appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE)
+            .edit { putBoolean("autoroot_on_startup", enabled) }
     }
 
     override fun selectedManagerPackage(): String? =
@@ -406,13 +441,15 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         }
     }
 
-    override suspend fun runExploit(pair: CpuPair, onLog: (String) -> Unit): Int =
-        withDebugAttackLog("direct", onLog) { archivedLog, debugDir, writeSidecar ->
+    override suspend fun runExploit(pair: CpuPair, onLog: (String) -> Unit): Int {
+        val code = withDebugAttackLog("direct", onLog) { archivedLog, debugDir, writeSidecar ->
             runExploitBinary(pair, "libghostlock.so", archivedLog, debugDir, writeSidecar)
         }
+        return autoSoftRestartIfCompleted(code, safeModeEnabled, onLog)
+    }
 
     override suspend fun runExploitWithShizuku(pair: CpuPair, onLog: (String) -> Unit): Int {
-        return withDebugAttackLog("shizuku", onLog) { archivedLog, debugDir, writeSidecar ->
+        val code = withDebugAttackLog("shizuku", onLog) { archivedLog, debugDir, writeSidecar ->
             archivedLog("<s> resolving profile")
             val release = System.getProperty("os.version", "").orEmpty()
             val config = profileController.load(release, pair)
@@ -455,6 +492,29 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                 }
             }
         }
+        return autoSoftRestartIfCompleted(code, safeModeEnabled, onLog)
+    }
+
+    private suspend fun autoSoftRestartIfCompleted(
+        code: Int,
+        safeMode: Boolean,
+        onLog: (String) -> Unit,
+    ): Int {
+        if (code != 0 || safeMode || !autoSoftRestartEnabled()) return code
+        onLog("<b> root completed; requesting automatic soft restart")
+        val process = runCatching {
+            ProcessBuilder("su", "-c", "reboot")
+                .redirectErrorStream(true)
+                .start()
+        }.getOrElse { error ->
+            onLog("<s> soft restart request failed: ${error.message}")
+            return code
+        }
+        val finished = runInterruptible { process.waitFor(5, TimeUnit.SECONDS) }
+        if (finished && process.exitValue() != 0) {
+            onLog("<s> soft restart command exited ${process.exitValue()}")
+        }
+        return code
     }
 
     /* --- attack step status ------------------------------------------------
@@ -594,7 +654,14 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             val binary = File(appContext.applicationInfo.nativeLibraryDir, binaryName)
             require(binary.isFile) { "missing native binary: ${binary.absolutePath}" }
             val ksud = resolveKsudPath(onLog)
-            if (ksud != null) onLog("<k> ksud ready: ${ksud.absolutePath}") else onLog("<k> warning: ksud not found")
+            val selectedManager = selectedManagerPackage()
+            if (ksud != null) {
+                onLog("<k> ksud ready: ${ksud.absolutePath}")
+            } else if (selectedManager != null) {
+                error("selected manager has no usable libksud.so: $selectedManager")
+            } else {
+                onLog("<k> warning: ksud not found")
+            }
             // U01-S14: a per-run KernelSU log path so a previous run's markers
             // can never satisfy the handoff probe; passed to the native process.
             val ksuLog = File(workDir, ksuLogName(System.currentTimeMillis()))
@@ -969,6 +1036,22 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         val prefs = appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE)
         shizukuPreferenceSet = prefs.getBoolean("shizuku_explicit", false)
         shizukuEnabled = prefs.getBoolean("shizuku_enabled", false)
+    }
+
+    private fun restoreAutoRootPreference() {
+        val component = ComponentName(appContext, com.ghostlock.app.boot.BootCompletedReceiver::class.java)
+        val packageState = appContext.packageManager.getComponentEnabledSetting(component)
+        val legacy = appContext.getSharedPreferences("ghostlock_prefs", Context.MODE_PRIVATE)
+            .getBoolean("autoroot_on_startup", false)
+        autoRootEnabled = packageState == PackageManager.COMPONENT_ENABLED_STATE_ENABLED ||
+            (packageState == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT && legacy)
+        if (autoRootEnabled && packageState != PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
+            appContext.packageManager.setComponentEnabledSetting(
+                component,
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                PackageManager.DONT_KILL_APP,
+            )
+        }
     }
 
     private fun restoreForceAttackTest() {

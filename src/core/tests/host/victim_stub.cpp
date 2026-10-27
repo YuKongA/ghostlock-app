@@ -9,9 +9,10 @@ namespace ghostlock::session::victim {
     std::optional<VictimSpawn> spawn_victim(VictimContext &pipes) {
         host::script().record("spawn");
         const host::HostAttackScript::Spawn spawn = host::script().next_spawn();
-        /* Keep the session pid in sync with the scripted child, so the W3 and
-         * handoff waitpid() checks see a consistent (non -1) pid. */
-        pipes.set_child(spawn.pid);
+        /* Keep the scripted child detached from the host process table. The
+         * production restart path retires this pid; a fake pid must not be
+         * signalled by the host harness. */
+        pipes.set_child(-1);
         return VictimSpawn{spawn.pid, spawn.task};
     }
 

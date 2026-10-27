@@ -52,8 +52,7 @@ object ManagerScanner {
         .thenByDescending { it.hasKsud }
         .thenBy { it.label.lowercase() }
 
-    /** Chosen package first, then the rest of the built-ins in priority order. */
+    /** Auto uses built-in priority; an explicit choice is strict. */
     fun resolvePackages(chosen: String?): List<String> =
-        if (chosen.isNullOrBlank()) BUILTIN
-        else listOf(chosen) + BUILTIN.filter { it != chosen }
+        if (chosen.isNullOrBlank()) BUILTIN else listOf(chosen)
 }

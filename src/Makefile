@@ -145,6 +145,7 @@ HOST_ATTACK_DATAFLOW_SOURCES := \
   core/session/root_child_frontend.cpp \
   core/session/exploit_session.cpp \
   core/session/runtime_config.cpp \
+  core/session/victim_context.cpp \
   core/memory/heap_context.cpp \
   core/memory/address_space.cpp \
   core/race/pi_race.cpp \

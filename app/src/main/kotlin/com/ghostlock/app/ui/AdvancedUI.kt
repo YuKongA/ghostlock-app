@@ -185,6 +185,16 @@ internal fun AdvancedScreen(
                     )
                 }
             }
+            item(key = "softRestart") {
+                Card {
+                    SwitchPreference(
+                        checked = state.autoSoftRestartEnabled,
+                        onCheckedChange = actions::onAutoSoftRestartChanged,
+                        title = stringResource(R.string.auto_soft_restart_label),
+                        summary = stringResource(R.string.auto_soft_restart_summary),
+                    )
+                }
+            }
             item(key = "override") {
                 Card {
                     ArrowPreference(

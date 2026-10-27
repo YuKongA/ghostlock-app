@@ -108,6 +108,7 @@ data class GhostlockUiState(
     val socName: String = "",
     val kernelSupported: Boolean = false,
     val shizukuEnabled: Boolean = false,
+    val autoRootEnabled: Boolean = false,
     val shizukuStatus: ShizukuStatus = ShizukuStatus.NOT_REQUIRED,
     val running: Boolean = false,
     val cpuPairLabels: List<String> = emptyList(),
@@ -116,6 +117,7 @@ data class GhostlockUiState(
     val customCpuPair: CpuPair? = null,
     val safeModeEnabled: Boolean = false,
     val forceAttackTestEnabled: Boolean = false,
+    val autoSoftRestartEnabled: Boolean = true,
     val tcpRouteEnabled: Boolean = true,
     val compact: Boolean = false,
     val executionSheetVisible: Boolean = false,
@@ -197,7 +199,9 @@ interface GhostlockActions {
     fun onCpuPairSelected(index: Int)
     fun onSafeModeChanged(enabled: Boolean)
     fun onForceAttackTestChanged(enabled: Boolean)
+    fun onAutoSoftRestartChanged(enabled: Boolean)
     fun onShizukuChanged(enabled: Boolean)
+    fun onAutoRootChanged(enabled: Boolean)
     fun onOpenManagerPicker()
     fun onCloseManagerPicker()
     fun onManagerSelected(pkg: String?)
@@ -898,6 +902,12 @@ private fun ControlPanel(
                         else -> R.string.shizuku_status_checking
                     },
                 ),
+            )
+            SwitchPreference(
+                checked = state.autoRootEnabled,
+                onCheckedChange = actions::onAutoRootChanged,
+                title = stringResource(R.string.autoroot_label),
+                summary = stringResource(R.string.autoroot_summary),
             )
         }
         Card(modifier = modifier.padding(top = 12.dp)) {

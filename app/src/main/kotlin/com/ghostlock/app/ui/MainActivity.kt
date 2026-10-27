@@ -185,8 +185,11 @@ private fun GhostlockRoute(
             override fun onSafeModeChanged(enabled: Boolean) = viewModel.toggleSafeMode(enabled)
             override fun onForceAttackTestChanged(enabled: Boolean) =
                 viewModel.toggleForceAttackTest(enabled)
+            override fun onAutoSoftRestartChanged(enabled: Boolean) =
+                viewModel.toggleAutoSoftRestart(enabled)
 
             override fun onShizukuChanged(enabled: Boolean) = viewModel.toggleShizuku(enabled)
+            override fun onAutoRootChanged(enabled: Boolean) = viewModel.toggleAutoRoot(enabled)
             override fun onOpenManagerPicker() = viewModel.onOpenManagerPicker()
             override fun onCloseManagerPicker() = viewModel.onCloseManagerPicker()
             override fun onManagerSelected(pkg: String?) = viewModel.onManagerSelected(pkg)

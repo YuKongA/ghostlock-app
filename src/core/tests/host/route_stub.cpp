@@ -1,6 +1,7 @@
 #include "host_attack_script.hpp"
 #include "route/route_api.hpp"
 #include "route/route_middleware.hpp"
+#include "route/route_policy.hpp"
 
 #include "session/exploit_session.hpp"
 
@@ -32,5 +33,17 @@ namespace ghostlock::route {
     RouteStatus do_kernel5_fake_lock_route(const ghostlock::memory::WriteRequest *request) {
         (void) request;
         return RouteStatus{};
+    }
+
+    bool MulticastPolicy::w2_fast_repair_prebuild(
+            session::ExploitSession &session) noexcept {
+        (void) session;
+        return true;
+    }
+
+    bool MulticastPolicy::w2_fast_repair_activate(
+            session::ExploitSession &session) noexcept {
+        (void) session;
+        return true;
     }
 } // namespace ghostlock::route
