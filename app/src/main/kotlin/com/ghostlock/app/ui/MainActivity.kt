@@ -97,6 +97,7 @@ import com.ghostlock.app.ui.util.install
 import com.ghostlock.app.ui.util.rememberBlurBackdrop
 import com.ghostlock.app.ui.util.rememberContentReady
 import com.ghostlock.app.ui.viewmodel.MainActivityViewModel
+import com.ghostlock.app.ui.backend.BackendSessionStore
 import com.ghostlock.app.ui.viewmodel.MainPagerConfig
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.blur.layerBackdrop
@@ -123,6 +124,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         /* 图标动画已移除（2026-10-19）：只等首帧内容，不再固定停留 500ms。 */
         splashScreen.setKeepOnScreenCondition { !contentReady }
+
+        /* task-27：启动恢复上次选择的后端与其配置（必须在 setContent 前，保证首帧读到正确选择）。 */
+        BackendSessionStore.from(this).restore(this)
 
         val isManager = Natives.isManager
         if (isManager && Natives.kernelUAPIVersion == Natives.managerUAPIVersion) install()

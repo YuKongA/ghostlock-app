@@ -65,6 +65,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ghostlock.app.ui.KernelVersion
@@ -75,7 +76,10 @@ import com.ghostlock.app.ui.component.dialog.rememberConfirmDialog
 import com.ghostlock.app.ui.LocalMainPagerState
 import com.ghostlock.app.ui.screen.module.backends.BackendSelection
 import com.ghostlock.app.ui.screen.module.backends.Backends
+import com.ghostlock.app.ui.backend.statusTone
 import com.ghostlock.app.ui.component.material.ExpressiveScaffold
+import com.ghostlock.app.ui.component.statuscard.BackendStatusCard
+import com.ghostlock.app.ui.component.statuscard.BackendStatusCardModel
 import com.ghostlock.app.ui.component.material.SegmentedColumn
 import com.ghostlock.app.ui.component.material.SegmentedListItem
 import com.ghostlock.app.ui.component.material.TonalCard
@@ -205,135 +209,112 @@ private fun StatusCard(
     state: HomeUiState,
     actions: HomeActions,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
-        val ksuActive = state.ksuVersion != null
-        val notInstalled = !ksuActive && state.kernelVersion.isGKI()
+    val mainPager = LocalMainPagerState.current
+    val ksuActive = state.ksuVersion != null
+    if (ksuActive) {
+        /* task-23：状态卡组件化（ui/component/statuscard）。
+         * 文本来自 backend 的 statusTextRes()；框架只按 readiness 映射 tone 选图标/颜色。 */
+        val selectedBackend = Backends.all[BackendSelection.index]
+        val backendReadiness = selectedBackend.readiness()
+        BackendStatusCard(
+            model = BackendStatusCardModel(
+                cveLabel = selectedBackend.cve,
+                statusTextRes = selectedBackend.statusTextRes(),
+                tone = backendReadiness.statusTone,
+                navigationTextRes = if (backendReadiness.isReady) {
+                    R.string.home_nav_run
+                } else {
+                    R.string.home_nav_paths
+                },
+                stateTags = buildList {
+                    if (state.isSafeMode) add(stringResource(R.string.safe_mode))
+                    if (state.isLateLoadMode) add(stringResource(R.string.jailbreak_mode))
+                },
+                extraTags = if (state.showCustomLkmBadge) {
+                    listOf(stringResource(R.string.home_lkm_custom))
+                } else {
+                    emptyList()
+                },
+                onClick = {
+                    mainPager.animateToPage(if (backendReadiness.isReady) 2 else 1)
+                },
+            ),
+        )
+        return
+    }
 
-        val containerColor = if (ksuActive) {
-            MaterialTheme.colorScheme.secondaryContainer
-        } else {
-            MaterialTheme.colorScheme.errorContainer
-        }
-        val contentColor = MaterialTheme.colorScheme.contentColorFor(containerColor)
-
-        val statusIcon = when {
-            ksuActive -> Icons.Rounded.CheckCircle
-            notInstalled -> Icons.Rounded.Warning
-            else -> Icons.Rounded.Block
-        }
-        val statusTitle = when {
-            ksuActive -> stringResource(R.string.home_working)
-            notInstalled -> stringResource(R.string.home_not_installed)
-            else -> stringResource(R.string.home_unsupported)
-        }
-        val mainPager = LocalMainPagerState.current
-        val navText = if (ksuActive) {
-            stringResource(R.string.home_nav_run)
-        } else {
-            stringResource(R.string.home_nav_paths)
-        }
-        /* badge 显示当前 backend 的 CVE 编号（2026-10-18 用户裁定，替换原 GKI/LKM 文本）。 */
-        val workingMode = if (ksuActive) Backends.all[BackendSelection.index].cve else ""
-
-        val statusTrailing: (@Composable () -> Unit)? = if (ksuActive && workingMode.isNotEmpty()) {
-            {
-                StatusTag(
-                    label = workingMode,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    backgroundColor = MaterialTheme.colorScheme.primary
-                )
-            }
-        } else if (notInstalled && state.isSELinuxPermissive) {
-            {
-                Button(
-                    onClick = actions.onJailbreakClick,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError
-                    )
-                ) {
-                    Text(stringResource(R.string.home_jailbreak))
+    /* 非 KSU 分支保持原语义：未安装（GKI）→ 安装/越狱提示；其它 → 不支持。 */
+    val notInstalled = state.kernelVersion.isGKI()
+    val containerColor = MaterialTheme.colorScheme.errorContainer
+    val contentColor = MaterialTheme.colorScheme.contentColorFor(containerColor)
+    val statusIcon = if (notInstalled) Icons.Rounded.Warning else Icons.Rounded.Block
+    val statusTitle = if (notInstalled) {
+        stringResource(R.string.home_not_installed)
+    } else {
+        stringResource(R.string.home_unsupported)
+    }
+    val navText = stringResource(R.string.home_nav_paths)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = containerColor,
+        contentColor = contentColor,
+        shape = MaterialTheme.shapes.large,
+        onClick = { mainPager.animateToPage(1) },
+    ) {
+        ListItem(
+            modifier = Modifier,
+            leadingContent = { Icon(statusIcon, contentDescription = statusTitle) },
+            trailingContent = if (notInstalled && state.isSELinuxPermissive) {
+                {
+                    Button(
+                        onClick = actions.onJailbreakClick,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError,
+                        ),
+                    ) {
+                        Text(stringResource(R.string.home_jailbreak))
+                    }
                 }
-            }
-        } else null
-
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = containerColor,
-            contentColor = contentColor,
-            shape = MaterialTheme.shapes.large,
-            /* 整卡可点：就绪→执行页，未就绪→路径页（2026-10-18 用户裁定）。 */
-            onClick = { mainPager.animateToPage(if (ksuActive) 2 else 1) }
-        ) {
-            ListItem(
-                modifier = Modifier,
-                leadingContent = {
-                    Icon(statusIcon, contentDescription = statusTitle)
-                },
-                trailingContent = statusTrailing,
-                overlineContent = null,
-                supportingContent = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Row(
-                            modifier = Modifier
-                                .weight(1f, fill = false)
-                                .clickable {
-                                    mainPager.animateToPage(if (ksuActive) 2 else 1)
-                                },
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(text = navText, style = MaterialTheme.typography.bodyMedium)
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
-                        if (state.showCustomLkmBadge) {
-                            Spacer(Modifier.width(8.dp))
-                            StatusTag(
-                                label = stringResource(R.string.home_lkm_custom),
-                                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                                backgroundColor = MaterialTheme.colorScheme.tertiaryContainer,
-                            )
-                        }
-                    }
-                },
-                verticalAlignment = Alignment.CenterVertically,
-                colors = ListItemDefaults.colors(
-                    containerColor = Color.Transparent,
-                    contentColor = contentColor,
-                    leadingContentColor = contentColor,
-                    trailingContentColor = contentColor,
-                    supportingContentColor = contentColor.copy(alpha = 0.7f)
-                ),
-                elevation = ListItemDefaults.elevation(),
-                content = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = statusTitle,
-                            style = MaterialTheme.typography.titleMediumEmphasized
+            } else {
+                null
+            },
+            overlineContent = null,
+            supportingContent = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .clickable { mainPager.animateToPage(1) },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(text = navText, style = MaterialTheme.typography.bodyMedium)
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
                         )
-                        if (ksuActive && state.isSafeMode) {
-                            Spacer(Modifier.width(8.dp))
-                            StatusTag(
-                                label = stringResource(id = R.string.safe_mode),
-                                contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                                backgroundColor = MaterialTheme.colorScheme.errorContainer
-                            )
-                        }
-                        if (ksuActive && state.isLateLoadMode) {
-                            Spacer(Modifier.width(8.dp))
-                            StatusTag(
-                                label = stringResource(id = R.string.jailbreak_mode),
-                                contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                                backgroundColor = MaterialTheme.colorScheme.errorContainer
-                            )
-                        }
                     }
-                },
-            )
-        }
+                }
+            },
+            verticalAlignment = Alignment.CenterVertically,
+            colors = ListItemDefaults.colors(
+                containerColor = Color.Transparent,
+                contentColor = contentColor,
+                leadingContentColor = contentColor,
+                trailingContentColor = contentColor,
+                supportingContentColor = contentColor.copy(alpha = 0.7f),
+            ),
+            elevation = ListItemDefaults.elevation(),
+            content = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = statusTitle,
+                        style = MaterialTheme.typography.titleMediumEmphasized,
+                    )
+                }
+            },
+        )
     }
 }
 

@@ -15,6 +15,74 @@
 
 #include "core/api.h"
 
+/* ------------------------------------------------------------------------- */
+/* JNI 原子回执协议（F-C）                                                    */
+/* ------------------------------------------------------------------------- */
+/*
+ * 返回值的三种状态（Kotlin 侧按此结算 token，不再依赖任何单一哨兵）：
+ * 1. 正常返回：handle 入口返回 token（0 仍是无效 handle），int 入口返回 core 的
+ *    call_status；此时回执必须**完整**写回（callStatus 是最后写的字段）。
+ * 2. NOT_ACCEPTED（`-2`）：前置校验失败（result 对象缺失/类型不符、token 前置
+ *    条件不满足、输入翻译失败）。此时**不调用 core**、不写回执，token 未被消费；
+ *    Kotlin 必须恢复 token。
+ * 3. INCOMPLETE（handle 入口 `-1`、int 入口 `INT32_MIN`）：已经调用过 core，但
+ *    回执字段无法完整写回。此时**不得**恢复 token（Native 可能已消费），Kotlin
+ *    必须 fail-stop：丢弃旧 token、不再 close、不猜测 consumed。
+ */
+#define GLK43499_JNI_NOT_ACCEPTED_INT ((jint) -2)
+#define GLK43499_JNI_INCOMPLETE_INT ((jint) INT32_MIN)
+#define GLK43499_JNI_NOT_ACCEPTED_HANDLE ((jlong) -2)
+#define GLK43499_JNI_INCOMPLETE_HANDLE ((jlong) -1)
+
+/** @brief Kotlin 结果 DTO 的 JVM 类名（@Keep 固定，R8 不重命名）。 */
+#define GLK43499_JNI_CLASS_PLACEMENT_RESULT \
+    "com/ghostlock/app/jni/Native43499PlacementResult"
+#define GLK43499_JNI_CLASS_LANDING_RESULT \
+    "com/ghostlock/app/jni/Native43499LandingResult"
+#define GLK43499_JNI_CLASS_CLOSE_RESULT \
+    "com/ghostlock/app/jni/Native43499CloseResult"
+#define GLK43499_JNI_CLASS_ACTOR_PREPARE_RESULT \
+    "com/ghostlock/app/jni/Native43499ActorPrepareResult"
+#define GLK43499_JNI_CLASS_ACTOR_EXECUTE_RESULT \
+    "com/ghostlock/app/jni/Native43499ActorExecuteResult"
+
+/**
+ * @brief 校验 JNI 输出对象非空、无待处理异常且类型匹配。
+ * @param env 当前 JNI 环境。
+ * @param object 调用方传入的结果对象。
+ * @param class_name @Keep 固定的 DTO 类名。
+ * @return 1 可写；0 前置拒绝（Kotlin 必须按 not-accepted 恢复 token）。
+ * @note 失败时清除查找类产生的待处理异常，不向 Java 抛。
+ * @note 阶段：每个 JNI 入口调用 core 之前的第一次校验。
+ */
+static int32_t glk43499_jni_result_ready(JNIEnv *env, jobject object,
+                                         const char *class_name) {
+    if (env == NULL || object == NULL) return 0;
+    if ((*env)->ExceptionCheck(env) == JNI_TRUE) {
+        (*env)->ExceptionClear(env);
+        return 0;
+    }
+    jclass type = (*env)->FindClass(env, class_name);
+    if (type == NULL) {
+        (*env)->ExceptionClear(env);
+        return 0;
+    }
+    const jboolean matches = (*env)->IsInstanceOf(env, object, type);
+    (*env)->DeleteLocalRef(env, type);
+    return matches == JNI_TRUE ? 1 : 0;
+}
+
+/**
+ * @brief 清掉 JNI 侧的待处理异常（字段写回失败时使用；JNI 入口不得抛）。
+ * @param env 当前 JNI 环境。
+ * @note 阶段：回执写回失败的收口。
+ */
+static void glk43499_jni_clear_pending(JNIEnv *env) {
+    if (env != NULL && (*env)->ExceptionCheck(env) == JNI_TRUE) {
+        (*env)->ExceptionClear(env);
+    }
+}
+
 /** @brief 初始化由 JNI 拥有的顶层 ABI 结构。 */
 #define GLK43499_INIT_ABI(value_, type_) \
     ((value_).abi = (struct glk43499_abi_header) GLK43499_ABI_HEADER_INIT(type_))
@@ -108,46 +176,56 @@ static void glk43499_init_call_result(struct glk43499_call_result *result,
     result->abi.abi_version = GLK43499_ABI_VERSION;
 }
 
-/** @brief 生成 JNI 参数拒绝回执。 */
-static void glk43499_invalid_call(struct glk43499_call_result *result,
-                                 uint32_t struct_size) {
-    glk43499_init_call_result(result, struct_size);
-    result->call_status = GLK43499_CALL_INVALID_ARGUMENT;
-    result->effect = GLK43499_EFFECT_NOT_APPLIED;
-    result->resource_state = GLK43499_RESOURCE_INVALID;
-}
-
-/** @brief 生成 native 临时内存分配失败回执。 */
-static void glk43499_nomem_call(struct glk43499_call_result *result,
-                               uint32_t struct_size) {
-    glk43499_init_call_result(result, struct_size);
-    result->call_status = GLK43499_CALL_SYSTEM_ERROR;
-    result->effect = GLK43499_EFFECT_NOT_APPLIED;
-    result->resource_state = GLK43499_RESOURCE_INVALID;
-    result->system_error = ENOMEM;
-}
-
-/** @brief 将公共 core 回执逐字段写回具名 Kotlin result。 */
-static int32_t glk43499_write_call_result(
+/** @brief 写回 call_result 中除 `callStatus` 之外的全部字段。 */
+static int32_t glk43499_write_call_result_body(
     JNIEnv *env, jobject target, const struct glk43499_call_result *source) {
-    return glk43499_set_int(env, target, "callStatus", source->call_status) &&
-           glk43499_set_int(env, target, "effect", source->effect) &&
+    return glk43499_set_int(env, target, "effect", source->effect) &&
            glk43499_set_int(env, target, "resourceState", source->resource_state) &&
            glk43499_set_int(env, target, "systemError", source->system_error) &&
            glk43499_set_long(env, target, "retainedResourceCount",
                              source->retained_resource_count);
 }
 
-/** @brief 将 close/cancel 回执逐字段写回 Kotlin。 */
+/**
+ * @brief 最后写回 `callStatus`（原子回执的完成标志）。
+ * @param env 当前 JNI 环境。
+ * @param target Kotlin 结果对象。
+ * @param status core 的状态。
+ * @return 1 成功；0 失败（调用方清异常并返回 incomplete 哨兵）。
+ */
+static int32_t glk43499_write_call_status(JNIEnv *env, jobject target,
+                                          int32_t status) {
+    return glk43499_set_int(env, target, "callStatus", status);
+}
+
+/**
+ * @brief 完整写回公共调用回执：先写其它字段，最后写 callStatus。
+ * @return 1 回执完整；0 表示 incomplete（调用方必须清异常并返回哨兵）。
+ */
+static int32_t glk43499_write_call_result(
+    JNIEnv *env, jobject target, const struct glk43499_call_result *source) {
+    if (target == NULL) return 0;
+    if (!glk43499_write_call_result_body(env, target, source)) return 0;
+    return glk43499_write_call_status(env, target, source->call_status);
+}
+
+/**
+ * @brief 完整写回 close/cancel 回执（callStatus 最后写）。
+ * @return 1 完整；0 incomplete。
+ */
 static int32_t glk43499_write_close_result(
     JNIEnv *env, jobject target, const struct glk43499_close_result *source) {
-    return glk43499_write_call_result(env, target, &source->call) &&
-           glk43499_set_bool(env, target, "stopRequested", source->stop_requested) &&
-           glk43499_set_bool(env, target, "workersJoined", source->workers_joined) &&
-           glk43499_set_bool(env, target, "ownedChainReleased",
-                             source->owned_chain_released) &&
-           glk43499_set_bool(env, target, "retainedForProcessExit",
-                             source->retained_for_process_exit);
+    if (target == NULL) return 0;
+    if (!glk43499_write_call_result_body(env, target, &source->call)) return 0;
+    if (!glk43499_set_bool(env, target, "stopRequested", source->stop_requested) ||
+        !glk43499_set_bool(env, target, "workersJoined", source->workers_joined) ||
+        !glk43499_set_bool(env, target, "ownedChainReleased",
+                           source->owned_chain_released) ||
+        !glk43499_set_bool(env, target, "retainedForProcessExit",
+                           source->retained_for_process_exit)) {
+        return 0;
+    }
+    return glk43499_write_call_status(env, target, source->call.call_status);
 }
 
 /**
@@ -349,8 +427,8 @@ static int32_t glk43499_read_primitive(
 /** @brief 写回 preparePlacement 的候选页事实。 */
 static int32_t glk43499_write_placement_result(
     JNIEnv *env, jobject target, const struct glk43499_placement_result *source) {
-    return glk43499_write_call_result(env, target, &source->call) &&
-           glk43499_set_long(env, target, "candidatePageBase",
+    if (!glk43499_write_call_result_body(env, target, &source->call)) return 0;
+    if (glk43499_set_long(env, target, "candidatePageBase",
                              source->facts.candidate_page_base) &&
            glk43499_set_long(env, target, "pageSize", source->facts.page_size) &&
            glk43499_set_long(env, target, "allocationSize",
@@ -364,14 +442,17 @@ static int32_t glk43499_write_placement_result(
            glk43499_set_long(env, target, "retainedChildCount",
                              source->facts.retained_child_count) &&
            glk43499_set_long(env, target, "retainedDescriptorCount",
-                             source->facts.retained_descriptor_count);
+                             source->facts.retained_descriptor_count)) {
+        return 0;
+    }
+    return glk43499_write_call_status(env, target, source->call.call_status);
 }
 
 /** @brief 写回 Landing 提交点和计数。 */
 static int32_t glk43499_write_landing_result(
     JNIEnv *env, jobject target, const struct glk43499_landing_result *source) {
-    return glk43499_write_call_result(env, target, &source->call) &&
-           glk43499_set_long(env, target, "actualPageBase",
+    if (!glk43499_write_call_result_body(env, target, &source->call)) return 0;
+    if (glk43499_set_long(env, target, "actualPageBase",
                              source->receipt.actual_page_base) &&
            glk43499_set_long(env, target, "contentGeneration",
                              source->receipt.content_generation) &&
@@ -390,15 +471,18 @@ static int32_t glk43499_write_landing_result(
            glk43499_set_bool(env, target, "placementConsumed",
                              source->receipt.placement_consumed) &&
            glk43499_set_bool(env, target, "reclaimRetained",
-                             source->receipt.reclaim_retained);
+                             source->receipt.reclaim_retained)) {
+        return 0;
+    }
+    return glk43499_write_call_status(env, target, source->call.call_status);
 }
 
 /** @brief 写回 prepareActor 的准备事实。 */
 static int32_t glk43499_write_actor_prepare_result(
     JNIEnv *env, jobject target, const struct glk43499_actor_prepare_result *source) {
-    return glk43499_write_call_result(env, target, &source->call) &&
-           glk43499_set_long(env, target, "pageContentGeneration",
-                             source->receipt.page_content_generation) &&
+    if (!glk43499_write_call_result_body(env, target, &source->call)) return 0;
+    if (glk43499_set_long(env, target, "pageContentGeneration",
+                          source->receipt.page_content_generation) &&
            glk43499_set_int(env, target, "primitiveKind",
                             source->receipt.primitive_kind) &&
            glk43499_set_int(env, target, "threadCount",
@@ -410,15 +494,18 @@ static int32_t glk43499_write_actor_prepare_result(
            glk43499_set_bool(env, target, "consumerReady",
                              source->receipt.consumer_ready) &&
            glk43499_set_bool(env, target, "carrierPrepared",
-                             source->receipt.carrier_prepared);
+                             source->receipt.carrier_prepared)) {
+        return 0;
+    }
+    return glk43499_write_call_status(env, target, source->call.call_status);
 }
 
 /** @brief 写回 executeActor 的物理事实。 */
 static int32_t glk43499_write_actor_execute_result(
     JNIEnv *env, jobject target, const struct glk43499_actor_execute_result *source) {
-    return glk43499_write_call_result(env, target, &source->call) &&
-           glk43499_set_long(env, target, "pageContentGeneration",
-                             source->receipt.page_content_generation) &&
+    if (!glk43499_write_call_result_body(env, target, &source->call)) return 0;
+    if (glk43499_set_long(env, target, "pageContentGeneration",
+                          source->receipt.page_content_generation) &&
            glk43499_set_long(env, target, "consumerCallCount",
                              source->receipt.consumer_call_count) &&
            glk43499_set_long(env, target, "consumerSuccessCount",
@@ -435,41 +522,58 @@ static int32_t glk43499_write_actor_execute_result(
            glk43499_set_bool(env, target, "carrierDisarmed",
                              source->receipt.carrier_disarmed) &&
            glk43499_set_bool(env, target, "retainedForProcessExit",
-                             source->receipt.retained_for_process_exit);
+                             source->receipt.retained_for_process_exit)) {
+        return 0;
+    }
+    return glk43499_write_call_status(env, target, source->call.call_status);
 }
 
 JNIEXPORT jlong JNICALL
 Java_com_ghostlock_app_jni_Native43499Jni_preparePlacement(
     JNIEnv *env, jclass clazz, jobject request_object, jobject result_object) {
     (void) clazz;
+    if (request_object == NULL ||
+        !glk43499_jni_result_ready(env, result_object,
+                                   GLK43499_JNI_CLASS_PLACEMENT_RESULT)) {
+        return GLK43499_JNI_NOT_ACCEPTED_HANDLE;
+    }
     struct glk43499_placement_request request;
     struct glk43499_placement_result result;
     glk43499_init_call_result(&result.call, (uint32_t) sizeof(result));
-    glk43499_handle handle = GLK43499_INVALID_HANDLE;
-    if (request_object != NULL && result_object != NULL &&
-        glk43499_read_placement_request(env, request_object, &request)) {
-        handle = glk43499_prepare_placement(&request, &result);
-    } else {
-        glk43499_invalid_call(&result.call, (uint32_t) sizeof(result));
+    if (!glk43499_read_placement_request(env, request_object, &request)) {
+        glk43499_jni_clear_pending(env);
+        return GLK43499_JNI_NOT_ACCEPTED_HANDLE;
     }
-    (void) glk43499_write_placement_result(env, result_object, &result);
+    const glk43499_handle handle = glk43499_prepare_placement(&request, &result);
+    if (!glk43499_write_placement_result(env, result_object, &result)) {
+        glk43499_jni_clear_pending(env);
+        return GLK43499_JNI_INCOMPLETE_HANDLE;
+    }
     return (jlong) handle;
 }
 
-/** @brief cancel/close Placement 的公共 JNI 搬运。 */
-static jint glk43499_placement_close_call(JNIEnv *env, jlong handle,
-                                         jobject result_object, int32_t close_call) {
+/**
+ * @brief cancel/close Placement 的公共搬运（原子回执 + 三态返回值）。
+ * @return core 状态；NOT_ACCEPTED / INCOMPLETE 为 JNI 侧哨兵。
+ */
+static jint glk43499_jni_placement_close_call(JNIEnv *env, jlong handle,
+                                             jobject result_object,
+                                             int32_t close_call) {
+    if (handle == 0 ||
+        !glk43499_jni_result_ready(env, result_object,
+                                   GLK43499_JNI_CLASS_CLOSE_RESULT)) {
+        return GLK43499_JNI_NOT_ACCEPTED_INT;
+    }
     struct glk43499_close_result result;
     glk43499_init_call_result(&result.call, (uint32_t) sizeof(result));
-    int32_t status = GLK43499_CALL_INVALID_ARGUMENT;
-    if (handle != 0 && result_object != NULL) {
-        status = close_call != 0
-                     ? glk43499_close_placement((glk43499_handle) handle, &result)
-                     : glk43499_cancel_placement((glk43499_handle) handle, &result);
-    } else {
-        glk43499_invalid_call(&result.call, (uint32_t) sizeof(result));
+    const int32_t status =
+        close_call != 0
+            ? glk43499_close_placement((glk43499_handle) handle, &result)
+            : glk43499_cancel_placement((glk43499_handle) handle, &result);
+    if (!glk43499_write_close_result(env, result_object, &result)) {
+        glk43499_jni_clear_pending(env);
+        return GLK43499_JNI_INCOMPLETE_INT;
     }
-    (void) glk43499_write_close_result(env, result_object, &result);
     return (jint) status;
 }
 
@@ -477,14 +581,14 @@ JNIEXPORT jint JNICALL
 Java_com_ghostlock_app_jni_Native43499Jni_cancelPlacement(
     JNIEnv *env, jclass clazz, jlong handle, jobject result_object) {
     (void) clazz;
-    return glk43499_placement_close_call(env, handle, result_object, 0);
+    return glk43499_jni_placement_close_call(env, handle, result_object, 0);
 }
 
 JNIEXPORT jint JNICALL
 Java_com_ghostlock_app_jni_Native43499Jni_closePlacement(
     JNIEnv *env, jclass clazz, jlong handle, jobject result_object) {
     (void) clazz;
-    return glk43499_placement_close_call(env, handle, result_object, 1);
+    return glk43499_jni_placement_close_call(env, handle, result_object, 1);
 }
 
 JNIEXPORT jlong JNICALL
@@ -492,6 +596,11 @@ Java_com_ghostlock_app_jni_Native43499Jni_landPage(
     JNIEnv *env, jclass clazz, jlong placement, jobject request_object,
     jbyteArray final_bytes, jlong content_generation, jobject result_object) {
     (void) clazz;
+    if (placement == 0 || request_object == NULL ||
+        !glk43499_jni_result_ready(env, result_object,
+                                   GLK43499_JNI_CLASS_LANDING_RESULT)) {
+        return GLK43499_JNI_NOT_ACCEPTED_HANDLE;
+    }
     struct glk43499_landing_request request;
     struct glk43499_landing_result result;
     struct glk43499_page_bytes bytes;
@@ -501,24 +610,26 @@ Java_com_ghostlock_app_jni_Native43499Jni_landPage(
     memset(&bytes, 0, sizeof(bytes));
     GLK43499_INIT_ABI(bytes, struct glk43499_page_bytes);
     glk43499_init_call_result(&result.call, (uint32_t) sizeof(result));
-    glk43499_handle page = GLK43499_INVALID_HANDLE;
 
-    if (placement != 0 && request_object != NULL && result_object != NULL &&
-        glk43499_read_landing_request(env, request_object, &request)) {
-        copy_status = glk43499_copy_bytes(env, final_bytes, &bytes_copy, &bytes_size);
+    if (!glk43499_read_landing_request(env, request_object, &request)) {
+        glk43499_jni_clear_pending(env);
+        return GLK43499_JNI_NOT_ACCEPTED_HANDLE;
     }
-    if (copy_status == GLK43499_COPY_OK) {
-        bytes.data = bytes_copy;
-        bytes.size = bytes_size;
-        bytes.content_generation = (uint64_t) content_generation;
-        page = glk43499_land_page((glk43499_handle) placement, &bytes, &request, &result);
-    } else if (copy_status == GLK43499_COPY_NO_MEMORY) {
-        glk43499_nomem_call(&result.call, (uint32_t) sizeof(result));
-    } else {
-        glk43499_invalid_call(&result.call, (uint32_t) sizeof(result));
+    copy_status = glk43499_copy_bytes(env, final_bytes, &bytes_copy, &bytes_size);
+    if (copy_status != GLK43499_COPY_OK) {
+        glk43499_jni_clear_pending(env);
+        return GLK43499_JNI_NOT_ACCEPTED_HANDLE;
     }
+    bytes.data = bytes_copy;
+    bytes.size = bytes_size;
+    bytes.content_generation = (uint64_t) content_generation;
+    const glk43499_handle page = glk43499_land_page(
+        (glk43499_handle) placement, &bytes, &request, &result);
     glk43499_clear_free(bytes_copy, bytes_size);
-    (void) glk43499_write_landing_result(env, result_object, &result);
+    if (!glk43499_write_landing_result(env, result_object, &result)) {
+        glk43499_jni_clear_pending(env);
+        return GLK43499_JNI_INCOMPLETE_HANDLE;
+    }
     return (jlong) page;
 }
 
@@ -526,15 +637,19 @@ JNIEXPORT jint JNICALL
 Java_com_ghostlock_app_jni_Native43499Jni_closePage(
     JNIEnv *env, jclass clazz, jlong page, jobject result_object) {
     (void) clazz;
+    if (page == 0 ||
+        !glk43499_jni_result_ready(env, result_object,
+                                   GLK43499_JNI_CLASS_CLOSE_RESULT)) {
+        return GLK43499_JNI_NOT_ACCEPTED_INT;
+    }
     struct glk43499_close_result result;
     glk43499_init_call_result(&result.call, (uint32_t) sizeof(result));
-    int32_t status = GLK43499_CALL_INVALID_ARGUMENT;
-    if (page != 0 && result_object != NULL) {
-        status = glk43499_close_page((glk43499_handle) page, &result);
-    } else {
-        glk43499_invalid_call(&result.call, (uint32_t) sizeof(result));
+    const int32_t status =
+        glk43499_close_page((glk43499_handle) page, &result);
+    if (!glk43499_write_close_result(env, result_object, &result)) {
+        glk43499_jni_clear_pending(env);
+        return GLK43499_JNI_INCOMPLETE_INT;
     }
-    (void) glk43499_write_close_result(env, result_object, &result);
     return (jint) status;
 }
 
@@ -543,6 +658,11 @@ Java_com_ghostlock_app_jni_Native43499Jni_prepareActor(
     JNIEnv *env, jclass clazz, jlong page, jobject setup_object,
     jobject primitive_object, jobject result_object) {
     (void) clazz;
+    if (page == 0 || setup_object == NULL || primitive_object == NULL ||
+        !glk43499_jni_result_ready(env, result_object,
+                                   GLK43499_JNI_CLASS_ACTOR_PREPARE_RESULT)) {
+        return GLK43499_JNI_NOT_ACCEPTED_HANDLE;
+    }
     struct glk43499_actor_setup setup;
     struct glk43499_primitive_spec primitive;
     struct glk43499_actor_prepare_result result;
@@ -550,20 +670,21 @@ Java_com_ghostlock_app_jni_Native43499Jni_prepareActor(
     uint64_t frame_size = 0;
     glk43499_copy_status copy_status = GLK43499_COPY_INVALID;
     glk43499_init_call_result(&result.call, (uint32_t) sizeof(result));
-    glk43499_handle actor = GLK43499_INVALID_HANDLE;
 
-    if (page != 0 && setup_object != NULL && primitive_object != NULL &&
-        result_object != NULL && glk43499_read_actor_setup(env, setup_object, &setup) &&
-        glk43499_read_primitive(env, primitive_object, &primitive,
-                                &frame_copy, &frame_size, &copy_status)) {
-        actor = glk43499_prepare_actor((glk43499_handle) page, &setup, &primitive, &result);
-    } else if (copy_status == GLK43499_COPY_NO_MEMORY) {
-        glk43499_nomem_call(&result.call, (uint32_t) sizeof(result));
-    } else {
-        glk43499_invalid_call(&result.call, (uint32_t) sizeof(result));
+    if (!glk43499_read_actor_setup(env, setup_object, &setup) ||
+        !glk43499_read_primitive(env, primitive_object, &primitive,
+                                 &frame_copy, &frame_size, &copy_status)) {
+        glk43499_clear_free(frame_copy, frame_size);
+        glk43499_jni_clear_pending(env);
+        return GLK43499_JNI_NOT_ACCEPTED_HANDLE;
     }
+    const glk43499_handle actor = glk43499_prepare_actor(
+        (glk43499_handle) page, &setup, &primitive, &result);
     glk43499_clear_free(frame_copy, frame_size);
-    (void) glk43499_write_actor_prepare_result(env, result_object, &result);
+    if (!glk43499_write_actor_prepare_result(env, result_object, &result)) {
+        glk43499_jni_clear_pending(env);
+        return GLK43499_JNI_INCOMPLETE_HANDLE;
+    }
     return (jlong) actor;
 }
 
@@ -571,32 +692,41 @@ JNIEXPORT jint JNICALL
 Java_com_ghostlock_app_jni_Native43499Jni_executeActor(
     JNIEnv *env, jclass clazz, jlong actor, jobject result_object) {
     (void) clazz;
+    if (actor == 0 ||
+        !glk43499_jni_result_ready(env, result_object,
+                                   GLK43499_JNI_CLASS_ACTOR_EXECUTE_RESULT)) {
+        return GLK43499_JNI_NOT_ACCEPTED_INT;
+    }
     struct glk43499_actor_execute_result result;
     glk43499_init_call_result(&result.call, (uint32_t) sizeof(result));
-    int32_t status = GLK43499_CALL_INVALID_ARGUMENT;
-    if (actor != 0 && result_object != NULL) {
-        status = glk43499_execute_actor((glk43499_handle) actor, &result);
-    } else {
-        glk43499_invalid_call(&result.call, (uint32_t) sizeof(result));
+    const int32_t status =
+        glk43499_execute_actor((glk43499_handle) actor, &result);
+    if (!glk43499_write_actor_execute_result(env, result_object, &result)) {
+        glk43499_jni_clear_pending(env);
+        return GLK43499_JNI_INCOMPLETE_INT;
     }
-    (void) glk43499_write_actor_execute_result(env, result_object, &result);
     return (jint) status;
 }
 
-/** @brief cancel/close Actor 的公共 JNI 搬运。 */
-static jint glk43499_actor_close_call(JNIEnv *env, jlong handle,
-                                     jobject result_object, int32_t close_call) {
+/** @brief cancel/close Actor 的公共搬运（原子回执 + 三态返回值）。 */
+static jint glk43499_jni_actor_close_call(JNIEnv *env, jlong handle,
+                                         jobject result_object,
+                                         int32_t close_call) {
+    if (handle == 0 ||
+        !glk43499_jni_result_ready(env, result_object,
+                                   GLK43499_JNI_CLASS_CLOSE_RESULT)) {
+        return GLK43499_JNI_NOT_ACCEPTED_INT;
+    }
     struct glk43499_close_result result;
     glk43499_init_call_result(&result.call, (uint32_t) sizeof(result));
-    int32_t status = GLK43499_CALL_INVALID_ARGUMENT;
-    if (handle != 0 && result_object != NULL) {
-        status = close_call != 0
-                     ? glk43499_close_actor((glk43499_handle) handle, &result)
-                     : glk43499_cancel_actor((glk43499_handle) handle, &result);
-    } else {
-        glk43499_invalid_call(&result.call, (uint32_t) sizeof(result));
+    const int32_t status =
+        close_call != 0
+            ? glk43499_close_actor((glk43499_handle) handle, &result)
+            : glk43499_cancel_actor((glk43499_handle) handle, &result);
+    if (!glk43499_write_close_result(env, result_object, &result)) {
+        glk43499_jni_clear_pending(env);
+        return GLK43499_JNI_INCOMPLETE_INT;
     }
-    (void) glk43499_write_close_result(env, result_object, &result);
     return (jint) status;
 }
 
@@ -604,12 +734,12 @@ JNIEXPORT jint JNICALL
 Java_com_ghostlock_app_jni_Native43499Jni_cancelActor(
     JNIEnv *env, jclass clazz, jlong actor, jobject result_object) {
     (void) clazz;
-    return glk43499_actor_close_call(env, actor, result_object, 0);
+    return glk43499_jni_actor_close_call(env, actor, result_object, 0);
 }
 
 JNIEXPORT jint JNICALL
 Java_com_ghostlock_app_jni_Native43499Jni_closeActor(
     JNIEnv *env, jclass clazz, jlong actor, jobject result_object) {
     (void) clazz;
-    return glk43499_actor_close_call(env, actor, result_object, 1);
+    return glk43499_jni_actor_close_call(env, actor, result_object, 1);
 }

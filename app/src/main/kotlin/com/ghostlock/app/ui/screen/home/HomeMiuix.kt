@@ -57,6 +57,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -64,7 +65,10 @@ import androidx.compose.ui.unit.sp
 import com.ghostlock.app.ui.KernelVersion
 import com.ghostlock.app.ui.Natives
 import com.ghostlock.app.R
+import com.ghostlock.app.ui.backend.statusTone
 import com.ghostlock.app.ui.component.WarningLevel
+import com.ghostlock.app.ui.component.statuscard.BackendStatusCard
+import com.ghostlock.app.ui.component.statuscard.BackendStatusCardModel
 import com.ghostlock.app.ui.component.dialog.rememberConfirmDialog
 import com.ghostlock.app.ui.component.miuix.WarningCard
 import com.ghostlock.app.ui.component.statustag.StatusTag
@@ -258,124 +262,34 @@ private fun StatusCard(
     Column {
         when {
             state.ksuVersion != null -> {
-                val workingState = buildString {
-                    if (state.isSafeMode) {
-                        append(" [${stringResource(id = R.string.safe_mode)}]")
-                    }
-                    if (state.isLateLoadMode) {
-                        append(" [${stringResource(id = R.string.jailbreak_mode)}]")
-                    }
-                }
-                /* badge 显示当前 backend 的 CVE 编号（2026-10-18 用户裁定）。 */
-                val workingMode = Backends.all[BackendSelection.index].cve
-                val workingText = "${stringResource(id = R.string.home_working)}$workingState"
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(IntrinsicSize.Min),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.defaultColors(
-                            color = when {
-                                isDynamicColor -> colorScheme.secondaryContainer
-                                isInDarkTheme() -> Color(0xFF1A3825)
-                                else -> Color(0xFFDFFAE4)
-                            }
-                        ),
-                        /* 整卡可点：就绪→执行页（2026-10-18 用户裁定）。 */
-                        onClick = { mainPager.animateToPage(2) },
-                        showIndication = true,
-                        pressFeedbackType = PressFeedbackType.Tilt
-                    ) {
-                        Box {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .offset(27.dp, 31.dp),
-                                contentAlignment = Alignment.BottomEnd
-                            ) {
-                                Icon(
-                                    modifier = Modifier.size(110.dp),
-                                    imageVector = Icons.Rounded.CheckCircleOutline,
-                                    tint = if (isDynamicColor) {
-                                        colorScheme.primary.copy(alpha = 0.8f)
-                                    } else {
-                                        Color(0xFF36D167)
-                                    },
-                                    contentDescription = null
-                                )
-                            }
-                            if (workingMode != null) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(16.dp, 10.dp),
-                                    contentAlignment = Alignment.BottomStart,
-                                ) {
-                                    Text(
-                                        text = workingMode,
-                                        fontSize = 12.sp,
-                                        color = colorScheme.onBackground.copy(alpha = 0.7f),
-                                    )
-                                }
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(16.dp, 14.dp),
-                                contentAlignment = Alignment.TopStart,
-                            ) {
-                                Column {
-                                    Text(
-                                        text = workingText,
-                                        fontSize = 22.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                    Spacer(Modifier.height(1.dp))
-                                    Row(
-                                        modifier = Modifier.clickable {
-                                            mainPager.animateToPage(2)
-                                        },
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Text(
-                                            text = stringResource(R.string.home_nav_run),
-                                            fontSize = 15.sp,
-                                        )
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                        if (state.showCustomLkmBadge) {
-                                            Spacer(Modifier.width(8.dp))
-                                            StatusTag(
-                                                label = stringResource(R.string.home_lkm_custom),
-                                                contentColor = if (isDynamicColor) {
-                                                    colorScheme.onTertiaryContainer
-                                                } else if (isInDarkTheme()) {
-                                                    Color(0xFFB8E8C5)
-                                                } else {
-                                                    Color(0xFF164A29)
-                                                },
-                                                backgroundColor = if (isDynamicColor) {
-                                                    colorScheme.tertiaryContainer
-                                                } else if (isInDarkTheme()) {
-                                                    Color(0xFF315D3E)
-                                                } else {
-                                                    Color(0xFFB8E8C5)
-                                                },
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                /* task-23：状态卡组件化（ui/component/statuscard）。
+                 * 文本来自 backend 的 statusTextRes()；框架只按 readiness 映射 tone 选图标/颜色。 */
+                val selectedBackend = Backends.all[BackendSelection.index]
+                val backendReadiness = selectedBackend.readiness()
+                BackendStatusCard(
+                    model = BackendStatusCardModel(
+                        cveLabel = selectedBackend.cve,
+                        statusTextRes = selectedBackend.statusTextRes(),
+                        tone = backendReadiness.statusTone,
+                        navigationTextRes = if (backendReadiness.isReady) {
+                            R.string.home_nav_run
+                        } else {
+                            R.string.home_nav_paths
+                        },
+                        stateTags = buildList {
+                            if (state.isSafeMode) add(stringResource(R.string.safe_mode))
+                            if (state.isLateLoadMode) add(stringResource(R.string.jailbreak_mode))
+                        },
+                        extraTags = if (state.showCustomLkmBadge) {
+                            listOf(stringResource(R.string.home_lkm_custom))
+                        } else {
+                            emptyList()
+                        },
+                        onClick = {
+                            mainPager.animateToPage(if (backendReadiness.isReady) 2 else 1)
+                        },
+                    ),
+                )
             }
 
             state.kernelVersion.isGKI() -> {

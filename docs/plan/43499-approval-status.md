@@ -61,9 +61,21 @@
 | victim/Finish | protocol child 用 Native handle；普通 victim 仍 ProcessBuilder；UI脚本由 rooted child 中性触发 | **已批准** | 用户 2026-10-23 指令“按照计划”；pid/hash/marker/SELinux 真机门禁 |
 | C11 Page/Actor header-only 契约 | Placement→Page 所有权转移；Actor prepare 时绑定物理 Primitive；execute 无 tag；不接 CMake/JNI | **已批准（仅头文件）** | 用户 2026-10-26 明确要求从零写 `.h`；实现与生产接线仍按独立批次门禁；见 [43499-c11-header-contract-plan.md](43499-c11-header-contract-plan.md) |
 | JNI transport | 具名 Kotlin DTO ↔ 显式 JNI 字段翻译 ↔ C11 九入口；当前 core 用 fail-closed unavailable 实现 | **已批准（仅 transport）** | 用户 2026-10-26 明确要求“修改jni”；不批准物理原语实现；见 [43499-jni-transport-plan.md](43499-jni-transport-plan.md) |
-| 资源原语实施 | G4L-0线性契约→Placement→Page→Actor→独立Primitive→wrapper→最终接线 | **已批准（仅线性设计与G4L-0契约修订）** | 用户2026-10-26“就这样吧，修订”；物理实现仍逐批批准；见 [43499-resource-primitives-implementation-plan.md](43499-resource-primitives-implementation-plan.md) |
+| 资源原语实施 | G4L-0线性契约→Placement→Page→Actor→独立Primitive→wrapper→最终接线 | **已批准（仅线性设计与G4L-0契约修订；G4L-1～4T 见 §4.2 一次性指令）** | 用户2026-10-26“就这样吧，修订”；物理实现仍逐批批准；见 [43499-resource-primitives-implementation-plan.md](43499-resource-primitives-implementation-plan.md) |
 
-批准方式：用户 2026-10-23 指令“按照计划”编写架构 Kotlin class；第1层历史薄层继续保留，第2层最小 transaction 生产启用。2026-10-23 六项同步生效；2026-10-26 header-only 项独立生效。
+### 4.2 一次性代码冲刺指令（2026-10-26，知情强制）
+
+| 项 | 内容 | 状态 | 依据 |
+|---|---|---|---|
+| G4L-1～G4L-6 纯代码冲刺 | 用户 2026-10-26 后续指令“**冲刺到G4L-6**”：在同一 B 纯代码冲刺模式下连续实施 G4L-1～4T + G4L-5 Kotlin/Lua owner wrapper + G4L-6 victim/Finish/ksud 代码（均只写代码；评审/门禁/测试/真机验收延后补验） | **已批准；代码实施完成；用户终验不通过（10 项结构阻断）；F-A～F-D 结构修复完成，待复核** | 终验 [43499-g4l-final-review-20261026.md](../analysis/43499-g4l-final-review-20261026.md)；修复 [43499-g4l-structural-fix-20261026.md](../analysis/43499-g4l-structural-fix-20261026.md) |
+| 用户终验（2026-10-26） | 用户独立审查：APK sha `eb3df613…`、DSO sha `550baeba…`、assembleRelease exit0、单测 51/5 fail、native task 不存在、无真机证据；列 10 项结构阻断（PI 窗口动态分派、Page 所有权、PSELECT fd、JNI 原子回执、清理记账、Carrier 成功判据、TCP 溢出、Finish 执行链/marker/ksud、victim-Actor 绑定、文档一致性） | **不通过（FAIL）；结构修复已完成，待独立复核与真机门禁** | 结构修复记录与工作树 |
+| Flow43499Impl 实现（用户 2026-10-26 指令） | 用户指令「把flow43499impl写好」：Flow 从 not-wired 改为线性链业务组合层（runSpec→Cve43499Run），不接默认 runner/UI、不默认启用、不宣称 supported | **已批准（仅代码）；实现完成，待评审/真机** | [43499-flow43499impl-20261026.md](../analysis/43499-flow43499impl-20261026.md) |
+| Flow43499Impl 接到 UI（用户 2026-10-26 指令） | 用户指令「接到UI」：BackendPage 在选中 CVE-2026-43499 时提供实验链运行入口；controller 构建 handoff/runSpec 并调用 Flow43499Impl；物理输入缺失时具名 fail-closed | **已批准（仅代码）；实现完成，待评审/真机** | [43499-flow43499impl-20261026.md](../analysis/43499-flow43499impl-20261026.md) |
+| G4L-6 生产启用/默认 Flow/ksud 接线/真机验收 | uid=0、脚本对象身份、ksud/marker、SELinux 恢复、资源终结的真机证明；默认 Flow/ksud 批接线 | **不做（本阶段不含；门禁禁止）** | plan §6：未过真机门不得标 supported、不得接默认 Flow、不得进 ksud 批 |
+| 评审/门禁/真机判据 | design-critic、native-core、宿主失败注入、Gradle 门禁、四事务产物、真机冷机门禁、G4L-5 wrapper 矩阵、G4L-6 真机验收 | **待补验（技术债，task-9；结构修复后复核，再真机）** | 同上；补验前不得标 supported、不得接默认 Flow/ksud、不得宣称 PASS |
+| G4L-0 既判 FAIL | 冻结四件/§6 命令/5 红测试三项阻断 | **已知缺陷（并入补验批）** | [43499-g4l0-lead-final-verification-20261026.md](../analysis/43499-g4l0-lead-final-verification-20261026.md) |
+
+批准方式：用户 2026-10-23 指令“按照计划”编写架构 Kotlin class；第1层历史薄层继续保留，第2层最小 transaction 生产启用。2026-10-23 六项同步生效；2026-10-26 header-only 项独立生效；2026-10-26 一次性冲刺指令见 §4.2。
 
 ## 5. 本计划范围内明确不做
 

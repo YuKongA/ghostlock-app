@@ -15,6 +15,10 @@
 当前只批准了 G4L-0。G4L-1及以后每批都必须先由批准状态表登记“用户已批准本批”，Lead才能发开工
 消息；否则编码agent只能只读勘察。Lead终验只验当前批，不能批准下一批；G4L-4T/G4L-6仍是独立批准点。
 
+**2026-10-26 一次性指令（知情强制，见批准表 §4.2）**：用户要求一次性完成 G4L-1～G4L-4T 并选择“纯代码
+冲刺”。故 G4L-1～G4L-4T 连续实施、只写代码；本指南 §2.3 自验、§5 Lead 终验与 §3 各批门禁延后至
+“补验批”执行；编码期间只保留 §2.2 写码规则与 AGENTS §5 的资源/顺序要求。G4L-5/G4L-6 不在本指令内。
+
 明确冻结：`legacy/`、`legacy2/`、`very_legacy/` 只读；`general`、43284、64560、UI、handoff 脚本、
 `LegacyProfileConverter.kt`、profile 与 payload/address 计算均不得顺手修改。不得 commit、push、stash、
 checkout、restore、reset、clean，也不得新增 CLI/环境变量/临时生产入口。

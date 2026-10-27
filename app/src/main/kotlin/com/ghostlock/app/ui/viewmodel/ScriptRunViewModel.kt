@@ -36,6 +36,7 @@ class ScriptRunViewModel : ViewModel() {
     val logContent = StringBuilder()
 
     private var visit: String? = null
+
     private var prepareJob: Job? = null
 
     /** Token of the current preparation, owning its extraction in [ScriptRepository]. */

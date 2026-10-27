@@ -1,20 +1,7 @@
 package com.ghostlock.app.ui.screen.home
 
+import android.content.Context
 import android.content.pm.PackageManager
-import androidx.compose.foundation.clickable
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -22,18 +9,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.ghostlock.app.R
+import com.ghostlock.app.ui.component.dialog.PrivilegeAvailability
+import com.ghostlock.app.ui.component.dialog.PrivilegeDialog as PrivilegeDialogComponent
+import com.ghostlock.app.ui.component.dialog.PrivilegeDialogPage
+import com.ghostlock.app.ui.component.dialog.PrivilegeDialogState
+import com.ghostlock.app.ui.component.dialog.PrivilegeExecutorRow
 import rikka.shizuku.Shizuku
-import top.yukonga.miuix.kmp.basic.Button as MiuixButton
-import top.yukonga.miuix.kmp.basic.Text as MiuixText
-import top.yukonga.miuix.kmp.basic.TextButton as MiuixTextButton
-import top.yukonga.miuix.kmp.window.WindowDialog
 
 /**
  *  权限状态（2026-10-18 接线）。
@@ -44,6 +28,10 @@ import top.yukonga.miuix.kmp.window.WindowDialog
  *
  *  手动 adb 授权入口已删除（2026-10-19 用户裁定）：Shizuku 未就绪时只提示安装/启动，
  *  不再引导用户去电脑上跑 adb 脚本。
+ *
+ *  task-28 组件化：本文件只保留非 UI 逻辑（执行体偏好、Shizuku 授权请求/listener/onResume/
+ *  短轮询）；提示框 UI（执行体列表/模式切换/文案）全部在
+ *  `ui/component/dialog/PrivilegeDialog.kt` 渲染。
  */
 enum class ExecutorMode { App, Shizuku }
 
@@ -54,7 +42,7 @@ object ExecutorPreference {
 
     var mode by mutableStateOf(ExecutorMode.App)
 
-    fun load(context: android.content.Context) {
+    fun load(context: Context) {
         mode = if (context.getSharedPreferences(PREFS, 0).getString(KEY, "app") == "shizuku") {
             ExecutorMode.Shizuku
         } else {
@@ -62,7 +50,7 @@ object ExecutorPreference {
         }
     }
 
-    fun set(context: android.content.Context, value: ExecutorMode) {
+    fun set(context: Context, value: ExecutorMode) {
         mode = value
         context.getSharedPreferences(PREFS, 0).edit()
             .putString(KEY, if (value == ExecutorMode.Shizuku) "shizuku" else "app")
@@ -70,21 +58,36 @@ object ExecutorPreference {
     }
 }
 
-data class ExecutorRow(val label: String, val uid: Int, val state: String, val desc: String, val available: Boolean)
+/** Shizuku 是否已安装/可用（binder 可 ping）。 */
+private fun shizukuAvailable(): Boolean = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
 
-@Composable
-private fun executorRows(granted: Boolean): List<ExecutorRow> {
-    val context = LocalContext.current
+/**
+ * 构造当前执行体行（只给事实，文案由共享组件本地化）。
+ *
+ * @param context 应用上下文。
+ * @param granted Shizuku 是否已授权。
+ * @return app（应用 uid）+ shizuku（shell uid 2000）两行。
+ */
+private fun executorRows(context: Context, granted: Boolean): List<PrivilegeExecutorRow> {
     val appUid = context.applicationInfo.uid
-    val shizukuState = when {
-        !runCatching { Shizuku.pingBinder() }.getOrDefault(false) ->
-            context.getString(R.string.privilege_state_unavailable)
-        granted -> context.getString(R.string.privilege_state_granted)
-        else -> context.getString(R.string.privilege_state_denied)
+    val shizukuAvailability = when {
+        !shizukuAvailable() -> PrivilegeAvailability.UNAVAILABLE
+        granted -> PrivilegeAvailability.GRANTED
+        else -> PrivilegeAvailability.DENIED
     }
     return listOf(
-        ExecutorRow("app", appUid, stringResource(R.string.privilege_state_available), stringResource(R.string.privilege_desc_app), true),
-        ExecutorRow("shizuku", 2000, shizukuState, stringResource(R.string.privilege_desc_shizuku), granted),
+        PrivilegeExecutorRow(
+            label = "app",
+            uid = appUid,
+            availability = PrivilegeAvailability.APP,
+            available = true,
+        ),
+        PrivilegeExecutorRow(
+            label = "shizuku",
+            uid = 2000,
+            availability = shizukuAvailability,
+            available = granted,
+        ),
     )
 }
 
@@ -131,91 +134,6 @@ fun currentExecutorLabel(): String {
     }
 }
 
-@Composable
-private fun PrivilegeBody(
-    rows: List<ExecutorRow>,
-    currentMode: ExecutorMode,
-    miuix: Boolean,
-    onSelect: (String) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        rows.forEach { row ->
-            val selected = when (row.label) {
-                "app" -> currentMode == ExecutorMode.App
-                "shizuku" -> currentMode == ExecutorMode.Shizuku
-                else -> false
-            }
-            if (miuix) {
-                val scheme = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
-                top.yukonga.miuix.kmp.basic.Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .then(if (row.available) Modifier else Modifier.alpha(0.45f)),
-                    colors = top.yukonga.miuix.kmp.basic.CardDefaults.defaultColors(
-                        color = when {
-                            !row.available -> scheme.surfaceVariant
-                            selected -> scheme.primaryContainer
-                            else -> scheme.surfaceVariant
-                        },
-                    ),
-                ) {
-                    top.yukonga.miuix.kmp.basic.BasicComponent(
-                        title = row.label + " · uid " + row.uid,
-                        summary = row.state + " · " + row.desc,
-                        /* 灰色只是视觉状态：未授权时点击要能触发授权/教程（2026-10-18 用户反馈）。 */
-                        enabled = true,
-                        onClick = { onSelect(row.label) },
-                        endActions = {
-                            if (selected) {
-                                Icon(Icons.Filled.Check, contentDescription = null)
-                            }
-                        },
-                    )
-                }
-            } else {
-                androidx.compose.material3.Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .then(if (row.available) Modifier else Modifier.alpha(0.45f)),
-                    onClick = { onSelect(row.label) },
-                    enabled = true,
-                    colors = androidx.compose.material3.CardDefaults.cardColors(
-                        containerColor = if (selected) {
-                            MaterialTheme.colorScheme.primaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant
-                        },
-                    ),
-                ) {
-                    androidx.compose.material3.ListItem(
-                        headlineContent = { Text(row.label + " · uid " + row.uid) },
-                        supportingContent = { Text(row.state + " · " + row.desc) },
-                        trailingContent = if (selected) {
-                            { Icon(Icons.Filled.Check, contentDescription = null) }
-                        } else {
-                            null
-                        },
-                    )
-                }
-            }
-        }
-        /* Miuix 模式没有 MaterialTheme：颜色必须取 Miuix 的色板，否则暗色下是深灰字。 */
-        if (miuix) {
-            MiuixText(
-                text = stringResource(R.string.privilege_select_hint),
-                style = top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles.footnote2,
-                color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            )
-        } else {
-            Text(
-                text = stringResource(R.string.privilege_select_hint),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
 /** 发起 Shizuku 授权请求；返回是否成功把请求交给 Shizuku。 */
 private fun requestShizuku(): Boolean = runCatching {
     if (!Shizuku.pingBinder()) return false
@@ -225,13 +143,21 @@ private fun requestShizuku(): Boolean = runCatching {
     true
 }.getOrDefault(false)
 
-private enum class PrivilegeMode { Overview, ShizukuMissing }
-
-/** 权限状态子菜单；[miuix] 为 true 时用 miuix 的 WindowDialog。 */
+/**
+ * 权限状态子菜单（逻辑壳）。
+ *
+ * 本函数只负责 Shizuku 授权状态（listener + onResume + 短轮询）与页面切换行为；
+ * 弹窗 UI（执行体列表/说明/Back）全部委托共享组件
+ * `ui/component/dialog/PrivilegeDialog`（task-28 组件化）。
+ *
+ * @param show 是否展示。
+ * @param onDismiss 关闭回调。
+ * @param miuix 是否 Miuix 变体（与主页 UI 套件一致）。
+ */
 @Composable
 fun PrivilegeDialog(show: Boolean, onDismiss: () -> Unit, miuix: Boolean) {
     if (!show) return
-    var mode by remember(show) { mutableStateOf(PrivilegeMode.Overview) }
+    var page by remember(show) { mutableStateOf(PrivilegeDialogPage.OVERVIEW) }
     val context = LocalContext.current
     /* 授权结果异步回来：listener + onResume + 短轮询，保证卡片立即从灰变可点。 */
     var granted by remember { mutableStateOf(shizukuGranted()) }
@@ -254,85 +180,27 @@ fun PrivilegeDialog(show: Boolean, onDismiss: () -> Unit, miuix: Boolean) {
             kotlinx.coroutines.delay(300)
         }
     }
-    val rows = executorRows(granted)
-    val shizukuAvailable = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
+    val rows = executorRows(context, granted)
+    val shizukuUp = shizukuAvailable()
 
-    val body: @Composable () -> Unit = {
-        when (mode) {
-            PrivilegeMode.Overview -> PrivilegeBody(rows = rows, currentMode = ExecutorPreference.mode, miuix = miuix) { label ->
-                when (label) {
-                    "app" -> ExecutorPreference.set(context, ExecutorMode.App)
-                    "shizuku" -> when {
-                        granted -> ExecutorPreference.set(context, ExecutorMode.Shizuku)
-                        !shizukuAvailable -> mode = PrivilegeMode.ShizukuMissing
-                        !requestShizuku() -> mode = PrivilegeMode.ShizukuMissing
-                    }
+    PrivilegeDialogComponent(
+        state = PrivilegeDialogState(
+            page = page,
+            rows = rows,
+            selectedLabel = if (ExecutorPreference.mode == ExecutorMode.Shizuku) "shizuku" else "app",
+        ),
+        onDismiss = onDismiss,
+        onSelect = { label ->
+            when (label) {
+                "app" -> ExecutorPreference.set(context, ExecutorMode.App)
+                "shizuku" -> when {
+                    granted -> ExecutorPreference.set(context, ExecutorMode.Shizuku)
+                    !shizukuUp -> page = PrivilegeDialogPage.SHIZUKU_MISSING
+                    !requestShizuku() -> page = PrivilegeDialogPage.SHIZUKU_MISSING
                 }
             }
-            PrivilegeMode.ShizukuMissing -> Column {
-                if (miuix) {
-                    /* 与 ConfirmDialogMiuix 同一套排版：正文用 Miuix 默认正文样式，
-                     * 颜色由 MiuixTheme 的 LocalContentColor（onBackground）给（2026-10-19）。 */
-                    MiuixText(text = stringResource(R.string.privilege_shizuku_missing))
-                } else {
-                    Text(
-                        text = stringResource(R.string.privilege_shizuku_missing),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-                /* 动作行：Miuix 弹窗是整行 TextButton；Material 是右下角文本按钮。 */
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                    horizontalArrangement = if (miuix) Arrangement.SpaceBetween else Arrangement.End,
-                ) {
-                    if (miuix) {
-                        MiuixTextButton(
-                            text = stringResource(R.string.privilege_back),
-                            onClick = { mode = PrivilegeMode.Overview },
-                            modifier = Modifier.weight(1f),
-                        )
-                    } else {
-                        TextButton(onClick = { mode = PrivilegeMode.Overview }) {
-                            Text(stringResource(R.string.privilege_back))
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (miuix) {
-        WindowDialog(
-            show = true,
-            title = when (mode) {
-                PrivilegeMode.ShizukuMissing -> "Shizuku"
-                else -> stringResource(R.string.home_privilege_status)
-            },
-            onDismissRequest = onDismiss,
-            content = {
-                Column(modifier = Modifier.padding(horizontal = 4.dp)) {
-                    body()
-                }
-            },
-        )
-    } else {
-        androidx.compose.material3.BasicAlertDialog(onDismissRequest = onDismiss) {
-            androidx.compose.material3.Surface(
-                shape = MaterialTheme.shapes.extraLarge,
-                tonalElevation = 6.dp,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            ) {
-                Column(modifier = Modifier.padding(24.dp)) {
-                    Text(
-                        text = when (mode) {
-                            PrivilegeMode.ShizukuMissing -> "Shizuku"
-                            else -> stringResource(R.string.home_privilege_status)
-                        },
-                        style = MaterialTheme.typography.headlineSmall,
-                    )
-                    Column(modifier = Modifier.padding(top = 16.dp)) { body() }
-                }
-            }
-        }
-    }
+        },
+        onBack = { page = PrivilegeDialogPage.OVERVIEW },
+        miuix = miuix,
+    )
 }

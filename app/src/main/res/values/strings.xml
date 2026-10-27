@@ -6,6 +6,7 @@
     <string name="home_not_installed">Not installed</string>
     <string name="home_click_to_install">Tap to set up</string>
     <string name="home_working">Ready</string>
+    <string name="home_not_ready">Not ready</string>
     <string name="home_working_version">Version: %s</string>
     <string name="home_lkm_update_available">A newer bundled LKM is available. Tap to update.</string>
     <string name="home_lkm_custom">Custom</string>
@@ -42,6 +43,28 @@
     <string name="module_failed_to_disable">Failed to disable module: %s</string>
     <string name="module_empty">No module installed</string>
     <string name="module">Paths</string>
+    <!-- 路径页标题（task-20）：与其它三页一致使用页面专属 key；module 保留给底部导航/旧模块文案。 -->
+    <string name="paths">Paths</string>
+    <!-- task-21: backend 运行就绪框架（readiness / run gate）文案。 -->
+    <string name="backend_readiness_undeclared">Readiness is not declared for this backend</string>
+    <string name="backend_readiness_ready">Ready</string>
+    <string name="backend_readiness_not_ready_first_reason">Not ready: %1$s</string>
+    <string name="backend_status_cve43499_not_ready">Not ready: inputs not wired</string>
+    <string name="backend_status_cve43284_not_ready">Not ready: no run entry</string>
+    <string name="backend_status_custom_not_ready">Not ready: no script</string>
+    <string name="backend_readiness_not_ready">Not ready</string>
+    <string name="backend_readiness_not_ready_reasons">Not ready: </string>
+    <string name="backend_readiness_unverified_env">Environment is unverified (Natives/root probes are stubs that always report ready)</string>
+    <string name="backend_readiness_cve43499_inputs">Physical inputs (payload/addresses/frame) have no Kotlin computation source yet</string>
+    <string name="backend_readiness_custom_script">Custom Lua script is not selected (runtime not wired)</string>
+    <string name="backend_run_no_backend">No backend selected</string>
+    <string name="backend_run_no_flow_entry">This backend has no Flow run entry (Finish/LKM relay only)</string>
+    <string name="backend_run_in_progress">A backend run is already in progress</string>
+    <string name="backend_run_section">Backend run readiness</string>
+    <string name="backend_run_action">Run selected backend</string>
+    <string name="backend_run_denied">Run blocked by UI gate</string>
+    <string name="backend_run_denied_first_reason">Run blocked by UI gate: %1$s</string>
+    <string name="backend_run_allowed">Gate: allowed</string>
     <string name="module_install_prompt_with_name">The following modules will be installed: %1$s</string>
     <string name="module_sort_action_first">Action first</string>
     <string name="module_sort_enabled_first">Enabled first</string>

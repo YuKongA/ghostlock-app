@@ -21,16 +21,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ghostlock.app.R
 import com.ghostlock.app.ui.component.material.ExpressiveScaffold
 import com.ghostlock.app.ui.component.material.SegmentedColumn
@@ -38,8 +34,8 @@ import com.ghostlock.app.ui.component.material.SegmentedDropdownItem
 import com.ghostlock.app.ui.component.material.SegmentedListItem
 import com.ghostlock.app.ui.component.material.TonalCard
 import com.ghostlock.app.ui.component.material.expressiveTopAppBarColors
-import com.ghostlock.app.ui.screen.module.backends.BackendSelection
 import com.ghostlock.app.ui.screen.module.backends.Backends
+import com.ghostlock.app.ui.viewmodel.PathViewModel
 import com.ghostlock.app.ui.screen.module.backends.FinishCard
 import com.ghostlock.app.ui.screen.module.backends.FinishSettingsCard
 import top.yukonga.miuix.kmp.basic.Card
@@ -54,18 +50,22 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  *  「路径」页（2026-10-18）：顶部选后端（CVE 编号），下面显示对应后端的配置项。
  *
  *  配置项来自 backends/ 下每个 backend 自己的 .kt 文件；本页只做渲染。
+ *
+ *  2026-10-26（task-21）：路径页只负责配置；运行入口移到运行页，由 `BackendRunGate`
+ *  统一决定 allow/deny（本页不再有 CVE-43499 运行卡）。
  */
 @Composable
 fun BackendPageMaterial(bottomInnerPadding: Dp) {
-    var selected by remember { mutableIntStateOf(BackendSelection.index) }
-        val specs = Backends.all
+    val pathViewModel: PathViewModel = viewModel()
+    val selected = pathViewModel.selectedIndex
+    val specs = Backends.all
     val titles = specs.map { stringResource(it.titleRes) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
 
     ExpressiveScaffold(
         topBar = {
             LargeFlexibleTopAppBar(
-                title = { Text(stringResource(R.string.module)) },
+                title = { Text(stringResource(R.string.paths)) },
                 colors = expressiveTopAppBarColors(),
                 windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
                 scrollBehavior = scrollBehavior,
@@ -91,7 +91,7 @@ fun BackendPageMaterial(bottomInnerPadding: Dp) {
                         summary = titles[selected],
                         items = titles,
                         selectedIndex = selected,
-                        onItemSelected = { selected = it; BackendSelection.index = it },
+                        onItemSelected = { pathViewModel.selectBackend(it) },
                     )
                 }
             }
@@ -120,15 +120,16 @@ fun BackendPageMaterial(bottomInnerPadding: Dp) {
 
 @Composable
 fun BackendPageMiuix(bottomInnerPadding: Dp) {
-    var selected by remember { mutableIntStateOf(BackendSelection.index) }
-        val specs = Backends.all
+    val pathViewModel: PathViewModel = viewModel()
+    val selected = pathViewModel.selectedIndex
+    val specs = Backends.all
     val titles = specs.map { stringResource(it.titleRes) }
     val scrollBehavior = MiuixScrollBehavior()
 
     MiuixScaffold(
         topBar = {
             MiuixTopAppBar(
-                title = stringResource(R.string.module),
+                title = stringResource(R.string.paths),
                 scrollBehavior = scrollBehavior,
             )
         },
@@ -158,7 +159,7 @@ fun BackendPageMiuix(bottomInnerPadding: Dp) {
                     summary = stringResource(R.string.backend_label),
                     items = titles,
                     selectedIndex = selected,
-                    onSelectedIndexChange = { selected = it; BackendSelection.index = it },
+                    onSelectedIndexChange = { pathViewModel.selectBackend(it) },
                 )
             }
             FinishCard(miuix = true, onOpen = { com.ghostlock.app.ui.PageChrome.showFinish = true })
@@ -178,6 +179,7 @@ fun BackendPageMiuix(bottomInnerPadding: Dp) {
                 }
                 }
             }
+
         }
     }
 }

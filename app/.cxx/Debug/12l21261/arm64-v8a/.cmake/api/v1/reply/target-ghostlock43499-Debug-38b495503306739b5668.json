@@ -2,7 +2,7 @@
 	"artifacts" : 
 	[
 		{
-			"path" : "/Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/intermediates/cxx/RelWithDebInfo/3k5c454r/obj/arm64-v8a/libghostlock43499.so"
+			"path" : "/Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/intermediates/cxx/Debug/12l21261/obj/arm64-v8a/libghostlock43499.so"
 		}
 	],
 	"backtrace" : 1,
@@ -13,6 +13,7 @@
 			"add_library",
 			"target_link_options",
 			"target_link_libraries",
+			"target_compile_definitions",
 			"target_include_directories"
 		],
 		"files" : 
@@ -27,25 +28,31 @@
 			{
 				"command" : 0,
 				"file" : 0,
-				"line" : 79,
+				"line" : 81,
 				"parent" : 0
 			},
 			{
 				"command" : 1,
 				"file" : 0,
-				"line" : 88,
+				"line" : 96,
 				"parent" : 0
 			},
 			{
 				"command" : 2,
 				"file" : 0,
-				"line" : 87,
+				"line" : 95,
 				"parent" : 0
 			},
 			{
 				"command" : 3,
 				"file" : 0,
-				"line" : 83,
+				"line" : 94,
+				"parent" : 0
+			},
+			{
+				"command" : 4,
+				"file" : 0,
+				"line" : 90,
 				"parent" : 0
 			}
 		]
@@ -56,7 +63,7 @@
 			"compileCommandFragments" : 
 			[
 				{
-					"fragment" : "-g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -O2 -g -DNDEBUG -fPIC -fvisibility=hidden"
+					"fragment" : "-g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -fno-limit-debug-info  -fPIC -fvisibility=hidden"
 				},
 				{
 					"fragment" : "-std=gnu11"
@@ -65,17 +72,21 @@
 			"defines" : 
 			[
 				{
+					"backtrace" : 4,
+					"define" : "__ARM"
+				},
+				{
 					"define" : "ghostlock43499_EXPORTS"
 				}
 			],
 			"includes" : 
 			[
 				{
-					"backtrace" : 4,
+					"backtrace" : 5,
 					"path" : "/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/gl43499"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 5,
 					"path" : "/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/glgeneral"
 				},
 				{
@@ -95,7 +106,12 @@
 			"sourceIndexes" : 
 			[
 				0,
-				1
+				1,
+				2,
+				3,
+				4,
+				5,
+				6
 			],
 			"sysroot" : 
 			{
@@ -116,7 +132,7 @@
 		"commandFragments" : 
 		[
 			{
-				"fragment" : "-static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments  -Wl,--gc-sections",
+				"fragment" : "-static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments",
 				"role" : "flags"
 			},
 			{
@@ -159,7 +175,12 @@
 			"sourceIndexes" : 
 			[
 				0,
-				1
+				1,
+				2,
+				3,
+				4,
+				5,
+				6
 			]
 		}
 	],
@@ -174,7 +195,37 @@
 		{
 			"backtrace" : 1,
 			"compileGroupIndex" : 0,
-			"path" : "gl43499/core/api_unavailable.c",
+			"path" : "gl43499/core/placement.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "gl43499/core/page.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "gl43499/core/actor.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "gl43499/core/carrier_multicast.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "gl43499/core/carrier_pselect.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "gl43499/core/carrier_tcp.c",
 			"sourceGroupIndex" : 0
 		}
 	],

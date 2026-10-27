@@ -4,6 +4,7 @@
     <string name="home_not_installed">未安装</string>
     <string name="home_click_to_install">点按开始配置</string>
     <string name="home_working">已就绪</string>
+    <string name="home_not_ready">未就绪</string>
     <string name="home_working_version">版本：%s</string>
     <string name="home_lkm_update_available">内嵌 LKM 有可用更新，点击更新</string>
     <string name="home_lkm_custom">自定义</string>
@@ -29,6 +30,28 @@
     <string name="module_failed_to_disable">无法禁用模块：%s</string>
     <string name="module_empty">没有安装模块</string>
     <string name="module">路径</string>
+    <!-- 路径页标题（task-20）：与其它三页一致使用页面专属 key；module 保留给底部导航/旧模块文案。 -->
+    <string name="paths">路径</string>
+    <!-- task-21: backend 运行就绪框架（readiness / run gate）文案。 -->
+    <string name="backend_readiness_undeclared">该后端未声明运行就绪性</string>
+    <string name="backend_readiness_ready">就绪</string>
+    <string name="backend_readiness_not_ready_first_reason">未就绪：%1$s</string>
+    <string name="backend_status_cve43499_not_ready">未就绪：物理输入未接入</string>
+    <string name="backend_status_cve43284_not_ready">未就绪：无运行入口</string>
+    <string name="backend_status_custom_not_ready">未就绪：未选择脚本</string>
+    <string name="backend_readiness_not_ready">未就绪</string>
+    <string name="backend_readiness_not_ready_reasons">未就绪：</string>
+    <string name="backend_readiness_unverified_env">环境未验证（Natives/root 探测为桩实现，恒报就绪）</string>
+    <string name="backend_readiness_cve43499_inputs">物理输入（payload/地址/frame）尚无 Kotlin 计算来源</string>
+    <string name="backend_readiness_custom_script">未选择自定义 Lua 脚本（运行时未接线）</string>
+    <string name="backend_run_no_backend">未选择后端</string>
+    <string name="backend_run_no_flow_entry">该后端没有 Flow 运行入口（仅 Finish/LKM relay）</string>
+    <string name="backend_run_in_progress">已有 backend 运行在执行中</string>
+    <string name="backend_run_section">backend 运行就绪性</string>
+    <string name="backend_run_action">运行所选 backend</string>
+    <string name="backend_run_denied">UI 门禁拒绝运行</string>
+    <string name="backend_run_denied_first_reason">UI 门禁拒绝运行：%1$s</string>
+    <string name="backend_run_allowed">门禁：允许</string>
     <string name="module_sort_action_first">可执行优先</string>
     <string name="module_sort_enabled_first">已启用优先</string>
     <string name="module_repos">模块仓库</string>

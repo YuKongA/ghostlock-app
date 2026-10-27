@@ -39,6 +39,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -60,6 +61,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ghostlock.app.R
 import com.ghostlock.app.attack.AttackSettings
+import com.ghostlock.app.core.flow.FlowResult
+import com.ghostlock.app.ui.backend.BackendRunDispatch
+import com.ghostlock.app.ui.backend.BackendRunGate
+import com.ghostlock.app.ui.backend.RunPageContext
+import com.ghostlock.app.ui.screen.module.backends.BackendSelection
+import com.ghostlock.app.ui.screen.module.backends.Backends
+import com.ghostlock.app.ui.screen.module.backends.Cve43499RunUiState
+import com.ghostlock.app.ui.viewmodel.BackendRunViewModel
 import com.ghostlock.app.log.LogLevel
 import com.ghostlock.app.log.LogOrigin
 import com.ghostlock.app.log.LogSettings
@@ -191,18 +200,92 @@ fun RunPageMaterial(bottomInnerPadding: Dp) {
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val backendRunViewModel: BackendRunViewModel = viewModel()
+    val backendSpec = backendRunViewModel.selectedSpec()
+    val backendReadiness = backendRunViewModel.readiness()
+    val backendRunState = backendRunViewModel.controller.state
+    /* task-25：唯一 allow/deny 决策点（含运行页上下文）。 */
+    val backendDecision = BackendRunGate.decide(
+        backendSpec,
+        backendReadiness,
+        RunPageContext(backendRunInProgress = backendRunState is Cve43499RunUiState.Running),
+    )
     fun startAttack() {
+        /* Gate 拒绝时禁用：不改变状态、不写日志（点击无效）。 */
+        if (!backendDecision.allowed) return
         entries.clear()
         runStartedAt = android.os.SystemClock.elapsedRealtime()
         channel.trySend(
             TerminalEntry(
                 LogOrigin.KOTLIN,
-                LogLevel.Warn,
-                context.getString(R.string.run_backend_not_wired),
+                LogLevel.Info,
+                "backend run: " + (backendSpec?.cve ?: "-"),
                 0L,
             ),
         )
-        state = RunState.Done
+        state = RunState.Running
+        scope.launch {
+            val dispatch = backendRunViewModel.runOnce(context, runInProgress = true)
+            val elapsed = android.os.SystemClock.elapsedRealtime() - runStartedAt
+            when (dispatch) {
+                is BackendRunDispatch.Blocked -> {
+                    for (reason in dispatch.reasons) {
+                        channel.trySend(
+                            TerminalEntry(
+                                LogOrigin.KOTLIN,
+                                LogLevel.Warn,
+                                context.getString(reason.messageRes),
+                                elapsed,
+                            ),
+                        )
+                    }
+                    state = RunState.Idle
+                }
+                is BackendRunDispatch.Executed -> {
+                    when (val runState = dispatch.state) {
+                        Cve43499RunUiState.Idle -> channel.trySend(
+                            TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, "backend run: idle", elapsed),
+                        )
+                        Cve43499RunUiState.Running -> channel.trySend(
+                            TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, "backend run: running", elapsed),
+                        )
+                        is Cve43499RunUiState.Refused -> for (reason in runState.reasons) {
+                            channel.trySend(
+                                TerminalEntry(LogOrigin.KOTLIN, LogLevel.Warn, reason, elapsed),
+                            )
+                        }
+                        is Cve43499RunUiState.Finished -> when (val result = runState.result) {
+                            is FlowResult.Ok -> {
+                                channel.trySend(
+                                    TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, "backend run: ok", elapsed),
+                                )
+                                for ((key, value) in result.evidence) {
+                                    channel.trySend(
+                                        TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, key + " = " + value, elapsed),
+                                    )
+                                }
+                            }
+                            is FlowResult.Failed -> {
+                                channel.trySend(
+                                    TerminalEntry(
+                                        LogOrigin.KOTLIN,
+                                        LogLevel.Warn,
+                                        "backend run: failed: " + result.reason,
+                                        elapsed,
+                                    ),
+                                )
+                                for ((key, value) in result.evidence) {
+                                    channel.trySend(
+                                        TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, key + " = " + value, elapsed),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    state = RunState.Done
+                }
+            }
+        }
     }
     val confirmDialog = rememberConfirmDialog(onConfirm = { startAttack() })
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
@@ -233,15 +316,20 @@ fun RunPageMaterial(bottomInnerPadding: Dp) {
         },
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
     ) { innerPadding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp)
-                .padding(top = 12.dp, bottom = bottomInnerPadding + 12.dp)
-                .clip(RoundedCornerShape(Corner))
-                .background(TerminalBg),
+                .padding(innerPadding),
         ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = 16.dp)
+                    .padding(top = 8.dp, bottom = bottomInnerPadding + 12.dp)
+                    .clip(RoundedCornerShape(Corner))
+                    .background(TerminalBg),
+            ) {
             SelectionContainer {
                 Column(
                     modifier = Modifier
@@ -270,33 +358,50 @@ fun RunPageMaterial(bottomInnerPadding: Dp) {
                     }
                 }
             }
+            val startBlocked = !backendDecision.allowed &&
+                (state == RunState.Idle || state == RunState.RerunReady)
             ExtendedFloatingActionButton(
                 modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
                 shape = RoundedCornerShape(Corner),
+                containerColor = if (startBlocked) {
+                    MaterialTheme.colorScheme.surfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.primaryContainer
+                },
+                contentColor = if (startBlocked) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                },
                 onClick = {
-                    when (state) {
-                        RunState.Idle -> {
-                            startAttack()
-                        }
-                        RunState.Running -> {
-                            state = RunState.Aborted
-                        }
-                        RunState.Aborting -> Unit
-                        RunState.Aborted, RunState.Done -> state = RunState.RerunReady
-                        RunState.RerunReady -> {
-                            if (AttackSettings.warnOnRerun) {
-                                confirmDialog.showConfirm(
-                                    title = labels.rerunTitle,
-                                    content = labels.rerunMessage,
-                                    confirm = labels.confirm,
-                                    dismiss = labels.dismiss,
-                                )
-                            } else {
+                    /* NotReady：Start 禁用不可点；点击无状态变化、无日志。 */
+                    val blockedNow = !backendDecision.allowed &&
+                        (state == RunState.Idle || state == RunState.RerunReady)
+                    if (!blockedNow) {
+                        when (state) {
+                            RunState.Idle -> {
                                 startAttack()
                             }
+                            RunState.Running -> {
+                                state = RunState.Aborted
+                            }
+                            RunState.Aborting -> Unit
+                            RunState.Aborted, RunState.Done -> state = RunState.RerunReady
+                            RunState.RerunReady -> {
+                                if (AttackSettings.warnOnRerun) {
+                                    confirmDialog.showConfirm(
+                                        title = labels.rerunTitle,
+                                        content = labels.rerunMessage,
+                                        confirm = labels.confirm,
+                                        dismiss = labels.dismiss,
+                                    )
+                                } else {
+                                    startAttack()
+                                }
+                            }
                         }
+                        scope.launch { scroll.animateScrollTo(scroll.maxValue) }
                     }
-                    scope.launch { scroll.animateScrollTo(scroll.maxValue) }
                 },
                 icon = {
                     Icon(
@@ -308,6 +413,7 @@ fun RunPageMaterial(bottomInnerPadding: Dp) {
                     Text(runLabel(state))
                 },
             )
+            }
         }
     }
 }
@@ -327,18 +433,92 @@ fun RunPageMiuix(bottomInnerPadding: Dp) {
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val backendRunViewModel: BackendRunViewModel = viewModel()
+    val backendSpec = backendRunViewModel.selectedSpec()
+    val backendReadiness = backendRunViewModel.readiness()
+    val backendRunState = backendRunViewModel.controller.state
+    /* task-25：唯一 allow/deny 决策点（含运行页上下文）。 */
+    val backendDecision = BackendRunGate.decide(
+        backendSpec,
+        backendReadiness,
+        RunPageContext(backendRunInProgress = backendRunState is Cve43499RunUiState.Running),
+    )
     fun startAttack() {
+        /* Gate 拒绝时禁用：不改变状态、不写日志（点击无效）。 */
+        if (!backendDecision.allowed) return
         entries.clear()
         runStartedAt = android.os.SystemClock.elapsedRealtime()
         channel.trySend(
             TerminalEntry(
                 LogOrigin.KOTLIN,
-                LogLevel.Warn,
-                context.getString(R.string.run_backend_not_wired),
+                LogLevel.Info,
+                "backend run: " + (backendSpec?.cve ?: "-"),
                 0L,
             ),
         )
-        state = RunState.Done
+        state = RunState.Running
+        scope.launch {
+            val dispatch = backendRunViewModel.runOnce(context, runInProgress = true)
+            val elapsed = android.os.SystemClock.elapsedRealtime() - runStartedAt
+            when (dispatch) {
+                is BackendRunDispatch.Blocked -> {
+                    for (reason in dispatch.reasons) {
+                        channel.trySend(
+                            TerminalEntry(
+                                LogOrigin.KOTLIN,
+                                LogLevel.Warn,
+                                context.getString(reason.messageRes),
+                                elapsed,
+                            ),
+                        )
+                    }
+                    state = RunState.Idle
+                }
+                is BackendRunDispatch.Executed -> {
+                    when (val runState = dispatch.state) {
+                        Cve43499RunUiState.Idle -> channel.trySend(
+                            TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, "backend run: idle", elapsed),
+                        )
+                        Cve43499RunUiState.Running -> channel.trySend(
+                            TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, "backend run: running", elapsed),
+                        )
+                        is Cve43499RunUiState.Refused -> for (reason in runState.reasons) {
+                            channel.trySend(
+                                TerminalEntry(LogOrigin.KOTLIN, LogLevel.Warn, reason, elapsed),
+                            )
+                        }
+                        is Cve43499RunUiState.Finished -> when (val result = runState.result) {
+                            is FlowResult.Ok -> {
+                                channel.trySend(
+                                    TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, "backend run: ok", elapsed),
+                                )
+                                for ((key, value) in result.evidence) {
+                                    channel.trySend(
+                                        TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, key + " = " + value, elapsed),
+                                    )
+                                }
+                            }
+                            is FlowResult.Failed -> {
+                                channel.trySend(
+                                    TerminalEntry(
+                                        LogOrigin.KOTLIN,
+                                        LogLevel.Warn,
+                                        "backend run: failed: " + result.reason,
+                                        elapsed,
+                                    ),
+                                )
+                                for ((key, value) in result.evidence) {
+                                    channel.trySend(
+                                        TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, key + " = " + value, elapsed),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    state = RunState.Done
+                }
+            }
+        }
     }
     val confirmDialog = rememberConfirmDialog(onConfirm = { startAttack() })
     val scrollBehavior = MiuixScrollBehavior()
@@ -378,15 +558,20 @@ fun RunPageMiuix(bottomInnerPadding: Dp) {
         },
         contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout).only(WindowInsetsSides.Horizontal),
     ) { innerPadding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp)
-                .padding(top = 12.dp, bottom = bottomInnerPadding + 12.dp)
-                .clip(RoundedCornerShape(Corner))
-                .background(TerminalBg),
+                .padding(innerPadding),
         ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = 16.dp)
+                    .padding(top = 8.dp, bottom = bottomInnerPadding + 12.dp)
+                    .clip(RoundedCornerShape(Corner))
+                    .background(TerminalBg),
+            ) {
             SelectionContainer {
                 Column(
                     modifier = Modifier
@@ -415,31 +600,39 @@ fun RunPageMiuix(bottomInnerPadding: Dp) {
                     }
                 }
             }
+            val startBlocked = !backendDecision.allowed &&
+                (state == RunState.Idle || state == RunState.RerunReady)
             MiuixButton(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(12.dp)
                     .clip(RoundedCornerShape(Corner)),
+                enabled = !startBlocked,
                 onClick = {
-                    when (state) {
-                        RunState.Idle -> {
-                            startAttack()
-                        }
-                        RunState.Running -> {
-                            state = RunState.Aborted
-                        }
-                        RunState.Aborting -> Unit
-                        RunState.Aborted, RunState.Done -> state = RunState.RerunReady
-                        RunState.RerunReady -> {
-                            if (AttackSettings.warnOnRerun) {
-                                confirmDialog.showConfirm(
-                                    title = labels.rerunTitle,
-                                    content = labels.rerunMessage,
-                                    confirm = labels.confirm,
-                                    dismiss = labels.dismiss,
-                                )
-                            } else {
+                    /* NotReady：Start 禁用不可点；点击无状态变化、无日志。 */
+                    val blockedNow = !backendDecision.allowed &&
+                        (state == RunState.Idle || state == RunState.RerunReady)
+                    if (!blockedNow) {
+                        when (state) {
+                            RunState.Idle -> {
                                 startAttack()
+                            }
+                            RunState.Running -> {
+                                state = RunState.Aborted
+                            }
+                            RunState.Aborting -> Unit
+                            RunState.Aborted, RunState.Done -> state = RunState.RerunReady
+                            RunState.RerunReady -> {
+                                if (AttackSettings.warnOnRerun) {
+                                    confirmDialog.showConfirm(
+                                        title = labels.rerunTitle,
+                                        content = labels.rerunMessage,
+                                        confirm = labels.confirm,
+                                        dismiss = labels.dismiss,
+                                    )
+                                } else {
+                                    startAttack()
+                                }
                             }
                         }
                     }
@@ -456,6 +649,7 @@ fun RunPageMiuix(bottomInnerPadding: Dp) {
                     },
                     style = MiuixTheme.textStyles.button,
                 )
+            }
             }
         }
     }

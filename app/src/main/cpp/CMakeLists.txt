@@ -74,16 +74,24 @@ set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/gl43284/exp.c PROPERTIES
 )
 
 # 43499: backend-specific payload.
-# The legacy C tree is parked under gl43499/{legacy,very_legacy}; this batch
-# compiles the new JNI transport plus an explicit fail-closed unavailable core.
+# The legacy C tree is parked under gl43499/{legacy,very_legacy}; the staged
+# G4L sprint implements the C11 resource primitives under gl43499/core while
+# `api_unavailable.c` keeps the not-yet-implemented symbols fail-closed.
+# `__ARM` selects the arm64 branch of the header-only KernelSnitch detector.
 add_library(ghostlock43499 SHARED
     gl43499/jni43499.c
-    gl43499/core/api_unavailable.c
+    gl43499/core/placement.c
+    gl43499/core/page.c
+    gl43499/core/actor.c
+    gl43499/core/carrier_multicast.c
+    gl43499/core/carrier_pselect.c
+    gl43499/core/carrier_tcp.c
 )
 target_include_directories(ghostlock43499 PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/gl43499
     ${CMAKE_CURRENT_SOURCE_DIR}/glgeneral
 )
+target_compile_definitions(ghostlock43499 PRIVATE __ARM)
 target_link_libraries(ghostlock43499 PRIVATE gl_common log)
 target_link_options(ghostlock43499 PRIVATE -Wl,-z,max-page-size=16384)
 set_target_properties(ghostlock43499 PROPERTIES

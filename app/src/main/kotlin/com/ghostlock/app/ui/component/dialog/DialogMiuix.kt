@@ -3,14 +3,12 @@ package com.ghostlock.app.ui.component.dialog
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
@@ -25,10 +23,8 @@ import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import com.ghostlock.app.R
 import com.ghostlock.app.ui.component.markdown.MarkdownContent
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.LocalDismissState
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowDialog
@@ -96,32 +92,29 @@ fun ConfirmDialogMiuix(
                             isMarkdown = !visuals.isHtml,
                         )
                         visuals.isMarkdown -> MarkdownContent(content = content, isMarkdown = true)
-                        else -> Text(text = content)
+                        else -> DialogMessageBody(text = content, miuix = true)
                         }
                     }
-                    Row(
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier.padding(top = 12.dp)
-                    ) {
-                        TextButton(
-                            text = visuals.dismiss ?: stringResource(id = android.R.string.cancel),
-                            onClick = {
-                                dismiss()
-                                dismissState?.invoke()
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
-                        Spacer(Modifier.width(20.dp))
-                        TextButton(
-                            text = visuals.confirm ?: stringResource(id = android.R.string.ok),
-                            onClick = {
-                                confirm()
-                                dismissState?.invoke()
-                            },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.textButtonColorsPrimary()
-                        )
-                    }
+                    DialogActionRow(
+                        actions = listOf(
+                            DialogAction(
+                                text = visuals.dismiss ?: stringResource(id = android.R.string.cancel),
+                                onClick = {
+                                    dismiss()
+                                    dismissState?.invoke()
+                                },
+                            ),
+                            DialogAction(
+                                text = visuals.confirm ?: stringResource(id = android.R.string.ok),
+                                primary = true,
+                                onClick = {
+                                    confirm()
+                                    dismissState?.invoke()
+                                },
+                            ),
+                        ),
+                        miuix = true,
+                    )
                 }
             ) { measurables, constraints ->
                 if (measurables.size != 2) {
@@ -139,5 +132,29 @@ fun ConfirmDialogMiuix(
                 }
             }
         }
+    )
+}
+
+/**
+ * 自定义内容对话框（Miuix 壳）：复用 [WindowDialog] 与 ConfirmDialogMiuix 相同的窗口/标题/返回规范，
+ * 内容由调用方提供，避免页面内联 WindowDialog 自拼。
+ *
+ * @param title 标题文案（由调用方本地化）。
+ * @param onDismissRequest 关闭回调。
+ * @param content 对话框主体内容。
+ * @note 阶段：task-28（对话框组件化）。
+ */
+@Composable
+fun ContentDialogMiuix(
+    title: String,
+    onDismissRequest: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    WindowDialog(
+        show = true,
+        modifier = Modifier.windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top)),
+        title = title,
+        onDismissRequest = onDismissRequest,
+        content = { content() },
     )
 }

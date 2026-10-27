@@ -1,5 +1,7 @@
 package com.ghostlock.app.ui.screen.module.backends
 
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -20,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ghostlock.app.R
+import com.ghostlock.app.ui.backend.BackendSessionStore
 import com.ghostlock.app.ui.component.material.SegmentedColumn
 import com.ghostlock.app.ui.component.material.SegmentedListItem
 
@@ -32,14 +35,28 @@ import com.ghostlock.app.ui.component.material.SegmentedListItem
 @Composable
 fun CustomLuaConfig(miuix: Boolean = false) {
     val context = LocalContext.current
-    var scriptUri by remember { mutableStateOf<Uri?>(null) }
-    var summary by remember { mutableStateOf<String?>(null) }
+    val scriptUri = CustomLuaConfigState.uri
+    val summary = CustomLuaConfigState.summary
 
     val picker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
-        scriptUri = uri
-        summary = uri?.let { LuaScriptHost.readSummary(context, it) }
+        if (uri != null) {
+            /* OpenDocument 授权可跨重启；拿持久读权限后 backend 才能恢复时读回。 */
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+        }
+        CustomLuaConfigState.select(context, uri)
+        /* task-27：选择变更立即经 backend save 持久化（重启恢复）。 */
+        runCatching {
+            BackendCustom.saveConfig(
+                BackendSessionStore.from(context).configStore(context, BackendCustom),
+            )
+        }
     }
 
     val scriptText = scriptUri?.lastPathSegment ?: stringResource(R.string.backend_custom_none)
@@ -80,6 +97,64 @@ fun CustomLuaConfig(miuix: Boolean = false) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(text = text, style = MaterialTheme.typography.bodySmall)
         }
+    }
+}
+
+/**
+ * 自定义 backend 的 Lua 脚本选择状态（进程内；持久化由 [BackendCustom.saveConfig] 负责）。
+ *
+ * 规则（task-27）：
+ * - 只保存 URI 字符串（不含脚本内容/密钥）；
+ * - 恢复时校验可读性：URI 失效/无持久权限 ⇒ 清空并显示“未选择”（fail-closed）；
+ * - 不再用 Composable `remember` 作为唯一来源，避免重启即丢。
+ *
+ * @note 阶段：task-27；真机未验证。
+ */
+object CustomLuaConfigState {
+    /** 当前选中的脚本 URI；null = 未选择。 */
+    var uri: Uri? by mutableStateOf(null)
+        private set
+
+    /** 选中脚本的摘要（文件名/大小/首行）；null = 未选择或读取失败。 */
+    var summary: String? by mutableStateOf(null)
+        private set
+
+    /**
+     * 选择/清空脚本（内存态；持久化由 backend 负责）。
+     *
+     * @param context 应用上下文。
+     * @param newUri 新 URI；null 表示清空。
+     */
+    fun select(context: Context, newUri: Uri?) {
+        uri = newUri
+        summary = newUri?.let { runCatching { LuaScriptHost.readSummary(context, it) }.getOrNull() }
+    }
+
+    /**
+     * 从持久化字符串恢复选择；URI 失效/不可读 ⇒ 清空并返回 false。
+     *
+     * @param context 应用上下文。
+     * @param raw 保存的 URI 字符串（空 = 未选择）。
+     * @return true 表示恢复出可读脚本；false 表示 fail-closed 显示未选择。
+     */
+    fun restore(context: Context, raw: String): Boolean {
+        val parsed = raw.takeIf { it.isNotBlank() }?.let { value ->
+            runCatching { Uri.parse(value) }.getOrNull()
+        }
+        if (parsed == null) {
+            select(context, null)
+            return false
+        }
+        val readable = runCatching {
+            context.contentResolver.openInputStream(parsed)?.use { true } ?: false
+        }.getOrDefault(false)
+        if (!readable) {
+            /* URI 失效/无持久授权：fail-closed 显示未选择，不伪造摘要。 */
+            select(context, null)
+            return false
+        }
+        select(context, parsed)
+        return true
     }
 }
 

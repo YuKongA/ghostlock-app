@@ -6,7 +6,6 @@ import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.ui.Alignment
@@ -67,30 +66,59 @@ fun ConfirmDialogMaterial(
                         isMarkdown = !visuals.isHtml,
                     )
                     visuals.isMarkdown -> MarkdownContent(content = content, isMarkdown = true)
-                    else -> Text(text = content)
+                    else -> DialogMessageBody(text = content, miuix = false)
                     }
                 }
             },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        confirm()
-                        showDialog.value = false
-                    }
-                ) {
-                    Text(visuals.confirm ?: stringResource(id = android.R.string.ok))
-                }
+                DialogTextButton(
+                    action = DialogAction(
+                        text = visuals.confirm ?: stringResource(id = android.R.string.ok),
+                        onClick = {
+                            confirm()
+                            showDialog.value = false
+                        },
+                    ),
+                    miuix = false,
+                )
             },
             dismissButton = {
-                TextButton(
-                    onClick = {
-                        dismiss()
-                        showDialog.value = false
-                    }
-                ) {
-                    Text(visuals.dismiss ?: stringResource(id = android.R.string.cancel))
-                }
+                DialogTextButton(
+                    action = DialogAction(
+                        text = visuals.dismiss ?: stringResource(id = android.R.string.cancel),
+                        onClick = {
+                            dismiss()
+                            showDialog.value = false
+                        },
+                    ),
+                    miuix = false,
+                )
             }
         )
     }
+}
+
+/**
+ * 自定义内容对话框（Material 壳）：复用 [ExpressiveDialog] 的视觉规范（形状/容器色/标题样式），
+ * 供需要复杂内容的对话框使用，避免各页面内联 BasicAlertDialog + Surface 自拼样式。
+ *
+ * @param onDismissRequest 点外部/返回的关闭回调。
+ * @param title 标题文案（由调用方本地化）。
+ * @param confirmButton 底部确认区（不需要时传空 lambda）。
+ * @param content 对话框主体内容。
+ * @note 阶段：task-28（对话框组件化）；内容样式由调用方负责，壳不复制 ConfirmDialog 私有实现。
+ */
+@Composable
+fun ContentDialogMaterial(
+    onDismissRequest: () -> Unit,
+    title: String,
+    confirmButton: @Composable () -> Unit = {},
+    content: @Composable () -> Unit,
+) {
+    ExpressiveDialog(
+        onDismissRequest = onDismissRequest,
+        title = { Text(title) },
+        text = { content() },
+        confirmButton = confirmButton,
+    )
 }

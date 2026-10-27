@@ -229,4 +229,27 @@ internal object Native43499Jni {
 
     /** 终结Actor、Carrier及Actor拥有的Page；wrapper必须先置0。 */
     external fun closeActor(actor: Long, result: Native43499CloseResult): Int
+    /* ------------------------------------------------------------------ */
+    /* JNI 三态返回值（与 `jni43499.c` 的同名 #define 一一对应，F-C）        */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * int 入口：前置拒绝（result 对象缺失/类型不符、token 前置条件不满足、输入翻译失败）。
+     *
+     * 语义：JNI **未调用** core、**未写回执**、token **未被消费** ⇒ owner 必须恢复 token。
+     */
+    const val RESULT_NOT_ACCEPTED_INT: Int = -2
+
+    /**
+     * int 入口：已调用 core，但回执字段无法完整写回（`callStatus` 最后写，写失败即此值）。
+     *
+     * 语义：**fail-stop**。owner 必须丢弃旧 token、不得恢复/重试/close，也不得信任回执。
+     */
+    const val RESULT_INCOMPLETE_INT: Int = Int.MIN_VALUE
+
+    /** handle 入口：前置拒绝（同上）；0 仍表示正常的无效 handle。 */
+    const val RESULT_NOT_ACCEPTED_HANDLE: Long = -2L
+
+    /** handle 入口：已调用 core 但回执不完整；fail-stop，不得使用/恢复/close。 */
+    const val RESULT_INCOMPLETE_HANDLE: Long = -1L
 }

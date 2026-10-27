@@ -184,6 +184,24 @@ raw holder仍不属于受支持ABI。旧计划头部登记被取代范围，不�
 
 G4L-1前仍须：design-critic阻断0、用户批准该实现批、冻结文件清单。G4L-4T与G4L-6保留独立批准点。
 
+### 7.1 一次性代码冲刺指令（2026-10-26，知情强制）
+
+用户指令“一次性做到G4L-4M / G4L-4P / G4L-4T”，并明确选择“B 纯代码冲刺”：G4L-1～G4L-4T 连续进行
+纯代码实施；本节 §5 的逐批 green 门与 §6 的全部门禁/真机判据延后至“补验批”。状态、越权范围、代价与
+技术债见 [approval-status §4.2](43499-approval-status.md) 与
+[43499-g4l-sprint-override-20261026.md](../analysis/43499-g4l-sprint-override-20261026.md)。
+
+未补验前：九个入口不得标 `supported`、不得接默认 Flow/ksud、不得宣称 PASS 或真机可用。
+
+**2026-10-26 后续指令“冲刺到G4L-6”**：同一 B 纯代码冲刺模式扩展到 G4L-5 Kotlin/Lua owner wrapper 与
+G4L-6 victim/Finish/ksud 代码；G4L-6 的真机最终验收（uid=0、脚本对象身份、ksud/marker、SELinux 恢复、
+资源终结）与默认 Flow/ksud 接线不在本冲刺内，仍按 §6 门禁阻断。
+
+**2026-10-26 用户终验不通过 → 结构修复**：用户独立审查判 G4L-1～6 FAIL（10 项结构阻断），按用户指令
+先修结构阻断再补真机门禁。修复清单、证据与残余限制见
+[43499-g4l-structural-fix-20261026.md](../analysis/43499-g4l-structural-fix-20261026.md)。§5 G4L-5/6 的
+文件级实际范围以该记录与工作树为准（新增 FinishExecution/FinishExecutionEvidence、修改 actor/jni/page 等）。
+
 ## 8. 停止条件
 
 出现任一项立即停批：PI窗口动态分派；无法证明“停止访问→解除关联→回收”；clean路径残留资源；

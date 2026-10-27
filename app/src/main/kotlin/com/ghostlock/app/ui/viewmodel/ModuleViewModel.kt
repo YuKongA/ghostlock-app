@@ -1,3 +1,22 @@
+/*
+ * DISABLED(2026-10-26, task-20)：这是**已移除的 KernelSU 模块页**的遗留 ViewModel，
+ * 与「路径」页（BackendPage/PathViewModel）无关。
+ *
+ * 证据（2026-10-26 全仓检索）：
+ *  - `grep -rn "ModuleViewModel" --include=*.kt app/src` 仅命中本文件自身的类名与 TAG；
+ *  - UI 导航/路由已无模块页入口（MainActivity 注释：不再为已移除的 KernelSU 模块页预载数据）；
+ *  - 路径页状态已收敛到 `ui/viewmodel/PathViewModel.kt`。
+ *
+ * 处置（AGENTS §6「禁用而非删除用最可逆形式」）：
+ *  - 本文件**逻辑零改动**，只加本段文件头标记；编译仍通过，R8 会按「无引用」裁掉。
+ *  - 不删除历史代码，也不把它接到路径页。
+ *
+ * 恢复路径：
+ *  - 删除本段注释即恢复原文件；
+ *  - 或 `git show <引入本标记前的 commit>:app/src/main/kotlin/com/ghostlock/app/ui/viewmodel/ModuleViewModel.kt`
+ *    （在任何写操作前核对完整路径与内容）。
+ *  - 若后续要恢复「模块页」功能，需另立批次重新批准 UI 范围并重接线，不得直接复用本文件。
+ */
 package com.ghostlock.app.ui.viewmodel
 
 import android.os.SystemClock

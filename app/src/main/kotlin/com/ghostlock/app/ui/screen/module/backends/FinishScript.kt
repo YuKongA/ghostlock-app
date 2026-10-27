@@ -18,6 +18,8 @@ fun FinishState.toRootScript(
     appendLine("#!/system/bin/sh")
     appendLine("set -u")
     appendLine("LOG=" + shQuote(logPath))
+    /* F-D：本次运行 id 由执行层以 GHOSTLOCK_RUN_ID 注入；marker 内容与它绑定。 */
+    appendLine("RUN_ID=\"\${GHOSTLOCK_RUN_ID:-}\"")
     appendLine("exec 3>>\"\$LOG\"")
     appendLine("log() { printf '%s\\n' \"\$*\" >&3; }")
     appendLine("STATUS=0")
@@ -46,7 +48,12 @@ fun FinishState.toRootScript(
         appendLine("setprop ctl.restart zygote")
     }
     appendLine("log 'finish done'")
-    appendLine("if [ \"\$STATUS\" -eq 0 ]; then touch /dev/dfm6 2>/dev/null || true; else touch /dev/dfme2 2>/dev/null || true; fi")
+    /* F-D：marker 写入本次 runId 内容（验收按内容对拍，不只检查存在）；无 runId 不写。 */
+    appendLine("if [ -n \"\$RUN_ID\" ]; then")
+    appendLine("  if [ \"\$STATUS\" -eq 0 ]; then printf '%s' \"\$RUN_ID\" > /dev/dfm6 2>/dev/null || true; else printf '%s' \"\$RUN_ID\" > /dev/dfme2 2>/dev/null || true; fi")
+    appendLine("else")
+    appendLine("  log '[ghostlock] GHOSTLOCK_RUN_ID missing; markers not written'")
+    appendLine("fi")
     appendLine("rm -f /dev/df /dev/dz 2>/dev/null || true")
 }
 

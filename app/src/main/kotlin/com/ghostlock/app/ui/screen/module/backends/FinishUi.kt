@@ -105,6 +105,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.ghostlock.app.R
+import com.ghostlock.app.ui.component.dialog.ContentDialogMaterial
+import com.ghostlock.app.ui.component.dialog.ContentDialogMiuix
 import com.ghostlock.app.ui.PageChrome
 import com.ghostlock.app.ui.component.AppIconImage
 import com.ghostlock.app.ui.component.material.ExpressiveScaffold
@@ -897,49 +899,41 @@ private fun AddPayloadDialog(
         onDismiss()
     }
     if (miuix) {
-        top.yukonga.miuix.kmp.window.WindowDialog(
-            show = true,
+        /* task-29：外壳/排版复用 ui/component/dialog 的共享 Miuix 内容壳。 */
+        ContentDialogMiuix(
             title = stringResource(R.string.payload_add),
             onDismissRequest = onDismiss,
-            content = {
-                Column {
-                    kinds.forEach { kind ->
-                        top.yukonga.miuix.kmp.basic.BasicComponent(
-                            title = payloadTitle(kind),
-                            startAction = {
-                                Icon(
-                                    imageVector = payloadIcon(kind),
-                                    contentDescription = null,
-                                    modifier = Modifier.padding(end = 6.dp),
-                                    tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground,
-                                )
-                            },
-                            onClick = { pick(kind) },
-                        )
-                    }
-                }
-            },
-        )
-    } else {
-        androidx.compose.material3.BasicAlertDialog(onDismissRequest = onDismiss) {
-            androidx.compose.material3.Surface(
-                shape = MaterialTheme.shapes.extraLarge,
-                tonalElevation = 6.dp,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            ) {
-                Column(Modifier.padding(vertical = 20.dp)) {
-                    Text(
-                        text = stringResource(R.string.payload_add),
-                        style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+        ) {
+            Column {
+                kinds.forEach { kind ->
+                    top.yukonga.miuix.kmp.basic.BasicComponent(
+                        title = payloadTitle(kind),
+                        startAction = {
+                            Icon(
+                                imageVector = payloadIcon(kind),
+                                contentDescription = null,
+                                modifier = Modifier.padding(end = 6.dp),
+                                tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground,
+                            )
+                        },
+                        onClick = { pick(kind) },
                     )
-                    kinds.forEach { kind ->
-                        androidx.compose.material3.ListItem(
-                            headlineContent = { Text(payloadTitle(kind)) },
-                            leadingContent = { Icon(payloadIcon(kind), contentDescription = null) },
-                            modifier = Modifier.clickable { pick(kind) },
-                        )
-                    }
+                }
+            }
+        }
+    } else {
+        /* task-29：外壳/排版复用 ui/component/dialog 的共享 Material 内容壳。 */
+        ContentDialogMaterial(
+            onDismissRequest = onDismiss,
+            title = stringResource(R.string.payload_add),
+        ) {
+            Column {
+                kinds.forEach { kind ->
+                    androidx.compose.material3.ListItem(
+                        headlineContent = { Text(payloadTitle(kind)) },
+                        leadingContent = { Icon(payloadIcon(kind), contentDescription = null) },
+                        modifier = Modifier.clickable { pick(kind) },
+                    )
                 }
             }
         }

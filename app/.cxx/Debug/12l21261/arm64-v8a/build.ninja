@@ -204,16 +204,56 @@ build /Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/intermedi
 build cmake_object_order_depends_target_ghostlock43499: phony || cmake_object_order_depends_target_gl_common
 
 build CMakeFiles/ghostlock43499.dir/gl43499/jni43499.c.o: C_COMPILER__ghostlock43499_Debug /Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/gl43499/jni43499.c || cmake_object_order_depends_target_ghostlock43499
-  DEFINES = -Dghostlock43499_EXPORTS
+  DEFINES = -D__ARM -Dghostlock43499_EXPORTS
   DEP_FILE = CMakeFiles/ghostlock43499.dir/gl43499/jni43499.c.o.d
   FLAGS = -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -fno-limit-debug-info  -fPIC -fvisibility=hidden -std=gnu11
   INCLUDES = -I/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/gl43499 -I/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/glgeneral -I/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp
   OBJECT_DIR = CMakeFiles/ghostlock43499.dir
   OBJECT_FILE_DIR = CMakeFiles/ghostlock43499.dir/gl43499
 
-build CMakeFiles/ghostlock43499.dir/gl43499/core/api_unavailable.c.o: C_COMPILER__ghostlock43499_Debug /Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/gl43499/core/api_unavailable.c || cmake_object_order_depends_target_ghostlock43499
-  DEFINES = -Dghostlock43499_EXPORTS
-  DEP_FILE = CMakeFiles/ghostlock43499.dir/gl43499/core/api_unavailable.c.o.d
+build CMakeFiles/ghostlock43499.dir/gl43499/core/placement.c.o: C_COMPILER__ghostlock43499_Debug /Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/gl43499/core/placement.c || cmake_object_order_depends_target_ghostlock43499
+  DEFINES = -D__ARM -Dghostlock43499_EXPORTS
+  DEP_FILE = CMakeFiles/ghostlock43499.dir/gl43499/core/placement.c.o.d
+  FLAGS = -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -fno-limit-debug-info  -fPIC -fvisibility=hidden -std=gnu11
+  INCLUDES = -I/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/gl43499 -I/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/glgeneral -I/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp
+  OBJECT_DIR = CMakeFiles/ghostlock43499.dir
+  OBJECT_FILE_DIR = CMakeFiles/ghostlock43499.dir/gl43499/core
+
+build CMakeFiles/ghostlock43499.dir/gl43499/core/page.c.o: C_COMPILER__ghostlock43499_Debug /Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/gl43499/core/page.c || cmake_object_order_depends_target_ghostlock43499
+  DEFINES = -D__ARM -Dghostlock43499_EXPORTS
+  DEP_FILE = CMakeFiles/ghostlock43499.dir/gl43499/core/page.c.o.d
+  FLAGS = -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -fno-limit-debug-info  -fPIC -fvisibility=hidden -std=gnu11
+  INCLUDES = -I/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/gl43499 -I/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/glgeneral -I/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp
+  OBJECT_DIR = CMakeFiles/ghostlock43499.dir
+  OBJECT_FILE_DIR = CMakeFiles/ghostlock43499.dir/gl43499/core
+
+build CMakeFiles/ghostlock43499.dir/gl43499/core/actor.c.o: C_COMPILER__ghostlock43499_Debug /Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/gl43499/core/actor.c || cmake_object_order_depends_target_ghostlock43499
+  DEFINES = -D__ARM -Dghostlock43499_EXPORTS
+  DEP_FILE = CMakeFiles/ghostlock43499.dir/gl43499/core/actor.c.o.d
+  FLAGS = -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -fno-limit-debug-info  -fPIC -fvisibility=hidden -std=gnu11
+  INCLUDES = -I/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/gl43499 -I/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/glgeneral -I/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp
+  OBJECT_DIR = CMakeFiles/ghostlock43499.dir
+  OBJECT_FILE_DIR = CMakeFiles/ghostlock43499.dir/gl43499/core
+
+build CMakeFiles/ghostlock43499.dir/gl43499/core/carrier_multicast.c.o: C_COMPILER__ghostlock43499_Debug /Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/gl43499/core/carrier_multicast.c || cmake_object_order_depends_target_ghostlock43499
+  DEFINES = -D__ARM -Dghostlock43499_EXPORTS
+  DEP_FILE = CMakeFiles/ghostlock43499.dir/gl43499/core/carrier_multicast.c.o.d
+  FLAGS = -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -fno-limit-debug-info  -fPIC -fvisibility=hidden -std=gnu11
+  INCLUDES = -I/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/gl43499 -I/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/glgeneral -I/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp
+  OBJECT_DIR = CMakeFiles/ghostlock43499.dir
+  OBJECT_FILE_DIR = CMakeFiles/ghostlock43499.dir/gl43499/core
+
+build CMakeFiles/ghostlock43499.dir/gl43499/core/carrier_pselect.c.o: C_COMPILER__ghostlock43499_Debug /Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/gl43499/core/carrier_pselect.c || cmake_object_order_depends_target_ghostlock43499
+  DEFINES = -D__ARM -Dghostlock43499_EXPORTS
+  DEP_FILE = CMakeFiles/ghostlock43499.dir/gl43499/core/carrier_pselect.c.o.d
+  FLAGS = -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -fno-limit-debug-info  -fPIC -fvisibility=hidden -std=gnu11
+  INCLUDES = -I/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/gl43499 -I/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/glgeneral -I/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp
+  OBJECT_DIR = CMakeFiles/ghostlock43499.dir
+  OBJECT_FILE_DIR = CMakeFiles/ghostlock43499.dir/gl43499/core
+
+build CMakeFiles/ghostlock43499.dir/gl43499/core/carrier_tcp.c.o: C_COMPILER__ghostlock43499_Debug /Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/gl43499/core/carrier_tcp.c || cmake_object_order_depends_target_ghostlock43499
+  DEFINES = -D__ARM -Dghostlock43499_EXPORTS
+  DEP_FILE = CMakeFiles/ghostlock43499.dir/gl43499/core/carrier_tcp.c.o.d
   FLAGS = -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -fno-limit-debug-info  -fPIC -fvisibility=hidden -std=gnu11
   INCLUDES = -I/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/gl43499 -I/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp/glgeneral -I/Users/nickji/Documents/Program/Analysis/ghostlock-app/app/src/main/cpp
   OBJECT_DIR = CMakeFiles/ghostlock43499.dir
@@ -227,7 +267,7 @@ build CMakeFiles/ghostlock43499.dir/gl43499/core/api_unavailable.c.o: C_COMPILER
 #############################################
 # Link the shared library /Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/intermediates/cxx/Debug/12l21261/obj/arm64-v8a/libghostlock43499.so
 
-build /Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/intermediates/cxx/Debug/12l21261/obj/arm64-v8a/libghostlock43499.so: C_SHARED_LIBRARY_LINKER__ghostlock43499_Debug CMakeFiles/ghostlock43499.dir/gl43499/jni43499.c.o CMakeFiles/ghostlock43499.dir/gl43499/core/api_unavailable.c.o | libgl_common.a || libgl_common.a
+build /Users/nickji/Documents/Program/Analysis/ghostlock-app/build/app/intermediates/cxx/Debug/12l21261/obj/arm64-v8a/libghostlock43499.so: C_SHARED_LIBRARY_LINKER__ghostlock43499_Debug CMakeFiles/ghostlock43499.dir/gl43499/jni43499.c.o CMakeFiles/ghostlock43499.dir/gl43499/core/placement.c.o CMakeFiles/ghostlock43499.dir/gl43499/core/page.c.o CMakeFiles/ghostlock43499.dir/gl43499/core/actor.c.o CMakeFiles/ghostlock43499.dir/gl43499/core/carrier_multicast.c.o CMakeFiles/ghostlock43499.dir/gl43499/core/carrier_pselect.c.o CMakeFiles/ghostlock43499.dir/gl43499/core/carrier_tcp.c.o | libgl_common.a || libgl_common.a
   LANGUAGE_COMPILE_FLAGS = -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -fno-limit-debug-info
   LINK_FLAGS = -static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments    -Wl,-z,max-page-size=16384
   LINK_LIBRARIES = libgl_common.a  -llog  -latomic -lm
