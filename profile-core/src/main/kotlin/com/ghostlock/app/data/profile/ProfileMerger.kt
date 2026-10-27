@@ -18,7 +18,8 @@ object ProfileMerger {
 
     /**
      * common execution preset -> built-in -> imported -> sparse override, then
-     * the session CPU pair is forced in and the selected route groups are filled.
+     * the session CPU pair is forced in (when one is supplied) and the selected
+     * route groups are filled.
      */
     fun resolveMerged(
         deviceRelease: String,
@@ -26,7 +27,7 @@ object ProfileMerger {
         imported: ValueMap?,
         overrides: ValueMap?,
         tuningExecution: ValueMap?,
-        pair: CpuPairView,
+        pair: CpuPairView?,
         routePresets: Map<String, ValueMap>,
     ): ValueMap {
         val defaults = valueMapOf("release" to deviceRelease).apply {
@@ -47,7 +48,18 @@ object ProfileMerger {
         return resolved
     }
 
-    private fun applySelectedCpus(resolved: ValueMap, pair: CpuPairView) {
+    /**
+     * Forces the session CPU pair into `selected_cpus` when the caller has one.
+     * A null pair means "no explicit selection": the merged profile's own
+     * `recommended_cpus` stays authoritative, so the prebuilt export encodes the
+     * profile's intended default instead of a frozen 0/1. Any `selected_cpus`
+     * that survived the merge is dropped in that case.
+     */
+    private fun applySelectedCpus(resolved: ValueMap, pair: CpuPairView?) {
+        if (pair == null) {
+            resolved["execution"].asValueMap()?.remove("selected_cpus")
+            return
+        }
         resolved.mutableChild("execution")["selected_cpus"] = valueMapOf(
             "main" to pair.main.toLong(),
             "consumer" to pair.consumer.toLong(),
