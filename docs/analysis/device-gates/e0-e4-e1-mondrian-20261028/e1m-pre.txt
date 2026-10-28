@@ -1,0 +1,5 @@
+uptime=15.42
+Enforcing
+    State: RUNNING_UNLOCKED
+0
+e0a0a124-864c-435c-b2fc-29ae2a6e9bd9

@@ -33,13 +33,7 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
-/** @brief 操作预算上限；超过即拒绝。 */
-#define GLK43499_TCP_MAX_BUDGET UINT64_C(4096)
-
-/** @brief 超时上限（1 小时）；只做边界校验。 */
-#define GLK43499_TCP_MAX_TIMEOUT_NS UINT64_C(3600000000000)
-
-/** @brief 映射大小的最小页数（zc 地址所在页 + 至少一页余量）。 */
+/** @brief 映射大小的最小页数（zc 地址所在页 + 至少一页余量；结构性下限）。 */
 #define GLK43499_TCP_MIN_MAPPING_PAGES UINT64_C(2)
 
 /**
@@ -198,6 +192,68 @@ static int32_t glk43499_carrier_tcp_discard(
     return clean;
 }
 
+/**
+ * @brief 校验 zc 请求体四个字段偏移（T2/T3/T5）。
+ * @param spec 已通过 ABI 头校验的 TCP 规格。
+ * @return 1 接受；0 拒绝（越界/未对齐/重叠）。
+ * @note 白名单具体值（旧三版 0x18/0x20/0x28/0x30）属于 Kotlin generator 的职责；
+ *       Native 只保证任何被请求的偏移在 frame 内、按字段宽度对齐且互不重叠，
+ *       从而不可能因偏移回绕/越界而写坏原生堆（T5）。
+ */
+static int32_t glk43499_tcp_valid_zc_offsets(
+    const struct glk43499_tcp_zerocopy_spec *spec) {
+    const uint64_t sizes[4] = {
+        (uint64_t) sizeof(uint64_t),
+        (uint64_t) sizeof(uint32_t),
+        (uint64_t) sizeof(uint64_t),
+        (uint64_t) sizeof(uint64_t),
+    };
+    const uint64_t offsets[4] = {
+        spec->zc_address_offset,
+        spec->zc_length_offset,
+        spec->zc_task_offset,
+        spec->zc_lock_offset,
+    };
+    uint64_t ranges[4][2] = {{0, 0}, {0, 0}, {0, 0}, {0, 0}};
+    for (size_t index = 0; index < 4; ++index) {
+        if (offsets[index] % sizes[index] != 0) return 0;
+        uint64_t end = 0;
+        if (!glk43499_internal_add_u64(offsets[index], sizes[index], &end) ||
+            end > spec->frame_size) {
+            return 0;
+        }
+        for (size_t previous = 0; previous < index; ++previous) {
+            if (offsets[index] < ranges[previous][1] &&
+                ranges[previous][0] < end) {
+                return 0;
+            }
+        }
+        ranges[index][0] = offsets[index];
+        ranges[index][1] = end;
+    }
+    return 1;
+}
+
+/**
+ * @brief 按请求偏移把 zc 字段值写入工作缓冲（PI 窗口内；无分配/无日志）。
+ * @param target 非空 zc 工作缓冲。
+ * @param frame_size 工作缓冲长度（prepare 已校验所有偏移界内）。
+ * @param offset 字段偏移。
+ * @param value 字段值指针。
+ * @param size 字段字节数。
+ * @return 1 写入；0 越界（调用方按物理失败收口）。
+ */
+static int32_t glk43499_tcp_store_field(uint8_t *target, uint64_t frame_size,
+                                        uint64_t offset, const void *value,
+                                        uint64_t size) {
+    uint64_t end = 0;
+    if (!glk43499_internal_add_u64(offset, size, &end) || end > frame_size) {
+        return 0;
+    }
+    memcpy(target + offset, value, (size_t) size);
+    return 1;
+}
+
 int32_t glk43499_carrier_tcp_prepare(
     struct glk43499_carrier *carrier,
     const struct glk43499_tcp_zerocopy_spec *spec) {
@@ -217,23 +273,34 @@ int32_t glk43499_carrier_tcp_prepare(
         spec->addresses.final_lock_address == 0) {
         return -EINVAL;
     }
+    /* B15：attempt 计数最终收窄到 int32（consumer_go/回执），域上限显式。 */
     if (spec->operation_budget == 0 ||
-        spec->operation_budget > GLK43499_TCP_MAX_BUDGET) {
+        spec->operation_budget > (uint64_t) INT32_MAX) {
         return -EINVAL;
     }
+    /* 超时非零且 deadline 加法不溢出（不内置 1 小时目标上限）。 */
+    const uint64_t now_ns = glk43499_internal_now_ns();
     if (spec->timeout_ns == 0 ||
-        spec->timeout_ns > GLK43499_TCP_MAX_TIMEOUT_NS) {
+        spec->timeout_ns > UINT64_MAX - now_ns) {
         return -EINVAL;
     }
     const long page_size_long = sysconf(_SC_PAGESIZE);
     if (page_size_long <= 0) return -EINVAL;
     const size_t page_size = (size_t) page_size_long;
-    if (spec->mapping_size < (uint64_t) page_size * GLK43499_TCP_MIN_MAPPING_PAGES ||
-        spec->mapping_size > GLK43499_PHYS_TCP_MAX_MAPPING ||
+    /* A 决策（R2b）：映射/帧容量上限来自请求字段 max_mapping/max_frame。 */
+    const uint64_t min_mapping =
+        (uint64_t) page_size * GLK43499_TCP_MIN_MAPPING_PAGES;
+    if (spec->max_mapping == 0 ||
+        spec->max_mapping % (uint64_t) page_size != 0 ||
+        spec->max_mapping < min_mapping ||
+        spec->mapping_size < min_mapping ||
+        spec->mapping_size > spec->max_mapping ||
         spec->mapping_size % (uint64_t) page_size != 0) {
         return -EINVAL;
     }
-    if (spec->mapping_offset % (uint64_t) page_size != 0) return -EINVAL;
+    /* R3a-2/T6：punch 洞从 page_size 起，zerocopy 目标页必须是紧邻第一页；
+     * mapping_offset 必须严格等于页大小（旧实现用 mapping+page_size）。 */
+    if (spec->mapping_offset != (uint64_t) page_size) return -EINVAL;
     {
         /* 溢出安全的边界：mapping_offset + page_size 必须落在映射内。 */
         uint64_t offset_limit = 0;
@@ -244,15 +311,34 @@ int32_t glk43499_carrier_tcp_prepare(
             return -EINVAL;
         }
     }
-    if (spec->receive_size == 0 ||
-        spec->receive_size > GLK43499_PHYS_TCP_MAX_FRAME) {
+    if (spec->max_frame == 0 || spec->receive_size == 0 ||
+        spec->receive_size > spec->max_frame) {
         return -EINVAL;
     }
     if (spec->frame_size == 0 ||
-        spec->frame_size > GLK43499_PHYS_TCP_MAX_FRAME ||
+        spec->frame_size > spec->max_frame ||
         spec->frame_size < 2 * (uint64_t) sizeof(uint64_t)) {
         return -EINVAL;
     }
+    /* R3a-2 重要项：旧实现要求 zc 请求体与发送小包都落在已映射页内
+     * （`route_tcp.cpp:286-295`）；长度与帧容量都不得越过一页。 */
+    if (spec->frame_size > (uint64_t) page_size ||
+        spec->receive_size > (uint64_t) page_size) {
+        return -EINVAL;
+    }
+    /* R3a-2/T1/T4/T5：请求参数 fail-closed 校验（不填默认值）。
+     * - arm_sequence/punch_phase_spin 必须非零（旧 arm=16、punch 相位等待独立上限）；
+     * - zc 四字段偏移：对齐/在 frame 内/互不重叠（白名单值由 Kotlin generator 负责）；
+     * - R3b：两个填充字节各自来自 tcp spec（不允许复用 landing.fill_byte）。 */
+    if (spec->punch_spin == 0 || spec->post_hold_ns == 0 ||
+        spec->arm_sequence == 0 || spec->punch_phase_spin == 0) {
+        return -EINVAL;
+    }
+    if (spec->send_fill_byte > UINT8_MAX ||
+        spec->mapping_fill_byte > UINT8_MAX) {
+        return -EINVAL;
+    }
+    if (!glk43499_tcp_valid_zc_offsets(spec)) return -EINVAL;
 
     tcp->page_size = page_size;
     tcp->mapping_length = (size_t) spec->mapping_size;
@@ -261,6 +347,21 @@ int32_t glk43499_carrier_tcp_prepare(
     tcp->frame_size = spec->frame_size;
     tcp->operation_budget = spec->operation_budget;
     tcp->timeout_ns = spec->timeout_ns;
+    tcp->punch_spin = spec->punch_spin;
+    tcp->post_hold_ns = spec->post_hold_ns;
+    tcp->zc_address_offset = spec->zc_address_offset;
+    /* R3a-2/T2–T4：四字段偏移、arm 序列、punch 相位独立上限与最终地址。 */
+    tcp->arm_sequence = spec->arm_sequence;
+    tcp->zc_length_offset = spec->zc_length_offset;
+    tcp->zc_task_offset = spec->zc_task_offset;
+    tcp->zc_lock_offset = spec->zc_lock_offset;
+    tcp->punch_phase_spin = spec->punch_phase_spin;
+    tcp->final_task_address = spec->addresses.final_task_address;
+    tcp->final_lock_address = spec->addresses.final_lock_address;
+    /* R3b：两个填充字节在 prepare 使用前已由 tcp spec 提供（旧实现由 Actor 在
+     * prepare 之后才赋值 ⇒ 映射页与发送缓冲全 0，审计 T1）。 */
+    tcp->send_fill_byte = spec->send_fill_byte;
+    tcp->mapping_fill_byte = spec->mapping_fill_byte;
 
     /* 深拷贝 frame（zc 请求模板）与发送缓冲；两者都在 prepare 触页。 */
     tcp->frame = (uint8_t *) malloc((size_t) spec->frame_size);
@@ -278,7 +379,7 @@ int32_t glk43499_carrier_tcp_prepare(
     }
     memcpy(tcp->frame, spec->frame_bytes, (size_t) spec->frame_size);
     memset(tcp->zc_request, 0, (size_t) spec->frame_size);
-    memset(tcp->send_buffer, (int) GLK43499_PHYS_FILL_BYTE,
+    memset(tcp->send_buffer, (int) tcp->send_fill_byte,
            (size_t) spec->receive_size);
 
     int32_t pair_status = glk43499_carrier_tcp_make_pair(tcp);
@@ -312,15 +413,16 @@ int32_t glk43499_carrier_tcp_prepare(
         uint8_t *bytes = (uint8_t *) tcp->mapping;
         for (size_t offset = 0; offset < tcp->mapping_length;
              offset += tcp->page_size) {
-            bytes[offset] = (uint8_t) GLK43499_PHYS_FILL_BYTE;
+            bytes[offset] = (uint8_t) tcp->mapping_fill_byte;
         }
     }
 
-    if (pthread_create(&tcp->punch_worker, NULL,
-                       glk43499_carrier_tcp_punch_run, tcp) != 0) {
-        const int32_t saved = errno != 0 ? errno : EAGAIN;
+    /* B11：pthread_create 返回错误码；bionic 不保证同步写 errno，禁止读 errno。 */
+    const int32_t create_status = pthread_create(
+        &tcp->punch_worker, NULL, glk43499_carrier_tcp_punch_run, tcp);
+    if (create_status != 0) {
         (void) glk43499_carrier_tcp_discard(tcp);
-        return -saved;
+        return -create_status;
     }
     tcp->punch_started = 1;
     tcp->prepared = 1;
@@ -331,9 +433,12 @@ int32_t glk43499_carrier_tcp_prepare(
  * @brief PI 窗口内执行 TCP 触发：发送小包 + getsockopt(TCP_ZEROCOPY_RECEIVE)。
  * @param carrier 已 prepare 的 Carrier；只访问 tcp 分支。
  * @param shared PI 共享状态。
- * @note arm 序列用 1（每次 ret==0 都 arm，旧 profile 的 arm_sequence 未传入）；
- *       post_hold 用编译期常量。`frame` 每 attempt 先复制到工作缓冲再写 address，
- *       避免内核回写破坏模板。
+ * @note R3a-2/T1–T5：与 legacy2 `route_tcp.cpp:300-352` 对齐 ——
+ *       仅 `attempt >= arm_sequence` 且 getsockopt 成功后才 arm consumer；
+ *       arm 后先清 consumer_go 再等 inflight 归零（旧 `tcp_wait_for_consumer_idle` 顺序）；
+ *       zc 请求体四个字段（地址/长度/task/lock）全部由 Native 按请求偏移写入，
+ *       任何加法/越界都按物理失败收口（窗口内不分配、不日志、不首次触页）。
+ *       中性结果写 last_step/last_errno，供 execute 回执做失败定位。
  */
 void glk43499_carrier_tcp_trigger(struct glk43499_carrier *carrier,
                                   struct glk43499_pi_shared *shared,
@@ -346,65 +451,95 @@ void glk43499_carrier_tcp_trigger(struct glk43499_carrier *carrier,
     atomic_store(&shared->route_delay_usec, 0);
     atomic_store(&tcp->punch_go, 1);
     const uint64_t deadline = glk43499_internal_deadline(tcp->timeout_ns);
-    int32_t overflow_failed = 0;
-    /* zc 请求体的工作副本：从 prepare 已触页的 frame 复制，窗口内不分配。 */
     uint8_t *const request = tcp->zc_request;
+    const uint64_t length_field = tcp->receive_size;
+    const uint64_t task_field = tcp->final_task_address;
+    const uint64_t lock_field = tcp->final_lock_address;
 
     uint64_t operations = 0;
+    int32_t last_errno = 0;
+    glk43499_carrier_step last_step = GLK43499_CARRIER_STEP_NONE;
     for (uint64_t attempt = 1; attempt <= tcp->operation_budget && won == 0;
          ++attempt) {
         if (glk43499_internal_expired(deadline)) break;
         ++operations;
         const int32_t calls_before = atomic_load(&shared->consumer_calls);
         const int32_t success_before = atomic_load(&shared->consumer_success);
-        (void) send(tcp->server_fd, tcp->send_buffer, (size_t) tcp->receive_size,
-                    MSG_DONTWAIT);
+        last_step = GLK43499_CARRIER_STEP_SEND;
+        errno = 0;
+        /* G09：MSG_NOSIGNAL 抑制对端已关时 SIGPIPE（legacy backend:431）。 */
+        (void) send(tcp->server_fd, tcp->send_buffer,
+                    (size_t) tcp->receive_size, MSG_DONTWAIT | MSG_NOSIGNAL);
+        /* punch 相位等待：phase=1 等待用独立上限（T 重要项），phase=0 后按
+         * 请求的 punch_spin 有界自旋（旧实现相位 1 无界）。 */
+        last_step = GLK43499_CARRIER_STEP_PUNCH;
         for (uint64_t spin = 0;
-             spin < GLK43499_PHYS_DISARM_SPIN_LIMIT &&
+             spin < tcp->punch_phase_spin &&
              atomic_load(&tcp->punch_phase) != 0;
              ++spin) {
             (void) sched_yield();
         }
         for (uint64_t spin = 0;
-             spin < GLK43499_PHYS_TCP_PUNCH_SPIN &&
+             spin < tcp->punch_spin &&
              atomic_load(&tcp->punch_phase) == 0 &&
              atomic_load(&tcp->punch_failed) == 0;
              ++spin) {
             (void) sched_yield();
         }
-        if (atomic_load(&tcp->punch_failed) != 0) break;
+        if (atomic_load(&tcp->punch_failed) != 0) {
+            last_errno = atomic_load(&tcp->punch_failed);
+            break;
+        }
 
+        /* zc 请求体：模板深拷贝 + Native 拥有的四个字段（T2/T3 偏移、T5 界内）。 */
+        last_step = GLK43499_CARRIER_STEP_REQUEST;
         memcpy(request, tcp->frame, (size_t) tcp->frame_size);
-        /* Native 唯一拥有的字段：映射地址（帧偏移 0 的 `address`）。
-         * 地址加法必须过溢出检查；溢出时按物理失败收口（窗口内不分配/不日志）。 */
         uintptr_t mapping_address = 0;
         if (!glk43499_internal_add_uintptr((uintptr_t) tcp->mapping,
                                            tcp->mapping_offset,
                                            &mapping_address)) {
-            overflow_failed = EOVERFLOW;
+            last_errno = EOVERFLOW;
             break;
         }
-        const uint64_t address = (uint64_t) mapping_address;
-        memcpy(request + GLK43499_PHYS_TCP_ZC_ADDRESS_OFFSET, &address,
-               sizeof(address));
+        const uint64_t address_field = (uint64_t) mapping_address;
+        if (!glk43499_tcp_store_field(request, tcp->frame_size,
+                                      tcp->zc_address_offset, &address_field,
+                                      (uint64_t) sizeof(address_field)) ||
+            !glk43499_tcp_store_field(request, tcp->frame_size,
+                                      tcp->zc_length_offset, &length_field,
+                                      (uint64_t) sizeof(uint32_t)) ||
+            !glk43499_tcp_store_field(request, tcp->frame_size,
+                                      tcp->zc_task_offset, &task_field,
+                                      (uint64_t) sizeof(task_field)) ||
+            !glk43499_tcp_store_field(request, tcp->frame_size,
+                                      tcp->zc_lock_offset, &lock_field,
+                                      (uint64_t) sizeof(lock_field))) {
+            last_errno = EOVERFLOW;
+            break;
+        }
+        last_step = GLK43499_CARRIER_STEP_IO;
         socklen_t request_length = (socklen_t) tcp->frame_size;
         errno = 0;
         const int32_t receive_result =
             getsockopt(tcp->client_fd, IPPROTO_TCP, TCP_ZEROCOPY_RECEIVE,
                        request, &request_length);
-        if (receive_result == 0) {
+        if (receive_result != 0) {
+            last_errno = errno != 0 ? errno : EIO;
+        } else if (attempt >= tcp->arm_sequence) {
+            /* T4：arm 序列语义（旧 `i >= arm_seq && ret == 0`）。 */
+            last_step = GLK43499_CARRIER_STEP_ARM;
             atomic_store(&shared->consumer_go, (int32_t) attempt);
-            for (uint64_t spin = 0; spin < GLK43499_PHYS_TCP_POST_HOLD;
-                 ++spin) {
+            for (uint64_t spin = 0; spin < tcp->post_hold_ns; ++spin) {
                 __asm__ volatile("yield" ::: "memory");
             }
+            atomic_store(&shared->consumer_go, 0);
+            last_step = GLK43499_CARRIER_STEP_INFLIGHT;
             for (uint64_t spin = 0;
-                 spin < GLK43499_PHYS_DISARM_SPIN_LIMIT &&
+                 spin < tcp->disarm_spin_limit &&
                  atomic_load(&shared->consumer_inflight) != 0;
                  ++spin) {
                 (void) sched_yield();
             }
-            atomic_store(&shared->consumer_go, 0);
         }
         const int32_t calls = atomic_load(&shared->consumer_calls);
         const int32_t successes = atomic_load(&shared->consumer_success);
@@ -418,10 +553,12 @@ void glk43499_carrier_tcp_trigger(struct glk43499_carrier *carrier,
         outcome->successes = (uint64_t) atomic_load(&shared->consumer_success);
         outcome->failed =
             won != 0 ? 0
-                     : (overflow_failed != 0
-                            ? overflow_failed
+                     : (last_errno != 0
+                            ? last_errno
                             : (int32_t) atomic_load(&tcp->punch_failed));
         outcome->observed_write = won;
+        outcome->last_step = last_step;
+        outcome->last_errno = last_errno;
     }
 }
 
@@ -431,7 +568,7 @@ int32_t glk43499_carrier_tcp_disarm(struct glk43499_carrier *carrier,
     atomic_store(&shared->consumer_go, 0);
     atomic_store(&tcp->punch_go, 0);
     atomic_store(&tcp->punch_stop, 1);
-    for (uint64_t spin = 0; spin < GLK43499_PHYS_DISARM_SPIN_LIMIT; ++spin) {
+    for (uint64_t spin = 0; spin < tcp->disarm_spin_limit; ++spin) {
         if (atomic_load(&shared->consumer_inflight) == 0) return 1;
         (void) sched_yield();
     }
@@ -443,14 +580,14 @@ int32_t glk43499_carrier_tcp_release(
     struct glk43499_carrier_tcp *tcp = tcp_zerocopy_receive;
     if (tcp->punch_started != 0) {
         atomic_store(&tcp->punch_stop, 1);
-        const uint64_t deadline =
-            glk43499_internal_deadline(UINT64_C(1000000000));
+        /* 等待预算来自请求 timeout_ns；不内置 1 秒目标常量。 */
+        const uint64_t deadline = glk43499_internal_deadline(tcp->timeout_ns);
         while (atomic_load(&tcp->punch_exited) == 0) {
             if (glk43499_internal_expired(deadline)) {
                 /* punch worker 未知引用：整链保留，不 munmap 不 close。 */
                 return 0;
             }
-            (void) usleep((useconds_t) GLK43499_PHYS_POLL_US);
+            (void) usleep((useconds_t) tcp->poll_us);
         }
         if (pthread_join(tcp->punch_worker, NULL) != 0) return 0;
         tcp->punch_started = 0;
@@ -494,6 +631,20 @@ int32_t glk43499_carrier_tcp_release(
     tcp->zc_request = NULL;
     free(tcp->send_buffer);
     tcp->send_buffer = NULL;
+    tcp->punch_spin = 0;
+    tcp->post_hold_ns = 0;
+    tcp->zc_address_offset = 0;
+    tcp->arm_sequence = 0;
+    tcp->zc_length_offset = 0;
+    tcp->zc_task_offset = 0;
+    tcp->zc_lock_offset = 0;
+    tcp->punch_phase_spin = 0;
+    tcp->final_task_address = 0;
+    tcp->final_lock_address = 0;
+    tcp->disarm_spin_limit = 0;
+    tcp->poll_us = 0;
+    tcp->send_fill_byte = 0;
+    tcp->mapping_fill_byte = 0;
     tcp->prepared = 0;
     return 1;
 }

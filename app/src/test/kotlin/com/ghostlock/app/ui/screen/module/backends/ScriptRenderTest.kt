@@ -42,7 +42,7 @@ class ScriptRenderTest {
             ),
         )
         val script = state.toRootScript(null, emptyMap(), log)
-        val cmd = script.indexOf("\nid\n")
+        val cmd = script.indexOf("id || { STATUS=1;")
         val root = script.indexOf("start root manager")
         assertTrue("cmd 在 root 之前", cmd in 0 until root)
     }
@@ -56,8 +56,8 @@ class ScriptRenderTest {
             ),
         )
         val script = state.toRootScript(null, emptyMap(), log)
-        assertTrue(script.contains("\nid\n"))
-        assertTrue(script.contains("\nuname -a\n"))
+        assertTrue(script.contains("id || { STATUS=1; log '[ghostlock] command failed'; }"))
+        assertTrue(script.contains("uname -a || { STATUS=1; log '[ghostlock] command failed'; }"))
     }
 
     @Test

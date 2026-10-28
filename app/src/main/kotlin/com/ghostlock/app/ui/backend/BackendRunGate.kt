@@ -7,18 +7,21 @@ import androidx.compose.ui.res.stringResource
 import com.ghostlock.app.R
 import com.ghostlock.app.core.flow.FlowResult
 import com.ghostlock.app.ui.screen.module.backends.BackendSpec
-import com.ghostlock.app.ui.screen.module.backends.Cve43499RunController
-import com.ghostlock.app.ui.screen.module.backends.Cve43499RunUiState
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * 运行页上下文：不属于 backend 自身、但会改变 allow/deny 的页面事实。
  *
  * @property backendRunInProgress 是否已有一个 backend run 正在执行（UI 框架独占的事实）。
+ * @property executor 当前攻击执行体（种类+授权二值；不读 uid）；用于比对 backend 声明。
  * @note 阶段：task-21；由运行页在每次渲染/点击时构造，不含 backend 内部状态。
  */
 @Immutable
 data class RunPageContext(
     val backendRunInProgress: Boolean = false,
+    val executor: AttackExecutorState = AttackExecutorState(AttackExecutorKind.APP, true),
 )
 
 /**
@@ -71,6 +74,14 @@ object BackendRunGate {
         if (readiness is BackendReadiness.NotReady) {
             reasons += readiness.reasons
         }
+        /* UI 只读 backend 的 uid 需求声明并拒绝；backend 不自检。 */
+        if (spec != null) {
+            if (context.executor.kind == AttackExecutorKind.SHIZUKU && !context.executor.authorized) {
+                reasons += ReadinessReason(R.string.backend_run_executor_unavailable)
+            } else if (!spec.uidRequirement.satisfiedBy(context.executor.kind)) {
+                reasons += ReadinessReason(R.string.backend_run_uid_requirement)
+            }
+        }
         if (spec != null && spec.runCapability != BackendRunCapability.FLOW_RUN) {
             reasons += ReadinessReason(R.string.backend_run_no_flow_entry)
         }
@@ -82,58 +93,79 @@ object BackendRunGate {
 }
 
 /**
- * 框架分发结果：要么已执行（带 controller 状态），要么被门禁拒绝（带原因）。
+ * 框架分发结果：要么已执行（带最终状态），要么被门禁拒绝（带原因）。
  *
  * @note 本类型只服务运行页展示；不构成 supported/真机结论。
  */
 @Immutable
 internal sealed interface BackendRunDispatch {
-    /** 已交给对应 backend 执行器；state 是执行器的最新状态。 */
-    data class Executed(val state: Cve43499RunUiState) : BackendRunDispatch
+    /** 已交给 Flow 执行；state 是执行结果（Finished/Refused）。 */
+    data class Executed(val state: BackendRunUiState) : BackendRunDispatch
 
     /** 框架拒绝执行：reasons 为 [RunDecision.reasons]。 */
     data class Blocked(val reasons: List<ReadinessReason>) : BackendRunDispatch
 }
 
 /**
- * UI 框架的 backend 执行分发器：门禁通过后把 run 交给对应 backend 执行器。
+ * UI 框架的 backend 执行分发器：门禁通过后**直接**把 run 交给 Flow
+ * （task-32 分层：不再经 Controller/Run 等中间类）。
  *
- * 当前只有 CVE-2026-43499 具备 `FLOW_RUN` 入口（`Cve43499RunController`）；其它 backend
- * 即使声明允许也会以 `backend_run_no_flow_entry` 拒绝（防御性双保险）。
+ * 链路：`BackendRunDispatcher.dispatch` → `Cve43499RequestFactory.build`（UI 输入组装）
+ * → `Flow43499Impl().run(request)`（唯一编排）→ `Cve43499Lifecycle`（唯一生命周期层）
+ * → `Native43499Jni`。
  *
- * @note 决策由 [BackendRunGate] 给出；本对象不重新判断“是否应该允许”，只路由到执行器。
- * @note 阶段：task-21；不接默认 Flow/UI 入口，页面必须显式调用。
+ * 当前只有 CVE-2026-43499 具备 `FLOW_RUN` 入口；其它 backend 即使声明允许也会以
+ * `backend_run_no_flow_entry` 拒绝（防御性双保险）。
+ *
+ * @note 决策由 [BackendRunGate] 给出；本对象不重新判断“是否应该允许”，只路由到 Flow。
+ * @note 阶段：task-32；不接默认 Flow/UI 入口，页面必须显式调用。
  */
 internal object BackendRunDispatcher {
-    /** 具备 Flow run 入口的 backend 身份（与 `BackendSpec.cve` 对齐）。 */
-    private const val CVE_43499: String = "CVE-2026-43499"
-
     /**
      * 执行一次已获门禁允许的 backend run。
      *
+     * R1a：**只调用 `spec.runner`**（单一注册点；无 backend 分支）。runner 内部已把异常映射为
+     * 具名 Refused；本函数只兜底 runner 抛出的非预期异常。
+     *
      * @param spec 当前选中的 backend。
      * @param decision 门禁决策；allowed=false 时直接返回 [BackendRunDispatch.Blocked]。
-     * @param controller 43499 的执行器（由调用页面持有，不在本对象内保存状态）。
-     * @param context 应用上下文。
-     * @return 分发结果。
-     * @note 本函数不抛异常：执行器内部的异常由 controller 映射成具名状态。
+     * @param context 应用上下文（输入组装用）。
+     * @param onLine 运行期事实行回调（终端展示；不参与控制流）。
+     * @return 分发结果；不抛给 UI（取消除外）。
      */
     suspend fun dispatch(
         spec: BackendSpec?,
         decision: RunDecision,
-        controller: Cve43499RunController,
         context: Context,
+        onLine: (String) -> Unit = {},
     ): BackendRunDispatch {
         if (!decision.allowed) {
             return BackendRunDispatch.Blocked(decision.reasons)
         }
-        if (spec == null || spec.cve != CVE_43499) {
+        if (spec == null || spec.runner == null) {
             return BackendRunDispatch.Blocked(
                 listOf(ReadinessReason(R.string.backend_run_no_flow_entry)),
             )
         }
-        controller.run(context.applicationContext)
-        return BackendRunDispatch.Executed(controller.state)
+        return try {
+            /* 唯一入口：UI → dispatcher → FlowLaunchParent（多态执行体）→ symbol 解析 → Flow。 */
+            val invocation = FlowSymbolInvocation(symbol = spec.key)
+            val state = FlowLaunchParent.launch(
+                context = context.applicationContext,
+                executor = currentAttackExecutorState(),
+                invocation = invocation,
+                onLine = onLine,
+            )
+            BackendRunDispatch.Executed(state)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (problem: Throwable) {
+            BackendRunDispatch.Executed(
+                BackendRunUiState.Refused(
+                    listOf("backend-run-execution:exception:" + problem::class.java.simpleName),
+                ),
+            )
+        }
     }
 }
 
@@ -143,30 +175,30 @@ internal object BackendRunDispatcher {
  * @property cve 当前选中 backend 的 CVE 身份。
  * @property readiness 该 backend 的 readiness 声明（真实来源）。
  * @property decision [BackendRunGate] 的唯一 allow/deny 结论。
- * @property runState 43499 执行器的最新状态（Idle/Running/Finished/Refused）。
- * @note 阶段：task-21；不含任何执行能力，页面不能绕过 [BackendRunGate]。
+ * @property runState 43499 运行的最新状态（Idle/Running/Finished/Refused）。
+ * @note 阶段：task-21/32；不含任何执行能力，页面不能绕过 [BackendRunGate]。
  */
 @Immutable
 data class BackendRunPanel(
     val cve: String,
     val readiness: BackendReadiness,
     val decision: RunDecision,
-    val runState: Cve43499RunUiState,
+    val runState: BackendRunUiState,
 )
 
 /**
- * 把执行器状态渲染成展示行（框架唯一实现）。
+ * 把运行状态渲染成展示行（框架唯一实现）。
  *
  * @return 稳定顺序的文本行；Idle 为空。
  * @note 只展示事实，不做二次判定。
  */
 @Composable
-fun Cve43499RunUiState.displayLines(): List<String> = when (this) {
-    Cve43499RunUiState.Idle -> emptyList()
-    Cve43499RunUiState.Running -> listOf(stringResource(R.string.backend_run_in_progress))
-    is Cve43499RunUiState.Refused ->
+fun BackendRunUiState.displayLines(): List<String> = when (this) {
+    BackendRunUiState.Idle -> emptyList()
+    BackendRunUiState.Running -> listOf(stringResource(R.string.backend_run_in_progress))
+    is BackendRunUiState.Refused ->
         listOf(stringResource(R.string.backend_run_denied)) + reasons
-    is Cve43499RunUiState.Finished -> when (val result = result) {
+    is BackendRunUiState.Finished -> when (val result = result) {
         is FlowResult.Ok ->
             listOf("OK") + result.evidence.map { (key, value) -> key + " = " + value }
         is FlowResult.Failed ->

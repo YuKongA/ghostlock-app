@@ -1,6 +1,9 @@
 /**
  * @file page.h
  * @brief Placement 到受控内核 Page 的 Landing 契约。
+ *
+ * @note ABI v4 起无 reserved 槽；字段只允许在结构尾部 append-only 追加。
+ * @note 阶段：ABI v4（43499 Native 全参数化 R2a）。
  */
 #ifndef GHOSTLOCK_GL43499_CORE_PAGE_H
 #define GHOSTLOCK_GL43499_CORE_PAGE_H
@@ -20,12 +23,12 @@ struct glk43499_page_bytes {
     const uint8_t *data;
     uint64_t size;
     uint64_t content_generation;
-    uint64_t reserved[4];
 };
 
 /**
  * @brief Kotlin 决定的 Landing 几何与有界执行参数。
  * @note expected_page_base 必须等于 PlacementFacts.candidate_page_base。
+ * @note struct_size 必须是 sizeof(struct glk43499_landing_request)。
  */
 struct glk43499_landing_request {
     struct glk43499_abi_header abi;
@@ -37,7 +40,15 @@ struct glk43499_landing_request {
     uint64_t socket_send_buffer_size;
     uint64_t reclaim_send_limit;
     uint64_t timeout_ns;
-    uint64_t reserved[8];
+    /* P0a append-only：触页填充字节（0..255；Native 不填默认值）。 */
+    uint64_t fill_byte;
+    /* R3a-2/B6 append-only：页接受判据（legacy2 memory.cpp:210-227 的参数化）。
+     * required=1 时要求 accepted=(candidate_page_base + offset) 的第 bit 位为 1，
+     * 否则该页把偶数写到 selinux_state.initialized 上（旧实现会 panic）；
+     * required=0 表示本 route 无此判据。全部来自请求，Native 不内置目标常量。 */
+    uint64_t page_accept_required;
+    uint64_t page_accept_offset;
+    uint64_t page_accept_bit;
 };
 
 /** @brief Landing 的提交点与实际物理操作计数。 */
@@ -52,8 +63,10 @@ struct glk43499_landing_receipt {
     uint32_t commit_reached;
     uint32_t placement_consumed;
     uint32_t reclaim_retained;
-    uint32_t reserved32;
-    uint64_t reserved[8];
+    /* R3a-2/B6：页接受判据的求值结果（可证伪回执；未启用时 checked=0）。 */
+    uint64_t page_accept_value;
+    uint32_t page_accept_checked;
+    uint32_t page_accept_ok;
 };
 
 /** @brief landPage 输出；返回 Page handle 为 0 时仍须读取 call 和 receipt。 */
@@ -95,6 +108,15 @@ glk43499_handle glk43499_land_page(
 int32_t glk43499_close_page(
     glk43499_handle page,
     struct glk43499_close_result *result);
+
+GLK43499_STATIC_ASSERT(sizeof(struct glk43499_page_bytes) == 32,
+                       "ABI v4 page_bytes layout drift (expected 32)");
+GLK43499_STATIC_ASSERT(sizeof(struct glk43499_landing_request) == 104,
+                       "ABI v4+R3 landing_request layout drift (expected 104)");
+GLK43499_STATIC_ASSERT(sizeof(struct glk43499_landing_receipt) == 88,
+                       "ABI v4+R3 landing_receipt layout drift (expected 88)");
+GLK43499_STATIC_ASSERT(sizeof(struct glk43499_landing_result) == 120,
+                       "ABI v4+R3 landing_result layout drift (expected 120)");
 
 #ifdef __cplusplus
 }

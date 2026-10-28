@@ -499,4 +499,19 @@
     <string name="run_rerun_title">重新执行？</string>
     <string name="run_rerun_message">将再次发起攻击，确认继续。</string>
     <string name="run_backend_not_wired">执行后端尚未接线。</string>
+    <string name="backend_cve_2026_98260">CVE-2026-98260</string>
+    <string name="backend_status_cve98260_not_ready">未就绪：环境未验证</string>
+    <string name="backend_readiness_cve98260_payload">APK 内 exploit payload 缺失/非法（nativeLibraryDir）</string>
+    <string name="backend_readiness_cve98260_profile_missing">缺少内核 profile（仅 debug 构建内置 98260 profile）</string>
+    <string name="backend_readiness_cve98260_profile_release">内核 release 与 profile 不匹配</string>
+    <string name="backend_readiness_cve98260_must_reboot">必须重启后才能再次运行</string>
+    <string name="backend_readiness_cve98260_boot_id">boot_id 不可用</string>
+    <string name="backend_readiness_cve98260_not_probed">尚未探测环境</string>
+    <string name="backend_row_requires">运行要求</string>
+    <string name="backend_row_payload">攻击载荷</string>
+    <string name="backend_row_channel">执行通道</string>
+    <string name="run_restart_required">必须重启：exploit 已 park（持有 fake cred 页），重启是唯一清理方式</string>
+    <string name="run_abort_disabled_cve98260">中止已禁用：触发后不得 kill/timeout payload，重启是唯一清理方式</string>
+    <string name="backend_run_uid_requirement">当前执行体 uid 不满足该 backend 声明的 uid 需求</string>
+    <string name="backend_run_executor_unavailable">执行体不可用或未授权：请授权 Shizuku 或切换回 App</string>
 </resources>

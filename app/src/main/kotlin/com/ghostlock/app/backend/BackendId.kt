@@ -1,6 +1,7 @@
 package com.ghostlock.app.backend
 
 import com.ghostlock.app.backend.cve43284.flow.Flow43284Impl
+import com.ghostlock.app.backend.cve98260.flow.Flow98260Impl
 import com.ghostlock.app.backend.cve43499.flow.Flow43499Impl
 import com.ghostlock.app.backend.lua.FlowLuaImpl
 import com.ghostlock.app.core.flow.Flow
@@ -14,6 +15,7 @@ import kotlin.reflect.KClass
  */
 enum class BackendId(val clazz: KClass<out Flow<*>>) {
     CVE_43284(Flow43284Impl::class),
+    CVE_98260(Flow98260Impl::class),
     CVE_43499(Flow43499Impl::class),
     LUA(FlowLuaImpl::class),
 }

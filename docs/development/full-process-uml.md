@@ -859,3 +859,31 @@ flowchart LR
 
 G4L-5不等待三个Primitive全部完成；G4L-6至少依赖一个已过真机门的Primitive，TCP仍有独立批准点。
 Native不含registry，只绑定物理Primitive；route与跨backend顺序由Kotlin/Lua决定。
+
+### 11.6 2026-10-28：CVE-2026-98260 backend（IPO/状态机）
+
+> 执行结构唯一权威：[execution-architecture.md](../plan/execution-architecture.md) §10；本图只给 IPO 与状态机（AGENTS §9）。
+> 拓扑（2026-10-28 R1 修正）：app Flow（唯一编排）→ Shizuku UserService（shell 域，幂等原语）
+> → **公用 victim helper `execScript` 启动脚本 → payload（后台 detach）** → payload 内 **rooted victim
+> （fake-cred child）直接 exec finish 脚本**；BootSafetyStore 唯一安全闸。
+> 直启 JNI `spawnStatic` 已退出生产路径（TD-R1-5）；详见 `98260-r1-progress-20261028.md`。
+
+```mermaid
+flowchart LR
+  I["app Flow validate<br/>(profile/release/Shizuku/store/boot_id)"] --> P["prepare<br/>(service 预检 + payload/finish 脚本 + journal)"]
+  P --> S["start<br/>(公用 victim helper execScript 启动脚本 → payload 后台/pid)"]
+  S --> O["poll<br/>(readLog/marker；app 内超时/取消)"]
+  O --> V["verify<br/>(/proc/modules + finish 证据)"]
+  V --> F["acceptance<br/>(rooted victim finish 验收；成功也 must_reboot=true)"]
+```
+
+```mermaid
+stateDiagram-v2
+  [*] --> Idle
+  Idle --> Running: Gate 通过
+  Running --> Finished: Ok（KSU 判据+verify；must_reboot=true）
+  Running --> Finished: Failed（未 armed：具名；armed 后：must_reboot=true）
+  Running --> Refused: 预检/输入拒绝（未 armed）
+  Finished --> Idle: 本 boot 拒绝再跑（store 闸）
+  Refused --> Idle
+```

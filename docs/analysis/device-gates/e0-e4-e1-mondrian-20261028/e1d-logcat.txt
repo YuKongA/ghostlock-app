@@ -1,0 +1,6 @@
+10-29 03:26:58.356  4601  5315 I E1-W1-ONLY: E1|attempt|n=1|phase=close|reason=close_chain|retained=false|all_released=true|termination=chain=skipped;
+10-29 03:26:58.357  4601  5315 I E1-W1-ONLY: E1|attempt|n=1|phase=landing|reason=cve43499:write.w1:landing:clean-failure:call=invalid-argument:errno=0|primitive=null|page_base=none
+10-29 03:26:58.617  4601  5315 I E1-W1-ONLY: E1|attempt|n=2|phase=pre|reason=begin|primitive=MULTICAST|proc=threads=18|vmsize=17244800 kB|fds=106
+10-29 03:28:16.926  4601  5315 I E1-W1-ONLY: E1|attempt|n=2|phase=close|reason=close_chain|retained=false|all_released=true|termination=chain=skipped;
+10-29 03:28:16.930  4601  5315 I E1-W1-ONLY: E1|report_file=/data/user/0/com.ghostlock.app/files/e1-w1-only-report.txt|lines=15
+10-29 03:28:16.934  4601  5315 E TestRunner: java.lang.AssertionError: E1|W1-FAILED|reason=cve43499:write.w1:prepare-actor:actor-cpu|retained=false|attempt=2

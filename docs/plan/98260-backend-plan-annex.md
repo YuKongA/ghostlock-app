@@ -1,0 +1,114 @@
+# 98260 backend 计划·附录 A（critic 回应 / 启动 / 状态 / 预检 / marker / 参数协议）
+
+> 主计划：[98260-backend-plan.md](98260-backend-plan.md)；附录 B：[98260-backend-plan-annex-b.md](98260-backend-plan-annex-b.md)（CBN/改动清单/测试/真机门禁/债）。本附录承载 critic 回应与协议细节。
+> **2026-10-28T09:20 用户裁定**：§C 的 `newProcess` 启动通道被 [delta](98260-backend-plan-delta-userservice.md) §3 取代（**Shizuku UserService 承载 Flow + JNI 控制 payload**）；§C 保留为沿革，新协议以 delta 为准。
+> 快照：HEAD `a9af5482` + 工作树（`git status --porcelain` 183 条，2026-10-28T08:35 实测）。critic 报告见会话记录（冻结 P sha `60e20edf…` / A sha `2660f144…`）。
+
+## R. 第一轮 critic 回应（已并入第二轮修订）
+
+第一轮 B-01～B-04、I-01～I-16、S-01～S-06 的处置已在本轮修订中关闭或并入；逐条现状见文末 §R2（第二轮 N-01～N-15 回应）。
+
+## C. 启动/脱离协议（B-01）——**整节沿革：09:20 后协议见 delta §3，以下不再执行**
+
+1. **install**：app 读 `nativeLibraryDir/libghostlock98260_helper.so` 字节 → `ShellChannel.run("sh -c 'cat > /data/local/tmp/glk98260-helper && chmod 755 /data/local/tmp/glk98260-helper && wc -c < /data/local/tmp/glk98260-helper'", stdin=bytes)`；校验回读字节数==APK 条目字节数；`sha256sum`/`toybox sha256sum` 可用时再校验 sha256（不可用⇒`installVerify=size-only` 记 evidence+TD-11，**不阻断**；可用且不符⇒Refused）；失败 ⇒ Refused `cve98260:install:<reason>`（**未 armed**）。
+2. **launcher（两阶段）**：`ShellChannel.run("/system/bin/sh -c '/system/bin/setsid /data/local/tmp/glk98260-helper --params <S> --mode fake </dev/null >/data/local/tmp/glk98260.log 2>&1 & echo $! > /data/local/tmp/glk98260.pid'")`。**`<S>` 字符集限 `[0-9a-fx,|A-Za-z0-9._/:-]`**（禁空白/引号/反斜杠/换行；Kotlin 编码端校验，非法⇒Refused），单 token 嵌入单引号 `sh -c`。**pid 权威**：`$!` 仅候选（`setsid` 在调用者是进程组长时会 fork，`$!` 可能为短命父进程）；helper 启动后自报 `GLK98260_ENV pid=<pid>`（并在自身 `setsid(2)` 成功后写 `/data/local/tmp/glk98260.pid`），app **以 helper 自报 pid 为准**。Shizuku 语义：**调用者（app）死亡会杀该 launcher 进程**（13.1.5 sources `Shizuku.java:477-489`）；launcher 短命、`setsid` 使 helper 脱离会话/进程组，协议要求 launcher 立即退出。CBN 收益列改「**未验证收益**=app 结束后 helper 存活（判据=真机 G4）」。
+3. **确认存活**：从日志 `GLK98260_ENV pid=` 取自报 pid（缺失时回退 pid 文件）→ 十进制+范围内校验 → `/proc/<pid>/cmdline` 命中 `glk98260-helper` → 短命令 `sh -c 'kill -0 <pid> 2>/dev/null && echo ALIVE'`（不发信号）。alive 确认前 BootSafetyStore 已置 `launch_pending=true`；未确认 ⇒ 终态 `cve98260:launch-unconfirmed`（must_reboot=true）。
+4. **已知未验证**：Shizuku 是否连带清理 setsid 孙进程、helper 在 app force-stop 后是否存活、static ET_EXEC 在 `/data/local/tmp` 的 exec 许可 —— 全部进真机门禁（§L），失败即按 D2 翻转条件改 UserService。
+5. **API14 翻转触发**：`Shizuku.getVersion() >= 14` 或升级依赖后 `newProcess` 缺失 ⇒ 必须改 UserService 通道（TD-1 偿还）。
+
+## D. BootSafetyStore 状态机（B-02）
+
+- 文件：`data/cve98260/BootSafetyStore.kt`（SharedPreferences，单键 JSON；**不是**用户可编辑配置，不进 `BackendConfigStore`）。
+- 字段：`schema_version=1, boot_id, must_reboot, launch_pending, outcome, reason, updated_ms`。
+- `boot_id` **单一权威读取**：app 直接读 `/proc/sys/kernel/random/boot_id`（只读文件）；读失败才回退 **AIDL `bootId()`（service 读）**，两值不等价⇒NotReady；**未知⇒readiness=NotReady `cve98260:boot-id-unknown`，不写 must_reboot**（权限未核实 TD-19）。
+- **跨清数据/卸载 journal**：由 **service 在 `prepare`（写 helper 后）/`start`（spawn 前）** 原子写 `/data/local/tmp/glk98260.run`（`boot_id,pid,ts,outcome`，`printf >tmp && mv` 同域原子替换）；**`prepare` 阶段 journal 写失败/回读不符 ⇒ Refused（不 spawn）**；预检 F11 按 `outcome` 判定：`launched/armed/unknown` 且 `boot_id==当前` ⇒ Refused `cve98260:preflight:must-reboot`；`installed` 且 prefs 无 `launch_pending` ⇒ 允许重装（关闭清数据/卸载后的同 boot 再 armed 窗口）。
+- **持久化同时失败兜底（N-20）**：终态先写 journal 再写 prefs；二者同时失败 ⇒ 内存态置 `must_reboot` + 前台锁定「必须重启」+ 记 `outcome=persist-failed`；下次启动见 `persist-failed` ⇒ NotReady，禁止再跑（残余窗口登记 TD-13）。
+- 顺序（不可换）：`launch_pending=true`（`SharedPreferences.commit()` **同步提交并校验返回值**；失败⇒未 armed 则 Refused、已 armed 则 must_reboot）→ spawn（service JNI）→ armed 证据（helper 输出 `GLK98260_ARMED=1` 或 journal）→ `outcome` 终态 + journal 同步 → `launch_pending=false`（仅终态明确时）。**成功（PARKED）同样 must_reboot=true**。
+- 启动/选择时：`boot_id` 变化 ⇒ 清除全部；未变且 `must_reboot || launch_pending` ⇒ readiness=NotReady（重启警示），拒绝再跑。
+- 任何 Flow 失败/取消退出前：先落 `must_reboot/launch_pending`，**再**返回结果（保证 app 随后死亡也不失闸）。
+- 回滚（§N）：仅当 `launch_pending=false 且 must_reboot=false` 或 boot_id 变化时可清 prefs。
+
+## E. 运行终态映射（B-03；保持 4 态）
+
+`BackendRunUiState` = `Idle | Running | Finished(FlowResult) | Refused(reasons)`（中性迁移自 `Cve43499RunUiState`）。
+
+**BootSafetyStore 是 must_reboot 的唯一权威**；`Failed.evidence["mustReboot"]` 仅为镜像（UI 警示条读 store 快照，审计读 evidence，二者须等价）。具名终态（触发独立「必须重启」警示条，禁止只显示"失败"）：
+- `cve98260:park-unreaped`（日志出现 `parking without reap`，未达 KSU 判据）
+- `cve98260:poll-window-timeout`（轮询窗口到期，进程未退出/未达判据；**不发信号**）
+- `cve98260:launch-unconfirmed`（spawn 后 `/proc/<pid>`/pid 回执未确认；旧 launcher 语义已作废）
+- `cve98260:armed-abnormal-exit`（armed 后 helper 退出但判据缺失）
+- 未 armed 失败（预检/install/无 armed marker）⇒ 普通 failed，`mustReboot=false`。
+- 成功 = 日志有 KSU 判据 **且** 独立验证通过（§L）；`Ok.evidence` 含 `ksuModules/ksuContext/helperPid/bootId/markers/mustReboot=true`；**成功必须先落 store `must_reboot=true` 再返回 Ok**（PARKED 即 armed 副作用）。
+- `pollWindowTimeout` 定义 = 等待窗口到期，**不含**向 helper 发任何信号（S-03 用词澄清）。
+
+## F. 预检矩阵（沿革：09:20 后载体=delta §F；下表 ShellChannel 命令不再执行）
+
+| # | 检查 | 命令（ShellChannel） | 预期 | 失败 reason |
+|---|---|---|---|---|
+| F1 | shell 身份 | `id -u; cat /proc/self/attr/current` | `2000`；含 `u:r:shell:s0` | `cve98260:preflight:shell-domain` |
+| F2 | 内核 release | `uname -r` | == profile.release | `cve98260:preflight:release-mismatch:<v>` |
+| F3 | tracefs 可写 | `test -w /sys/kernel/tracing/tracing_on && echo ok` | `ok` | `cve98260:preflight:tracefs-not-writable` |
+| F4 | slab order | `cat /sys/kernel/slab/posix_timers_cache/order` | == profile.slab_order | `cve98260:preflight:slab-order:<v>` |
+| F5 | 页大小/CPU | `getconf PAGE_SIZE`；`nproc` | 4096；≥4 | `cve98260:preflight:page-size|cpu-count` |
+| F6 | KSU 未加载 | `grep -c '^kernelsu ' /proc/modules` | `0`（读不到⇒fail-closed） | `cve98260:preflight:ksu-loaded|modules-unreadable` |
+| F7 | manager/libksud | `pm path <manager>;` 脚本内解析 | libksud 路径可执行 | `cve98260:preflight:manager-missing`（helper 也会 fail 并 park） |
+| F8 | 设备/profile | `getprop ro.product.device`；profile 命中 | 与 profile 一致 | `cve98260:preflight:profile-missing` |
+| F9 | 同 boot 安全闸 | BootSafetyStore | 无 must_reboot/launch_pending | `cve98260:preflight:must-reboot` |
+| F10 | Shizuku 身份 | `Shizuku.getUid()/getSELinuxContext()` | 2000/shell | `cve98260:preflight:shizuku-uid|shizuku-context` |
+| F11 | journal 安全闸 | 读 `/data/local/tmp/glk98260.run` | 不存在，或 boot_id≠当前 | `cve98260:preflight:must-reboot` |
+
+> F1–F11 的 shell 命令**均未在目标设备核实**（含 `getconf`/`/sys/kernel/slab/...`/`pm path`/`/proc/modules` 可读性）；失败一律具名 Refused，**不得**自动降级或当作 exploit 失败（G0 增命令可用性探针；F4 备选 `/proc/slabinfo`/helper 内读）。
+> **单一预检求值器** `Cve98260Preflight.kt`（纯函数：输入 shell 命令结果→具名 reasons）同时供 readiness 快照与 Flow 运行前重跑；helper `GLK98260_ENV` 为**运行期权威**，app F1/F10 为门禁参考，二者不一致 ⇒ fail-closed 记 `cve98260:preflight:env-mismatch`。
+
+## G. helper marker 协议（append-only，稳定前缀）
+
+| marker | 时机 | app 动作 |
+|---|---|---|
+| `GLK98260_ENV uid=… domain=… release=…` | 启动自检后 | **运行期权威**；与 app 预检不一致 ⇒ fail-closed；uid≠2000/域非 shell ⇒ 终止解析并 failed |
+| `GLK98260_PREFLIGHT=ok` | helper 内部参数/页/slab 校验通过 | 记录 |
+| `GLK98260_ARMED=1` | 首次释放 `timer_go` 前（`T:1278-1284`） | 置 armed；此后失败一律 mustReboot |
+| `GLK98260_SELINUX_OFF=1` | selinux 零写成功（**发生在 ARMED 之后**） | 记录；该阶段失败/无 ARMED marker ⇒ mustReboot（§I 顺序） |
+| `GLK98260_PANIC_ON_WARN=<n>` | 读取/修正 | 记录 |
+| `GLK98260_FAKE_CRED=1` / `GLK98260_FAKE_UID=1` | fake 阶段成功 | 记录 |
+| `KSU_LOADED` / `KSU_MISSING` | 内置脚本 | 成功候选/失败候选 |
+| `GLK98260_PARKED=<reason>` / `parking without reap` | helper park | mustReboot=true |
+
+未知行忽略；半行缓冲保留到下一轮；单行上限 512 B；日志轮询用 `tail -c +<offset>`（decreasing offset，防重读）。
+
+## H. 跨端参数协议（I-05）
+
+- **唯一权威**：`app/src/main/cpp/gl98260/params.h` 的 `struct glk98260_params`（字段名+顺序+类型）。Kotlin `Cve98260Profile.PARAM_ORDER` 为镜像，单测**解析 C 头**逐字段比对名字/顺序/类型（不得手抄两套；C 头变更未同步 ⇒ 测试红）。
+- 数值段：逗号分隔十六进制（`0x%llx`），含 `schema_version,page_size,slab_order,slide_max,base_min,base_max,static{6},sizes{5},offsets{3},symbols{4},caps{2},cpu,sockbuf`。**不含调参常量**（NTIMERS/VICTIM_IDX/VMA_COUNT/LOCKERS/SPRAY_* 编译期，见主计划 §6；N-02 关闭：单一权威=编译期）。
+- 字符串段：同一 argv 参数内 `|` 分隔（manager_package|kmi|late_load_args|ksud_fallbacks|tracefs_path）；**整串字符集 `[0-9a-fx,|A-Za-z0-9._/:-]`**（禁空白/引号/反斜杠/换行），Kotlin 编码端与 C 解析端双向校验，非法⇒具名拒绝。
+- **列表型 token 编码（N-18）**：`late_load_args`/`ksud_fallbacks` 内部以 `:` 分隔，每列表 ≤8 token、每 token ≤128 B（字符集同上）；`late_load_args` **必含 `--allow-shell`**，顺序固定为 `late-load --kmi <kmi> --allow-shell --package-name <manager>`（token 化后按序传递）；C 侧按同规则 split+上限校验，非法⇒具名拒绝。
+- argv 协议：app→helper `--params <S> --mode <fake|real|leak|ids>`；child re-exec：`<exe> --params <S> wait <mode>`（`T:1435-1439` 改）；target exec `<exe>` 且 `argv[0]==""` ⇒ `main` **最先**判 `argv[0][0]=='\0'` 后 `_exit(42)`（`T:1631-1632` 保留），不解析 params。
+- helper 启动自检：参数个数/边界/页大小/slab order/符号地址窗口；任一不合法 ⇒ `GLK98260_PREFLIGHT=fail:<id>` 并退出（未 armed）。
+
+## I. fake 链确定顺序（沿革：09:20 后启动链=delta §3；以下只保留 fake 链内核顺序）
+
+`预检`（§F，未 armed）→ `install` → `launch`（§C）→ helper 内部：`ENV` → `descend events/ids → calibrate_base → prefill`（`T:1652-1663`）→ `leak_cred`（`T:1392-1490`）→ **`ARMED` 前 marker** → ① `stage selinux off`（零写 `T:1722-1728` 语义；目标顺序提前，理由：`panic_on_warn` 在 SELinux off 后才可读，`T:1708-1712`）→ ② 读/写 `panic_on_warn`（`T:1729-1732`）→ ③ `fake_cred`（`T:1719-1721`，可能触发 RB_EMPTY_NODE WARN）→ ④ `fake_uid`（`T:1733-1734`）→ 唤醒 C → worker 执行内置 late-load 脚本（`T:836-873` 参数化 manager/KMI/fallback）→ `KSU_LOADED/MISSING` → `PARKED`（`T:1770-1771`）。
+
+每步失败：armed 前 ⇒ helper 退出 + `GLK98260_PREFLIGHT/…fail` 具名（app 判普通 failed）；armed 后 ⇒ helper 不得退出，必须 `park_forever` 并打印 `parking without reap`（app 判 mustReboot）。**fake 成功 PARKED 同样置 must_reboot=true**（store 唯一权威）。
+
+诊断模式（**仅 Debug 构建**编入，release 不含）：`ids`（发现 event id 后退出）、`leak`（标定+泄漏后清理退出，`T:1675-1683`）、`real`（real-cred 链：仅当 `g_held==0` 可正常退出，`T:1770-1774`）。清理计划 TD-8。
+
+
+## R2. 第二轮复评（N-01～N-15）作者回应
+
+| 编号 | 处置 | 落点 |
+|---|---|---|
+| N-01(阻断) | boot_id 单一权威+回退等价；未知⇒NotReady 不写 must_reboot；`/data/local/tmp/glk98260.run` journal 关闭清数据/卸载窗口；`commit()` 同步+返回值；成功也落闸 | §D/§E/§F-F11；主计划 §5/§10-S2/S3 |
+| N-02(阻断) | 定调参为**编译期**单一权威；argv 删除调参字段；三处同步 | 主计划 §6；§H；附录 B §B-D10 |
+| N-03 | launcher `echo $! > pid`+`/proc/<pid>/cmdline` 校验；`<S>` 字符集；install 字节数+可选 sha256；收益降级「未验证（判据 G4）」 | §C；附录 B §B-D1/D2/§L-G4 |
+| N-04 | BootSafetyStore 唯一权威、evidence 镜像；成功必须 must_reboot=true；加用例 | §E/§F；附录 B §K |
+| N-05 | cve 降为显示/持久化键（身份=BackendId）；清单点名 SessionStore/Home；1:1 映射；Backends.all 下标定死 | 主计划 §7；附录 B §J/§K |
+| N-06 | 单一预检求值器同时供 readiness/Flow；helper ENV 运行期权威；不一致 fail-closed | §F；附录 B §J/§K |
+| N-07 | 删除 seccomp 表述（分析 §3 与附录 B D1 → 4 条前提） | 分析文档；附录 B §B-D1 |
+| N-08 | D5/D7 收益改数字 | 附录 B §B |
+| N-09 | 决策/评审记录命名；补 FlowProgress/RequestFactory/ShellChannel/launcher/install 用例；Backends.all 下标；spec 措辞 | 主计划 §7/§9；附录 B §J/§K |
+| N-10 | in-flight 实际 sha 前缀表；快照改「基线 183@08:35/修订 186」 | 主计划头；附录 B §J |
+| N-11 | Class/Sequence 落点：execution-architecture 新节（Class+Sequence），UML IPO/状态互链 | 附录 B §O |
+| N-12 | 跨平台 `shasum -a 256`；readelf 用 `$ANDROID_NDK_HOME`/`ndk.dir` 不读其它键 | 主计划 §9；附录 B §K |
+| N-13 | SELINUX_OFF 明确在 ARMED 后；ENV 运行期权威/不一致 fail-closed | §G/§I |
+| N-14 | profile `late_load_args` 必含 `--allow-shell`；G3 以 `/proc/modules`+ksud 为主判据、`su` 为辅助 | 附录 B §L-G3 |
+| N-15 | F1–F11 命令一律标「未核实」+G0 命令可用性探针；失败具名且不降级 | §F |

@@ -1,0 +1,3 @@
+uptime=60.01
+Enforcing
+1d06c2f64-41ac-4fc8-95fe-52318af2029a

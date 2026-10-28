@@ -1,0 +1,612 @@
+--------- beginning of main
+10-29 05:30:50.814  4715  4796 I Finsky  : [41] WM::SCH: Logging work initialize for 12-1
+10-29 05:30:50.815  4715  4801 I Finsky  : [44] SCH: Scheduling 1 system job(s)
+10-29 05:30:50.816  4715  4801 I Finsky  : [44] SCH: Scheduling system job Id: 9143, L: 14678, D: 49629869, C: false, I: false, N: 1
+10-29 05:30:50.819  4715  4792 I Finsky  : [37] [ContentSync] finished, scheduled=true
+10-29 05:30:50.819  4715  4803 I Finsky  : [45] SCH: Scheduling phonesky job Id: 12-1, CT: 1793223050507, Constraints: [{ L: 15000, D: 86400000, C: CHARGING_NONE, I: IDLE_NONE, N: NET_ANY, B: BATTERY_ANY }]
+10-29 05:30:50.822  4715  4804 I Finsky  : [46] SCH: Scheduling 0 system job(s)
+10-29 05:30:50.822  4715  4805 I Finsky  : [47] SCH: Scheduling phonesky job Id: 12-1, CT: 1793223050577, Constraints: [{ L: 15000, D: 86400000, C: CHARGING_NONE, I: IDLE_NONE, N: NET_ANY, B: BATTERY_ANY }]
+10-29 05:30:50.822  4715  4796 I Finsky  : [41] WM::SCH: Logging work initialize for 12-1
+10-29 05:30:50.822  4715  4804 I Finsky  : [46] [ContentSync] finished, scheduled=true
+10-29 05:30:50.825  4715  4804 I Finsky  : [46] SCH: Scheduling 0 system job(s)
+10-29 05:30:50.825  4715  4804 I Finsky  : [46] [ContentSync] finished, scheduled=true
+10-29 05:30:50.829  4715  4803 I Finsky  : [45] SCH: Scheduling phonesky job Id: 12-1, CT: 1793223050612, Constraints: [{ L: 15000, D: 86400000, C: CHARGING_NONE, I: IDLE_NONE, N: NET_ANY, B: BATTERY_ANY }]
+10-29 05:30:50.831  4715  4805 I Finsky  : [47] SCH: Scheduling 0 system job(s)
+10-29 05:30:50.832  4715  4805 I Finsky  : [47] [ContentSync] finished, scheduled=true
+10-29 05:30:50.877  3888  3888 W MediaProvider: WorkProfileOwnerApps cache is empty
+10-29 05:30:50.877  3888  3888 D PickerSyncLockManager: Trying to acquire lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@c9cba7e[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+10-29 05:30:50.878  3888  3888 D CloseableReentrantLock: Successfully acquired lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@c9cba7e[Locked by thread main]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+10-29 05:30:50.878  3888  3888 D CloseableReentrantLock: Successfully released lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@c9cba7e[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+10-29 05:30:50.879  3888  3888 W MediaProvider: WorkProfileOwnerApps cache is empty
+10-29 05:30:50.879  3888  3888 D PickerSyncLockManager: Trying to acquire lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@c9cba7e[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+10-29 05:30:50.879  3888  3888 D CloseableReentrantLock: Successfully acquired lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@c9cba7e[Locked by thread main]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+10-29 05:30:50.880  3888  3888 D CloseableReentrantLock: Successfully released lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@c9cba7e[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+10-29 05:30:50.895  3895  4185 I eksq    : (REDACTED) maybeUpdateCacheDataForAddedPackage %s
+10-29 05:30:50.909  3895  4186 I eksq    : (REDACTED) maybeUpdateCacheDataForAddedPackage %s
+10-29 05:30:50.912  3895  4185 I aqvq    : (REDACTED) Clearing the cache and stopping the fetch for key %s
+10-29 05:30:50.912  3120  8310 I AppBackupStateCleanupIO: Backup state cleanup on uninstall is disabled. [CONTEXT service_id=229 ]
+10-29 05:30:50.914  3120  8310 I FraudProtectUtils: Not in testing population, skipping local test bank apps. [CONTEXT service_id=469 ]
+10-29 05:30:50.914  3120  8310 I FraudProtectUtils: Latest bank app list size: 14, com.ghostlock.app isBankApp: false [CONTEXT service_id=469 ]
+10-29 05:30:50.914  3120  8309 I ProximityAuth: [RecentAppsMediator] Package added: (user=UserHandle{0}) com.ghostlock.app
+10-29 05:30:50.914  3120  8310 I PackageInstallIntentOp: Package com.ghostlock.app is not a bank app. Skipping updates. [CONTEXT service_id=469 ]
+10-29 05:30:50.914  3895  4217 I exri    : (REDACTED) AppFlow %s is about to be transmitted
+10-29 05:30:50.915  3895  4186 I eksq    : (REDACTED) Package %s is not launchable
+10-29 05:30:50.916  3895  4186 I aqvq    : (REDACTED) Clearing the cache and stopping the fetch for key %s
+10-29 05:30:50.916  3895  4186 I exri    : (REDACTED) AppFlow %s is about to be transmitted
+10-29 05:30:50.916  3895  4194 I avrr    : #getOobeStatus: OptedIn [CONTEXT ratelimit_period="10 SECONDS" skipped=38 ]
+10-29 05:30:50.917  3120  8307 I Fitness : FitCleanupIntentOperation received Intent android.intent.action.PACKAGE_REMOVED [CONTEXT service_id=17 ]
+10-29 05:30:50.920  3120  8313 I Auth    : [SupervisedAccountIntentOperation] onHandleIntent: android.intent.action.PACKAGE_ADDED [CONTEXT service_id=42 ]
+10-29 05:30:50.922  3120  8310 I FraudProtectUtils: Not in testing population, skipping local test bank apps. [CONTEXT service_id=469 ]
+10-29 05:30:50.922  3120  8310 I FraudProtectUtils: Latest bank app list size: 14, com.ghostlock.app isBankApp: false [CONTEXT service_id=469 ]
+10-29 05:30:50.922  3120  8310 I PackageInstallIntentOp: Package com.ghostlock.app is not a bank app. Skipping updates. [CONTEXT service_id=469 ]
+10-29 05:30:50.922  3120  8315 V Backup  : [PostD2dAppTransferIntentOperation] Can not find app info in db: com.ghostlock.app
+10-29 05:30:50.923  3120  3120 D BoundBrokerSvc: onRebind: Intent { act=com.google.android.gms.libs.gmscorelogger.service.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.PersistentDirectBootAwareApiService }
+10-29 05:30:50.925  3120  8306 W AppInstallOperation: FDL Migration::InstallIntentOperation by FDL Module [CONTEXT service_id=77 ]
+10-29 05:30:50.927  3120  8314 I NearbyDiscovery: processGrantSlicePermission: com.ghostlock.app [CONTEXT service_id=265 ]
+10-29 05:30:50.929  3120  3120 D BoundBrokerSvc: onBind: Intent { act=com.google.android.gms.common.BIND_SHARED_PREFS xflg=0x4 pkg=com.google.android.gms }
+10-29 05:30:50.929  3120  3120 D BoundBrokerSvc: Loading bound service for intent: Intent { act=com.google.android.gms.common.BIND_SHARED_PREFS xflg=0x4 pkg=com.google.android.gms }
+10-29 05:30:50.934  3120  8317 I GmscoreIpa: Using regular flags by method 2 [CONTEXT service_id=255 ]
+10-29 05:30:50.939  3120  8310 W SQLiteLog: (28) double-quoted string literal: "com.ghostlock.app"
+10-29 05:30:50.942  3120  3120 D BoundBrokerSvc: onBind: Intent { act=com.google.android.gms.feedback.internal.IFeedbackService dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.GmsBoundBrokerService }
+10-29 05:30:50.942  3120  3120 D BoundBrokerSvc: Loading bound service for intent: Intent { act=com.google.android.gms.feedback.internal.IFeedbackService dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.GmsBoundBrokerService }
+10-29 05:30:51.007  4715  4821 I PlayCommon: [53] Successfully uploaded logs.
+10-29 05:30:51.020  4715  4821 I PlayCommon: [53] Preparing logs for uploading
+10-29 05:30:51.024  4715  4821 I PlayCommon: [53] Connecting to server: https://play.googleapis.com/play/log?format=raw&proto_v2=true
+10-29 05:30:51.087  3120  8312 I FraudProtectUtils: Not in testing population, skipping local test bank apps. [CONTEXT service_id=469 ]
+10-29 05:30:51.088  3120  8306 I AppBackupStateCleanupIO: Backup state cleanup on uninstall is disabled. [CONTEXT service_id=229 ]
+10-29 05:30:51.088  3120  8312 I FraudProtectUtils: Latest bank app list size: 14, com.ghostlock.app.test isBankApp: false [CONTEXT service_id=469 ]
+10-29 05:30:51.089  3120  8312 I PackageInstallIntentOp: Package com.ghostlock.app.test is not a bank app. Skipping updates. [CONTEXT service_id=469 ]
+10-29 05:30:51.097  3120  8313 I Auth    : [SupervisedAccountIntentOperation] onHandleIntent: android.intent.action.PACKAGE_ADDED [CONTEXT service_id=42 ]
+10-29 05:30:51.097  3120  8307 I ProximityAuth: [RecentAppsMediator] Package added: (user=UserHandle{0}) com.ghostlock.app.test
+10-29 05:30:51.099  3120  8310 V Backup  : [PostD2dAppTransferIntentOperation] Can not find app info in db: com.ghostlock.app.test
+10-29 05:30:51.099  3120  8306 W AppInstallOperation: FDL Migration::InstallIntentOperation by FDL Module [CONTEXT service_id=77 ]
+10-29 05:30:51.101  3120  8310 I FraudProtectUtils: Not in testing population, skipping local test bank apps. [CONTEXT service_id=469 ]
+10-29 05:30:51.101  3120  8310 I FraudProtectUtils: Latest bank app list size: 14, com.ghostlock.app.test isBankApp: false [CONTEXT service_id=469 ]
+10-29 05:30:51.101  3120  8310 I PackageInstallIntentOp: Package com.ghostlock.app.test is not a bank app. Skipping updates. [CONTEXT service_id=469 ]
+10-29 05:30:51.103  3120  8309 I Fitness : FitCleanupIntentOperation received Intent android.intent.action.PACKAGE_REMOVED [CONTEXT service_id=17 ]
+10-29 05:30:51.103  3120  8313 I NearbyDiscovery: processGrantSlicePermission: com.ghostlock.app.test [CONTEXT service_id=265 ]
+10-29 05:30:51.113  3120  8312 W SQLiteLog: (28) double-quoted string literal: "com.ghostlock.app.test"
+10-29 05:30:51.113  3120  8309 I FontLog : Package com.ghostlock.app.test has no metadata [CONTEXT service_id=132 ]
+10-29 05:30:51.375  4715  4821 I PlayCommon: [53] Successfully uploaded logs.
+--------- beginning of system
+10-29 05:30:51.388  1918  2729 E AppOps  : attributionTag VCN not declared in manifest of android
+10-29 05:30:51.392  4715  4821 I PlayCommon: [53] Preparing logs for uploading
+10-29 05:30:51.396  4715  4821 I PlayCommon: [53] Connecting to server: https://play.googleapis.com/play/log?format=raw&proto_v2=true
+10-29 05:30:51.441  1918  2577 I RoleService: Granting default roles...
+10-29 05:30:51.446  1918  8245 W SignedPackage: Cannot get ApplicationInfo for package: com.google.android.gms.supervision
+10-29 05:30:51.471  1918  8245 E RoleControllerServiceImpl: Default/fallback role holder package doesn't qualify for the role, package: com.android.devicelockcontroller, role: android.app.role.SYSTEM_FINANCED_DEVICE_CONTROLLER, user: 0
+--------- beginning of kernel
+10-29 05:30:51.550  8163  8163 E [kworke][0x49d30d64b][21:30:51.530385] wlan: [8163:E:WMA] wma_process_rmf_frame: Rx unprotected unicast mgmt frame
+10-29 05:30:51.550  3652  3652 W [schedu][0x49d30e24c][21:30:51.530545] wlan: [3652:W:PE] lim_process_action_frame: Action category: 22 not handled
+10-29 05:30:51.711  4715  4821 I PlayCommon: [53] Successfully uploaded logs.
+10-29 05:30:52.146  3120  8220 I NearbyMediums: No BLE Fast/GATT advertisements found in the latest cycle.
+10-29 05:30:52.146  3120  8220 I NearbyMediums: Current Tracked Scanning Clients are : {NearbyConnections.EnvironmentMonitor, NearbySharing}
+10-29 05:30:52.147  3120  8331 I NearbyConnections: Processing lost BlePeripheral BlePeripheral{advertisement=BleAdvertisement { version=2, socketVersion=2, isFast=true, serviceIdHash=null, data=[ 0x23 0x47 0x50 0x43 0x37 0x11 0x32 0xdd 0x13 0x06 0x90 0xa1 0x20 0xd9 0xa0 0xe4 0xcc 0xe2 0x6b 0xed 0x47 0x48 0x20 ], deviceToken=[ 0x56 0x78 ], rxAdvertisement=null }, dctAdvertisement=null, address=null, psm=0, deviceToken=<ByteString@1f3a95 size=2 contents="Vx">, isSecondProfile=false, rxInstantConnectionAdv=null}.
+10-29 05:30:52.147  3120  8331 I NearbyConnections: Lost BleEndpoint for BlePeripheral BlePeripheral{advertisement=BleAdvertisement { version=2, socketVersion=2, isFast=true, serviceIdHash=null, data=[ 0x23 0x47 0x50 0x43 0x37 0x11 0x32 0xdd 0x13 0x06 0x90 0xa1 0x20 0xd9 0xa0 0xe4 0xcc 0xe2 0x6b 0xed 0x47 0x48 0x20 ], deviceToken=[ 0x56 0x78 ], rxAdvertisement=null }, dctAdvertisement=null, address=null, psm=0, deviceToken=<ByteString@1f3a95 size=2 contents="Vx">, isSecondProfile=false, rxInstantConnectionAdv=null} (with EndpointId GPC7 and EndpointInfo [ 0x32 0xdd 0x13 0x06 0x90 0xa1 0x20 0xd9 0xa0 0xe4 0xcc 0xe2 0x6b 0xed 0x47 0x48 0x20 ]).
+10-29 05:30:52.148  3120  8331 I NearbyConnections: Unable to record lost endpoint due to null currentDiscoveryPhase
+10-29 05:30:52.148  3120  8331 I NearbyConnections: ClientProxy(42098727) reporting onEndpointLost(GPC7)
+10-29 05:30:52.148  3120  8215 I NearbySharing: NearbySharing Internal event EndpointLost(endpointId=GPC7)
+10-29 05:30:52.467  1298  3502 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_WAKE_IND: 0xFD
+10-29 05:30:52.467  1298  3502 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK ON
+10-29 05:30:52.468  1298  3502 D vendor.qti.bluetooth@1.0-wake_lock: Acquire wakelock is acquired 
+10-29 05:30:52.468  1298  3502 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Writing IBS_WAKE_ACK
+10-29 05:30:52.474  3120  8215 I NearbyConnections: Found BleAdvertisement [ 0x23 0x47 0x50 0x43 0x37 0x11 0x32 0xdd 0x13 0x06 0x90 0xa1 0x20 0xd9 0xa0 0xe4 0xcc 0xe2 0x6b 0xed 0x47 0x48 0x20 ] (with EndpointId GPC7 and EndpointInfo [ 0x32 0xdd 0x13 0x06 0x90 0xa1 0x20 0xd9 0xa0 0xe4 0xcc 0xe2 0x6b 0xed 0x47 0x48 0x20 ])
+10-29 05:30:52.479  3120  8215 I NearbyConnections: Unable to record discovered endpoint due to null currentDiscoveryPhase
+10-29 05:30:52.479  3120  8215 I NearbyConnections: ClientProxy(42098727 0p:com.google.android.gms.nearby.sharing) reporting onEndpointFound(GPC7)
+10-29 05:30:52.479  3120  8215 I NearbyConnections: ClientProxy(42098727) reporting onEndpointDistanceChanged(GPC7, UNKNOWN)
+10-29 05:30:52.480  3120  8215 I NearbyConnections: Found BleAdvertisement [ 0x23 0x4b 0x4a 0x36 0x34 0x11 0x34 0x19 0x25 0xe1 0x4c 0xdb 0x12 0x12 0x81 0x6f 0xc5 0xa8 0xbc 0xc7 0x94 0xce 0x6e ] (with EndpointId KJ64 and EndpointInfo [ 0x34 0x19 0x25 0xe1 0x4c 0xdb 0x12 0x12 0x81 0x6f 0xc5 0xa8 0xbc 0xc7 0x94 0xce 0x6e ])
+10-29 05:30:52.480  3120  8215 I NearbyConnections: Unable to record discovered endpoint due to null currentDiscoveryPhase
+10-29 05:30:52.480  3120  8215 I NearbyConnections: ClientProxy(42098727 0p:com.google.android.gms.nearby.sharing) reporting onEndpointFound(KJ64)
+10-29 05:30:52.480  3120  8215 I NearbyConnections: ClientProxy(42098727) reporting onEndpointDistanceChanged(KJ64, UNKNOWN)
+10-29 05:30:52.481  3120  8220 I NearbySharing: NearbySharing Internal event EndpointDiscovered(endpointId=GPC7)
+10-29 05:30:52.483  3120  8213 I NearbySharing: NearbySharing Internal event EndpointDiscovered(endpointId=KJ64)
+10-29 05:30:52.509  1298  3502 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_SLEEP_IND: 0xFE
+10-29 05:30:52.509  1298  3502 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK OFF
+10-29 05:30:52.659  1298  3247 D vendor.qti.bluetooth@1.0-wake_lock: Release wakelock is released 
+10-29 05:30:53.008  8340  8340 W libprocessgroup: A JoinCgroup action in the SystemMemoryProcess profile is used for controller memory in the cgroup v2 hierarchy and will be ignored
+10-29 05:30:53.008  8340  8340 W libprocessgroup: SetCgroup::ExecuteForTask: failed to open /dev/cpuctl/top-app/tasks: Permission denied
+10-29 05:30:53.008  8340  8340 W libprocessgroup: SetCgroup::ExecuteForTask: failed to open /dev/blkio/tasks: Permission denied
+10-29 05:30:53.008  8340  8340 E libprocessgroup: set_timerslack_ns write failed: Operation not permitted
+10-29 05:30:53.073  8338  8338 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+10-29 05:30:53.075  8338  8338 I app_process: MMAP_TRYLOCK is supported in uffd errno:2 addr:0x79d27f3000 size:4096
+10-29 05:30:53.075  8338  8338 I AndroidRuntime: Using default boot image
+10-29 05:30:53.075  8338  8338 I AndroidRuntime: Leaving lock profiling enabled
+10-29 05:30:53.077  8338  8338 I app_process: Core platform API reporting enabled by runtime option
+10-29 05:30:53.077  8338  8338 I app_process: Using CollectorTypeCMC GC.
+10-29 05:30:53.129  8338  8338 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+10-29 05:30:53.135  8338  8338 D nativeloader: Load libicu_jni.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-29 05:30:53.136  8338  8338 D app_process: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/9/icu") succeeded. 
+10-29 05:30:53.136  8338  8338 D app_process: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt76l.dat
+10-29 05:30:53.136  8338  8338 D nativeloader: Load libjavacore.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-29 05:30:53.136  8338  8338 D nativeloader: Load libopenjdk.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-29 05:30:53.138  8338  8338 I app_process: Priority-to-niceness mapping: 19, 16, 13, 10, 0, -2, -4, -5, -6, -8
+10-29 05:30:53.146  1918  2694 D WifiClientModeImpl[16956:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-42 TxLinkspeed=286 freq=2437 RxLinkSpeed=286
+10-29 05:30:53.146  1918  2694 D WifiDataStall: tx tput in kbps: 186793
+10-29 05:30:53.147  1918  2694 D WifiDataStall: rx tput in kbps: 196625
+10-29 05:30:53.147  1918  2694 V WifiConfigManager: Updating scan detail cache freq=2437 BSSID=18:fd:74:fe:34:a5 RSSI=-42 for "BELL1143"WPA_PSK
+10-29 05:30:53.147  1918  2694 D WifiDataStall:  ccaLevel = 80
+10-29 05:30:53.147  1918  2694 D WifiDataStall: L2 txTputKbps: 155333, rxTputKbps: 196625, L3 txTputKbps: 92, rxTputKbps: 86, TxTrafficHigh: true, RxTrafficHigh: true, Throughput Sufficient: true
+10-29 05:30:53.149  1918  2694 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-29 05:30:53.149  1918  2694 D WifiThroughputPredictor:  BW: 0 RSSI: -42 Nss: 2 Mode: 6 symDur: 13600 snrDb 38 bitPerTone: 8333 rate: 286 throughput: 196
+10-29 05:30:53.149  1918  2694 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-29 05:30:53.149  1918  2694 D WifiThroughputPredictor:  BW: 0 RSSI: -42 Nss: 2 Mode: 6 symDur: 13600 snrDb 38 bitPerTone: 8333 rate: 286 throughput: 196
+10-29 05:30:53.155  8338  8338 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+10-29 05:30:53.155  1918  2694 D WifiScoreReport: report new wifi score 91
+10-29 05:30:53.155  8338  8338 D AndroidRuntime: Calling main entry com.android.commands.am.Am
+10-29 05:30:53.156  1918  2694 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 826571811 SSID: "BELL1143", BSSID: 18:fd:74:fe:34:a5, MAC: fe:42:88:6d:fa:00, IP: /10.0.149.176, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ax, RSSI: -42, Link speed: 286Mbps, Tx Link speed: 286Mbps, Max Supported Tx Link speed: 286Mbps, Rx Link speed: 286Mbps, Max Supported Rx Link speed: 286Mbps, Frequency: 2437MHz, Net ID: 0, Metered hint: false, score: 91, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"BELL1143"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+10-29 05:30:53.156  1918  2694 D WifiScoreCard: txRate: 15 txSpeed: 286
+10-29 05:30:53.156  1918  2694 D WifiScoreCard: network update SIGNAL_POLL "BELL1143" ID: 434423101 RSSI -42 txSpeed 286
+10-29 05:30:53.156  1918  2720 D ConnectivityService: NetReassign [no changes] [c 0] [a 0] [i 1]
+10-29 05:30:53.157  1918  2694 D WifiClientModeImpl[16956:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "BELL1143" 18:fd:74:fe:34:a5 rssi=-42 f=2437 sc=91 link=286 tx=11.4, 3.1, 0.0 rx=10.8 bcn=5976 [on:0 tx:0 rx:0 period:3029] from screen [on:8484 period:-2073276572] score=91
+10-29 05:30:53.157  8338  8338 I AconfigPackage: com.android.nfc.module.flags is mapped to com.android.nfcservices
+10-29 05:30:53.157  8338  8338 I AconfigPackage: com.android.telephony.flags is mapped to com.android.telephonycore
+10-29 05:30:53.157  8338  8338 I AconfigPackage: com.android.adbd.flags is mapped to com.android.adbd
+10-29 05:30:53.157  8338  8338 I AconfigPackage: com.android.art.flags is mapped to com.android.art
+10-29 05:30:53.157  8338  8338 I AconfigPackage: com.android.art.rw.flags is mapped to com.android.art
+10-29 05:30:53.157  8338  8338 I AconfigPackage: com.android.libcore is mapped to com.android.art
+10-29 05:30:53.157  8338  8338 I AconfigPackage: android.os.profiling is mapped to com.android.profiling
+10-29 05:30:53.157  8338  8338 I AconfigPackage: android.os.profiling.anomaly.flags is mapped to com.android.profiling
+10-29 05:30:53.157  8338  8338 I AconfigPackage: com.android.rkpd.flags is mapped to com.android.rkpd
+10-29 05:30:53.157  8338  8338 I AconfigPackage: com.android.crashrecovery.flags is mapped to com.android.crashrecovery
+10-29 05:30:53.157  8338  8338 I AconfigPackage: com.android.adservices.flags is mapped to com.android.adservices
+10-29 05:30:53.157  8338  8338 I AconfigPackage: com.android.sdksandbox.flags is mapped to com.android.adservices
+10-29 05:30:53.157  8338  8338 I AconfigPackage: com.android.os.statsd.flags is mapped to com.android.os.statsd
+10-29 05:30:53.157  8338  8338 I AconfigPackage: com.android.media.extractor.flags is mapped to com.android.media
+10-29 05:30:53.157  8338  8338 I AconfigPackage: com.android.media.mainline.flags is mapped to com.android.media
+10-29 05:30:53.157  8338  8338 I AconfigPackage: com.android.cellbroadcastreceiver.flags is mapped to com.android.cellbroadcast
+10-29 05:30:53.158  8338  8338 I AconfigPackage: com.android.icu is mapped to com.android.i18n
+10-29 05:30:53.158  8338  8338 I AconfigPackage: com.android.system.virtualmachine.flags is mapped to com.android.virt
+10-29 05:30:53.158  8338  8338 I AconfigPackage: com.android.org.conscrypt.flags is mapped to com.android.conscrypt
+10-29 05:30:53.158  8338  8338 I AconfigPackage: com.android.org.conscrypt.net.flags is mapped to com.android.conscrypt
+10-29 05:30:53.158  8338  8338 I AconfigPackage: com.android.permission.flags is mapped to com.android.permission
+10-29 05:30:53.158  8338  8338 I AconfigPackage: com.android.permissioncontroller.flags is mapped to com.android.permission
+10-29 05:30:53.158  8338  8338 I AconfigPackage: android.graphics.pdf.flags is mapped to com.android.mediaprovider
+10-29 05:30:53.158  8338  8338 I AconfigPackage: com.android.providers.media.flags is mapped to com.android.mediaprovider
+10-29 05:30:53.158  8338  8338 I AconfigPackage: android.graphics.pdf.flags.readonly is mapped to com.android.mediaprovider
+10-29 05:30:53.158  8338  8338 I AconfigPackage: android.provider.flags is mapped to com.android.configinfrastructure
+10-29 05:30:53.158  8338  8338 I AconfigPackage: com.android.server.deviceconfig is mapped to com.android.configinfrastructure
+10-29 05:30:53.158  8338  8338 I AconfigPackage: com.android.adservices.ondevicepersonalization.flags is mapped to com.android.ondevicepersonalization
+10-29 05:30:53.158  8338  8338 I AconfigPackage: android.media.swcodec.flags is mapped to com.android.media.swcodec
+10-29 05:30:53.158  8338  8338 I AconfigPackage: com.android.uwb.flags is mapped to com.android.uwb
+10-29 05:30:53.158  8338  8338 I AconfigPackage: com.android.ranging.flags is mapped to com.android.uwb
+10-29 05:30:53.158  8338  8338 I AconfigPackage: com.android.ipsec.flags is mapped to com.android.ipsec
+10-29 05:30:53.158  8338  8338 I AconfigPackage: com.android.tethering.mainline.beta is mapped to com.android.tethering
+10-29 05:30:53.158  8338  8338 I AconfigPackage: android.net.http is mapped to com.android.tethering
+10-29 05:30:53.158  8338  8338 I AconfigPackage: com.android.tethering.readonly.flags is mapped to com.android.tethering
+10-29 05:30:53.158  8338  8338 I AconfigPackage: android.net.vcn is mapped to com.android.tethering
+10-29 05:30:53.158  8338  8338 I AconfigPackage: com.android.net.flags is mapped to com.android.tethering
+10-29 05:30:53.158  8338  8338 I AconfigPackage: com.android.tethering.beta.test is mapped to com.android.tethering
+10-29 05:30:53.158  8338  8338 I AconfigPackage: com.android.nearby.flags is mapped to com.android.tethering
+10-29 05:30:53.158  8338  8338 I AconfigPackage: com.android.net.ct.flags is mapped to com.android.tethering
+10-29 05:30:53.158  8338  8338 I AconfigPackage: com.android.net.thread.flags is mapped to com.android.tethering
+10-29 05:30:53.158  8338  8338 I AconfigPackage: android.uprobestats.mainline.flags is mapped to com.android.uprobestats
+10-29 05:30:53.159  8338  8338 I AconfigPackage: com.android.wifi.flags is mapped to com.android.wifi
+10-29 05:30:53.159  8338  8338 I AconfigPackage: com.android.healthfitness.flags is mapped to com.android.healthfitness
+10-29 05:30:53.159  8338  8338 I AconfigPackage: com.android.bluetooth.flags is mapped to com.android.bt
+10-29 05:30:53.159  8338  8338 I AconfigPackage: com.android.appsearch.flags is mapped to com.android.appsearch
+10-29 05:30:53.159  8338  8338 I AconfigPackage: com.android.devicelock.flags is mapped to com.android.devicelock
+10-29 05:30:53.159  8338  8338 E FeatureFlagsImplExport: android.os.flagging.AconfigStorageReadException: ERROR_PACKAGE_NOT_FOUND: package android.xr cannot be found on the device
+10-29 05:30:53.160  8338  8338 D UiAutomationConnection: Created on user UserHandle{0}
+10-29 05:30:53.161  1918  2708 I ActivityManager: Force stopping com.ghostlock.app appid=10177 user=0: start instr
+10-29 05:30:53.163  1918  2708 V GrammaticalInflectionUtils: AttributionSource: android.content.AttributionSource@11ee62ee does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+10-29 05:30:53.163  1918  2789 D BackgroundInstallControlService: Package event received: 0
+10-29 05:30:53.166  1918  2789 D BackgroundInstallControlService: Package event received: 0
+10-29 05:30:53.166  1918  2789 D BackgroundInstallControlService: Package event received: 0
+10-29 05:30:53.177  1218  1218 D Zygote  : Forked child process 8350
+10-29 05:30:53.185  8350  8350 I Zygote  : Process 8350 created for com.ghostlock.app
+10-29 05:30:53.185  8350  8350 I m.ghostlock.app: Late-enabling -Xcheck:jni
+10-29 05:30:53.186  1918  2196 I ActivityManager: Start proc 8350:com.ghostlock.app/u0a177 for added application com.ghostlock.app
+10-29 05:30:53.199  8350  8350 I m.ghostlock.app: Using CollectorTypeCMC GC.
+10-29 05:30:53.203  2076  2137 I adbd    : jdwp connection from 8350
+10-29 05:30:53.204  8350  8350 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+10-29 05:30:53.233  8350  8350 W ActivityThread: Package uses different ABI(s) than its instrumentation: package[com.ghostlock.app]: arm64-v8a, null instrumentation[com.ghostlock.app.test]: null, null
+10-29 05:30:53.234  8350  8350 D ApplicationLoaders: Returning zygote-cached class loader: /system_ext/framework/androidx.window.extensions.jar
+10-29 05:30:53.234  8350  8350 D ApplicationLoaders: Returning zygote-cached class loader: /system_ext/framework/androidx.window.sidecar.jar
+10-29 05:30:53.302  1658  1658 E BATTERY_CHG: xm_batt_update_work: batt_update_work: batt_temp:30800 blank_state:1
+10-29 05:30:53.615  8350  8350 D nativeloader: Configuring clns-9 for other apk /data/app/~~Ghc__a3YcUGINFVLrAxbpw==/com.ghostlock.app.test-LlMM17pK_TiVvFvJdhvxEw==/base.apk:/data/app/~~pBNkxWpubrdUD_rERKvCHw==/com.ghostlock.app-u8IKf2nqz63TN1_FZx2ggw==/base.apk. target_sdk_version=37, uses_libraries=, library_path=/data/app/~~Ghc__a3YcUGINFVLrAxbpw==/com.ghostlock.app.test-LlMM17pK_TiVvFvJdhvxEw==/lib/arm64:/data/app/~~pBNkxWpubrdUD_rERKvCHw==/com.ghostlock.app-u8IKf2nqz63TN1_FZx2ggw==/lib/arm64:/data/app/~~Ghc__a3YcUGINFVLrAxbpw==/com.ghostlock.app.test-LlMM17pK_TiVvFvJdhvxEw==/base.apk!/lib/arm64-v8a:/data/app/~~pBNkxWpubrdUD_rERKvCHw==/com.ghostlock.app-u8IKf2nqz63TN1_FZx2ggw==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand:/data/user/0/com.ghostlock.app
+10-29 05:30:53.619  8350  8350 V GraphicsEnvironment: Currently set values for:
+10-29 05:30:53.619  8350  8350 V GraphicsEnvironment:   angle_gl_driver_selection_pkgs=[]
+10-29 05:30:53.619  8350  8350 V GraphicsEnvironment:   angle_gl_driver_selection_values=[]
+10-29 05:30:53.619  8350  8350 V GraphicsEnvironment: com.ghostlock.app is not listed in per-application setting
+10-29 05:30:53.619  8350  8350 V GraphicsEnvironment: ANGLE allowlist from config: 
+10-29 05:30:53.619  8350  8350 V GraphicsEnvironment: No special selections for ANGLE, returning default driver choice
+10-29 05:30:53.619  8350  8350 V GraphicsEnvironment: Updatable production driver is not supported on the device.
+10-29 05:30:53.671   531   531 I [kworke][0x49f9e48f7][21:30:53.651594] wlan: [531:I:PMO] pmo_core_enable_wow_in_fw: drv wow is enabled
+10-29 05:30:53.990  8350  8350 I AndroidJUnitRunner: newApplication com.ghostlock.app.GhostLockApp
+10-29 05:30:54.002  8350  8350 I m.ghostlock.app: hiddenapi: Accessing hidden method Landroid/os/ServiceManager;->getService(Ljava/lang/String;)Landroid/os/IBinder; (runtime_flags=0, domain=platform, api=unsupported) from Lrikka/shizuku/SystemServiceHelper; (domain=app, TargetSdkVersion=37) using reflection: allowed
+10-29 05:30:54.002  8350  8350 D ShizukuProvider: Initialize Sui: false
+10-29 05:30:54.003  8350  8350 I AndroidJUnitRunner: onCreate Bundle[mParcelledData.dataSize=260]
+10-29 05:30:54.004  8350  8350 D AndroidJUnitRunner: Use the raw file system for managing file I/O.
+10-29 05:30:54.013  8350  8350 V TestEventClient: No service name argument was given (testDiscoveryService, testRunEventService or orchestratorService)
+10-29 05:30:54.014  8350  8364 D AndroidJUnitRunner: onStart is called.
+10-29 05:30:54.056  8350  8350 D nativeloader: Load libghostlock_jni.so using class loader ns clns-9 (caller=/data/app/~~pBNkxWpubrdUD_rERKvCHw==/com.ghostlock.app-u8IKf2nqz63TN1_FZx2ggw==/base.apk!classes8.dex): dlopen failed: library "libghostlock_jni.so" not found
+10-29 05:30:54.056  8350  8350 D nativeloader: Load /data/app/~~pBNkxWpubrdUD_rERKvCHw==/com.ghostlock.app-u8IKf2nqz63TN1_FZx2ggw==/lib/arm64/libghostlock43499.so using class loader ns clns-9 (caller=/data/app/~~pBNkxWpubrdUD_rERKvCHw==/com.ghostlock.app-u8IKf2nqz63TN1_FZx2ggw==/base.apk!classes8.dex): ok
+10-29 05:30:54.056  8350  8350 E m.ghostlock.app: No implementation found for int com.ghostlock.app.log.NativeLogBridge.attachFd43499(int, boolean) (tried Java_com_ghostlock_app_log_NativeLogBridge_attachFd43499 and Java_com_ghostlock_app_log_NativeLogBridge_attachFd43499__IZ) - is the library loaded, e.g. System.loadLibrary?
+10-29 05:30:54.057  8350  8350 D nativeloader: Load /data/app/~~pBNkxWpubrdUD_rERKvCHw==/com.ghostlock.app-u8IKf2nqz63TN1_FZx2ggw==/lib/arm64/libghostlock43284.so using class loader ns clns-9 (caller=/data/app/~~pBNkxWpubrdUD_rERKvCHw==/com.ghostlock.app-u8IKf2nqz63TN1_FZx2ggw==/base.apk!classes8.dex): ok
+10-29 05:30:54.058  8350  8350 I Ghostlock: native: attach fd=102 ghostlock_jni=UnsatisfiedLinkError ghostlock43499=UnsatisfiedLinkError ghostlock43284=no-op path=/data/user/0/com.ghostlock.app/files/ghostlock-run.log
+10-29 05:30:54.068  8350  8364 I InstrConnection: Could not send broadcast or register receiver (isolatedProcess?)
+10-29 05:30:54.085  8350  8364 I TestRunner: run started: 1 tests
+10-29 05:30:54.085  8350  8364 I TestRunner: started: mcast510SingleShotProbe(com.ghostlock.app.backend.cve43499.victim.Mcast510ProbeTest)
+10-29 05:30:55.265  1906  1906 E BATTERY_CHG: power_supply_read_temp: batt_thermal temp:308 ,delta:10192 rc=0
+10-29 05:30:55.453  3120  3120 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.gmscompliance.service.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.PersistentBoundBrokerService }
+10-29 05:30:55.457  3120  3120 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.play.integrity.api.service.IntegrityApiDisplayListenerApiService.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.PersistentApiServiceNoInstantApps }
+10-29 05:30:55.458  3120  3120 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.ocr.service.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.GmsApiService }
+10-29 05:30:55.459  3120  3120 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.potokens.service.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.GmsApiService }
+10-29 05:30:55.618  2325  2325 I [kworke][0x4a1d8a7b6][21:30:55.598457] wlan: [2325:I:PMO] pmo_core_psoc_send_host_wakeup_ind_to_fw: Host wakeup indication sent to fw
+10-29 05:30:55.850  1918  2720 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-29 05:30:55.853  1918  2720 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-29 05:30:55.853  1918  2720 D InetDiagMessage: Destroyed live tcp sockets for uids={10180} in 5ms
+10-29 05:30:55.855  1918  2720 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-29 05:30:55.857  1918  2720 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-29 05:30:55.857  1918  2720 D InetDiagMessage: Destroyed live tcp sockets for uids={20180} in 4ms
+10-29 05:30:56.179  1918  2694 D WifiClientModeImpl[16956:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-43 TxLinkspeed=286 freq=2437 RxLinkSpeed=286
+10-29 05:30:56.179  1918  2694 D WifiDataStall: tx tput in kbps: 155333
+10-29 05:30:56.179  1918  2694 D WifiDataStall: rx tput in kbps: 196625
+10-29 05:30:56.180  1918  2694 V WifiConfigManager: Updating scan detail cache freq=2437 BSSID=18:fd:74:fe:34:a5 RSSI=-42 for "BELL1143"WPA_PSK
+10-29 05:30:56.180  1918  2694 D WifiDataStall:  ccaLevel = 80
+10-29 05:30:56.180  1918  2694 D WifiDataStall: L2 txTputKbps: 84548, rxTputKbps: 196625, L3 txTputKbps: 0, rxTputKbps: 0, TxTrafficHigh: true, RxTrafficHigh: false, Throughput Sufficient: true
+10-29 05:30:56.180  1918  2694 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-29 05:30:56.181  1918  2694 D WifiThroughputPredictor:  BW: 0 RSSI: -43 Nss: 2 Mode: 6 symDur: 13600 snrDb 37 bitPerTone: 8333 rate: 286 throughput: 196
+10-29 05:30:56.181  1918  2694 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-29 05:30:56.181  1918  2694 D WifiThroughputPredictor:  BW: 0 RSSI: -43 Nss: 2 Mode: 6 symDur: 13600 snrDb 37 bitPerTone: 8333 rate: 286 throughput: 196
+10-29 05:30:56.183  1918  2694 D WifiScoreReport: report new wifi score 90
+10-29 05:30:56.184  1918  2694 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 826571811 SSID: "BELL1143", BSSID: 18:fd:74:fe:34:a5, MAC: fe:42:88:6d:fa:00, IP: /10.0.149.176, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ax, RSSI: -43, Link speed: 286Mbps, Tx Link speed: 286Mbps, Max Supported Tx Link speed: 286Mbps, Rx Link speed: 286Mbps, Max Supported Rx Link speed: 286Mbps, Frequency: 2437MHz, Net ID: 0, Metered hint: false, score: 90, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"BELL1143"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+10-29 05:30:56.184  1918  2694 D WifiScoreCard: txRate: 7 txSpeed: 286
+10-29 05:30:56.184  1918  2694 D WifiScoreCard: network update SIGNAL_POLL "BELL1143" ID: 434423101 RSSI -43 txSpeed 286
+10-29 05:30:56.184  1918  2694 D WifiClientModeImpl[16956:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "BELL1143" 18:fd:74:fe:34:a5 rssi=-43 f=2437 sc=90 link=286 tx=4.8, 1.9, 0.0 rx=4.5 bcn=5994 [on:0 tx:0 rx:0 period:3027] from screen [on:8484 period:-2073273544] score=90
+10-29 05:30:56.187  1918  2720 D ConnectivityService: NetReassign [no changes] [c 1] [a 0] [i 3]
+10-29 05:30:56.615  1298  3502 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_WAKE_IND: 0xFD
+10-29 05:30:56.615  1298  3502 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK ON
+10-29 05:30:56.615  1298  3502 D vendor.qti.bluetooth@1.0-wake_lock: Acquire wakelock is acquired 
+10-29 05:30:56.615  1298  3502 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Writing IBS_WAKE_ACK
+10-29 05:30:56.656  1298  3502 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_SLEEP_IND: 0xFE
+10-29 05:30:56.656  1298  3502 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK OFF
+10-29 05:30:56.821  1658  1658 I [kworke][0x4a33937fe][21:30:56.801874] wlan: [1658:I:PMO] pmo_core_enable_wow_in_fw: drv wow is enabled
+10-29 05:30:56.806  1298  3247 D vendor.qti.bluetooth@1.0-wake_lock: Release wakelock is released 
+10-29 05:30:56.886  8163  8163 I (virq   : irq_count)- GICv3:IPI(1):365668 GICv3:arch_timer(11):210024 GICv3:IPI(6):132121 GICv3:IPI(2):93495 GICv3:ufshcd(35):74242 GICv3:apps_rsc(24):31240 GICv3:ipcc_0(30):30263 ipcc:glink-native-adsp(369):13975 ipcc:glink-native-cdsp(367):8607 pmic_arb:pm-adc7(259):8399
+10-29 05:30:56.886  8163  8163 I (cpu    : irq_count)- 0:250148 1:139741 2:156973 3:144736 4:88953 5:92699 6:84985 7:63773
+10-29 05:30:56.886  8163  8163 I (ipi    : irq_count)- 0:365668 1:93495 2:0 3:0 4:0 5:132121 6:0
+10-29 05:30:56.976  1658  1658 I [kworke][0x4a36696eb][21:30:56.956740] wlan: [1658:I:HIF] hif_try_complete_tasks: waiting for tasklets 1 grp tasklets 0 work 0
+10-29 05:30:57.829  2325  2325 I sd 0    : 0:0:0: [sda] Synchronizing SCSI cache
+10-29 05:30:59.245   531   531 I [kworke][0x4a5ff3e6e][21:30:59.225427] wlan: [531:I:PMO] pmo_core_psoc_send_host_wakeup_ind_to_fw: Host wakeup indication sent to fw
+10-29 05:30:59.247  1918  2694 D WifiClientModeImpl[16956:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-42 TxLinkspeed=286 freq=2437 RxLinkSpeed=286
+10-29 05:30:59.248  1918  2694 D WifiDataStall: tx tput in kbps: 84548
+10-29 05:30:59.248  1918  2694 D WifiDataStall: rx tput in kbps: 196625
+10-29 05:30:59.248  1918  2694 V WifiConfigManager: Updating scan detail cache freq=2437 BSSID=18:fd:74:fe:34:a5 RSSI=-42 for "BELL1143"WPA_PSK
+10-29 05:30:59.248  1918  2694 D WifiDataStall:  ccaLevel = 80
+10-29 05:30:59.248  1918  2694 D WifiDataStall: L2 txTputKbps: 186793, rxTputKbps: 196625, L3 txTputKbps: 0, rxTputKbps: 0, TxTrafficHigh: false, RxTrafficHigh: false, Throughput Sufficient: true
+10-29 05:30:59.249  1918  2694 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-29 05:30:59.249  1918  2694 D WifiThroughputPredictor:  BW: 0 RSSI: -42 Nss: 2 Mode: 6 symDur: 13600 snrDb 38 bitPerTone: 8333 rate: 286 throughput: 196
+10-29 05:30:59.249  1918  2694 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-29 05:30:59.249  1918  2694 D WifiThroughputPredictor:  BW: 0 RSSI: -42 Nss: 2 Mode: 6 symDur: 13600 snrDb 38 bitPerTone: 8333 rate: 286 throughput: 196
+10-29 05:30:59.252  1918  2694 D WifiScoreReport: report new wifi score 91
+10-29 05:30:59.253  1918  2694 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 826571811 SSID: "BELL1143", BSSID: 18:fd:74:fe:34:a5, MAC: fe:42:88:6d:fa:00, IP: /10.0.149.176, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ax, RSSI: -42, Link speed: 286Mbps, Tx Link speed: 286Mbps, Max Supported Tx Link speed: 286Mbps, Rx Link speed: 286Mbps, Max Supported Rx Link speed: 286Mbps, Frequency: 2437MHz, Net ID: 0, Metered hint: false, score: 91, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"BELL1143"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+10-29 05:30:59.253  1918  2694 D WifiScoreCard: txRate: 3 txSpeed: 286
+10-29 05:30:59.253  1918  2694 D WifiScoreCard: network update SIGNAL_POLL "BELL1143" ID: 434423101 RSSI -42 txSpeed -1
+10-29 05:30:59.253  1918  2694 D WifiClientModeImpl[16956:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "BELL1143" 18:fd:74:fe:34:a5 rssi=-42 f=2437 sc=91 link=286 tx=1.7, 0.7, 0.0 rx=1.6 bcn=6009 [on:0 tx:0 rx:0 period:3068] from screen [on:8484 period:-2073270475] score=91
+10-29 05:30:59.256  1918  2720 D ConnectivityService: NetReassign [no changes] [c 0] [a 1] [i 1]
+10-29 05:30:59.790   531   531 I [kworke][0x4a69f155f][21:30:59.771013] wlan: [531:I:PMO] pmo_core_enable_wow_in_fw: drv wow is enabled
+10-29 05:30:59.794  8350  8350 W m.ghostlock.app: Verification of void androidx.profileinstaller.ProfileInstallerInitializer$$ExternalSyntheticLambda2.<init>(android.content.Context) took 215.439ms (27.85 bytecodes/s) (0B arena alloc)
+10-29 05:30:59.862   531   531 I [kworke][0x4a6b43634][21:30:59.843130] wlan: [531:I:HIF] hif_try_complete_tasks: waiting for tasklets 0 grp tasklets 0 work 2
+10-29 05:31:00.015  3304  3304 D ShortcutAndWidgetContainer: appWidgetScale - [x,y]: [1.0,1.0]
+10-29 05:31:00.015  3304  3304 D NavigableAppWidgetHostView: updateScale - [fitScale,bounceScale]: [1.0,1.0]
+10-29 05:31:00.015  3304  3304 D ShortcutAndWidgetContainer: appWidgetScale - [x,y]: [1.0,1.0]
+10-29 05:31:00.015  3304  3304 D NavigableAppWidgetHostView: updateScale - [fitScale,bounceScale]: [1.0,1.0]
+10-29 05:31:00.632  1918  2574 D ActivityManager: freezing 7731 com.android.vending:background
+10-29 05:31:00.634  1918  2574 D ActivityManager: freezing 4715 com.android.vending
+10-29 05:31:00.764  8350  8595 D ProfileInstaller: Installing profile for com.ghostlock.app
+10-29 05:31:00.775  1918  2720 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-29 05:31:00.779  1918  2720 D InetDiagMessage: Destroyed 4 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-29 05:31:00.779  1918  2720 D InetDiagMessage: Destroyed live tcp sockets for uids={10088} in 6ms
+10-29 05:31:00.805  2392  2392 I [kworke][0x4a7c85298][21:31:00.785589] wlan: [2392:I:PMO] pmo_core_psoc_send_host_wakeup_ind_to_fw: Host wakeup indication sent to fw
+10-29 05:31:01.009  1918  2574 D ActivityManager: freezing 4094 com.google.android.apps.photos
+10-29 05:31:01.013  1918  2720 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-29 05:31:01.016  1918  2720 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-29 05:31:01.016  1918  2720 D InetDiagMessage: Destroyed live tcp sockets for uids={10180} in 5ms
+10-29 05:31:01.656  2392  2392 I [kworke][0x4a8c1c399][21:31:01.637016] wlan: [2392:I:PMO] pmo_core_enable_wow_in_fw: drv wow is enabled
+10-29 05:31:01.695  2392  2392 I [kworke][0x4a8ccf95e][21:31:01.675279] wlan: [2392:I:HIF] hif_try_complete_tasks: waiting for tasklets 0 grp tasklets 0 work 2
+10-29 05:31:01.685  1918  2694 D WifiNetworkSelector: Current connected network: 0
+10-29 05:31:01.685  1918  2694 V WifiConnectivityManager: No partial scan because firmware roaming is supported.
+10-29 05:31:01.686  1918  2694 V WifiConnectivityManager: schedulePeriodicScanTimer intervalMs 20000
+10-29 05:31:02.147  3120  8215 I NearbyMediums: Found Fast Ble Advertisements :
+10-29 05:31:02.147  3120  8215 I NearbyMediums: BleAdvertisement { version=2, socketVersion=2, isFast=true, serviceIdHash=null, data=[ 0x23 0x4b 0x4a 0x36 0x34 0x11 0x34 0x19 0x25 0xe1 0x4c 0xdb 0x12 0x12 0x81 0x6f 0xc5 0xa8 0xbc 0xc7 0x94 0xce 0x6e ], deviceToken=[ 0xc8 0x22 ], rxAdvertisement=null } : 1 times.
+10-29 05:31:02.147  3120  8215 I NearbyMediums: BleAdvertisement { version=2, socketVersion=2, isFast=true, serviceIdHash=null, data=[ 0x23 0x47 0x50 0x43 0x37 0x11 0x32 0xdd 0x13 0x06 0x90 0xa1 0x20 0xd9 0xa0 0xe4 0xcc 0xe2 0x6b 0xed 0x47 0x48 0x20 ], deviceToken=[ 0x56 0x78 ], rxAdvertisement=null } : 2 times.
+10-29 05:31:02.147  3120  8215 I NearbyMediums: Total 3 fast advertisements from 2 unique advertisers.
+10-29 05:31:02.147  3120  8215 I NearbyMediums: Current Tracked Scanning Clients are : {NearbyConnections.EnvironmentMonitor, NearbySharing}
+10-29 05:31:02.309   531   531 I [kworke][0x4a9811846][21:31:02.290091] wlan: [531:I:PMO] pmo_core_psoc_send_host_wakeup_ind_to_fw: Host wakeup indication sent to fw
+10-29 05:31:02.317  1918  2694 D WifiClientModeImpl[16956:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-41 TxLinkspeed=286 freq=2437 RxLinkSpeed=286
+10-29 05:31:02.317  1918  2694 D WifiDataStall: tx tput in kbps: 186793
+10-29 05:31:02.317  1918  2694 D WifiDataStall: rx tput in kbps: 196625
+10-29 05:31:02.317  1918  2694 V WifiConfigManager: Updating scan detail cache freq=2437 BSSID=18:fd:74:fe:34:a5 RSSI=-41 for "BELL1143"WPA_PSK
+10-29 05:31:02.318  1918  2694 D WifiDataStall:  ccaLevel = 80
+10-29 05:31:02.318  1918  2694 D WifiDataStall: L2 txTputKbps: 186793, rxTputKbps: 196625, L3 txTputKbps: 0, rxTputKbps: 0, TxTrafficHigh: false, RxTrafficHigh: false, Throughput Sufficient: true
+10-29 05:31:02.319  1918  2694 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-29 05:31:02.319  1918  2694 D WifiThroughputPredictor:  BW: 0 RSSI: -41 Nss: 2 Mode: 6 symDur: 13600 snrDb 39 bitPerTone: 8333 rate: 286 throughput: 196
+10-29 05:31:02.319  1918  2694 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-29 05:31:02.319  1918  2694 D WifiThroughputPredictor:  BW: 0 RSSI: -41 Nss: 2 Mode: 6 symDur: 13600 snrDb 39 bitPerTone: 8333 rate: 286 throughput: 196
+10-29 05:31:02.321  1918  2694 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 826571811 SSID: "BELL1143", BSSID: 18:fd:74:fe:34:a5, MAC: fe:42:88:6d:fa:00, IP: /10.0.149.176, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ax, RSSI: -41, Link speed: 286Mbps, Tx Link speed: 286Mbps, Max Supported Tx Link speed: 286Mbps, Rx Link speed: 286Mbps, Max Supported Rx Link speed: 286Mbps, Frequency: 2437MHz, Net ID: 0, Metered hint: false, score: 91, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"BELL1143"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+10-29 05:31:02.322  1918  2694 D WifiScoreCard: txRate: 2 txSpeed: 286
+10-29 05:31:02.322  1918  2694 D WifiScoreCard: network update SIGNAL_POLL "BELL1143" ID: 434423101 RSSI -41 txSpeed -1
+10-29 05:31:02.322  1918  2694 D WifiClientModeImpl[16956:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "BELL1143" 18:fd:74:fe:34:a5 rssi=-41 f=2437 sc=91 link=286 tx=1.0, 0.2, 0.0 rx=1.0 bcn=6029 [on:0 tx:0 rx:0 period:3068] from screen [on:8484 period:-2073267406] score=91
+10-29 05:31:03.313   531   531 I [kworke][0x4aaa72c81][21:31:03.293881] wlan: [531:I:PMO] pmo_core_enable_wow_in_fw: drv wow is enabled
+10-29 05:31:03.355   531   531 I [kworke][0x4aab35551][21:31:03.335385] wlan: [531:I:HIF] hif_try_complete_tasks: waiting for tasklets 0 grp tasklets 0 work 2
+10-29 05:31:05.383   531   531 I [kworke][0x4ad058a18][21:31:05.363609] wlan: [531:I:PMO] pmo_core_psoc_send_host_wakeup_ind_to_fw: Host wakeup indication sent to fw
+10-29 05:31:05.386  1918  2694 D WifiClientModeImpl[16956:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-42 TxLinkspeed=286 freq=2437 RxLinkSpeed=286
+10-29 05:31:05.386  1918  2694 D WifiDataStall: tx tput in kbps: 186793
+10-29 05:31:05.387  1918  2694 D WifiDataStall: rx tput in kbps: 196625
+10-29 05:31:05.387  1918  2694 V WifiConfigManager: Updating scan detail cache freq=2437 BSSID=18:fd:74:fe:34:a5 RSSI=-41 for "BELL1143"WPA_PSK
+10-29 05:31:05.387  1918  2694 D WifiDataStall:  ccaLevel = 80
+10-29 05:31:05.387  1918  2694 D WifiDataStall: L2 txTputKbps: 186793, rxTputKbps: 196625, L3 txTputKbps: 0, rxTputKbps: 1, TxTrafficHigh: false, RxTrafficHigh: false, Throughput Sufficient: true
+10-29 05:31:05.388  1918  2694 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-29 05:31:05.388  1918  2694 D WifiThroughputPredictor:  BW: 0 RSSI: -42 Nss: 2 Mode: 6 symDur: 13600 snrDb 38 bitPerTone: 8333 rate: 286 throughput: 196
+10-29 05:31:05.388  1918  2694 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-29 05:31:05.388  1918  2694 D WifiThroughputPredictor:  BW: 0 RSSI: -42 Nss: 2 Mode: 6 symDur: 13600 snrDb 38 bitPerTone: 8333 rate: 286 throughput: 196
+10-29 05:31:05.391  1918  2694 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 826571811 SSID: "BELL1143", BSSID: 18:fd:74:fe:34:a5, MAC: fe:42:88:6d:fa:00, IP: /10.0.149.176, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ax, RSSI: -42, Link speed: 286Mbps, Tx Link speed: 286Mbps, Max Supported Tx Link speed: 286Mbps, Rx Link speed: 286Mbps, Max Supported Rx Link speed: 286Mbps, Frequency: 2437MHz, Net ID: 0, Metered hint: false, score: 91, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"BELL1143"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+10-29 05:31:05.391  1918  2694 D WifiScoreCard: txRate: 1 txSpeed: 286
+10-29 05:31:05.391  1918  2694 D WifiScoreCard: network update SIGNAL_POLL "BELL1143" ID: 434423101 RSSI -42 txSpeed -1
+10-29 05:31:05.392  1918  2694 D WifiClientModeImpl[16956:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "BELL1143" 18:fd:74:fe:34:a5 rssi=-42 f=2437 sc=91 link=286 tx=0.3, 0.0, 0.0 rx=0.3 bcn=6048 [on:0 tx:0 rx:0 period:3069] from screen [on:8484 period:-2073264336] score=91
+10-29 05:31:05.960  8097  8097 I sd 0    : 0:0:0: [sda] Synchronizing SCSI cache
+10-29 05:31:05.944  3120  3120 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.auth.aang.events.services.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.PersistentApiService }
+10-29 05:31:05.945  3120  3120 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.libs.gmscorelogger.service.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.PersistentDirectBootAwareApiService }
+10-29 05:31:05.946  3120  3120 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.feedback.internal.IFeedbackService dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.GmsBoundBrokerService }
+10-29 05:31:05.988   531   531 I [kworke][0x4adb6bdea][21:31:05.968460] wlan: [531:I:PMO] pmo_core_enable_wow_in_fw: drv wow is enabled
+10-29 05:31:06.025   531   531 I [kworke][0x4adc1a8be][21:31:06.005724] wlan: [531:I:HIF] hif_try_complete_tasks: waiting for tasklets 0 grp tasklets 0 work 2
+10-29 05:31:06.358     7     7 I (virq   : irq_count)- GICv3:IPI(1):369609 GICv3:arch_timer(11):216433 GICv3:IPI(6):133417 GICv3:IPI(2):94243 GICv3:ufshcd(35):74276 GICv3:apps_rsc(24):31763 GICv3:ipcc_0(30):30333 ipcc:glink-native-adsp(369):14039 ipcc:glink-native-cdsp(367):8607 pmic_arb:pm-adc7(259):8471
+10-29 05:31:06.358     7     7 I (cpu    : irq_count)- 0:255061 1:142777 2:159584 3:147333 4:89087 5:92931 6:85096 7:63791
+10-29 05:31:06.358     7     7 I (ipi    : irq_count)- 0:369610 1:94243 2:0 3:0 4:0 5:133417 6:0
+10-29 05:31:08.453  8097  8097 I [kworke][0x4b088f339][21:31:08.433597] wlan: [8097:I:PMO] pmo_core_psoc_send_host_wakeup_ind_to_fw: Host wakeup indication sent to fw
+10-29 05:31:08.453  1918  2694 D WifiClientModeImpl[16956:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-44 TxLinkspeed=286 freq=2437 RxLinkSpeed=286
+10-29 05:31:08.454  1918  2694 D WifiDataStall: tx tput in kbps: 186793
+10-29 05:31:08.454  1918  2694 D WifiDataStall: rx tput in kbps: 196625
+10-29 05:31:08.455  1918  2694 V WifiConfigManager: Updating scan detail cache freq=2437 BSSID=18:fd:74:fe:34:a5 RSSI=-42 for "BELL1143"WPA_PSK
+10-29 05:31:08.455  1918  2694 D WifiDataStall:  ccaLevel = 80
+10-29 05:31:08.455  1918  2694 D WifiDataStall: L2 txTputKbps: 186793, rxTputKbps: 196625, L3 txTputKbps: 0, rxTputKbps: 0, TxTrafficHigh: false, RxTrafficHigh: false, Throughput Sufficient: true
+10-29 05:31:08.456  1918  2694 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-29 05:31:08.456  1918  2694 D WifiThroughputPredictor:  BW: 0 RSSI: -44 Nss: 2 Mode: 6 symDur: 13600 snrDb 36 bitPerTone: 8333 rate: 286 throughput: 196
+10-29 05:31:08.456  1918  2694 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-29 05:31:08.456  1918  2694 D WifiThroughputPredictor:  BW: 0 RSSI: -44 Nss: 2 Mode: 6 symDur: 13600 snrDb 36 bitPerTone: 8333 rate: 286 throughput: 196
+10-29 05:31:08.460  1918  2694 D WifiScoreReport: report new wifi score 90
+10-29 05:31:08.462  1918  2694 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 826571811 SSID: "BELL1143", BSSID: 18:fd:74:fe:34:a5, MAC: fe:42:88:6d:fa:00, IP: /10.0.149.176, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ax, RSSI: -44, Link speed: 286Mbps, Tx Link speed: 286Mbps, Max Supported Tx Link speed: 286Mbps, Rx Link speed: 286Mbps, Max Supported Rx Link speed: 286Mbps, Frequency: 2437MHz, Net ID: 0, Metered hint: false, score: 90, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"BELL1143"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+10-29 05:31:08.462  1918  2694 D WifiScoreCard: txRate: 1 txSpeed: 286
+10-29 05:31:08.462  1918  2694 D WifiScoreCard: network update SIGNAL_POLL "BELL1143" ID: 434423101 RSSI -44 txSpeed -1
+10-29 05:31:08.463  1918  2694 D WifiClientModeImpl[16956:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "BELL1143" 18:fd:74:fe:34:a5 rssi=-44 f=2437 sc=90 link=286 tx=0.1, 0.0, 0.0 rx=0.1 bcn=6064 [on:0 tx:0 rx:0 period:3070] from screen [on:8484 period:-2073261266] score=90
+10-29 05:31:08.464  1918  2720 D ConnectivityService: NetReassign [no changes] [c 0] [a 0] [i 1]
+10-29 05:31:09.005  8097  8097 I [kworke][0x4b12a9a52][21:31:08.985372] wlan: [8097:I:PMO] pmo_core_enable_wow_in_fw: drv wow is enabled
+10-29 05:31:09.053  8097  8097 I [kworke][0x4b138c004][21:31:09.033661] wlan: [8097:I:HIF] hif_try_complete_tasks: waiting for tasklets 0 grp tasklets 0 work 2
+10-29 05:31:10.620  1918  2574 D ActivityManager: freezing 3311 com.android.permissioncontroller
+10-29 05:31:10.627  1918  2720 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-29 05:31:10.630  1918  2720 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-29 05:31:10.630  1918  2720 D InetDiagMessage: Destroyed live tcp sockets for uids={10173} in 6ms
+10-29 05:31:11.522   531   531 I [kworke][0x4b40c3b12][21:31:11.503142] wlan: [531:I:PMO] pmo_core_psoc_send_host_wakeup_ind_to_fw: Host wakeup indication sent to fw
+10-29 05:31:11.529  1918  2694 D WifiClientModeImpl[16956:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-43 TxLinkspeed=286 freq=2437 RxLinkSpeed=286
+10-29 05:31:11.530  1918  2694 D WifiDataStall: tx tput in kbps: 186793
+10-29 05:31:11.530  1918  2694 D WifiDataStall: rx tput in kbps: 196625
+10-29 05:31:11.530  1918  2694 V WifiConfigManager: Updating scan detail cache freq=2437 BSSID=18:fd:74:fe:34:a5 RSSI=-42 for "BELL1143"WPA_PSK
+10-29 05:31:11.530  1918  2694 D WifiDataStall:  ccaLevel = 80
+10-29 05:31:11.530  1918  2694 D WifiDataStall: L2 txTputKbps: 186793, rxTputKbps: 196625, L3 txTputKbps: 0, rxTputKbps: 0, TxTrafficHigh: false, RxTrafficHigh: false, Throughput Sufficient: true
+10-29 05:31:11.531  1918  2694 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-29 05:31:11.531  1918  2694 D WifiThroughputPredictor:  BW: 0 RSSI: -43 Nss: 2 Mode: 6 symDur: 13600 snrDb 37 bitPerTone: 8333 rate: 286 throughput: 196
+10-29 05:31:11.531  1918  2694 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-29 05:31:11.531  1918  2694 D WifiThroughputPredictor:  BW: 0 RSSI: -43 Nss: 2 Mode: 6 symDur: 13600 snrDb 37 bitPerTone: 8333 rate: 286 throughput: 196
+10-29 05:31:11.534  1918  2694 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 826571811 SSID: "BELL1143", BSSID: 18:fd:74:fe:34:a5, MAC: fe:42:88:6d:fa:00, IP: /10.0.149.176, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ax, RSSI: -43, Link speed: 286Mbps, Tx Link speed: 286Mbps, Max Supported Tx Link speed: 286Mbps, Rx Link speed: 286Mbps, Max Supported Rx Link speed: 286Mbps, Frequency: 2437MHz, Net ID: 0, Metered hint: false, score: 90, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"BELL1143"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+10-29 05:31:11.534  1918  2694 D WifiScoreCard: txRate: 1 txSpeed: 286
+10-29 05:31:11.534  1918  2694 D WifiScoreCard: network update SIGNAL_POLL "BELL1143" ID: 434423101 RSSI -43 txSpeed -1
+10-29 05:31:11.534  1918  2694 D WifiClientModeImpl[16956:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "BELL1143" 18:fd:74:fe:34:a5 rssi=-43 f=2437 sc=90 link=286 tx=0.0, 0.0, 0.0 rx=0.0 bcn=6080 [on:0 tx:0 rx:0 period:3071] from screen [on:8484 period:-2073258194] score=90
+10-29 05:31:12.161  1658  1658 I [kworke][0x4b4c75cf3][21:31:12.141887] wlan: [1658:I:PMO] pmo_core_enable_wow_in_fw: drv wow is enabled
+10-29 05:31:12.148  3120  8215 I NearbyMediums: No BLE Fast/GATT advertisements found in the latest cycle.
+10-29 05:31:12.148  3120  8215 I NearbyMediums: Current Tracked Scanning Clients are : {NearbyConnections.EnvironmentMonitor, NearbySharing}
+10-29 05:31:12.150  3120  8213 I NearbyConnections: Processing lost BlePeripheral BlePeripheral{advertisement=BleAdvertisement { version=2, socketVersion=2, isFast=true, serviceIdHash=null, data=[ 0x23 0x4b 0x4a 0x36 0x34 0x11 0x34 0x19 0x25 0xe1 0x4c 0xdb 0x12 0x12 0x81 0x6f 0xc5 0xa8 0xbc 0xc7 0x94 0xce 0x6e ], deviceToken=[ 0xc8 0x22 ], rxAdvertisement=null }, dctAdvertisement=null, address=null, psm=0, deviceToken=<ByteString@25e1e7c size=2 contents="\310\"">, isSecondProfile=false, rxInstantConnectionAdv=null}.
+10-29 05:31:12.150  3120  8213 I NearbyConnections: Lost BleEndpoint for BlePeripheral BlePeripheral{advertisement=BleAdvertisement { version=2, socketVersion=2, isFast=true, serviceIdHash=null, data=[ 0x23 0x4b 0x4a 0x36 0x34 0x11 0x34 0x19 0x25 0xe1 0x4c 0xdb 0x12 0x12 0x81 0x6f 0xc5 0xa8 0xbc 0xc7 0x94 0xce 0x6e ], deviceToken=[ 0xc8 0x22 ], rxAdvertisement=null }, dctAdvertisement=null, address=null, psm=0, deviceToken=<ByteString@25e1e7c size=2 contents="\310\"">, isSecondProfile=false, rxInstantConnectionAdv=null} (with EndpointId KJ64 and EndpointInfo [ 0x34 0x19 0x25 0xe1 0x4c 0xdb 0x12 0x12 0x81 0x6f 0xc5 0xa8 0xbc 0xc7 0x94 0xce 0x6e ]).
+10-29 05:31:12.151  3120  8213 I NearbyConnections: Unable to record lost endpoint due to null currentDiscoveryPhase
+10-29 05:31:12.151  3120  8213 I NearbyConnections: ClientProxy(42098727) reporting onEndpointLost(KJ64)
+10-29 05:31:12.151  3120  8213 I NearbyConnections: Processing lost BlePeripheral BlePeripheral{advertisement=BleAdvertisement { version=2, socketVersion=2, isFast=true, serviceIdHash=null, data=[ 0x23 0x47 0x50 0x43 0x37 0x11 0x32 0xdd 0x13 0x06 0x90 0xa1 0x20 0xd9 0xa0 0xe4 0xcc 0xe2 0x6b 0xed 0x47 0x48 0x20 ], deviceToken=[ 0x56 0x78 ], rxAdvertisement=null }, dctAdvertisement=null, address=null, psm=0, deviceToken=<ByteString@f44f305 size=2 contents="Vx">, isSecondProfile=false, rxInstantConnectionAdv=null}.
+10-29 05:31:12.151  3120  8213 I NearbyConnections: Lost BleEndpoint for BlePeripheral BlePeripheral{advertisement=BleAdvertisement { version=2, socketVersion=2, isFast=true, serviceIdHash=null, data=[ 0x23 0x47 0x50 0x43 0x37 0x11 0x32 0xdd 0x13 0x06 0x90 0xa1 0x20 0xd9 0xa0 0xe4 0xcc 0xe2 0x6b 0xed 0x47 0x48 0x20 ], deviceToken=[ 0x56 0x78 ], rxAdvertisement=null }, dctAdvertisement=null, address=null, psm=0, deviceToken=<ByteString@f44f305 size=2 contents="Vx">, isSecondProfile=false, rxInstantConnectionAdv=null} (with EndpointId GPC7 and EndpointInfo [ 0x32 0xdd 0x13 0x06 0x90 0xa1 0x20 0xd9 0xa0 0xe4 0xcc 0xe2 0x6b 0xed 0x47 0x48 0x20 ]).
+10-29 05:31:12.151  3120  8213 I NearbyConnections: Unable to record lost endpoint due to null currentDiscoveryPhase
+10-29 05:31:12.151  3120  8213 I NearbyConnections: ClientProxy(42098727) reporting onEndpointLost(GPC7)
+10-29 05:31:12.152  3120  8220 I NearbySharing: NearbySharing Internal event EndpointLost(endpointId=KJ64)
+10-29 05:31:12.152  3120  8215 I NearbySharing: NearbySharing Internal event EndpointLost(endpointId=GPC7)
+10-29 05:31:12.199  1658  1658 I [kworke][0x4b4d25b4c][21:31:12.179412] wlan: [1658:I:HIF] hif_try_complete_tasks: waiting for tasklets 1 grp tasklets 0 work 0
+10-29 05:31:13.782  1658  1658 E BATTERY_CHG: xm_batt_update_work: batt_update_work: batt_temp:30800 blank_state:1
+10-29 05:31:14.596   531   531 I [kworke][0x4b790b7f2][21:31:14.576807] wlan: [531:I:PMO] pmo_core_psoc_send_host_wakeup_ind_to_fw: Host wakeup indication sent to fw
+10-29 05:31:14.598  1918  2694 D WifiClientModeImpl[16956:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-43 TxLinkspeed=286 freq=2437 RxLinkSpeed=286
+10-29 05:31:14.599  1918  2694 D WifiDataStall: tx tput in kbps: 186793
+10-29 05:31:14.599  1918  2694 D WifiDataStall: rx tput in kbps: 196625
+10-29 05:31:14.599  1918  2694 V WifiConfigManager: Updating scan detail cache freq=2437 BSSID=18:fd:74:fe:34:a5 RSSI=-42 for "BELL1143"WPA_PSK
+10-29 05:31:14.599  1918  2694 D WifiDataStall:  ccaLevel = 80
+10-29 05:31:14.599  1918  2694 D WifiDataStall: L2 txTputKbps: 186793, rxTputKbps: 196625, L3 txTputKbps: 0, rxTputKbps: 0, TxTrafficHigh: false, RxTrafficHigh: false, Throughput Sufficient: true
+10-29 05:31:14.600  1918  2694 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-29 05:31:14.600  1918  2694 D WifiThroughputPredictor:  BW: 0 RSSI: -43 Nss: 2 Mode: 6 symDur: 13600 snrDb 37 bitPerTone: 8333 rate: 286 throughput: 196
+10-29 05:31:14.600  1918  2694 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-29 05:31:14.600  1918  2694 D WifiThroughputPredictor:  BW: 0 RSSI: -43 Nss: 2 Mode: 6 symDur: 13600 snrDb 37 bitPerTone: 8333 rate: 286 throughput: 196
+10-29 05:31:14.604  1918  2694 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 826571811 SSID: "BELL1143", BSSID: 18:fd:74:fe:34:a5, MAC: fe:42:88:6d:fa:00, IP: /10.0.149.176, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ax, RSSI: -43, Link speed: 286Mbps, Tx Link speed: 286Mbps, Max Supported Tx Link speed: 286Mbps, Rx Link speed: 286Mbps, Max Supported Rx Link speed: 286Mbps, Frequency: 2437MHz, Net ID: 0, Metered hint: false, score: 90, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"BELL1143"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+10-29 05:31:14.604  1918  2694 D WifiScoreCard: txRate: 1 txSpeed: 286
+10-29 05:31:14.604  1918  2694 D WifiScoreCard: network update SIGNAL_POLL "BELL1143" ID: 434423101 RSSI -43 txSpeed -1
+10-29 05:31:14.604  1918  2694 D WifiClientModeImpl[16956:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "BELL1143" 18:fd:74:fe:34:a5 rssi=-43 f=2437 sc=90 link=286 tx=0.0, 0.0, 0.0 rx=0.0 bcn=6093 [on:0 tx:0 rx:0 period:3069] from screen [on:8484 period:-2073255124] score=90
+10-29 05:31:15.169   531   531 I [kworke][0x4b83877f9][21:31:15.149394] wlan: [531:I:PMO] pmo_core_enable_wow_in_fw: drv wow is enabled
+10-29 05:31:15.169   572   572 I sd 0    : 0:0:0: [sda] Synchronizing SCSI cache
+10-29 05:31:15.829     7     7 I (virq   : irq_count)- GICv3:IPI(1):389031 GICv3:arch_timer(11):224249 GICv3:IPI(6):137730 GICv3:IPI(2):95106 GICv3:ufshcd(35):74398 GICv3:apps_rsc(24):32180 GICv3:ipcc_0(30):30391 ipcc:glink-native-adsp(369):14091 ipcc:glink-native-cdsp(367):8607 pmic_arb:pm-adc7(259):8550
+10-29 05:31:15.829     7     7 I (cpu    : irq_count)- 0:260229 1:149338 2:165833 3:154040 4:91945 5:95882 6:87526 7:64397
+10-29 05:31:15.829     7     7 I (ipi    : irq_count)- 0:389032 1:95106 2:0 3:0 4:0 5:137733 6:0
+10-29 05:31:16.288  1298  3502 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_WAKE_IND: 0xFD
+10-29 05:31:16.288  1298  3502 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK ON
+10-29 05:31:16.288  1298  3502 D vendor.qti.bluetooth@1.0-wake_lock: Acquire wakelock is acquired 
+10-29 05:31:16.288  1298  3502 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Writing IBS_WAKE_ACK
+10-29 05:31:16.294  3120  8213 I NearbyConnections: Found BleAdvertisement [ 0x23 0x47 0x50 0x43 0x37 0x11 0x32 0xdd 0x13 0x06 0x90 0xa1 0x20 0xd9 0xa0 0xe4 0xcc 0xe2 0x6b 0xed 0x47 0x48 0x20 ] (with EndpointId GPC7 and EndpointInfo [ 0x32 0xdd 0x13 0x06 0x90 0xa1 0x20 0xd9 0xa0 0xe4 0xcc 0xe2 0x6b 0xed 0x47 0x48 0x20 ])
+10-29 05:31:16.294  3120  8213 I NearbyConnections: Unable to record discovered endpoint due to null currentDiscoveryPhase
+10-29 05:31:16.294  3120  8213 I NearbyConnections: ClientProxy(42098727 0p:com.google.android.gms.nearby.sharing) reporting onEndpointFound(GPC7)
+10-29 05:31:16.294  3120  8213 I NearbyConnections: ClientProxy(42098727) reporting onEndpointDistanceChanged(GPC7, UNKNOWN)
+10-29 05:31:16.295  3120  8220 I NearbySharing: NearbySharing Internal event EndpointDiscovered(endpointId=GPC7)
+10-29 05:31:16.329  1298  3502 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_SLEEP_IND: 0xFE
+10-29 05:31:16.329  1298  3502 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK OFF
+10-29 05:31:16.480  1298  3247 D vendor.qti.bluetooth@1.0-wake_lock: Release wakelock is released 
+10-29 05:31:16.516  1918  2488 D ActivityManager: sync unfroze 4715 com.android.vending for 6
+10-29 05:31:16.532  1918  2729 W ProcessStats: Tracking association SourceState{5f12cf4 system/1000 ImpBg #2753} whose proc state 6 is better than process ProcessState{f3697d2 com.android.vending/10088 pkg=com.android.vending} proc state 14 (0 skipped)
+10-29 05:31:16.534  4715  4715 I Finsky  : [2] SCH: job service start with id 9143.
+10-29 05:31:16.543  4715  8261 I Finsky  : [123] SCH: Satisfied jobs for 9143 are: 12-1
+10-29 05:31:16.547  4715 15062 I Finsky  : [133] SCH: Job 12-1 starting
+10-29 05:31:16.548  4715  4715 I Finsky  : [2] WM::SCH: Logging work start for 12-1
+10-29 05:31:16.548  4715  4715 I Finsky  : [2] [ContentSync] job started
+10-29 05:31:16.551  4715 15063 I Finsky  : [134] PSR: Package cache is empty, setup cache.
+10-29 05:31:16.570  1918  2729 W ParceledListSlice: Element #12 is 27788 bytes.
+10-29 05:31:16.573  1918  2729 W ParceledListSlice: Element #19 is 20040 bytes.
+10-29 05:31:16.577  1918  2729 W ParceledListSlice: Element #34 is 20480 bytes.
+10-29 05:31:16.577  1918  2729 W ParceledListSlice: Element #35 is 20400 bytes.
+10-29 05:31:16.580  1918  2729 W ParceledListSlice: Element #41 is 20548 bytes.
+10-29 05:31:16.601  1918  2729 W ParceledListSlice: Element #104 is 19908 bytes.
+10-29 05:31:16.604  1918  2729 W ParceledListSlice: Element #108 is 17940 bytes.
+10-29 05:31:16.616  1918  2729 W ParceledListSlice: Element #153 is 19584 bytes.
+10-29 05:31:16.620  1918  2729 W ParceledListSlice: Element #157 is 17768 bytes.
+10-29 05:31:16.620  1918  2729 W ParceledListSlice: Element #158 is 18928 bytes.
+10-29 05:31:16.623  1918  2729 W ParceledListSlice: Element #165 is 18780 bytes.
+10-29 05:31:16.626  1918  2729 W ParceledListSlice: Element #179 is 16932 bytes.
+10-29 05:31:16.639  1918  2729 W ParceledListSlice: Element #212 is 16476 bytes.
+10-29 05:31:16.650  1918  2729 W ParceledListSlice: Element #253 is 21816 bytes.
+10-29 05:31:16.653  1918  2729 W ParceledListSlice: Element #254 is 18952 bytes.
+10-29 05:31:16.654  1918  2729 W ParceledListSlice: Element #257 is 18704 bytes.
+10-29 05:31:16.742  4715 15064 I Finsky  : [135] Wrote 36 rows to frosting DB
+10-29 05:31:17.432  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.media' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.460  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.permission' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.464  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.configinfrastructure' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.464  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.wifi' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.475  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.adservices' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.482  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.ondevicepersonalization' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.492  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.sdkext' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.494  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.nfcservices' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.494  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.conscrypt' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.497  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.media.swcodec' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.521  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.ipsec' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.529  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.telephonycore' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.530  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.extservices' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.535  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.apex.cts.shim' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.543  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.resolv' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.552  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.uprobestats' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.556  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.bt' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.557  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.profiling' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.558  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.tzdata' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.563  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.appsearch' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.572  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.virt' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.574  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.mediaprovider' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.585  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.i18n' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.599  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.neuralnetworks' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.602  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.healthfitness' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.603  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.devicelock' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.606  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.crashrecovery' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.618  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.tethering' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.626  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.uwb' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.634  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.runtime' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.636  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.adbd' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.639  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.os.statsd' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.660   737   737 I [kworke][0x4bb12562b][21:31:17.640677] wlan: [737:I:PMO] pmo_core_psoc_send_host_wakeup_ind_to_fw: Host wakeup indication sent to fw
+10-29 05:31:17.650  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.rkpd' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.657  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.scheduling' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.658  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.cellbroadcast' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.659  4715  4715 W Finsky  : [2] STU: Failed to get storage stats for package 'com.android.art' (1601: Error getting stats: android.content.pm.PackageManager.NameNotFoundException)
+10-29 05:31:17.664  1918  2694 D WifiClientModeImpl[16956:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-42 TxLinkspeed=286 freq=2437 RxLinkSpeed=286
+10-29 05:31:17.664  1918  2694 D WifiDataStall: tx tput in kbps: 186793
+10-29 05:31:17.664  1918  2694 D WifiDataStall: rx tput in kbps: 196625
+10-29 05:31:17.664  1918  2694 V WifiConfigManager: Updating scan detail cache freq=2437 BSSID=18:fd:74:fe:34:a5 RSSI=-42 for "BELL1143"WPA_PSK
+10-29 05:31:17.664  1918  2694 D WifiDataStall:  ccaLevel = 80
+10-29 05:31:17.665  1918  2694 D WifiDataStall: L2 txTputKbps: 186793, rxTputKbps: 196625, L3 txTputKbps: 0, rxTputKbps: 0, TxTrafficHigh: false, RxTrafficHigh: false, Throughput Sufficient: true
+10-29 05:31:17.666  1918  2694 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-29 05:31:17.666  1918  2694 D WifiThroughputPredictor:  BW: 0 RSSI: -42 Nss: 2 Mode: 6 symDur: 13600 snrDb 38 bitPerTone: 8333 rate: 286 throughput: 196
+10-29 05:31:17.666  1918  2694 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-29 05:31:17.666  1918  2694 D WifiThroughputPredictor:  BW: 0 RSSI: -42 Nss: 2 Mode: 6 symDur: 13600 snrDb 38 bitPerTone: 8333 rate: 286 throughput: 196
+10-29 05:31:17.668  4715  4715 I Finsky  : [2] App states replicator found 5 unowned apps
+10-29 05:31:17.669  1918  2694 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 826571811 SSID: "BELL1143", BSSID: 18:fd:74:fe:34:a5, MAC: fe:42:88:6d:fa:00, IP: /10.0.149.176, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ax, RSSI: -42, Link speed: 286Mbps, Tx Link speed: 286Mbps, Max Supported Tx Link speed: 286Mbps, Rx Link speed: 286Mbps, Max Supported Rx Link speed: 286Mbps, Frequency: 2437MHz, Net ID: 0, Metered hint: false, score: 90, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"BELL1143"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+10-29 05:31:17.669  1918  2694 D WifiScoreCard: txRate: 1 txSpeed: 286
+10-29 05:31:17.669  1918  2694 D WifiScoreCard: network update SIGNAL_POLL "BELL1143" ID: 434423101 RSSI -42 txSpeed -1
+10-29 05:31:17.669  1918  2694 D WifiClientModeImpl[16956:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "BELL1143" 18:fd:74:fe:34:a5 rssi=-42 f=2437 sc=90 link=286 tx=0.0, 0.0, 0.0 rx=0.0 bcn=6108 [on:0 tx:0 rx:0 period:3065] from screen [on:8484 period:-2073252059] score=90
+10-29 05:31:17.883   225   225 E [kworke][0x4bb53ad4e][21:31:17.863705] wlan: [225:E:WMA] wma_process_rmf_frame: Rx unprotected unicast mgmt frame
+10-29 05:31:17.883  3652  3652 W [schedu][0x4bb53b531][21:31:17.863810] wlan: [3652:W:PE] lim_process_action_frame: Action category: 22 not handled
+10-29 05:31:18.367  4715 15063 I Finsky  : [134] Completed 1 account content syncs with 1 successful.
+10-29 05:31:18.367  4715  4715 I Finsky  : [2] [ContentSync] Installation state replication succeeded.
+10-29 05:31:18.367  4715  4715 I Finsky  : [2] SCH: jobFinished: 12-1. TimeElapsed: 1819ms.
+10-29 05:31:18.367  4715  4715 I Finsky  : [2] WM::SCH: Logging work end for 12-1
+10-29 05:31:18.372  4715  4804 I Finsky  : [46] SCH: Scheduling phonesky job Id: 1-1337, CT: 1793196878306, Constraints: [{ L: 32602378, D: 75802378, C: CHARGING_NONE, I: IDLE_NONE, N: NET_ANY, B: BATTERY_ANY }]
+10-29 05:31:18.374  4715  4801 I Finsky  : [44] SCH: Scheduling 1 system job(s)
+10-29 05:31:18.374  4715  4801 I Finsky  : [44] SCH: Scheduling system job Id: 9148, L: 6402310, D: 49602310, C: false, I: false, N: 1
+10-29 05:31:18.378  4715 15062 I Finsky  : [133] SCH: job service finished with id 9143.
+10-29 05:31:18.384  4715  4715 I Finsky  : [2] Memory trim requested to level 40
+10-29 05:31:18.384  4715  4715 I Finsky  : [2] Flushing in-memory image cache
+10-29 05:31:19.014   737   737 I [kworke][0x4bc9f1fee][21:31:18.995047] wlan: [737:I:PMO] pmo_core_enable_wow_in_fw: drv wow is enabled
+10-29 05:31:19.052   737   737 I [kworke][0x4bcaa29d4][21:31:19.032725] wlan: [737:I:HIF] hif_try_complete_tasks: waiting for tasklets 1 grp tasklets 0 work 0
+10-29 05:31:20.725   737   737 I [kworke][0x4be9430e4][21:31:20.705353] wlan: [737:I:PMO] pmo_core_psoc_send_host_wakeup_ind_to_fw: Host wakeup indication sent to fw
+10-29 05:31:20.727  1918  2694 D WifiClientModeImpl[16956:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-44 TxLinkspeed=258 freq=2437 RxLinkSpeed=286
+10-29 05:31:20.728  1918  2694 D WifiDataStall: tx tput in kbps: 186793
+10-29 05:31:20.728  1918  2694 D WifiDataStall: rx tput in kbps: 196625
+10-29 05:31:20.728  1918  2694 V WifiConfigManager: Updating scan detail cache freq=2437 BSSID=18:fd:74:fe:34:a5 RSSI=-43 for "BELL1143"WPA_PSK
+10-29 05:31:20.728  1918  2694 D WifiDataStall:  ccaLevel = 80
+10-29 05:31:20.728  1918  2694 D WifiDataStall: L2 txTputKbps: 109972, rxTputKbps: 196625, L3 txTputKbps: 140, rxTputKbps: 27, TxTrafficHigh: true, RxTrafficHigh: true, Throughput Sufficient: true
+10-29 05:31:20.729  1918  2694 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-29 05:31:20.729  1918  2694 D WifiThroughputPredictor:  BW: 0 RSSI: -44 Nss: 2 Mode: 6 symDur: 13600 snrDb 36 bitPerTone: 8333 rate: 286 throughput: 196
+10-29 05:31:20.729  1918  2694 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-29 05:31:20.729  1918  2694 D WifiThroughputPredictor:  BW: 0 RSSI: -44 Nss: 2 Mode: 6 symDur: 13600 snrDb 36 bitPerTone: 8333 rate: 286 throughput: 196
+10-29 05:31:20.732  1918  2694 D WifiScoreReport: report new wifi score 89
+10-29 05:31:20.733  1918  2694 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 826571811 SSID: "BELL1143", BSSID: 18:fd:74:fe:34:a5, MAC: fe:42:88:6d:fa:00, IP: /10.0.149.176, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ax, RSSI: -44, Link speed: 258Mbps, Tx Link speed: 258Mbps, Max Supported Tx Link speed: 286Mbps, Rx Link speed: 286Mbps, Max Supported Rx Link speed: 286Mbps, Frequency: 2437MHz, Net ID: 0, Metered hint: false, score: 89, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"BELL1143"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+10-29 05:31:20.733  1918  2694 D WifiScoreCard: txRate: 7 txSpeed: 258
+10-29 05:31:20.733  1918  2694 D WifiScoreCard: network update SIGNAL_POLL "BELL1143" ID: 434423101 RSSI -44 txSpeed 258
+10-29 05:31:20.734  1918  2694 D WifiClientModeImpl[16956:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "BELL1143" 18:fd:74:fe:34:a5 rssi=-44 f=2437 sc=89 link=258 tx=3.9, 2.5, 0.0 rx=3.3 bcn=6130 [on:0 tx:0 rx:0 period:3064] from screen [on:8484 period:-2073248995] score=89
+10-29 05:31:20.736  1918  2720 D ConnectivityService: NetReassign [no changes] [c 0] [a 1] [i 2]
+10-29 05:31:21.255   737   737 I [kworke][0x4bf2f758d][21:31:21.235335] wlan: [737:I:PMO] pmo_core_enable_wow_in_fw: drv wow is enabled
+10-29 05:31:21.687  1918  2694 D WifiNetworkSelector: Current connected network: 0
+10-29 05:31:21.688  1918  2694 V WifiConnectivityManager: No partial scan because firmware roaming is supported.
+10-29 05:31:21.688  1918  2694 V WifiConnectivityManager: schedulePeriodicScanTimer intervalMs 20000
+10-29 05:31:22.149  3120  8213 I NearbyMediums: Found Fast Ble Advertisements :
+10-29 05:31:22.149  3120  8213 I NearbyMediums: BleAdvertisement { version=2, socketVersion=2, isFast=true, serviceIdHash=null, data=[ 0x23 0x47 0x50 0x43 0x37 0x11 0x32 0xdd 0x13 0x06 0x90 0xa1 0x20 0xd9 0xa0 0xe4 0xcc 0xe2 0x6b 0xed 0x47 0x48 0x20 ], deviceToken=[ 0x56 0x78 ], rxAdvertisement=null } : 1 times.
+10-29 05:31:22.149  3120  8213 I NearbyMediums: Total 1 fast advertisements from 1 unique advertisers.
+10-29 05:31:22.150  3120  8213 I NearbyMediums: Current Tracked Scanning Clients are : {NearbyConnections.EnvironmentMonitor, NearbySharing}
+10-29 05:31:22.651  8350  8364 I GLK-MCAST510: GLK-MCAST510|begin|kernel=5.10.252-gki-gabcbe4b2bc10|uid=10177|target=0x1000
+10-29 05:31:22.652  8350  8364 I GLK-MCAST510: GLK-MCAST510|page|base=0x-7fbcd70000|fakeLock=0x-7fbcd70000|fakeTask=0x-7fbcd6fc00|fakeW0=0x-7fbcd6fd00|geometry=waiter96/task48/lock56/buffer264/compact1
+10-29 05:31:22.652  8350  8364 I GLK-MCAST510: GLK-MCAST510|result|pass=true|ret=-1|errno=99|calls=1|success=1|elapsed_ns=6837657|total_ms=28558|target=0x1000|page_base=0x-7fbcd70000|fake_lock=0x-7fbcd70000|fake_task=0x-7fbcd6fc00|fake_w0=0x-7fbcd6fd00
+10-29 05:31:22.654  8350  8364 I GLK-MCAST510: GLK-MCAST510|begin|kernel=5.10.252-gki-gabcbe4b2bc10|uid=10177|target=0x1000
+10-29 05:31:22.654  8350  8364 I GLK-MCAST510: GLK-MCAST510|page|base=0x-7fbcd70000|fakeLock=0x-7fbcd70000|fakeTask=0x-7fbcd6fc00|fakeW0=0x-7fbcd6fd00|geometry=waiter96/task48/lock56/buffer264/compact1
+10-29 05:31:22.654  8350  8364 I GLK-MCAST510: GLK-MCAST510|result|pass=true|ret=-1|errno=99|calls=1|success=1|elapsed_ns=6837657|total_ms=28558|target=0x1000|page_base=0x-7fbcd70000|fake_lock=0x-7fbcd70000|fake_task=0x-7fbcd6fc00|fake_w0=0x-7fbcd6fd00
+10-29 05:31:22.655  8350  8364 I TestRunner: finished: mcast510SingleShotProbe(com.ghostlock.app.backend.cve43499.victim.Mcast510ProbeTest)
+10-29 05:31:22.660  8350  8364 I TestRunner: run finished: 1 tests, 0 failed, 0 ignored
+10-29 05:31:22.670  1918  2688 I ActivityManager: Force stopping com.ghostlock.app appid=10177 user=0: finished inst
+10-29 05:31:22.671  1918  2688 E ActivityManager: Unable to freeze binder for 8350: -11
+10-29 05:31:22.690  2688  2688 I binder  : 1918:2688 ioctl 400c620e 748584f984 returned -11
+10-29 05:31:22.690  2688  2688 I binder  : 1918:2688 ioctl 400c620e 748584f984 returned -11
+10-29 05:31:22.671  8338  8338 I app_process: System.exit called, status: 0
+10-29 05:31:22.671  8338  8338 I AndroidRuntime: VM exiting with result code 0.
+10-29 05:31:22.672  1918  2688 I ActivityManager: Killing 8350:com.ghostlock.app/u0a177 (adj 0): stop com.ghostlock.app due to finished inst
+10-29 05:31:22.676  1918  2720 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-29 05:31:22.677  1918  2720 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-29 05:31:22.677  1918  2720 D InetDiagMessage: Destroyed live tcp sockets for uids={10177} in 3ms
+10-29 05:31:22.679  1918  2720 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-29 05:31:22.680  1918  2720 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-29 05:31:22.680  1918  2720 D InetDiagMessage: Destroyed live tcp sockets for uids={20177} in 2ms
+10-29 05:31:22.772  1658  1658 I binder  : undelivered TRANSACTION_COMPLETE
+10-29 05:31:22.753  2076  2076 I adbd    : Remote process closed the socket (on MSG_PEEK)
+10-29 05:31:22.772  1658  1658 I binder  : undelivered transaction 179361, process died.
+10-29 05:31:22.754  1918  2688 V ActivityManager: Got obituary of 8350:com.ghostlock.app
+10-29 05:31:22.755  1918  2198 I libprocessgroup: Removed cgroup /sys/fs/cgroup/apps/uid_10177/pid_8350
+10-29 05:31:22.755  1218  1218 I Zygote  : Process 8350 exited due to signal 9 (Killed)
+10-29 05:31:23.013  2325  2325 I [kworke][0x4c1327a0b][21:31:22.993262] wlan: [2325:I:PMO] pmo_core_psoc_send_host_wakeup_ind_to_fw: Host wakeup indication sent to fw
+10-29 05:31:23.253  2956  4742 W AlarmManager: Unrecognized alarm listener com.android.networkstack.android.net.ip.IpClientLinkObserver$Dhcp6PdPreferredPrefixAlarmListener@e16f46b
+10-29 05:31:23.254  2956  4742 W AlarmManager: Unrecognized alarm listener com.android.networkstack.android.net.ip.IpClientLinkObserver$Dhcp6PdPreferredPrefixAlarmListener@e16f46b
+10-29 05:31:23.255  2956  4742 D ApfFilter: (wlan0): Ignoring RA RA fe80::a236:9fff:fe1e:5a84 -> ff02::1 2700s 2001:1970:5658:f000::/64 5400s/2700s fdeb:ff1f:b5c7::/64 5400s/2700s DNS 5400s fdeb:ff1f:b5c7::1 RIO 5400s 2001:1970:5658:f000::/56 RIO 5400s fdeb:ff1f:b5c7::/48  which matches RA fe80::a236:9fff:fe1e:5a84 -> ff02::1 2700s 2001:1970:5658:f000::/64 5400s/2700s fdeb:ff1f:b5c7::/64 5400s/2700s DNS 5400s fdeb:ff1f:b5c7::1 RIO 5400s 2001:1970:5658:f000::/56 RIO 5400s fdeb:ff1f:b5c7::/48 
+10-29 05:31:23.763  1918  2694 D WifiClientModeImpl[16956:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-41 TxLinkspeed=258 freq=2437 RxLinkSpeed=258
+10-29 05:31:23.763  1918  2694 D WifiDataStall: tx tput in kbps: 109972
+10-29 05:31:23.763  1918  2694 D WifiDataStall: rx tput in kbps: 196625
+10-29 05:31:23.764  1918  2694 V WifiConfigManager: Updating scan detail cache freq=2437 BSSID=18:fd:74:fe:34:a5 RSSI=-41 for "BELL1143"WPA_PSK
+10-29 05:31:23.764  1918  2694 D WifiDataStall:  ccaLevel = 80
+10-29 05:31:23.764  1918  2694 D WifiDataStall: L2 txTputKbps: 168506, rxTputKbps: 177375, L3 txTputKbps: 0, rxTputKbps: 0, TxTrafficHigh: false, RxTrafficHigh: false, Throughput Sufficient: true
+10-29 05:31:23.765  1918  2694 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-29 05:31:23.765  1918  2694 D WifiThroughputPredictor:  BW: 0 RSSI: -41 Nss: 2 Mode: 6 symDur: 13600 snrDb 39 bitPerTone: 8333 rate: 286 throughput: 196
+10-29 05:31:23.765  1918  2694 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-29 05:31:23.766  1918  2694 D WifiThroughputPredictor:  BW: 0 RSSI: -41 Nss: 2 Mode: 6 symDur: 13600 snrDb 39 bitPerTone: 8333 rate: 286 throughput: 196
+10-29 05:31:23.773  1918  2694 D WifiScoreReport: report new wifi score 91
+10-29 05:31:23.774  1918  2694 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 826571811 SSID: "BELL1143", BSSID: 18:fd:74:fe:34:a5, MAC: fe:42:88:6d:fa:00, IP: /10.0.149.176, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ax, RSSI: -41, Link speed: 258Mbps, Tx Link speed: 258Mbps, Max Supported Tx Link speed: 286Mbps, Rx Link speed: 258Mbps, Max Supported Rx Link speed: 286Mbps, Frequency: 2437MHz, Net ID: 0, Metered hint: false, score: 91, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"BELL1143"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+10-29 05:31:23.774  1918  2694 D WifiScoreCard: txRate: 3 txSpeed: 258
+10-29 05:31:23.774  1918  2694 D WifiScoreCard: network update SIGNAL_POLL "BELL1143" ID: 434423101 RSSI -41 txSpeed -1
+10-29 05:31:23.775  1918  2694 D WifiClientModeImpl[16956:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "BELL1143" 18:fd:74:fe:34:a5 rssi=-41 f=2437 sc=91 link=258 tx=1.6, 0.9, 0.0 rx=1.4 bcn=6148 [on:0 tx:0 rx:0 period:3041] from screen [on:8484 period:-2073245953] score=91
+10-29 05:31:23.777  1918  2720 D ConnectivityService: NetReassign [no changes] [c 1] [a 0] [i 1]
+10-29 05:31:24.344   737   737 I [kworke][0x4c2b89cc5][21:31:24.324925] wlan: [737:I:PMO] pmo_core_enable_wow_in_fw: drv wow is enabled
+10-29 05:31:24.386   737   737 I [kworke][0x4c2c4e692][21:31:24.366869] wlan: [737:I:HIF] hif_try_complete_tasks: waiting for tasklets 0 grp tasklets 0 work 2
+10-29 05:31:24.590  1298  3502 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_WAKE_IND: 0xFD
+10-29 05:31:24.591  1298  3502 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK ON
+10-29 05:31:24.591  1298  3502 D vendor.qti.bluetooth@1.0-wake_lock: Acquire wakelock is acquired 
+10-29 05:31:24.591  1298  3502 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Writing IBS_WAKE_ACK
+10-29 05:31:24.636  1298  3502 I vendor.qti.bluetooth@1.0-ibs_handler: ProcessIbsCmd: Received IBS_SLEEP_IND: 0xFE
+10-29 05:31:24.636  1298  3502 D vendor.qti.bluetooth@1.0-ibs_handler: SerialClockVote: vote for UART CLK OFF

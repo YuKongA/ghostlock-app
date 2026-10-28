@@ -266,3 +266,11 @@ step 名是否改需与 Kotlin 一起定（可能触发行状态码）。
 7. **文档已在 dirty 集合中被改**：`AGENTS.md`、`core/src/README.md`、`docs/development/adding-a-component.md`
    等已改动；Phase 0 的文档同步应在归位后的新基线上做，避免与在飞改动冲突。
 8. **上位计划 Phase 0 描述与 ADR-0002 矛盾**（原写 CoreSession 含 `profile`/`addresses`），已改。
+- 2026-10-28：CVE-2026-98260 backend L 计划（含 delta UserService+JNI）：design-critic 三轮正式+三轮增量评审，最终总判「可进批准 gate（阻断 0）」；用户批准（含 debug-only profile 强制确认、device-gate-pending）。B1–B3 离线门禁绿，真机 G0–G13 pending。记录：`docs/analysis/98260-b{1,2,3}-*20261028.md`。
+- 2026-10-28：结构适配计划 v1 评审=不可进（阻断 S-01/S-02）；v2 复评=**可进实现（阻断 0）**，R2 移出批准位；v2.1 仅修正指针表述/加残留关闭表（R-01～R-12）。用户批准 R1a→R1c→R1e→R1b+R1d。
+- 2026-10-28：98260 结构适配 R1a–R1d 离线实现完成；用户裁定「payload 由公用 victim 启动、finish 由 rooted victim 执行」已落实；离线 native/compile/assemble 绿、聚焦 98260 测试绿；全量 300/7（7=既有 finish 5 + 在途未跟踪 43499 write-chain 2）；真机 G8–G14 pending；未 commit。
+- 2026-10-28：结构修正（用户裁定）——删除 98260 专用 Shizuku UserService/AIDL，改为全 backend 公用 `GhostlockUserService` + `ShizukuBackendHost(s)` + `ShizukuBackendClient`；98260 仅保留 host/端口适配。AIDL 编译绿；Kotlin 编译待外部在途 43499 写入停止后复跑。
+- 2026-10-28：执行体口径（用户裁定）——攻击进程二选一：App→43499/43284，Shizuku→98260；不迁移 43499/不跳 W3；新增 `BackendExecutionDomain` + readiness/dispatcher 硬门禁。
+- 2026-10-28：BackendSpec 动态化（用户裁定）——`Backends` 可观察注册表 + 稳定 `key` 选择 + runner 改 key + 每 spec/Lua 声明 uid 需求；新增 `DynamicBackendsTest`；攻击线程/Flow 迁 host JVM 仍待 R2。
+- 2026-10-28：Flow 上一级改为 `FlowLaunchParent`：执行体选择（App=新 JVM 线程；Shizuku=host JVM 待 R2）+ 传入指向选定 Flow 的 lambda（`FlowLaunchRequest`）；Shizuku 未接 host Flow 前具名 pending，不静默回退。
+- 2026-10-28：执行体调用统一为 symbol：`FlowSymbolInvocation(symbol+config)` 替换 lambda；`FlowLaunchExecutor` 多态（App=LocalThreadFlowExecutor+注册表解析；Shizuku=ShizukuHostFlowExecutor 同一 symbol）；`FlowLaunchParent.executorFor` 分发；测试改为 symbol 契约。

@@ -1,0 +1,5 @@
+10-29 05:37:46.415  4379  4994 I GLK-MCAST510: GLK-MCAST510|page|base=0xffffff8a5dcf0000|fakeLock=0x-75a2310000|fakeTask=0x-75a230fc00|fakeW0=0x-75a230fd00|geometry=waiter96/task48/lock56/buffer264/compact1
+10-29 05:37:46.416  4379  4994 I GLK-MCAST510: GLK-MCAST510|result|pass=true|ret=-1|errno=99|calls=1|success=1|elapsed_ns=6962136|total_ms=28520|target=0xffffff802a7e86a8|page_base=0xffffff8a5dcf0000|fake_lock=0x-75a2310000|fake_task=0x-75a230fc00|fake_w0=0x-75a230fd00
+10-29 05:37:46.417  4379  4994 I GLK-MCAST510: GLK-MCAST510|begin|kernel=5.10.252-gki-gabcbe4b2bc10|uid=10177|target_arg=0xffffff802a7e86a8
+10-29 05:37:46.418  4379  4994 I GLK-MCAST510: GLK-MCAST510|page|base=0xffffff8a5dcf0000|fakeLock=0x-75a2310000|fakeTask=0x-75a230fc00|fakeW0=0x-75a230fd00|geometry=waiter96/task48/lock56/buffer264/compact1
+10-29 05:37:46.418  4379  4994 I GLK-MCAST510: GLK-MCAST510|result|pass=true|ret=-1|errno=99|calls=1|success=1|elapsed_ns=6962136|total_ms=28520|target=0xffffff802a7e86a8|page_base=0xffffff8a5dcf0000|fake_lock=0x-75a2310000|fake_task=0x-75a230fc00|fake_w0=0x-75a230fd00

@@ -8,6 +8,7 @@ import com.ghostlock.app.ui.backend.BackendConfigSchema
 import com.ghostlock.app.ui.backend.BackendConfigStore
 import com.ghostlock.app.ui.backend.BackendConfigType
 import com.ghostlock.app.ui.backend.BackendReadiness
+import com.ghostlock.app.ui.backend.BackendFlowRunner
 import com.ghostlock.app.ui.backend.BackendRunCapability
 import com.ghostlock.app.ui.backend.ReadinessReason
 import com.ghostlock.app.ui.util.rootAvailable
@@ -18,6 +19,8 @@ import com.ghostlock.app.ui.util.rootAvailable
  *  它没有固定的 CVE 与配置项：配置区由单独的 [CustomLuaConfig] 负责（加载 Lua 脚本）。
  */
 object BackendCustom : BackendSpec {
+
+    override val runner: BackendFlowRunner? = null
     override val cve: String = "CUSTOM"
     override val titleRes: Int = R.string.backend_custom
 
@@ -29,8 +32,6 @@ object BackendCustom : BackendSpec {
     override val customConfig: (@Composable (Boolean) -> Unit)? = { miuix -> CustomLuaConfig(miuix) }
 
     /** 自定义 backend 没有 Flow run 入口；运行页只展示脚本/Lua 能力与拒绝原因。 */
-    override val runCapability: BackendRunCapability =
-        BackendRunCapability.NO_FLOW_RUN
 
     /**
      * 唯一持久化配置：选中的 Lua 脚本 URI（默认空串 = 未选择）。

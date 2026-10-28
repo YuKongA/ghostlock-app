@@ -1,6 +1,6 @@
 package com.ghostlock.app.backend.cve43499.finish
 
-import com.ghostlock.app.backend.cve43499.victim.VictimIdentity
+import com.ghostlock.app.core.victim.VictimIdentity
 import java.util.concurrent.TimeUnit
 
 /**
@@ -122,4 +122,41 @@ internal data class RunBindingEvidence(
     val primitiveTaskAddress: Long,
     val primitiveLockAddress: Long,
     val victimStartTimeAfterExecute: Long,
+)
+
+/**
+ * 以原始字段构造 victim↔Actor 绑定证据（task-33：Flow 分步编排只持有 lifecycle 的
+ * victim snapshot 字段，本工厂在 finish 包内完成 [VictimIdentity] 组装）。
+ *
+ * @param runId 本次运行 id。
+ * @param victimPid victim PID。
+ * @param victimUid victim uid。
+ * @param victimStartTimeTicksBefore execute 前采集的 starttime。
+ * @param victimStartTimeAfterExecute execute 后复查的 starttime。
+ * @param primitiveWaiterAddress waiter 最终地址。
+ * @param primitiveTaskAddress task 最终地址。
+ * @param primitiveLockAddress lock 最终地址。
+ * @return 绑定证据；字段来自同一 run 的物理事实。
+ * @note 缺失/不一致由 [FinishAcceptance] 具名拒绝，本工厂不做判定。
+ */
+internal fun runBindingEvidence(
+    runId: String,
+    victimPid: Int,
+    victimUid: Long,
+    victimStartTimeTicksBefore: Long,
+    victimStartTimeAfterExecute: Long,
+    primitiveWaiterAddress: Long,
+    primitiveTaskAddress: Long,
+    primitiveLockAddress: Long,
+): RunBindingEvidence = RunBindingEvidence(
+    runId = runId,
+    victim = VictimIdentity(
+        pid = victimPid,
+        startTimeTicks = victimStartTimeTicksBefore,
+        uid = victimUid,
+    ),
+    primitiveWaiterAddress = primitiveWaiterAddress,
+    primitiveTaskAddress = primitiveTaskAddress,
+    primitiveLockAddress = primitiveLockAddress,
+    victimStartTimeAfterExecute = victimStartTimeAfterExecute,
 )

@@ -11,6 +11,7 @@
 #ifndef GHOSTLOCK_GL43499_CORE_PLACEMENT_INTERNAL_H
 #define GHOSTLOCK_GL43499_CORE_PLACEMENT_INTERNAL_H
 
+#include <stdlib.h>
 #include <sys/types.h>
 
 #include "core_internal.h"
@@ -36,6 +37,17 @@ struct glk43499_ctx_set {
 
 /** @brief Placement 的私有物理状态；token 即本对象的地址。 */
 struct glk43499_placement_impl {
+    /* task-100：失败机制诊断（只在 SYSTEM_ERROR 前写入；不参与控制流）。 */
+    uint32_t diag_step;
+    uint32_t diag_syscall;
+    /* task-109：leak child open 失败证据。 */
+    uint32_t diag_child_reaped;
+    int32_t diag_child_status;
+    uint32_t diag_child_proc_exists;
+    int32_t diag_child_uid;
+    int32_t diag_open_errno;
+    int32_t diag_child_pid;
+
     /* 已验证的 Kotlin 输入事实（landing 会二次比对）。 */
     uint64_t page_size;
     uint64_t allocation_size;
@@ -48,6 +60,14 @@ struct glk43499_placement_impl {
     uint32_t measurement_cpu;
     uint32_t objects_per_slab;
     uint32_t measurement_rounds;
+    /* A 决策（R2b）：原 STRUCT_/WIRE_ 宏改为请求字段的事实副本。 */
+    uint64_t identity_start;
+    uint64_t identity_end;
+    uint64_t leak_tag_nibble;
+    uint64_t leak_tag_shift;
+    uint64_t max_context_entries;
+    uint64_t max_objects_per_slab;
+    uint64_t max_measurement_rounds;
 
     /* 测量结果（landing 复核后写入 receipt）。 */
     uint64_t candidate_page_base;
@@ -63,8 +83,11 @@ struct glk43499_placement_impl {
     pid_t leak_child;
     int32_t leak_memfd;
 
-    /* staging：landing 把 Kotlin 提供的最终字节深拷贝到这里再发送。 */
-    uint8_t staging[GLK43499_PHYS_SKB_SEND_SIZE];
+    /* staging：landing 把 Kotlin 提供的最终字节深拷贝到这里再发送。
+     * A 决策（R2b）：容量来自请求的 staging_capacity，运行期 malloc；
+     * owner=Placement，landing 提交前后都由 Placement 释放（retained 时不释放）。 */
+    uint8_t *staging;
+    uint64_t staging_capacity;
 
     /* 资源计数（facts 与 retained 回执的唯一来源）。 */
     uint32_t retained_children;
@@ -75,6 +98,19 @@ struct glk43499_placement_impl {
     /* 1 表示清理无法证明完整：对象/身份保留到进程退出（不 free、不归零计数）。 */
     int32_t retained;
 };
+
+/**
+ * @brief 释放 Placement 的 staging 动态缓冲（owner=Placement，失败保留时不调用）。
+ * @param placement 非空对象；可由本函数重复调用。
+ * @note 只释放 staging 指针本身，不碰 children/memfd/child；调用方随后决定是否 free 对象。
+ */
+static inline void glk43499_placement_free_staging(
+    struct glk43499_placement_impl *placement) {
+    if (placement == NULL || placement->staging == NULL) return;
+    free(placement->staging);
+    placement->staging = NULL;
+    placement->staging_capacity = 0;
+}
 
 /**
  * @brief 把 Placement token 还原为私有对象。
@@ -138,8 +174,8 @@ void glk43499_placement_free_ctx(struct glk43499_ctx_set *set);
 /**
  * @brief 释放 Placement 仍持有的全部资源并释放对象。
  * @param placement 非空对象。
- * @note 只在 close 接受后调用。资源顺序：先关描述符，再回收子进程；
- *       staging 内嵌在对象内，随对象一起释放。
+ * @note 只在 close 接受后调用。资源顺序：先关描述符，再回收子进程，
+ *       最后释放 staging 动态缓冲与对象自身。
  */
 void glk43499_placement_release(struct glk43499_placement_impl *placement);
 

@@ -1,5 +1,6 @@
 package com.ghostlock.app.backend.cve43499.flow
 
+import com.ghostlock.app.core.flow.FlowProgress
 import com.ghostlock.app.core.flow.FlowRequest
 
 /**
@@ -20,10 +21,11 @@ import com.ghostlock.app.core.flow.FlowRequest
  * @property discover 发现阶段参数；prepareGeneration 不允许调用方给。
  * @property expectedUid Kotlin 侧成功判据，不是 native 参数。
  * @property finishAction Kotlin 侧终态策略，不是 native 参数。
+ * @property progress 运行期事实行 seam（append-only；默认 NONE；不参与控制流）。
  * @property runSpec G4L-1..G4L-6 线性链的显式输入（G4L-5/6 的 owner/run/finish 类型）；
  *   null 表示历史请求形状（仍按 `cve43499-flow-not-wired` fail-closed 兼容）。
- *   非 null 时 Flow 在 IO 上下文调用 `Cve43499Run`，顺序与资源终结由 Run 独占，
- *   Flow 不复制物理顺序/重试/fallback。
+ *   非 null 时 Flow 在 IO 上下文自行编排（task-32：唯一编排层），资源生命周期交由
+ *   `backend/cve43499/lifecycle/Cve43499Lifecycle` 唯一管理层；Flow 不做重试/fallback。
  * @note 阶段：实验接线（用户指令「把 flow43499impl 写好」）；真机未验证，不接默认
  *   backend runner、不宣称 supported。session/prepare/discover/finishAction 保持原样，
  *   只为兼容既有测试/UI 构造。
@@ -35,6 +37,7 @@ data class Flow43499Request(
     val expectedUid: Long = 0L,
     val finishAction: Flow43499FinishAction = Flow43499FinishAction.RETIRE,
     val runSpec: Flow43499RunSpec? = null,
+    val progress: FlowProgress = FlowProgress.NONE,
 ) : FlowRequest {
     /** 四组 init DTO 一起给。 */
     data class Session(

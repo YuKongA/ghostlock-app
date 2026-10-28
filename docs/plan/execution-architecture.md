@@ -209,6 +209,54 @@ stateDiagram-v2
 - 不迁移 43284 JNI 包名/ABI；`ghostlock43284` 仍是外部工件。
 - 不在本文写进度、批次或 UI/配置接线（分别属 MASTER-PLAN、kt-step 计划、后端计划）。
 
+
+## 10. CVE-2026-98260 执行结构（payload 由 victim 启动；finish 由 rooted victim 执行）
+
+> 权威：结构适配计划 §4-D4/D5；run 权威=app Flow。
+
+```mermaid
+flowchart TB
+  subgraph APP["app"]
+    UI[UI/RunPage] --> BF["Flow98260Impl（validate→prepare→start→poll→verify→acceptance）"]
+    BF --> BS["BootSafetyStore（must_reboot 唯一权威）"]
+    BF --> CL["Cve98260ServiceClient（AIDL + log fd）"]
+  end
+  subgraph SVC["UserService（uid 2000 / shell 域）"]
+    SV["GhostlockUserService（公用 host）"] --> HT["Cve98260ShizukuHost"]
+    HT --> RE["RemoteExecutor"]
+    RE --> VL["core/victim VictimScriptLauncher（公用）"]
+    VL --> VS["VictimSession + helper"]
+  end
+  subgraph PAY["payload（独立；后台 detach）"]
+    P[payload] --> RV["rooted victim（fake-cred child）"]
+    RV --> FS["finish 脚本（profile 生成；exec sh）"]
+  end
+  CL -- "prepare(profile,payload,finishScript,runId,helperPath)/start/verify" --> SV
+  VS -- "execScript(启动脚本) → 后台起 payload / pid" --> P
+```
+
+```mermaid
+sequenceDiagram
+  participant A as app Flow98260Impl
+  participant S as 公用 host
+  participant V as victim helper
+  participant P as payload
+  A->>S: prepare(id,config,payload)
+  S->>S: 预检 + 写 payload/finish/journal
+  A->>S: start()
+  S->>V: VictimSession.start + execScript(launch script)
+  V->>P: 脚本后台启动 payload（日志/pid；脚本 exit）
+  S->>S: close(helper)（只回收 helper，不碰 payload）
+  loop poll（app 内）
+    A->>S: readLog/verify
+  end
+  P->>P: fake-cred rooted victim exec finish 脚本（SELinux/marker/ksud）
+  A->>S: verify()（script sha/exit/uid/marker/SELinux/ksud）
+  A->>A: Cve98260FinishAcceptance → 成功也落 must_reboot=true
+```
+
+**结构约束**：① run 唯一权威=app Flow；② service 只回执幂等原语；③ payload 由公用 victim helper `execScript` 启动脚本拉起（超时/close 只作用于脚本/helper，**绝不 kill payload**）；④ finish 由 payload 内 fake-cred rooted victim 直接 `execve(sh, script)`（非 parent/app/su）；⑤ BootSafetyStore 唯一权威；⑥ 任何路径不 kill/timeout/reap payload；⑦ 未过真机 G8–G14 不标 supported。
+
 ## 9. 指针
 
 - 进度：`docs/plan/MASTER-PLAN.md` · 排期：`docs/plan/ROADMAP.md`

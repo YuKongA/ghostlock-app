@@ -1,0 +1,21 @@
+
+com.ghostlock.app.backend.cve43499.victim.W1OnlyProbeTest:
+Error in w1OnlyJniProbe(com.ghostlock.app.backend.cve43499.victim.W1OnlyProbeTest):
+java.lang.AssertionError: E1|W1-FAILED|route_miss=cve43499:write.w1:actor-execute:clean-failure|primitive=1|attempt=1
+	at org.junit.Assert.fail(Assert.java:89)
+	at com.ghostlock.app.backend.cve43499.victim.W1OnlyProbeTest.runW1Only(W1OnlyProbeTest.kt:281)
+	at com.ghostlock.app.backend.cve43499.victim.W1OnlyProbeTest.w1OnlyJniProbe(W1OnlyProbeTest.kt:60)
+
+
+Time: 28.453
+There was 1 failure:
+1) w1OnlyJniProbe(com.ghostlock.app.backend.cve43499.victim.W1OnlyProbeTest)
+java.lang.AssertionError: E1|W1-FAILED|route_miss=cve43499:write.w1:actor-execute:clean-failure|primitive=1|attempt=1
+	at org.junit.Assert.fail(Assert.java:89)
+	at com.ghostlock.app.backend.cve43499.victim.W1OnlyProbeTest.runW1Only(W1OnlyProbeTest.kt:281)
+	at com.ghostlock.app.backend.cve43499.victim.W1OnlyProbeTest.w1OnlyJniProbe(W1OnlyProbeTest.kt:60)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
+
+

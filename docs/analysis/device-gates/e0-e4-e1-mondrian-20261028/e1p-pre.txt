@@ -1,0 +1,5 @@
+uptime=14.43
+Enforcing
+    State: RUNNING_LOCKED
+0
+413b98b1-2d88-411b-98bb-d160a8f059e8

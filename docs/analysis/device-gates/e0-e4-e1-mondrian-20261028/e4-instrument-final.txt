@@ -1,0 +1,23 @@
+
+com.ghostlock.app.backend.cve43499.victim.JniVictimMechanismProbeTest:
+Error in e0EnvironmentAndE4JniVictimTransport(com.ghostlock.app.backend.cve43499.victim.JniVictimMechanismProbeTest):
+java.lang.AssertionError: E4|spawn p50 超阈 10ms: 10433us
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.ghostlock.app.backend.cve43499.victim.JniVictimMechanismProbeTest.e4Transport(JniVictimMechanismProbeTest.kt:318)
+	at com.ghostlock.app.backend.cve43499.victim.JniVictimMechanismProbeTest.e0EnvironmentAndE4JniVictimTransport(JniVictimMechanismProbeTest.kt:48)
+
+
+Time: 1.514
+There was 1 failure:
+1) e0EnvironmentAndE4JniVictimTransport(com.ghostlock.app.backend.cve43499.victim.JniVictimMechanismProbeTest)
+java.lang.AssertionError: E4|spawn p50 超阈 10ms: 10433us
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.ghostlock.app.backend.cve43499.victim.JniVictimMechanismProbeTest.e4Transport(JniVictimMechanismProbeTest.kt:318)
+	at com.ghostlock.app.backend.cve43499.victim.JniVictimMechanismProbeTest.e0EnvironmentAndE4JniVictimTransport(JniVictimMechanismProbeTest.kt:48)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
+
+

@@ -23,15 +23,6 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-/** @brief Multicast 操作预算上限；超过即拒绝（单发路线不需要更大预算）。 */
-#define GLK43499_MULTICAST_MAX_BUDGET UINT64_C(4096)
-
-/** @brief Multicast 超时上限（1 小时）；只做边界校验。 */
-#define GLK43499_MULTICAST_MAX_TIMEOUT_NS UINT64_C(3600000000000)
-
-/** @brief 声明的 socket 缓冲上限；只做边界校验，不参与物理判定。 */
-#define GLK43499_MULTICAST_MAX_SOCKET_BUFFER (UINT64_C(1) << 22)
-
 /**
  * @brief 校验 Multicast 的最终地址三元组。
  * @param addresses Kotlin 给出的最终地址（Native 不再从 offset 重算）。
@@ -53,24 +44,49 @@ int32_t glk43499_carrier_multicast_prepare(
     multicast->socket_fd = -1;
     if (spec == NULL || spec->frame_bytes == NULL) return -EINVAL;
     if (!glk43499_multicast_valid_addresses(&spec->addresses)) return -EINVAL;
-    if (spec->frame_size == 0 ||
-        spec->frame_size > GLK43499_PHYS_MULTICAST_MAX_FRAME) {
+    /* A 决策（R2b）：帧容量上限来自请求字段 max_frame（Native 无容量宏）。 */
+    if (spec->frame_size == 0 || spec->max_frame == 0 ||
+        spec->frame_size > spec->max_frame) {
         return -EINVAL;
     }
     if (spec->address_family != 0 && spec->address_family != AF_INET) {
         return -EINVAL;
     }
+    /* B15：attempt 计数最终收窄到 int32（consumer_go/回执），域上限显式。 */
     if (spec->operation_budget == 0 ||
-        spec->operation_budget > GLK43499_MULTICAST_MAX_BUDGET) {
+        spec->operation_budget > (uint64_t) INT32_MAX) {
         return -EINVAL;
     }
+    /* 超时非零且 deadline 加法不溢出（不内置 1 小时目标上限）。 */
+    const uint64_t now_ns = glk43499_internal_now_ns();
     if (spec->timeout_ns == 0 ||
-        spec->timeout_ns > GLK43499_MULTICAST_MAX_TIMEOUT_NS) {
+        spec->timeout_ns > UINT64_MAX - now_ns) {
         return -EINVAL;
     }
-    if (spec->socket_buffer_size > GLK43499_MULTICAST_MAX_SOCKET_BUFFER) {
+    /* socket 缓冲：setsockopt 体系上限由系统头派生；非零且可表示。 */
+    if (spec->socket_buffer_size == 0 ||
+        spec->socket_buffer_size > (uint64_t) INT32_MAX) {
         return -EINVAL;
     }
+    /* P0a：arm 序列/保持参数来自请求；非法值 fail-closed。 */
+    if (spec->arm_sequence == 0 || spec->arm_hold_ns == 0) {
+        return -EINVAL;
+    }
+    /* D3/B7：ghost disarm 参数域校验；disarm_required=0 表示不做 disarm（同 legacy
+     * FAILURE→不做）。required=1 时 futex_waiter_flag 必须非零 —— 只带 ghost_pid
+     * 的 FUTEX_LOCK_PI 不是旧 D3 disarm 的等价物（审计 B7：旧实现允许 flag=0）。 */
+    if (spec->ghost_pid <= 0 ||
+        !glk43499_internal_valid_futex_waiter_flag(
+            spec->futex_waiter_flag) ||
+        spec->disarm_required > 1 ||
+        (spec->disarm_required != 0 && spec->futex_waiter_flag == 0)) {
+        return -EINVAL;
+    }
+    multicast->arm_hold_ns = spec->arm_hold_ns;
+    multicast->arm_sequence = spec->arm_sequence;
+    multicast->ghost_pid = spec->ghost_pid;
+    multicast->futex_waiter_flag = spec->futex_waiter_flag;
+    multicast->disarm_required = spec->disarm_required;
     /* 深拷贝 frame：JNI 的临时缓冲在 land/prepare 返回后即释放。 */
     multicast->frame = (uint8_t *) malloc((size_t) spec->frame_size);
     if (multicast->frame == NULL) return -ENOMEM;
@@ -106,37 +122,54 @@ void glk43499_carrier_multicast_trigger(
     struct glk43499_carrier_multicast *multicast =
         &carrier->value.multicast_sendmsg;
     int32_t result = 0;
+    /* task-113：崩溃前快照（只写 atomic；无 IO/日志）。 */
+    atomic_store(&shared->carrier_started, 1);
+    atomic_store(&shared->route_enter_ns,
+                 (uint64_t) atomic_load(&shared->requeue_call_ns) + 1u);
     atomic_store(&shared->consumer_calls, 0);
     atomic_store(&shared->consumer_success, 0);
     atomic_store(&shared->consumer_go, 0);
     atomic_store(&shared->route_delay_usec, 0);
-    const uint64_t deadline =
-        glk43499_internal_deadline(multicast->timeout_ns);
 
     uint64_t operations = 0;
+    int32_t last_stamp_result = -1;
+    int32_t last_stamp_errno = 0;
+    int32_t inflight_timeout = 0;
+    /* R3/B2：与 legacy2 `route_multicast.cpp:101-131` 对齐的 arm 语义 ——
+     * operation_budget 是总 stamp attempt 上限（旧 attempts=128）；
+     * attempt < arm_sequence 前只重喷不 arm（旧 arm_sequence=16）；
+     * arm 后按 arm_hold_ns 的**自旋次数**等待 consumer 首调用（旧 arm_hold=20000）。
+     * B12：窗口内不取墙钟（原 deadline/vDSO 依赖已删除）；
+     * 总时长由 operation_budget 与自旋次数共同界定，不依赖 vDSO。 */
     for (uint64_t attempt = 1; attempt <= multicast->operation_budget;
          ++attempt) {
-        if (glk43499_internal_expired(deadline)) break;
         ++operations;
         errno = 0;
         const int32_t stamp_result =
             setsockopt(multicast->socket_fd, IPPROTO_IP, MCAST_BLOCK_SOURCE,
                        multicast->frame, (socklen_t) multicast->frame_size);
-        const int32_t stamp_errno = errno;
+        last_stamp_result = stamp_result;
+        last_stamp_errno = errno;
+        /* Step C：append-only carrier 快照（无 IO/日志）。 */
+        atomic_store(&shared->carrier_frames_sent, (int32_t) operations);
+        atomic_store(&shared->carrier_last_errno, last_stamp_errno);
         /* copy 先于 family 检查完成，因此 EADDRNOTAVAIL 仍表示 waiter 已上栈。 */
-        if (stamp_result != 0 && stamp_errno != EADDRNOTAVAIL) continue;
+        if (attempt < multicast->arm_sequence ||
+            (stamp_result != 0 && last_stamp_errno != EADDRNOTAVAIL)) {
+            continue;
+        }
         atomic_store(&shared->consumer_go, (int32_t) attempt);
         for (uint64_t spin = 0;
-             spin < GLK43499_PHYS_MULTICAST_ARM_HOLD &&
+             spin < multicast->arm_hold_ns &&
              atomic_load(&shared->consumer_calls) == 0;
              ++spin) {
             __asm__ volatile("yield" ::: "memory");
         }
         atomic_store(&shared->consumer_go, 0);
-        for (uint64_t spin = 0;
-             spin < GLK43499_PHYS_DISARM_SPIN_LIMIT &&
-             atomic_load(&shared->consumer_inflight) != 0;
-             ++spin) {
+        /* Step B1（Lead 批准 semantic change；legacy 依据 legacy2/core/route_multicast.cpp:126-127）：
+         * 改回**无界**等待 consumer 退出 inflight（legacy 同形）；B13 有界化会提前收尾窗口，
+         * 使 consumer 仍 walk 被 poison 的内核栈帧 ⇒ UAF/panic/hang 候选。 */
+        while (atomic_load(&shared->consumer_inflight) != 0) {
             __asm__ volatile("yield" ::: "memory");
         }
         if (atomic_load(&shared->consumer_success) > 0) {
@@ -144,20 +177,45 @@ void glk43499_carrier_multicast_trigger(
             break;
         }
     }
+    /* legacy 成功判据：stamp 成功返回 0 或 consumer 观察到成功。
+     * B13：inflight 超限必须保持失败（不得被 legacy 成功回退覆盖）。 */
+    if (!inflight_timeout && last_stamp_result == 0 &&
+        atomic_load(&shared->consumer_success) == 0) {
+        result = 1;
+    }
+    atomic_store(&shared->carrier_step,
+                 inflight_timeout != 0 ? GLK43499_CARRIER_STEP_INFLIGHT
+                                       : GLK43499_CARRIER_STEP_IO);
     if (outcome != NULL) {
         outcome->operations = operations;
         outcome->calls = (uint64_t) atomic_load(&shared->consumer_calls);
         outcome->successes = (uint64_t) atomic_load(&shared->consumer_success);
-        outcome->failed = result != 0 ? 0 : EIO;
+        outcome->failed = inflight_timeout != 0
+                              ? EBUSY
+                              : (result != 0 ? 0 : EIO);
         outcome->observed_write = result;
+        /* R3a-2/B7：最后一次物理步骤/errno 进回执（可证伪诊断）。 */
+        outcome->last_step = inflight_timeout != 0
+                                 ? GLK43499_CARRIER_STEP_INFLIGHT
+                                 : GLK43499_CARRIER_STEP_IO;
+        outcome->last_errno =
+            inflight_timeout != 0 ? EBUSY : last_stamp_errno;
     }
 }
 
 int32_t glk43499_carrier_multicast_disarm(struct glk43499_carrier *carrier,
                                           struct glk43499_pi_shared *shared) {
-    (void) carrier;
+    struct glk43499_carrier_multicast *multicast =
+        &carrier->value.multicast_sendmsg;
     atomic_store(&shared->consumer_go, 0);
-    for (uint64_t spin = 0; spin < GLK43499_PHYS_DISARM_SPIN_LIMIT; ++spin) {
+    /* R3/B7：真实 D3 ghost disarm 已由 waiter 在路由后以请求参数执行
+     * （actor.c waiter_multicast）；此处不再多发一次 stamp —— 审计指出该
+     * 额外 stamp 会污染窗口外时序且不属于 legacy disarm 语义。 */
+    /* Step B1（legacy route_multicast.cpp:149-155）：无界等 inflight 再返回。 */
+    while (atomic_load(&shared->consumer_inflight) != 0) {
+        __asm__ volatile("yield" ::: "memory");
+    }
+    if (0) {
         if (atomic_load(&shared->consumer_inflight) == 0) return 1;
         __asm__ volatile("yield" ::: "memory");
     }
@@ -175,6 +233,9 @@ int32_t glk43499_carrier_multicast_release(
     multicast->frame = NULL;
     multicast->frame_size = 0;
     multicast->operation_budget = 0;
+    multicast->arm_hold_ns = 0;
+    multicast->arm_sequence = 0;
+    multicast->disarm_spin_limit = 0;
     multicast->prepared = 0;
     return clean;
 }

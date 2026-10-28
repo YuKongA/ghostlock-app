@@ -1,0 +1,8 @@
+
+com.ghostlock.app.backend.cve43499.victim.ActorFutexSelfTest:.
+
+Time: 0.309
+
+OK (1 test)
+
+

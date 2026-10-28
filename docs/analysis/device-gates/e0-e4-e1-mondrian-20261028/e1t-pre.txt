@@ -1,0 +1,5 @@
+uptime=15.87
+Enforcing
+null
+  max_phantom_processes=32
+    State: RUNNING_UNLOCKED

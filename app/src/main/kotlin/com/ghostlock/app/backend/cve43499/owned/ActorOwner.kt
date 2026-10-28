@@ -120,6 +120,13 @@ internal class ActorOwner private constructor(
      * @note 已转移/已关闭的调用是本地拒绝，不触 Native。
      * @note 阶段：G4L-5 终结。
      */
+    /** task-113 debug-only：carrier 崩溃前快照（只读 JNI atomic）。 */
+    internal fun debugSnapshot(): LongArray? {
+        val token = tokenLocked()
+        return if (token == 0L) null
+        else runCatching { Native43499Jni.actorDebugSnapshot(token) }.getOrNull()
+    }
+
     internal override fun closeDetailed(): OwnerCloseOutcome = guarded {
         if (lifecycleLocked() != Lifecycle.OPEN || tokenLocked() == 0L) {
             return@guarded OwnerCloseOutcome.Rejected("actor-not-open:" + describe())

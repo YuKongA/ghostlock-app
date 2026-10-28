@@ -1,9 +1,11 @@
 package com.ghostlock.app.ui.screen.module.backends
 
 import com.ghostlock.app.R
+import com.ghostlock.app.backend.BackendId
 import com.ghostlock.app.ui.Natives
 import com.ghostlock.app.ui.backend.BackendConfigSchema
 import com.ghostlock.app.ui.backend.BackendReadiness
+import com.ghostlock.app.ui.backend.BackendFlowRunner
 import com.ghostlock.app.ui.backend.BackendRunCapability
 import com.ghostlock.app.ui.backend.ReadinessReason
 import com.ghostlock.app.ui.util.rootAvailable
@@ -19,13 +21,15 @@ import com.ghostlock.app.ui.util.rootAvailable
  *  - 物理输入（landing.finalBytes、primitive 地址/frame）尚无 Kotlin 计算来源。
  */
 object BackendCve202643499 : BackendSpec {
+    override val id: BackendId = BackendId.CVE_43499
+
+    override val runner: BackendFlowRunner? = com.ghostlock.app.ui.backend.Cve43499FlowRunner
+
     override val cve: String = "CVE-2026-43499"
     override val titleRes: Int = R.string.backend_cve_2026_43499
 
     override fun rows(): List<BackendRow> = Profiles43499.rows()
 
-    override val runCapability: BackendRunCapability =
-        BackendRunCapability.FLOW_RUN
 
     /**
      * 当前无可编辑配置（物理输入/地址/frame 由后续批接线后再扩展 schema）。
@@ -54,6 +58,12 @@ object BackendCve202643499 : BackendSpec {
             listOf(
                 ReadinessReason(R.string.backend_readiness_unverified_env, rootDetail),
                 ReadinessReason(R.string.backend_readiness_cve43499_inputs),
+                /* B4 fail-closed：默认 debug 单 W1/perf.enabled=0/无 rooted victim 可能 ⇒
+                 * 明确 unsupported-single-w1，不得标 supported（单 W1 路径行为不变）。 */
+                ReadinessReason(
+                    R.string.backend_readiness_cve43499_inputs,
+                    "unsupported-single-w1:default-debug",
+                ),
             ),
         )
     }

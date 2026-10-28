@@ -1,0 +1,30 @@
+10-29 03:14:33.440  7930  7956 I E1-W1-ONLY: E1|selinux|api=false|enforce_file=unreadable|proof=external-shell-ack|external_ack=true
+10-29 03:14:33.438  7930  7930 W roidJUnitRunner: type=1400 audit(0.0:166): avc:  denied  { read } for  name="enforce" dev="selinuxfs" ino=4 scontext=u:r:untrusted_app:s0:c177,c256,c512,c768 tcontext=u:object_r:selinuxfs:s0 tclass=file permissive=0 app=com.ghostlock.app
+10-29 03:14:33.438  7930  7930 W roidJUnitRunner: type=1400 audit(0.0:167): avc:  denied  { read } for  name="enforce" dev="selinuxfs" ino=4 scontext=u:r:untrusted_app:s0:c177,c256,c512,c768 tcontext=u:object_r:selinuxfs:s0 tclass=file permissive=0 app=com.ghostlock.app
+10-29 03:14:33.438  7930  7930 W roidJUnitRunner: type=1400 audit(0.0:168): avc:  denied  { read } for  name="modules" dev="proc" ino=4026532062 scontext=u:r:untrusted_app:s0:c177,c256,c512,c768 tcontext=u:object_r:proc_modules:s0 tclass=file permissive=0 app=com.ghostlock.app
+10-29 03:14:33.441  7930  7956 I E1-W1-ONLY: E1|ksu|existing_userspace_paths=[]|module_lines=0|sys_module_ksu=[]|proc_modules_lines=-1
+10-29 03:14:33.438  7930  7930 W roidJUnitRunner: type=1400 audit(0.0:169): avc:  denied  { read } for  name="module" dev="sysfs" ino=46834 scontext=u:r:untrusted_app:s0:c177,c256,c512,c768 tcontext=u:object_r:sysfs:s0 tclass=dir permissive=0 app=com.ghostlock.app
+10-29 03:14:33.441  7930  7956 I E1-W1-ONLY: E1|cold_boot|elapsed_realtime_s=32|proc_uptime=unreadable|max=1800
+10-29 03:14:33.438  7930  7930 W roidJUnitRunner: type=1400 audit(0.0:170): avc:  denied  { read } for  name="modules" dev="proc" ino=4026532062 scontext=u:r:untrusted_app:s0:c177,c256,c512,c768 tcontext=u:object_r:proc_modules:s0 tclass=file permissive=0 app=com.ghostlock.app
+10-29 03:14:33.442  7930  7956 I E1-W1-ONLY: E1|power|interactive=true|device_idle=false|power_save=false
+10-29 03:14:33.442  7930  7956 I E1-W1-ONLY: E1|pstore|exists=true
+10-29 03:14:33.464  7930  7956 I E1-W1-ONLY: E1|debug_profile|release=5.10.252-gki-gabcbe4b2bc10|kernel_major=5|primitive=MULTICAST|mm_struct_sz=960
+10-29 03:14:33.466  7930  7956 I E1-W1-ONLY: E1|begin|primitive=MULTICAST|ghost_pid=7930
+10-29 03:14:34.981  2927  4737 D ApfFilter: (wlan0): Ignoring RA RA fe80::1c0a:d7cf:eba2:2db7 -> fe80::fc42:88ff:fe6d:fa00 0s RIO 1800s fd3d:e1d9:3d8e:1::/64  which matches RA fe80::1c0a:d7cf:eba2:2db7 -> fe80::fc42:88ff:fe6d:fa00 0s RIO 1800s fd3d:e1d9:3d8e:1::/64 
+10-29 03:14:39.893  7930  8221 D ProfileInstaller: Installing profile for com.ghostlock.app
+10-29 03:14:50.670  3673  3673 I [schedu][0x3de14867][19:14:50.651731] wlan: [3673:I:CMN_MLME] [19:14:50.636000] [NEIGH_RPT_REQ] VDEV[0]
+10-29 03:14:50.670  3673  3673 I [schedu][0x3de14a7b][19:14:50.651759] wlan: [3673:I:CMN_MLME] [19:14:50.648000] [NEIGH_RPT_RSP] VDEV[0] { 2437 }
+10-29 03:14:50.670  3673  3673 E [schedu][0x3de14b44][19:14:50.651769] wlan: [3673:E:mlme] wlan_clear_sae_auth_logs_cache: Invalid vdev:0
+10-29 03:14:55.288     0     0 I [    C5] [soft_i][0x432a63aa][19: 14:55.270334] wlan: [0:I:WMA] 00000080: fb 91 61 55 da 02 91 05 a2 57 e1 68 a3 93 f9 e1
+10-29 03:14:58.666     0     0 I [    C5] [soft_i][0x47080e1d][19: 14:58.648394] wlan: [0:I:WMA] 00000030: c4 15 a0 6e 7d 3a 01 bb 9e 48 bf 03 fb 02 00 4c
+10-29 03:14:58.666     0     0 I [    C5] [soft_i][0x47081047][19: 14:58.648423] wlan: [0:I:WMA] 00000080: fb 91 61 55 da 02 91 05 a2 57 e1 68 a3 93 f9 e1
+10-29 03:15:00.205  7930  7956 I E1-W1-ONLY: E1|close_chain|retained=false|termination=chain=skipped;|all_released=true
+10-29 03:15:00.209  7930  7956 I E1-W1-ONLY: E1|report_file=/data/user/0/com.ghostlock.app/files/e1-w1-only-report.txt|lines=11
+10-29 03:15:00.210  7930  7956 E TestRunner: failed: w1OnlyJniProbe(com.ghostlock.app.backend.cve43499.victim.W1OnlyProbeTest)
+10-29 03:15:00.214  7930  7956 E TestRunner: java.lang.AssertionError: E1|W1-FAILED|route_miss=cve43499:write.w1:landing:clean-failure|primitive=null
+10-29 03:15:00.214  7930  7956 E TestRunner: 	at com.ghostlock.app.backend.cve43499.victim.W1OnlyProbeTest.runW1Only(W1OnlyProbeTest.kt:262)
+10-29 03:15:00.214  7930  7956 E TestRunner: 	at com.ghostlock.app.backend.cve43499.victim.W1OnlyProbeTest.w1OnlyJniProbe(W1OnlyProbeTest.kt:60)
+10-29 03:15:00.217  7930  7956 I TestRunner: finished: w1OnlyJniProbe(com.ghostlock.app.backend.cve43499.victim.W1OnlyProbeTest)
+10-29 03:15:00.234  2089  3887 I ActivityManager: Force stopping com.ghostlock.app appid=10177 user=0: finished inst
+10-29 03:15:00.236  2089  3887 I ActivityManager: Killing 7930:com.ghostlock.app/u0a177 (adj 0): stop com.ghostlock.app due to finished inst
+10-29 03:15:00.266  2089  3887 V ActivityManager: Got obituary of 7930:com.ghostlock.app

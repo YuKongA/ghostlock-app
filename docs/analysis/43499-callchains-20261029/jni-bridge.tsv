@@ -1,0 +1,72 @@
+method	kotlin_loc	native_loc	kotlin_sig	native_params
+Native43499Jni.actorDebugSnapshot	MISSING	app/src/main/cpp/gl43499/jni43499.c:1889		[['env', 'JNIEnv *'], ['thiz', 'jobject'], ['handle', 'jlong']]
+Native43499Jni.actorFutexSelfTest	MISSING	app/src/main/cpp/gl43499/jni43499.c:1875		[['env', 'JNIEnv *'], ['thiz', 'jobject'], ['variant', 'jint']]
+Native43499Jni.cancelActor	MISSING	app/src/main/cpp/gl43499/jni43499.c:1278		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['actor', 'jlong'], ['result_object', 'jobject']]
+Native43499Jni.cancelPlacement	MISSING	app/src/main/cpp/gl43499/jni43499.c:1056		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['handle', 'jlong'], ['result_object', 'jobject']]
+Native43499Jni.closeActor	MISSING	app/src/main/cpp/gl43499/jni43499.c:1287		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['actor', 'jlong'], ['result_object', 'jobject']]
+Native43499Jni.closePage	MISSING	app/src/main/cpp/gl43499/jni43499.c:1138		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['page', 'jlong'], ['result_object', 'jobject']]
+Native43499Jni.closePerfSampler	MISSING	app/src/main/cpp/gl43499/jni43499.c:1395		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['handle', 'jlong'], ['result_object', 'jobject']]
+Native43499Jni.closePlacement	MISSING	app/src/main/cpp/gl43499/jni43499.c:1065		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['handle', 'jlong'], ['result_object', 'jobject']]
+Native43499Jni.collectPerfSamples	MISSING	app/src/main/cpp/gl43499/jni43499.c:1328		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['handle', 'jlong'], ['out', 'jbyteArray'], ['result_object', 'jobject']]
+Native43499Jni.executeActor	MISSING	app/src/main/cpp/gl43499/jni43499.c:1235		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['actor', 'jlong'], ['result_object', 'jobject']]
+Native43499Jni.landPage	MISSING	app/src/main/cpp/gl43499/jni43499.c:1074		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['placement', 'jlong'], ['request_object', 'jobject'], ['final_bytes', 'jbyteArray'], ['content_generation', 'jlong'], ['result_object', 'jobject']]
+Native43499Jni.mcast510Probe	MISSING	app/src/main/cpp/gl43499/mcast510_probe.c:236		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['fake_lock', 'jlong'], ['fake_task', 'jlong'], ['fake_w0', 'jlong'], ['page_base', 'jlong'], ['target', 'jlong'], ['timeout_ms', 'jlong'], ['consumer_cpu', 'jint'], ['pi_waiter', 'jboolean'], ['waiter_cpu', 'jint'], ['owner', 'jboolean'], ['requeue', 'jboolean'], ['settle_ms', 'jint']]
+Native43499Jni.openPerfSampler	MISSING	app/src/main/cpp/gl43499/jni43499.c:1296		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['request_object', 'jobject'], ['result_object', 'jobject']]
+Native43499Jni.prepareActor	MISSING	app/src/main/cpp/gl43499/jni43499.c:1158		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['page', 'jlong'], ['setup_object', 'jobject'], ['primitive_object', 'jobject'], ['result_object', 'jobject']]
+Native43499Jni.preparePlacement	MISSING	app/src/main/cpp/gl43499/jni43499.c:1006		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['request_object', 'jobject'], ['result_object', 'jobject']]
+Native43499Jni.raiseProcessLimits	MISSING	app/src/main/cpp/gl43499/jni43499.c:1472		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['result_object', 'jobject']]
+Native43499PlacementRequest.actorDebugSnapshot	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:509	MISSING	actorDebugSnapshot(handle: Long): LongArray	
+Native43499PlacementRequest.actorFutexSelfTest	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:508	MISSING	actorFutexSelfTest(variant: Int): IntArray	
+Native43499PlacementRequest.cancelActor	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:535	MISSING	cancelActor(actor: Long, result: Native43499CloseResult): Int	
+Native43499PlacementRequest.cancelPlacement	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:450	MISSING	cancelPlacement(handle: Long, result: Native43499CloseResult): Int	
+Native43499PlacementRequest.closeActor	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:538	MISSING	closeActor(actor: Long, result: Native43499CloseResult): Int	
+Native43499PlacementRequest.closePage	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:521	MISSING	closePage(page: Long, result: Native43499CloseResult): Int	
+Native43499PlacementRequest.closePerfSampler	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:573	MISSING	closePerfSampler(handle: Long, result: Native43499CloseResult): Int	
+Native43499PlacementRequest.closePlacement	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:453	MISSING	closePlacement(handle: Long, result: Native43499CloseResult): Int	
+Native43499PlacementRequest.closeVictim	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:708	MISSING	closeVictim(handle: Long, result: VictimCloseJniResult): Int	
+Native43499PlacementRequest.collectPerfSamples	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:560	MISSING	collectPerfSamples(	
+Native43499PlacementRequest.detachVictim	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:699	MISSING	detachVictim(handle: Long): Int	
+Native43499PlacementRequest.executeActor	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:532	MISSING	executeActor(actor: Long, result: Native43499ActorExecuteResult): Int	
+Native43499PlacementRequest.forkGuardCanary	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:731	MISSING	forkGuardCanary(): Int	
+Native43499PlacementRequest.forkGuardReset	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:723	MISSING	forkGuardReset(): Int	
+Native43499PlacementRequest.forkGuardSnapshot	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:716	MISSING	forkGuardSnapshot(): Long	
+Native43499PlacementRequest.killVictim	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:691	MISSING	killVictim(handle: Long): Int	
+Native43499PlacementRequest.landPage	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:512	MISSING	landPage(	
+Native43499PlacementRequest.mcast510Probe	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:493	MISSING	mcast510Probe(	
+Native43499PlacementRequest.openPerfSampler	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:547	MISSING	openPerfSampler(	
+Native43499PlacementRequest.prepareActor	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:524	MISSING	prepareActor(	
+Native43499PlacementRequest.preparePlacement	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:444	MISSING	preparePlacement(	
+Native43499PlacementRequest.raiseProcessLimits	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:462	MISSING	raiseProcessLimits(result: Native43499LimitsResult): Int	
+Native43499PlacementRequest.rawSizeVictim	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:674	MISSING	rawSizeVictim(handle: Long): Long	
+Native43499PlacementRequest.readRawVictim	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:663	MISSING	readRawVictim(	
+Native43499PlacementRequest.receiveVictim	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:652	MISSING	receiveVictim(handle: Long, out: ByteArray, timeoutMs: Int): Int	
+Native43499PlacementRequest.sendVictim	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:642	MISSING	sendVictim(handle: Long, frame: ByteArray, timeoutMs: Int): Int	
+Native43499PlacementRequest.spawnVictim	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:626	MISSING	spawnVictim(	
+Native43499PlacementRequest.waitExitVictim	app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt:683	MISSING	waitExitVictim(handle: Long, timeoutMs: Int): Int	
+Native98260Jni.attachLogFd	app/src/main/kotlin/com/ghostlock/app/jni/Native98260Jni.kt:47	MISSING	attachLogFd(fd: Int)	
+Native98260Jni.detachLogFd	app/src/main/kotlin/com/ghostlock/app/jni/Native98260Jni.kt:50	MISSING	detachLogFd()	
+Native98260Jni.logLine	app/src/main/kotlin/com/ghostlock/app/jni/Native98260Jni.kt:58	MISSING	logLine(level: Int, msg: String)	
+Native98260Jni.nativeApiVersion	app/src/main/kotlin/com/ghostlock/app/jni/Native98260Jni.kt:29	MISSING	nativeApiVersion(): Int	
+Native98260Jni.spawnStatic	app/src/main/kotlin/com/ghostlock/app/jni/Native98260Jni.kt:39	MISSING	spawnStatic(path: String, argv: Array<String>, outPath: String): Int	
+Native98260Jni.waitExit	app/src/main/kotlin/com/ghostlock/app/jni/Native98260Jni.kt:67	MISSING	waitExit(pid: Int, timeoutMs: Int): Int	
+NativeKernelSnitch.bruteforce	app/src/main/kotlin/com/ghostlock/app/jni/NativeKernelSnitch.kt:57	app/src/main/cpp/glgeneral/general_jni.c:134	bruteforce(handle: Long): Long	[['env', 'JNIEnv *'], ['thiz', 'jobject'], ['handle', 'jlong']]
+NativeKernelSnitch.create	app/src/main/kotlin/com/ghostlock/app/jni/NativeKernelSnitch.kt:34	app/src/main/cpp/glgeneral/general_jni.c:98	create(	[['env', 'JNIEnv *'], ['thiz', 'jobject'], ['mm_struct_sz', 'jlong'], ['mm_slab_order', 'jlong'], ['thread_cnt', 'jlong'], ['collision_cnt', 'jlong'], ['verbose', 'jboolean'], ['core', 'jint']]
+NativeKernelSnitch.destroy	app/src/main/kotlin/com/ghostlock/app/jni/NativeKernelSnitch.kt:75	app/src/main/cpp/glgeneral/general_jni.c:169	destroy(handle: Long): Long	[['env', 'JNIEnv *'], ['thiz', 'jobject'], ['handle', 'jlong']]
+NativeKernelSnitch.findCollisions	app/src/main/kotlin/com/ghostlock/app/jni/NativeKernelSnitch.kt:49	app/src/main/cpp/glgeneral/general_jni.c:116	findCollisions(handle: Long): Boolean	[['env', 'JNIEnv *'], ['thiz', 'jobject'], ['handle', 'jlong']]
+NativeKernelSnitch.run	app/src/main/kotlin/com/ghostlock/app/jni/NativeKernelSnitch.kt:84	app/src/main/cpp/glgeneral/general_jni.c:186	run(	[['env', 'JNIEnv *'], ['thiz', 'jobject'], ['mm_struct_sz', 'jlong'], ['mm_slab_order', 'jlong'], ['thread_cnt', 'jlong'], ['collision_cnt', 'jlong'], ['verbose', 'jboolean'], ['core', 'jint']]
+NativeKernelSnitch.state	app/src/main/kotlin/com/ghostlock/app/jni/NativeKernelSnitch.kt:66	app/src/main/cpp/glgeneral/general_jni.c:153	state(handle: Long): Int	[['env', 'JNIEnv *'], ['thiz', 'jobject'], ['handle', 'jlong']]
+NativeLogBridge.attachFd43284	app/src/main/kotlin/com/ghostlock/app/log/NativeLogBridge.kt:20	MISSING	attachFd43284(fd: Int, debug: Boolean): Int	
+NativeLogBridge.attachFd43499	app/src/main/kotlin/com/ghostlock/app/log/NativeLogBridge.kt:17	MISSING	attachFd43499(fd: Int, debug: Boolean): Int	
+NativeLogBridge.attachFdLegacy	app/src/main/kotlin/com/ghostlock/app/log/NativeLogBridge.kt:14	MISSING	attachFdLegacy(fd: Int, debug: Boolean): Int	
+VictimTransportJni.closeVictim	MISSING	app/src/main/cpp/gl43499/jni43499.c:1793		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['handle', 'jlong'], ['result_object', 'jobject']]
+VictimTransportJni.detachVictim	MISSING	app/src/main/cpp/gl43499/jni43499.c:1784		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['handle', 'jlong']]
+VictimTransportJni.forkGuardCanary	MISSING	app/src/main/cpp/gl43499/jni43499.c:1848		[['env', 'JNIEnv *'], ['clazz', 'jclass']]
+VictimTransportJni.forkGuardReset	MISSING	app/src/main/cpp/gl43499/jni43499.c:1839		[['env', 'JNIEnv *'], ['clazz', 'jclass']]
+VictimTransportJni.forkGuardSnapshot	MISSING	app/src/main/cpp/gl43499/jni43499.c:1829		[['env', 'JNIEnv *'], ['clazz', 'jclass']]
+VictimTransportJni.killVictim	MISSING	app/src/main/cpp/gl43499/jni43499.c:1772		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['handle', 'jlong']]
+VictimTransportJni.rawSizeVictim	MISSING	app/src/main/cpp/gl43499/jni43499.c:1745		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['handle', 'jlong']]
+VictimTransportJni.readRawVictim	MISSING	app/src/main/cpp/gl43499/jni43499.c:1713		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['handle', 'jlong'], ['offset', 'jlong'], ['out', 'jbyteArray'], ['length', 'jint']]
+VictimTransportJni.receiveVictim	MISSING	app/src/main/cpp/gl43499/jni43499.c:1671		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['handle', 'jlong'], ['out', 'jbyteArray'], ['timeout_ms', 'jint']]
+VictimTransportJni.sendVictim	MISSING	app/src/main/cpp/gl43499/jni43499.c:1639		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['handle', 'jlong'], ['frame', 'jbyteArray'], ['timeout_ms', 'jint']]
+VictimTransportJni.spawnVictim	MISSING	app/src/main/cpp/gl43499/jni43499.c:1556		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['helper_path', 'jstring'], ['argv', 'jobjectArray'], ['envp', 'jobjectArray'], ['raw_size', 'jlong'], ['result_object', 'jobject']]
+VictimTransportJni.waitExitVictim	MISSING	app/src/main/cpp/gl43499/jni43499.c:1758		[['env', 'JNIEnv *'], ['clazz', 'jclass'], ['handle', 'jlong'], ['timeout_ms', 'jint']]

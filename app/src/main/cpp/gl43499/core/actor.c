@@ -24,7 +24,20 @@
 
 #include "carrier_internal.h"
 
+#include <time.h>
+
+/**
+ * @brief task-108：单调时钟 ns（诊断时间戳；PI 窗口内允许只读时钟）。
+ * @return CLOCK_MONOTONIC 纳秒；失败返回 0。
+ */
+static uint64_t glk43499_actor_now_ns(void) {
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) return 0;
+    return (uint64_t) now.tv_sec * UINT64_C(1000000000) + (uint64_t) now.tv_nsec;
+}
+
 #include "actor.h"
+#include "cpu_pin_internal.h"
 
 #include "page_internal.h"
 
@@ -35,6 +48,7 @@
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/resource.h>
 #include <sys/syscall.h>
 #include <time.h>
 #include <unistd.h>
@@ -76,6 +90,15 @@ struct glk43499_actor_impl {
     uint64_t parked_timeout_ns;
     uint64_t execution_timeout_ns;
     uint64_t shutdown_timeout_ns;
+
+    /* P0a：全部来自请求的 PI 竞态/等待参数（无默认回退）。 */
+    uint64_t consumer_max;
+    uint64_t consumer_burst;
+    uint64_t lock_pi_spin_ns;
+    uint64_t poll_us;
+    uint64_t setup_settle_us;
+    int64_t requeue_expected;
+    uint64_t disarm_spin_limit;
 
     uint32_t thread_count;
     glk43499_primitive_kind primitive_kind;
@@ -129,7 +152,7 @@ struct glk43499_actor_sched_attr {
  * @param tid 目标线程 TID（waiter 线程发布的 gettid）。
  * @param nice_value -20..19 的 nice 值（调用方已校验）。
  * @return 0 成功；-1 失败（errno 保留）。
- * @note `sched_policy=3`（SCHED_BATCH）且改变 nice 是旧的物理触发方式；
+ * @note `sched_policy=3`（SCHED_BATCH）+ 轮转 nice 是旧的物理触发方式（R3/B3）；
  *       失败不是致命错误：consumer 会退回 PI lock 探测，见 consumer 循环。
  * @note 阶段：consumer 线程的每次调用（PI 窗口内，但只做 syscall，不分配）。
  */
@@ -163,7 +186,7 @@ static int32_t glk43499_actor_join_thread(
     const uint64_t deadline = glk43499_internal_deadline(timeout_ns);
     while (atomic_load(exit_flag) == 0) {
         if (glk43499_internal_expired(deadline)) return 0;
-        (void) usleep((useconds_t) GLK43499_PHYS_POLL_US);
+        (void) usleep((useconds_t) actor->poll_us);
     }
     if (pthread_join(thread, NULL) != 0) return 0;
     *started = 0;
@@ -217,9 +240,10 @@ static void glk43499_actor_request_stop(struct glk43499_actor_impl *actor) {
  */
 static void *glk43499_actor_consumer_run(void *arg) {
     struct glk43499_actor_impl *actor = (struct glk43499_actor_impl *) arg;
+    /* G08：consumer 恒 pin（legacy 同形；不接受 no-pin 哨兵）。 */
     (void) glk43499_internal_pin_cpu(actor->consumer_cpu);
-    (void) glk43499_actor_set_nice((int32_t) syscall(SYS_gettid),
-                                   actor->consumer_priority);
+    /* R3/B3：consumer 不再自设固定 nice；niceness 只以轮转值作用在 waiter TID 上
+     * （legacy `threads.cpp:135-138`：calls%19+1；19 由系统头 PRIO_MAX-1 派生）。 */
     atomic_store(&actor->shared.consumer_ready, 1);
 
     int32_t seen_sequence = 0;
@@ -230,11 +254,17 @@ static void *glk43499_actor_consumer_run(void *arg) {
             continue;
         }
         seen_sequence = sequence;
+        /* R3a-2/P1：consumer 起跑延迟（旧 `race.cpp:256-259`：每个 sequence 先
+         * usleep(route_delay_usec) 再开始 burst）。延迟由 carrier 在 PI 窗口内发布、
+         * consumer 侧执行，不污染 waiter 的拷贝→walk 序列。 */
+        const uint32_t delay_usec =
+            atomic_load(&actor->shared.route_delay_usec);
+        if (delay_usec > 0) (void) usleep((useconds_t) delay_usec);
         const int32_t waiter_tid = atomic_load(&actor->shared.waiter_tid);
         uint64_t calls_this_sequence = 0;
         while (atomic_load(&actor->shared.consumer_stop) == 0 &&
                atomic_load(&actor->shared.consumer_go) == sequence) {
-            for (uint64_t burst = 0; burst < GLK43499_PHYS_CONSUMER_BURST;
+            for (uint64_t burst = 0; burst < actor->consumer_burst;
                  ++burst) {
                 if (atomic_load(&actor->shared.consumer_stop) != 0 ||
                     atomic_load(&actor->shared.consumer_go) != sequence) {
@@ -242,12 +272,18 @@ static void *glk43499_actor_consumer_run(void *arg) {
                 }
                 (void) atomic_fetch_add(&actor->shared.consumer_calls, 1);
                 atomic_store(&actor->shared.consumer_inflight, 1);
+                /* R3/B3 nice 轮转：值域 1..PRIO_MAX-1（旧 calls%19+1 的等价派生）。 */
+                const int32_t rotated_nice =
+                    (int32_t) ((uint64_t) atomic_load(
+                                   &actor->shared.consumer_calls) %
+                               (uint64_t) (PRIO_MAX - 1)) +
+                    1;
                 int32_t result =
-                    glk43499_actor_set_nice(waiter_tid, actor->consumer_priority);
+                    glk43499_actor_set_nice(waiter_tid, rotated_nice);
                 if (result != 0) {
                     struct timespec spin;
                     glk43499_internal_timespec(
-                        GLK43499_PHYS_CONSUMER_LOCK_PI_SPIN_NS, &spin);
+                        actor->lock_pi_spin_ns, &spin);
                     if (glk43499_actor_futex(&actor->shared.target_futex,
                                              FUTEX_LOCK_PI, 0, &spin, NULL,
                                              0) == 0) {
@@ -262,7 +298,7 @@ static void *glk43499_actor_consumer_run(void *arg) {
                 }
                 atomic_store(&actor->shared.consumer_inflight, 0);
                 ++calls_this_sequence;
-                if (calls_this_sequence >= GLK43499_PHYS_CONSUMER_MAX) {
+                if (calls_this_sequence >= actor->consumer_max) {
                     atomic_store(&actor->shared.consumer_go, 0);
                     break;
                 }
@@ -282,9 +318,11 @@ static void *glk43499_actor_consumer_run(void *arg) {
  */
 static void *glk43499_actor_owner_run(void *arg) {
     struct glk43499_actor_impl *actor = (struct glk43499_actor_impl *) arg;
-    (void) glk43499_internal_pin_cpu(actor->owner_cpu);
-    (void) glk43499_actor_set_nice((int32_t) syscall(SYS_gettid),
-                                   actor->owner_priority);
+    /* G08：owner may be no-pin sentinel（首次真机门禁=只 pin consumer）。 */
+    if (glk43499_internal_cpu_pin_required(actor->owner_cpu)) {
+        (void) glk43499_internal_pin_cpu(actor->owner_cpu);
+    }
+    /* R3/B3：owner 不再预置 SCHED_BATCH+nice（legacy 只在 consumer 侧轮转）。 */
 
     const long target_locked = glk43499_actor_futex(
         &actor->shared.target_futex, FUTEX_LOCK_PI, 0, NULL, NULL, 0);
@@ -295,7 +333,7 @@ static void *glk43499_actor_owner_run(void *arg) {
     while (atomic_load(&actor->shared.waiter_ready) == 0 &&
            atomic_load(&actor->shared.owner_stop) == 0) {
         if (glk43499_internal_expired(ready_deadline)) break;
-        (void) usleep((useconds_t) GLK43499_PHYS_POLL_US);
+        (void) usleep((useconds_t) actor->poll_us);
     }
     if (atomic_load(&actor->shared.waiter_ready) == 0) {
         /* waiter 未就绪：不再取 chain，直接收尾。 */
@@ -315,7 +353,7 @@ static void *glk43499_actor_owner_run(void *arg) {
     atomic_store(&actor->shared.owner_chain_done, 1);
 
     while (atomic_load(&actor->shared.owner_stop) == 0) {
-        (void) usleep((useconds_t) GLK43499_PHYS_POLL_US);
+        (void) usleep((useconds_t) actor->poll_us);
     }
     if (target_locked == 0) {
         (void) glk43499_actor_futex(&actor->shared.target_futex, FUTEX_UNLOCK_PI,
@@ -336,10 +374,13 @@ static void *glk43499_actor_owner_run(void *arg) {
  * @note 窗口内不分配、不加锁、不写日志。
  */
 static int32_t glk43499_actor_waiter_arm(struct glk43499_actor_impl *actor) {
-    (void) glk43499_internal_pin_cpu(actor->waiter_cpu);
+    /* G08：waiter may be no-pin sentinel（首次真机门禁=只 pin consumer）。 */
+    if (glk43499_internal_cpu_pin_required(actor->waiter_cpu)) {
+        (void) glk43499_internal_pin_cpu(actor->waiter_cpu);
+    }
     const int32_t own_tid = (int32_t) syscall(SYS_gettid);
     atomic_store(&actor->shared.waiter_tid, own_tid);
-    (void) glk43499_actor_set_nice(own_tid, actor->waiter_priority);
+    /* R3/B3：waiter 不预置 nice；轮转只由 consumer 作用于本 TID。 */
 
     if (glk43499_actor_futex(&actor->shared.chain_futex, FUTEX_LOCK_PI, 0, NULL,
                              NULL, 0) != 0) {
@@ -358,21 +399,48 @@ static int32_t glk43499_actor_waiter_arm(struct glk43499_actor_impl *actor) {
     while (atomic_load(&actor->shared.owner_started) == 0 &&
            atomic_load(&actor->shared.owner_stop) == 0) {
         if (glk43499_internal_expired(ready_deadline)) break;
-        (void) usleep((useconds_t) GLK43499_PHYS_POLL_US);
+        (void) usleep((useconds_t) actor->poll_us);
     }
 
+    /* task-111（legacy2 证据）：legacy2/core/race.cpp:171-189 的 waiter timeout 是
+     * **绝对 CLOCK_MONOTONIC deadline**（clock_gettime + wait window 累加），不是相对
+     * timespec。E1 实测相对 {1,0} 被内核当作已过期 absolute ⇒ 32µs ETIMEDOUT；
+     * 此处逐行对拍 legacy2 构造方式（不改失败/超时语义，timeout 预算仍=parked_timeout_ns）。 */
     struct timespec parked_timeout;
-    glk43499_internal_timespec(actor->parked_timeout_ns, &parked_timeout);
+    (void) clock_gettime(CLOCK_MONOTONIC, &parked_timeout);
+    parked_timeout.tv_sec += (time_t) (actor->parked_timeout_ns / UINT64_C(1000000000));
+    parked_timeout.tv_nsec += (long) (actor->parked_timeout_ns % UINT64_C(1000000000));
+    if (parked_timeout.tv_nsec >= 1000000000L) {
+        parked_timeout.tv_sec++;
+        parked_timeout.tv_nsec -= 1000000000L;
+    }
     atomic_store(&actor->shared.waiter_waiting, 1);
+    atomic_store(&actor->shared.waiter_parked_timeout_ns, actor->parked_timeout_ns);
+    atomic_store(&actor->shared.waiter_op, FUTEX_WAIT_REQUEUE_PI);
+    atomic_store(&actor->shared.waiter_val, 0);
+    atomic_store(&actor->shared.waiter_val3, 0);
+    atomic_store(&actor->shared.waiter_uaddr2_tid,
+                 (int32_t) __atomic_load_n(&actor->shared.target_futex, __ATOMIC_ACQUIRE));
+    atomic_store(&actor->shared.waiter_in_futex, 1);
+    atomic_store(&actor->shared.waiter_futex_enter_ns,
+                 glk43499_actor_now_ns());
     errno = 0;
-    (void) glk43499_actor_futex(&actor->shared.wait_futex,
-                                FUTEX_WAIT_REQUEUE_PI, 0, &parked_timeout,
-                                &actor->shared.target_futex, 0);
+    const long wait_ret = glk43499_actor_futex(
+        &actor->shared.wait_futex, FUTEX_WAIT_REQUEUE_PI, 0, &parked_timeout,
+        &actor->shared.target_futex, 0);
     const int32_t wait_errno = errno;
-    return (atomic_load(&actor->shared.execute_requested) != 0 &&
-            wait_errno != ETIMEDOUT)
-               ? 1
-               : 0;
+    atomic_store(&actor->shared.waiter_futex_exit_ns,
+                 glk43499_actor_now_ns());
+    atomic_store(&actor->shared.waiter_in_futex, 0);
+    atomic_store(&actor->shared.waiter_wait_ret, (int32_t) wait_ret);
+    atomic_store(&actor->shared.waiter_wait_errno, wait_errno);
+    /* task-112（legacy2 证据）：legacy2/core/race.cpp:183-193 在 waiter 的
+     * FUTEX_WAIT_REQUEUE_PI 返回后显式 `(void) wait_ret;` 并**无条件 route_dispatch**；
+     * 不因 wait_ret/errno（含 EDEADLK/ETIMEDOUT）或 execute_requested 中止 dispatch。
+     * 本实现逐行对齐：保留 wait_ret/errno 记录（诊断），dispatch 恒 1。
+     * 例外：legacy waiter_thread 无 stop/cancel 门控（race.cpp:183-230），故无例外。 */
+    atomic_store(&actor->shared.waiter_dispatched, 1);
+    return 1;
 }
 
 /**
@@ -389,7 +457,7 @@ static void glk43499_actor_waiter_finish(struct glk43499_actor_impl *actor) {
         glk43499_internal_deadline(actor->shutdown_timeout_ns);
     while (atomic_load(&actor->shared.owner_chain_done) == 0) {
         if (glk43499_internal_expired(chain_deadline)) break;
-        (void) usleep((useconds_t) GLK43499_PHYS_POLL_US);
+        (void) usleep((useconds_t) actor->poll_us);
     }
     atomic_store(&actor->shared.waiter_exited, 1);
 }
@@ -405,11 +473,40 @@ static void *glk43499_actor_waiter_multicast(void *arg) {
     struct glk43499_actor_impl *actor = (struct glk43499_actor_impl *) arg;
     const int32_t trigger = glk43499_actor_waiter_arm(actor);
     if (trigger == 1) {
-        atomic_store(&actor->shared.window_opened, 1);
+        /* Step B2（Lead 批准 semantic change；legacy route_multicast.cpp:133-139 的
+         * ROUTE_OK 判据）：先执行 carrier，仅 `stamp 成功 或 consumer_success>0`
+         * （由 carrier_outcome.observed_write 表达）后才置 window_opened=1；失败/未发送
+         * 不得进入写窗口尾段（wait_ret 仍忽略，race.cpp:183-193）。 */
+        atomic_store(&actor->shared.route_enter_ns, glk43499_actor_now_ns());
         glk43499_carrier_multicast_trigger(&actor->carrier, &actor->shared,
                                            &actor->carrier_outcome);
+        atomic_store(&actor->shared.route_exit_ns, glk43499_actor_now_ns());
+        if (actor->carrier_outcome.observed_write != 0) {
+            atomic_store(&actor->shared.window_opened, 1);
+        }
     }
-    if (trigger >= 0) glk43499_actor_waiter_finish(actor);
+    if (trigger >= 0) {
+        /* D3（kernel5 multicast ghost disarm）：路由后 dummy PI 移除
+         * pi_blocked_on ghost；参数全部来自请求，失败/0=不做 disarm（同 legacy
+         * FAILURE→不做 语义），不影响 window 完成信号。 */
+        const struct glk43499_carrier_multicast *multicast =
+            &actor->carrier.value.multicast_sendmsg;
+        if (multicast->disarm_required != 0) {
+            uint32_t dummy_pi = multicast->futex_waiter_flag |
+                                (uint32_t) multicast->ghost_pid;
+            struct timespec expired = {0, 0};
+            errno = 0;
+            const long disarm_result =
+                glk43499_actor_futex(&dummy_pi, FUTEX_LOCK_PI, 0, &expired,
+                                     NULL, 0);
+            const int32_t disarm_errno = errno;
+            /* R3a-2/B7：ghost disarm 的 ret/errno 发布到回执（可证伪诊断）。 */
+            atomic_store(&actor->shared.ghost_disarm_result,
+                         (int32_t) disarm_result);
+            atomic_store(&actor->shared.ghost_disarm_errno, disarm_errno);
+        }
+        glk43499_actor_waiter_finish(actor);
+    }
     return NULL;
 }
 
@@ -423,9 +520,14 @@ static void *glk43499_actor_waiter_pselect(void *arg) {
     struct glk43499_actor_impl *actor = (struct glk43499_actor_impl *) arg;
     const int32_t trigger = glk43499_actor_waiter_arm(actor);
     if (trigger == 1) {
-        atomic_store(&actor->shared.window_opened, 1);
+        /* Step B2（legacy ROUTE_OK 语义，同 multicast 注释）。 */
+        atomic_store(&actor->shared.route_enter_ns, glk43499_actor_now_ns());
         glk43499_carrier_pselect_trigger(&actor->carrier, &actor->shared,
                                          &actor->carrier_outcome);
+        atomic_store(&actor->shared.route_exit_ns, glk43499_actor_now_ns());
+        if (actor->carrier_outcome.observed_write != 0) {
+            atomic_store(&actor->shared.window_opened, 1);
+        }
     }
     if (trigger >= 0) glk43499_actor_waiter_finish(actor);
     return NULL;
@@ -441,9 +543,14 @@ static void *glk43499_actor_waiter_tcp(void *arg) {
     struct glk43499_actor_impl *actor = (struct glk43499_actor_impl *) arg;
     const int32_t trigger = glk43499_actor_waiter_arm(actor);
     if (trigger == 1) {
-        atomic_store(&actor->shared.window_opened, 1);
+        /* Step B2（legacy ROUTE_OK 语义，同 multicast 注释）。 */
+        atomic_store(&actor->shared.route_enter_ns, glk43499_actor_now_ns());
         glk43499_carrier_tcp_trigger(&actor->carrier, &actor->shared,
                                      &actor->carrier_outcome);
+        atomic_store(&actor->shared.route_exit_ns, glk43499_actor_now_ns());
+        if (actor->carrier_outcome.observed_write != 0) {
+            atomic_store(&actor->shared.window_opened, 1);
+        }
     }
     if (trigger >= 0) glk43499_actor_waiter_finish(actor);
     return NULL;
@@ -471,21 +578,51 @@ static int32_t glk43499_actor_carrier_prepare(
         case GLK43499_PRIMITIVE_MULTICAST_SENDMSG: {
             const int32_t result = glk43499_carrier_multicast_prepare(
                 &actor->carrier, &spec->value.multicast_sendmsg);
-            if (result == 0) return GLK43499_CALL_OK;
+            if (result == 0) {
+                struct glk43499_carrier_multicast *multicast =
+                    &actor->carrier.value.multicast_sendmsg;
+                multicast->arm_hold_ns =
+                    spec->value.multicast_sendmsg.arm_hold_ns;
+                multicast->arm_sequence =
+                    spec->value.multicast_sendmsg.arm_sequence;
+                multicast->disarm_spin_limit = actor->disarm_spin_limit;
+                /* D3：ghost disarm 参数来自请求（0/失败=不做 disarm）。 */
+                multicast->ghost_pid = spec->value.multicast_sendmsg.ghost_pid;
+                multicast->futex_waiter_flag =
+                    spec->value.multicast_sendmsg.futex_waiter_flag;
+                multicast->disarm_required =
+                    spec->value.multicast_sendmsg.disarm_required;
+                return GLK43499_CALL_OK;
+            }
             *system_error = result < 0 ? -result : result;
             return GLK43499_CALL_SYSTEM_ERROR;
         }
         case GLK43499_PRIMITIVE_PSELECT: {
             const int32_t result = glk43499_carrier_pselect_prepare(
                 &actor->carrier, &spec->value.pselect);
-            if (result == 0) return GLK43499_CALL_OK;
+            if (result == 0) {
+                actor->carrier.value.pselect.per_attempt_delay_ns =
+                    spec->value.pselect.per_attempt_delay_ns;
+                actor->carrier.value.pselect.disarm_spin_limit =
+                    actor->disarm_spin_limit;
+                return GLK43499_CALL_OK;
+            }
             *system_error = result < 0 ? -result : result;
             return GLK43499_CALL_SYSTEM_ERROR;
         }
         case GLK43499_PRIMITIVE_TCP_ZEROCOPY_RECEIVE: {
+            /* R3b：发送/映射两个填充字节由 tcp spec 唯一携带（send_fill_byte /
+             * mapping_fill_byte），在 carrier prepare 使用前即可读；不再从 Page 的
+             * landing.fill_byte 借用（A 决策：每个物理使用者一个请求字段）。 */
             const int32_t result = glk43499_carrier_tcp_prepare(
                 &actor->carrier, &spec->value.tcp_zerocopy_receive);
-            if (result == 0) return GLK43499_CALL_OK;
+            if (result == 0) {
+                actor->carrier.value.tcp_zerocopy_receive.disarm_spin_limit =
+                    actor->disarm_spin_limit;
+                actor->carrier.value.tcp_zerocopy_receive.poll_us =
+                    actor->poll_us;
+                return GLK43499_CALL_OK;
+            }
             *system_error = result < 0 ? -result : result;
             return GLK43499_CALL_SYSTEM_ERROR;
         }
@@ -550,94 +687,113 @@ static int32_t glk43499_actor_carrier_release(
  * @brief 校验输出 ABI 之外的全部 ActorSetup 物理参数。
  * @param setup 已通过 ABI 头校验的 setup。
  * @return 1 接受；0 拒绝（INVALID_ARGUMENT）。
- * @note 只做非零/范围/物理上限校验；不填默认值。
+ * @note 只做非零/范围/物理上限/跨字段不变量校验；不填默认值。
+ * @note R2b：原固定上限（1h/1e6/999999999/2^26/nice -20..19）改为
+ *       请求值之间或系统头派生的自洽校验（PRIO_MIN/PRIO_MAX、INT32_MAX、
+ *       UINT32_MAX、deadline 加法不溢出）。
  */
 static int32_t glk43499_actor_valid_setup(
     const struct glk43499_actor_setup *setup) {
-    if (setup->thread_count != 3 || setup->reserved32 != 0) return 0;
-    if (!glk43499_internal_valid_cpu(setup->owner_cpu) ||
-        !glk43499_internal_valid_cpu(setup->waiter_cpu) ||
+    if (setup->thread_count != 3) return 0;
+    /* G08：owner/waiter 允许 no-pin 哨兵（0xFFFFFFFF）；consumer 必须有效 CPU（保持 pin）。 */
+    if ((!glk43499_internal_valid_cpu(setup->owner_cpu) &&
+         !glk43499_internal_cpu_is_no_pin(setup->owner_cpu)) ||
+        (!glk43499_internal_valid_cpu(setup->waiter_cpu) &&
+         !glk43499_internal_cpu_is_no_pin(setup->waiter_cpu)) ||
         !glk43499_internal_valid_cpu(setup->consumer_cpu)) {
         return 0;
     }
+    /* nice 域由系统头给出：PRIO_MIN..PRIO_MAX-1（-20..19）。 */
     const int32_t priorities[3] = {
         setup->owner_priority, setup->waiter_priority,
         setup->consumer_priority,
     };
     for (size_t index = 0; index < 3; ++index) {
-        if (priorities[index] < -20 || priorities[index] > 19) return 0;
+        if (priorities[index] < PRIO_MIN || priorities[index] >= PRIO_MAX) {
+            return 0;
+        }
     }
+    if (setup->consumer_max == 0 || setup->consumer_burst == 0 ||
+        setup->consumer_burst > setup->consumer_max) {
+        return 0;
+    }
+    /* 时间参数：全部非零且 deadline 加法不溢出（不内置 1 小时目标上限）。 */
     const uint64_t timeouts[4] = {
         setup->prepare_timeout_ns, setup->parked_timeout_ns,
         setup->execution_timeout_ns, setup->shutdown_timeout_ns,
     };
+    const uint64_t now_ns = glk43499_internal_now_ns();
     for (size_t index = 0; index < 4; ++index) {
         if (timeouts[index] == 0 ||
-            timeouts[index] > UINT64_C(3600000000000)) {
+            timeouts[index] > UINT64_MAX - now_ns) {
             return 0;
         }
     }
-    return glk43499_internal_zero_u64(
-        setup->reserved, sizeof(setup->reserved) / sizeof(setup->reserved[0]));
+    /* 轮询/自旋/就绪参数必须落在请求的等待窗口内（跨字段，替代固定阈值）。 */
+    uint64_t poll_ns = 0;
+    if (!glk43499_internal_mul_u64(setup->poll_us, UINT64_C(1000),
+                                   &poll_ns) ||
+        poll_ns > setup->parked_timeout_ns ||
+        poll_ns > setup->shutdown_timeout_ns) {
+        return 0;
+    }
+    uint64_t settle_ns = 0;
+    if (!glk43499_internal_mul_u64(setup->setup_settle_us, UINT64_C(1000),
+                                   &settle_ns) ||
+        settle_ns > setup->prepare_timeout_ns) {
+        return 0;
+    }
+    if (setup->lock_pi_spin_ns == 0 ||
+        setup->lock_pi_spin_ns > setup->parked_timeout_ns) {
+        return 0;
+    }
+    /* CMP_REQUEUE_PI val3 显式收窄：i64 域 0..INT32_MAX。 */
+    if (setup->requeue_expected < 0 ||
+        setup->requeue_expected > (int64_t) INT32_MAX) {
+        return 0;
+    }
+    /* disarm 自旋次数：非零且不超过 u32 计数域（循环变量为 u64，不溢出）。 */
+    if (setup->disarm_spin_limit == 0 ||
+        setup->disarm_spin_limit > UINT32_MAX) {
+        return 0;
+    }
+    return 1;
 }
 
 /**
- * @brief 校验 PrimitiveSpec 的 ABI、保留字段与选中 branch 的尾零。
+ * @brief 校验 PrimitiveSpec 的 ABI 与选中 branch 以外的 union 尾零。
  * @param primitive 调用期借用；可为 NULL。
  * @return 1 接受；0 拒绝（BAD_ABI）。
- * @note 与 `api_unavailable.c` 的历史校验同形；未选 union 分支必须保持全零。
+ * @note 未选 union 分支覆盖的尾字节必须保持全零（非 reserved 槽）。
  */
 static int32_t glk43499_actor_valid_primitive(
     const struct glk43499_primitive_spec *primitive) {
     if (primitive == NULL ||
         !glk43499_internal_valid_header(&primitive->abi,
-                                        (uint32_t) sizeof(*primitive)) ||
-        primitive->reserved32 != 0 ||
-        !glk43499_internal_zero_u64(
-            primitive->reserved,
-            sizeof(primitive->reserved) / sizeof(primitive->reserved[0]))) {
+                                        (uint32_t) sizeof(*primitive))) {
         return 0;
     }
-    const struct glk43499_primitive_addresses *addresses = NULL;
-    const uint64_t *reserved = NULL;
-    size_t reserved_count = 0;
     size_t selected_size = 0;
     switch (primitive->kind) {
         case GLK43499_PRIMITIVE_MULTICAST_SENDMSG:
-            addresses = &primitive->value.multicast_sendmsg.addresses;
-            reserved = primitive->value.multicast_sendmsg.reserved;
-            reserved_count = sizeof(primitive->value.multicast_sendmsg.reserved) /
-                             sizeof(primitive->value.multicast_sendmsg.reserved[0]);
             selected_size = sizeof(primitive->value.multicast_sendmsg);
-            if (primitive->value.multicast_sendmsg.reserved32 != 0) return 0;
             break;
         case GLK43499_PRIMITIVE_PSELECT:
-            addresses = &primitive->value.pselect.addresses;
-            reserved = primitive->value.pselect.reserved;
-            reserved_count = sizeof(primitive->value.pselect.reserved) /
-                             sizeof(primitive->value.pselect.reserved[0]);
             selected_size = sizeof(primitive->value.pselect);
             break;
         case GLK43499_PRIMITIVE_TCP_ZEROCOPY_RECEIVE:
-            addresses = &primitive->value.tcp_zerocopy_receive.addresses;
-            reserved = primitive->value.tcp_zerocopy_receive.reserved;
-            reserved_count =
-                sizeof(primitive->value.tcp_zerocopy_receive.reserved) /
-                sizeof(primitive->value.tcp_zerocopy_receive.reserved[0]);
             selected_size = sizeof(primitive->value.tcp_zerocopy_receive);
             break;
         default:
             return 0;
     }
+    /* ABI v4 无 reserved 槽；未选 union 分支覆盖的尾字节必须保持全零。 */
     const uint8_t *union_bytes = (const uint8_t *) &primitive->value;
     for (size_t index = selected_size; index < sizeof(primitive->value);
          ++index) {
         if (union_bytes[index] != 0) return 0;
     }
-    return glk43499_internal_zero_u64(
-               addresses->reserved,
-               sizeof(addresses->reserved) / sizeof(addresses->reserved[0])) &&
-           glk43499_internal_zero_u64(reserved, reserved_count);
+    return 1;
 }
 
 /* ========================================================================== */
@@ -735,6 +891,27 @@ glk43499_handle glk43499_prepare_actor(
         return GLK43499_INVALID_HANDLE;
     }
     atomic_init(&actor->shared.waiter_ready, 0);
+    atomic_init(&actor->shared.waiter_in_futex, 0);
+    atomic_init(&actor->shared.waiter_wait_ret, 0);
+    atomic_init(&actor->shared.waiter_wait_errno, 0);
+    atomic_init(&actor->shared.waiter_dispatched, 0);
+    atomic_init(&actor->shared.target_value_at_requeue, 0);
+    atomic_init(&actor->shared.waiter_futex_enter_ns, 0);
+    atomic_init(&actor->shared.waiter_futex_exit_ns, 0);
+    atomic_init(&actor->shared.settle_done_ns, 0);
+    atomic_init(&actor->shared.requeue_call_ns, 0);
+    atomic_init(&actor->shared.owner_tid, 0);
+    atomic_init(&actor->shared.carrier_started, 0);
+    atomic_init(&actor->shared.carrier_frames_sent, 0);
+    atomic_init(&actor->shared.carrier_step, 0);
+    atomic_init(&actor->shared.carrier_last_errno, 0);
+    atomic_init(&actor->shared.route_enter_ns, 0);
+    atomic_init(&actor->shared.route_exit_ns, 0);
+    atomic_init(&actor->shared.waiter_parked_timeout_ns, 0);
+    atomic_init(&actor->shared.waiter_op, 0);
+    atomic_init(&actor->shared.waiter_val, 0);
+    atomic_init(&actor->shared.waiter_val3, 0);
+    atomic_init(&actor->shared.waiter_uaddr2_tid, 0);
     atomic_init(&actor->shared.waiter_waiting, 0);
     atomic_init(&actor->shared.waiter_link_failed, 0);
     atomic_init(&actor->shared.owner_ready, 0);
@@ -750,6 +927,8 @@ glk43499_handle glk43499_prepare_actor(
     atomic_init(&actor->shared.consumer_success, 0);
     atomic_init(&actor->shared.consumer_inflight, 0);
     atomic_init(&actor->shared.route_delay_usec, 0);
+    atomic_init(&actor->shared.ghost_disarm_result, 0);
+    atomic_init(&actor->shared.ghost_disarm_errno, 0);
     atomic_init(&actor->shared.execute_requested, 0);
     atomic_init(&actor->shared.window_opened, 0);
     atomic_init(&actor->shared.window_done, 0);
@@ -768,20 +947,41 @@ glk43499_handle glk43499_prepare_actor(
     actor->parked_timeout_ns = setup->parked_timeout_ns;
     actor->execution_timeout_ns = setup->execution_timeout_ns;
     actor->shutdown_timeout_ns = setup->shutdown_timeout_ns;
+    actor->consumer_max = setup->consumer_max;
+    actor->consumer_burst = setup->consumer_burst;
+    actor->lock_pi_spin_ns = setup->lock_pi_spin_ns;
+    actor->poll_us = setup->poll_us;
+    actor->setup_settle_us = setup->setup_settle_us;
+    actor->requeue_expected = setup->requeue_expected;
+    actor->disarm_spin_limit = setup->disarm_spin_limit;
     actor->thread_count = setup->thread_count;
     actor->primitive_kind = primitive->kind;
     actor->state = GLK43499_ACTOR_PREPARED;
     actor->carrier.kind = GLK43499_PRIMITIVE_INVALID;
 
+    /* R3b：Page 的 landing.fill_byte 不参与 Carrier 填充（tcp 双 fill 在 spec）。 */
     int32_t system_error = 0;
     const int32_t prepare_status =
         glk43499_actor_carrier_prepare(actor, primitive, &system_error);
     if (prepare_status != GLK43499_CALL_OK) {
-        /* Carrier 未建立：没有任何物理资源需要回滚，直接释放候选对象。 */
-        free(actor);
+        /* R3a-2/P11：Carrier prepare 可能已建立部分资源且清理不干净（retained）。
+         * 先尝试 release：只有真实干净释放才 free(actor)；否则保留对象到进程退出
+         * 并在回执报 dirty/retained —— 禁止把保留态随 free(actor) 静默丢弃。 */
+        const int32_t released = glk43499_actor_carrier_release(actor);
+        if (released != 0) {
+            free(actor);
+            glk43499_internal_set_call(&result->call, prepare_status,
+                                       GLK43499_EFFECT_NOT_APPLIED,
+                                       GLK43499_RESOURCE_INVALID, system_error,
+                                       0);
+            return GLK43499_INVALID_HANDLE;
+        }
+        result->receipt.page_consumed = 0; /* 提交点在 Carrier/三线程就绪之后 */
+        result->receipt.carrier_prepared = 0;
         glk43499_internal_set_call(&result->call, prepare_status,
-                                   GLK43499_EFFECT_NOT_APPLIED,
-                                   GLK43499_RESOURCE_INVALID, system_error, 0);
+                                   GLK43499_EFFECT_DIRTY,
+                                   GLK43499_RESOURCE_QUARANTINED, system_error,
+                                   1);
         return GLK43499_INVALID_HANDLE;
     }
     actor->carrier_prepared = 1;
@@ -813,19 +1013,24 @@ glk43499_handle glk43499_prepare_actor(
 
     /* 线程创建顺序：consumer → owner → waiter（与旧实现一致）。 */
     int32_t create_error = 0;
-    if (pthread_create(&actor->consumer_thread, NULL,
-                       glk43499_actor_consumer_run, actor) != 0) {
-        create_error = errno != 0 ? errno : EAGAIN;
+    /* B11：pthread_create 返回错误码（bionic 不保证同步写 errno），
+     * 错误码必须取返回值；不得读 errno。 */
+    int32_t create_status = pthread_create(
+        &actor->consumer_thread, NULL, glk43499_actor_consumer_run, actor);
+    if (create_status != 0) {
+        create_error = create_status;
     } else {
         actor->consumer_started = 1;
-        if (pthread_create(&actor->owner_thread, NULL,
-                           glk43499_actor_owner_run, actor) != 0) {
-            create_error = errno != 0 ? errno : EAGAIN;
+        create_status = pthread_create(&actor->owner_thread, NULL,
+                                       glk43499_actor_owner_run, actor);
+        if (create_status != 0) {
+            create_error = create_status;
         } else {
             actor->owner_started = 1;
-            if (pthread_create(&actor->waiter_thread, NULL, waiter_entry,
-                               actor) != 0) {
-                create_error = errno != 0 ? errno : EAGAIN;
+            create_status = pthread_create(&actor->waiter_thread, NULL,
+                                           waiter_entry, actor);
+            if (create_status != 0) {
+                create_error = create_status;
             } else {
                 actor->waiter_started = 1;
             }
@@ -846,7 +1051,7 @@ glk43499_handle glk43499_prepare_actor(
                 create_error = ETIMEDOUT;
                 break;
             }
-            (void) usleep((useconds_t) GLK43499_PHYS_POLL_US);
+            (void) usleep((useconds_t) actor->poll_us);
         }
         if (create_error == 0 &&
             atomic_load(&actor->shared.waiter_link_failed) != 0) {
@@ -896,12 +1101,6 @@ glk43499_handle glk43499_prepare_actor(
     result->receipt.waiter_ready = 1;
     result->receipt.consumer_ready = 1;
     result->receipt.carrier_prepared = 1;
-    for (size_t index = 0;
-         index < sizeof(result->receipt.reserved) /
-                     sizeof(result->receipt.reserved[0]);
-         ++index) {
-        result->receipt.reserved[index] = 0;
-    }
     glk43499_internal_set_call(&result->call, GLK43499_CALL_OK,
                                GLK43499_EFFECT_CLEAN_SUCCESS,
                                GLK43499_RESOURCE_PREPARED, 0, 0);
@@ -926,6 +1125,16 @@ int32_t glk43499_execute_actor(glk43499_handle actor,
         return GLK43499_CALL_BAD_ABI;
     }
     memset(&result->receipt, 0, sizeof(result->receipt));
+    result->diag_stage = (uint32_t) GLK43499_ACTOR_DIAG_STAGE_UNKNOWN;
+    result->diag_requeue_ret = 0;
+    result->diag_requeue_errno = 0;
+    result->diag_fail_stage = (uint32_t) GLK43499_ACTOR_DIAG_STAGE_UNKNOWN;
+    result->diag_publish_count = 0;
+    result->diag_requeue_calls = 0;
+    result->diag_version = UINT32_C(0x2026102805);
+    result->diag_waiter_waiting = 0;
+    result->diag_owner_started = 0;
+    result->diag_requeue_expected = 0;
     if (actor == GLK43499_INVALID_HANDLE) {
         glk43499_internal_set_call(&result->call, GLK43499_CALL_INVALID_ARGUMENT,
                                    GLK43499_EFFECT_NOT_APPLIED,
@@ -942,29 +1151,91 @@ int32_t glk43499_execute_actor(glk43499_handle actor,
     }
     impl->state = GLK43499_ACTOR_EXECUTING;
 
-    /* settle：prepare 已保证 waiter 落在 WAIT_REQUEUE_PI，这里再留一个物理间隙。 */
-    (void) usleep((useconds_t) GLK43499_PHYS_SETUP_SETTLE_US);
+    /* task-104：阶段诊断（PI 窗口内仅写回执字段，不 IO/不日志）。 */
+    result->diag_stage = (uint32_t) GLK43499_ACTOR_DIAG_STAGE_SETTLE;
+    /* TODO(task-131): F1 旧顺序（settle 先于 ready 等待）；本批完成后删除。
+    (void) usleep((useconds_t) impl->setup_settle_us);
+    result->diag_ts_settle_done_ns = glk43499_actor_now_ns();
+    atomic_store(&impl->shared.settle_done_ns, result->diag_ts_settle_done_ns);
+    */
+    /* task-108：对齐 legacy2 race.cpp:374-375 的有界预等（不改变失败/超时语义：
+     * 到时未 ready 仍按原路径继续，仅记录 evidence）。 */
+    const uint64_t ready_deadline =
+        glk43499_internal_deadline(impl->execution_timeout_ns);
+    while ((atomic_load(&impl->shared.waiter_waiting) == 0 ||
+            atomic_load(&impl->shared.owner_started) == 0) &&
+           !glk43499_internal_expired(ready_deadline)) {
+        (void) usleep((useconds_t) impl->poll_us);
+    }
+    /* task-131 F1：ready 之后再 settle，逐行对齐 legacy2 race.cpp:374-378
+     * （先等 waiter_waiting∩owner_started，再 usleep(setup_settle_us)）。 */
+    (void) usleep((useconds_t) impl->setup_settle_us);
+    result->diag_ts_settle_done_ns = glk43499_actor_now_ns();
+    atomic_store(&impl->shared.settle_done_ns, result->diag_ts_settle_done_ns);
     /* 打开窗口：先发布 execute_requested，再 requeue。 */
+    result->diag_stage = (uint32_t) GLK43499_ACTOR_DIAG_STAGE_PUBLISH;
     atomic_store(&impl->shared.execute_requested, 1);
+    ++result->diag_publish_count;
     errno = 0;
-    (void) glk43499_actor_futex(&impl->shared.wait_futex,
-                                FUTEX_CMP_REQUEUE_PI, 1,
-                                (const struct timespec *) (uintptr_t) 1,
-                                &impl->shared.target_futex, 0);
+    result->diag_stage = (uint32_t) GLK43499_ACTOR_DIAG_STAGE_REQUEUE;
+    ++result->diag_requeue_calls;
+    result->diag_waiter_waiting =
+        (uint32_t) atomic_load(&impl->shared.waiter_waiting);
+    result->diag_owner_started =
+        (uint32_t) atomic_load(&impl->shared.owner_started);
+    result->diag_requeue_expected = impl->requeue_expected;
+    result->diag_target_value_at_requeue =
+        (uint32_t) __atomic_load_n(&impl->shared.target_futex, __ATOMIC_ACQUIRE);
+    result->diag_ts_requeue_ns = glk43499_actor_now_ns();
+    atomic_store(&impl->shared.requeue_call_ns, result->diag_ts_requeue_ns);
+    result->diag_waiter_in_futex =
+        (uint32_t) atomic_load(&impl->shared.waiter_in_futex);
+    result->diag_waiter_wait_ret =
+        (int32_t) atomic_load(&impl->shared.waiter_wait_ret);
+    result->diag_waiter_wait_errno =
+        (int32_t) atomic_load(&impl->shared.waiter_wait_errno);
+    result->diag_waiter_dispatched =
+        (uint32_t) atomic_load(&impl->shared.waiter_dispatched);
+    result->diag_ts_waiter_enter_ns =
+        (uint64_t) atomic_load(&impl->shared.waiter_futex_enter_ns);
+    result->diag_ts_waiter_exit_ns =
+        (uint64_t) atomic_load(&impl->shared.waiter_futex_exit_ns);
+    result->diag_parked_timeout_ns =
+        (uint64_t) atomic_load(&impl->shared.waiter_parked_timeout_ns);
+    result->diag_setup_settle_us = (uint64_t) impl->setup_settle_us;
+    result->diag_poll_us = (uint64_t) impl->poll_us;
+    result->diag_prepare_timeout_ns = impl->prepare_timeout_ns;
+    result->diag_ts_sec = 0;
+    result->diag_ts_nsec = 0;
+    result->diag_futex_op = (uint32_t) atomic_load(&impl->shared.waiter_op);
+    result->diag_futex_val = (uint32_t) atomic_load(&impl->shared.waiter_val);
+    result->diag_futex_uaddr2 = (uint32_t) atomic_load(&impl->shared.waiter_uaddr2_tid);
+    result->diag_futex_val3 = (uint32_t) atomic_load(&impl->shared.waiter_val3);
+    result->diag_owner_tid = (int32_t) atomic_load(&impl->shared.owner_tid);
+    const long requeue_ret = glk43499_actor_futex(
+        &impl->shared.wait_futex, FUTEX_CMP_REQUEUE_PI, 1,
+        (const struct timespec *) (uintptr_t) 1,
+        &impl->shared.target_futex, (uint32_t) impl->requeue_expected);
+    result->diag_requeue_ret = (int32_t) requeue_ret;
+    result->diag_requeue_errno = requeue_ret < 0 ? errno : 0;
+    result->diag_stage = (uint32_t) GLK43499_ACTOR_DIAG_STAGE_WAIT_WINDOW;
 
     const uint64_t deadline =
         glk43499_internal_deadline(impl->execution_timeout_ns);
     int32_t window_done = 0;
     for (;;) {
         if (atomic_load(&impl->shared.window_done) != 0) {
+            result->diag_stage = (uint32_t) GLK43499_ACTOR_DIAG_STAGE_WINDOW_DONE;
             window_done = 1;
             break;
         }
         if (glk43499_internal_expired(deadline)) break;
-        (void) usleep((useconds_t) GLK43499_PHYS_POLL_US);
+        (void) usleep((useconds_t) impl->poll_us);
     }
 
     if (!window_done) {
+        /* task-107：timeout 分支无条件记录失败阶段（不被 cleanup 覆写）。 */
+        result->diag_fail_stage = (uint32_t) GLK43499_ACTOR_DIAG_STAGE_WAIT_WINDOW;
         /* PI worker 仍活着：不得 unwind，Actor/Page/Carrier 整链保留到进程退出。
          * 本分支不释放 Page（release 只允许发生在 close 的记账路径）。 */
         impl->retained = 1;
@@ -987,9 +1258,13 @@ int32_t glk43499_execute_actor(glk43499_handle actor,
     impl->carrier_armed = impl->window_opened;
 
     /* 窗口已关闭：停触发并排空 consumer，再 disarm Carrier。 */
+    result->diag_stage = (uint32_t) GLK43499_ACTOR_DIAG_STAGE_DRAIN;
     int32_t drained = glk43499_actor_drain_consumer(impl,
                                                     impl->execution_timeout_ns);
     if (drained == 0) {
+        if (result->diag_fail_stage == (uint32_t) GLK43499_ACTOR_DIAG_STAGE_UNKNOWN) {
+            result->diag_fail_stage = (uint32_t) GLK43499_ACTOR_DIAG_STAGE_DRAIN;
+        }
         impl->consumer_stuck = 1;
         impl->retained = 1;
         impl->state = GLK43499_ACTOR_FAULTED;
@@ -1005,6 +1280,7 @@ int32_t glk43499_execute_actor(glk43499_handle actor,
                                    GLK43499_RESOURCE_QUARANTINED, 0, 1);
         return GLK43499_CALL_SYSTEM_ERROR;
     }
+    result->diag_stage = (uint32_t) GLK43499_ACTOR_DIAG_STAGE_DISARM;
     const int32_t disarm_clean = glk43499_actor_carrier_disarm(impl);
     impl->carrier_disarmed = disarm_clean;
     if (disarm_clean == 0) {
@@ -1019,6 +1295,22 @@ int32_t glk43499_execute_actor(glk43499_handle actor,
         (uint64_t) atomic_load(&impl->shared.consumer_calls);
     const uint64_t successes =
         (uint64_t) atomic_load(&impl->shared.consumer_success);
+    /* R3a-2：Carrier 中性物理结果与失败定位（last_step/last_errno）进回执；
+     * 与 calls/successes 一起构成可证伪诊断，不参与成功判据（成功判据在下方）。 */
+    result->receipt.carrier_operations = impl->carrier_outcome.operations;
+    result->receipt.carrier_error = impl->carrier_outcome.failed;
+    result->receipt.carrier_last_step = impl->carrier_outcome.last_step;
+    result->receipt.carrier_last_errno = impl->carrier_outcome.last_errno;
+    result->receipt.carrier_punch_failed =
+        impl->carrier.kind == GLK43499_PRIMITIVE_TCP_ZEROCOPY_RECEIVE
+            ? (int32_t) atomic_load(
+                  &impl->carrier.value.tcp_zerocopy_receive.punch_failed)
+            : 0;
+    /* R3a-2/B7：multicast ghost disarm 触发结果（未要求时保持 0/NONE）。 */
+    result->receipt.ghost_disarm_result =
+        (int32_t) atomic_load(&impl->shared.ghost_disarm_result);
+    result->receipt.ghost_disarm_errno =
+        (int32_t) atomic_load(&impl->shared.ghost_disarm_errno);
     result->receipt.page_content_generation =
         glk43499_page_content_generation(impl->page);
     result->receipt.consumer_call_count = calls;
@@ -1031,12 +1323,6 @@ int32_t glk43499_execute_actor(glk43499_handle actor,
     result->receipt.window_opened = (uint32_t) impl->window_opened;
     result->receipt.carrier_disarmed = (uint32_t) impl->carrier_disarmed;
     result->receipt.retained_for_process_exit = (uint32_t) impl->retained;
-    for (size_t index = 0;
-         index < sizeof(result->receipt.reserved) /
-                     sizeof(result->receipt.reserved[0]);
-         ++index) {
-        result->receipt.reserved[index] = 0;
-    }
 
     if (impl->retained != 0) {
         glk43499_internal_set_call(&result->call, GLK43499_CALL_SYSTEM_ERROR,
@@ -1214,4 +1500,134 @@ int32_t glk43499_close_actor(glk43499_handle actor,
                                 GLK43499_EFFECT_CLEAN_SUCCESS,
                                 GLK43499_RESOURCE_CLOSED, 0, 1, 1, 1, 0);
     return GLK43499_CALL_OK;
+}
+
+/* ========================================================================== */
+/* task-111：FUTEX_WAIT_REQUEUE_PI 机制自测（debug-only；不写内核）            */
+/* ========================================================================== */
+
+struct glk43499_futex_selftest_shared {
+    uint32_t wait_word;
+    uint32_t target_word;
+    atomic_int owner_locked;
+    atomic_int waiter_entered;
+    int32_t owner_ret;
+    int32_t owner_errno;
+    int32_t owner_tid;
+    int32_t waiter_ret;
+    int32_t waiter_errno;
+    int64_t waiter_elapsed_ns;
+    int32_t requeue_ret;
+    int32_t requeue_errno;
+    int32_t variant;
+};
+
+static void *glk43499_futex_selftest_owner(void *arg) {
+    struct glk43499_futex_selftest_shared *shared =
+        (struct glk43499_futex_selftest_shared *) arg;
+    errno = 0;
+    const long locked = glk43499_actor_futex(
+        &shared->target_word, FUTEX_LOCK_PI, 0, NULL, NULL, 0);
+    shared->owner_ret = (int32_t) locked;
+    shared->owner_errno = errno;
+    shared->owner_tid = (int32_t) gettid();
+    atomic_store(&shared->owner_locked, 1);
+    (void) usleep(300000);
+    (void) glk43499_actor_futex(&shared->target_word, FUTEX_UNLOCK_PI, 0,
+                                NULL, NULL, 0);
+    return NULL;
+}
+
+static void *glk43499_futex_selftest_waiter(void *arg) {
+    struct glk43499_futex_selftest_shared *shared =
+        (struct glk43499_futex_selftest_shared *) arg;
+    struct timespec started;
+    struct timespec finished;
+    struct timespec timeout;
+    (void) clock_gettime(CLOCK_MONOTONIC, &started);
+    /* 逐行复刻 legacy2/core/race.cpp:171-189：绝对 CLOCK_MONOTONIC deadline。 */
+    (void) clock_gettime(CLOCK_MONOTONIC, &timeout);
+    timeout.tv_sec += 1;
+    timeout.tv_nsec += 0;
+    if (timeout.tv_nsec >= 1000000000L) {
+        timeout.tv_sec++;
+        timeout.tv_nsec -= 1000000000L;
+    }
+    const int32_t op = FUTEX_WAIT_REQUEUE_PI;
+    atomic_store(&shared->waiter_entered, 1);
+    errno = 0;
+    const long waited = glk43499_actor_futex(
+        &shared->wait_word, op, 0, &timeout, &shared->target_word, 0);
+    shared->waiter_ret = (int32_t) waited;
+    shared->waiter_errno = errno;
+    (void) clock_gettime(CLOCK_MONOTONIC, &finished);
+    shared->waiter_elapsed_ns =
+        (int64_t) ((finished.tv_sec - started.tv_sec) * INT64_C(1000000000) +
+                   (finished.tv_nsec - started.tv_nsec));
+    return NULL;
+}
+
+int32_t glk43499_actor_futex_selftest(int32_t variant, int32_t *out) {
+    if (out == NULL || variant < 0 || variant > 2) return -1;
+    struct glk43499_futex_selftest_shared shared;
+    (void) memset(&shared, 0, sizeof(shared));
+    shared.variant = variant;
+    atomic_init(&shared.owner_locked, 0);
+    atomic_init(&shared.waiter_entered, 0);
+    pthread_t owner_thread;
+    pthread_t waiter_thread;
+    if (pthread_create(&owner_thread, NULL, glk43499_futex_selftest_owner,
+                       &shared) != 0) {
+        return -1;
+    }
+    while (atomic_load(&shared.owner_locked) == 0) (void) usleep(100);
+    if (pthread_create(&waiter_thread, NULL, glk43499_futex_selftest_waiter,
+                       &shared) != 0) {
+        (void) glk43499_actor_futex(&shared.target_word, FUTEX_UNLOCK_PI, 0,
+                                    NULL, NULL, 0);
+        (void) pthread_join(owner_thread, NULL);
+        return -1;
+    }
+    while (atomic_load(&shared.waiter_entered) == 0) (void) usleep(100);
+    (void) usleep(50000);
+    errno = 0;
+    /* 复刻 legacy2/core/race.cpp:380：val=1、timeout=(void*)1、val3=0。 */
+    const int32_t val3 = 0;
+    const long requeued = glk43499_actor_futex(
+        &shared.wait_word, FUTEX_CMP_REQUEUE_PI, 1,
+        (const struct timespec *) (uintptr_t) 1, &shared.target_word, val3);
+    shared.requeue_ret = (int32_t) requeued;
+    shared.requeue_errno = errno;
+    (void) pthread_join(waiter_thread, NULL);
+    (void) pthread_join(owner_thread, NULL);
+    out[0] = shared.variant;
+    out[1] = shared.owner_ret;
+    out[2] = shared.owner_errno;
+    out[3] = shared.owner_tid;
+    out[4] = shared.waiter_ret;
+    out[5] = shared.waiter_errno;
+    out[6] = (int32_t) (shared.waiter_elapsed_ns / INT64_C(1000));
+    out[7] = shared.requeue_ret;
+    out[8] = shared.requeue_errno;
+    out[9] = shared.waiter_ret == 0 ? 1 : 0;
+    return 0;
+}
+
+/** @brief task-113：carrier 崩溃前快照（只读 atomic；不 IO/不日志）。 */
+int32_t glk43499_actor_debug_snapshot(glk43499_handle actor, int64_t *out) {
+    if (actor == GLK43499_INVALID_HANDLE || out == NULL) return -1;
+    struct glk43499_actor_impl *impl =
+        (struct glk43499_actor_impl *) glk43499_internal_handle_ptr(actor);
+    if (impl == NULL) return -1;
+    out[0] = (int64_t) impl->state;
+    out[1] = (int64_t) atomic_load(&impl->shared.waiter_waiting);
+    out[2] = (int64_t) atomic_load(&impl->shared.window_opened);
+    out[3] = (int64_t) atomic_load(&impl->shared.window_done);
+    out[4] = (int64_t) atomic_load(&impl->shared.carrier_started);
+    out[5] = (int64_t) atomic_load(&impl->shared.carrier_frames_sent);
+    out[6] = (int64_t) atomic_load(&impl->shared.carrier_step);
+    out[7] = (int64_t) atomic_load(&impl->shared.carrier_last_errno);
+    out[8] = (int64_t) atomic_load(&impl->shared.route_enter_ns);
+    out[9] = (int64_t) atomic_load(&impl->shared.route_exit_ns);
+    return 0;
 }

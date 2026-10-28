@@ -21,8 +21,13 @@ import java.util.concurrent.TimeUnit
  * @param uidProvider 当前 uid 探测 seam；默认 `android.os.Process.myUid()`。
  * @param timeoutMs 有界执行超时（毫秒）。
  * @param maxOutputBytes 输出摘要最多读取的字节数。
- * @note 阶段：F-D finish 执行链；真机门禁前不接默认 Flow/UI 入口。
+ * @note 阶段：F-D finish 执行链；**A1 起 @Deprecated**：finish 唯一执行点已改为
+ *   rooted victim（`VictimFinish`），本类无生产调用，仅保留兼容/待删批（另批删除）。
  */
+@Deprecated(
+    message = "A1 finish victim-only: 无生产调用；仅保留兼容/待删批（勿新增调用）",
+    level = DeprecationLevel.WARNING,
+)
 internal class FinishExecution(
     private val commandFactory: (List<String>, Map<String, String>) -> Process = { command, environment ->
         val builder = ProcessBuilder(command).redirectErrorStream(true)

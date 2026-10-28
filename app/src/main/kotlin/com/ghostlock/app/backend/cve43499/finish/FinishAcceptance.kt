@@ -61,6 +61,10 @@ internal data class FinishAcceptanceInput(
     val source: FinishEvidenceSource = AndroidFinishEvidenceSource,
     /** ksud 证据的有界命令 seam（只取退出码 + 输出摘要）。 */
     val commandSource: FinishCommandSource = ProcessBuilderFinishCommandSource,
+    /** B6：finish 派发前记录的 enforce 值（null ⇒ 未记录，验收拒绝）。 */
+    val enforceBefore: Int? = null,
+    /** B6：验收时 enforce 值；应与 [enforceBefore] 一致（恢复运行前记录值）。 */
+    val enforceAfter: Int? = null,
 )
 
 /** 收尾验收结论；成功必须全部证据齐备，否则列出全部具名缺失原因。 */
@@ -80,7 +84,8 @@ internal sealed interface FinishVerdict {
  * 2. 脚本对象存在，且重新计算的 SHA-256 与 handoff 冻结值一致（对拍同一个脚本对象）；
  * 3. root 管理器（ksud/apd）证据存在；
  * 4. 收尾成功 marker 存在，且失败 marker 不存在；
- * 5. SELinux 已恢复 Enforcing；
+ * 5. SELinux 已恢复**运行前记录值**（B6：脚本默认不写 enforce，因此不再要求恒为 1；
+ *    `enforceBefore` 缺失/enforceAfter != enforceBefore 均具名拒绝）；
  * 6. 调用方给出「完整所有权链已终结」的正向证据。
  *
  * @note 明确不用 terminal 输出、日志文本或 `exit` 码作为证据；日志只做事后审计。
@@ -185,10 +190,17 @@ internal object FinishAcceptance {
         }
 
         /* 5. SELinux 恢复证据：内容必须是 1（Enforcing）。 */
-        val enforce = readTextOrNull(input.source, SELINUX_ENFORCE_PATH)?.trim()
+        /* B6：acceptance 要求 enforce 恢复到「运行前记录值」。
+         * 若调用方已提供 before/after 证据则直接判定（可注入/可单测）；
+         * 否则回退读当前值并要求已恢复（before 缺失 ⇒ missing，不伪成功）。 */
+        val enforceBefore = input.enforceBefore
+        val enforceAfter = input.enforceAfter ?: readTextOrNull(input.source, SELINUX_ENFORCE_PATH)
+            ?.trim()?.toIntOrNull()
         when {
-            enforce == null -> reasons.add("finish-selinux-missing")
-            enforce != "1" -> reasons.add("finish-selinux-not-enforcing:" + enforce)
+            enforceBefore == null -> reasons.add("finish-selinux-missing")
+            enforceAfter == null -> reasons.add("finish-selinux-missing")
+            enforceAfter != enforceBefore ->
+                reasons.add("finish-selinux-not-restored:" + enforceBefore + ":" + enforceAfter)
         }
 
         /* 6. 收尾脚本实际执行证据：exit==0、未超时、runId 一致。 */

@@ -109,6 +109,35 @@ object log {
         return true
     }
 
+    /**
+     * 写一行 **shell 来源**日志（`(级别) 正文`；AGENTS §12）。
+     *
+     * 用途：service/payload 回传行在 native fd attach 失败时的回退（R1b）；成功路径由 service
+     * 经 gl_log 直接写 app fd（NATIVE origin），不走本函数。一行一次 write/ASCII/禁密钥。
+     *
+     * @param message 单行正文。
+     * @param level 级别（默认 Info）。
+     * @return true 当这条达到了最低级别。
+     */
+    fun shell(message: String, level: LogLevel = LogLevel.Info): Boolean {
+        if (level.ordinal < synchronized(lock) { minimum }.ordinal) {
+            return false
+        }
+        val line = originLabel(LogOrigin.SHELL, level) + message
+        val current: List<LogSink>
+        synchronized(lock) {
+            ring.addLast(line)
+            while (ring.size > capacity) {
+                ring.removeFirst()
+            }
+            current = sinks
+        }
+        for (sink in current) {
+            sink.write(level, "GhostlockShell", message, line)
+        }
+        return true
+    }
+
     /** 与日志行完全相同的格式：<级别标记 > 正文；终端与文件共用这一份。 */
     fun format(level: LogLevel, message: String): String = "<" + level.mark + "> " + message
 
@@ -141,6 +170,32 @@ object log {
     fun error(message: String, reason: String): Boolean {
         require(reason.isNotBlank()) { "error needs one reason" }
         return invoke(LogLevel.Error, message + ": " + reason)
+    }
+
+    /**
+     * warn 的正式形态（指定 logcat 标签）。
+     *
+     * @param tag 调用方标签（如 backend `Ghostlock43499`）。
+     * @param message 一句人话。
+     * @param reason 恰好一个理由（非空）。
+     * @return true 当达到最低级别。
+     */
+    fun warn(tag: String, message: String, reason: String): Boolean {
+        require(reason.isNotBlank()) { "warn needs one reason" }
+        return invoke(LogLevel.Warn, tag, message + ": " + reason)
+    }
+
+    /**
+     * error 的正式形态（指定 logcat 标签）。
+     *
+     * @param tag 调用方标签（如 backend `Ghostlock43499`）。
+     * @param message 一句人话。
+     * @param reason 恰好一个理由（非空）。
+     * @return true 当达到最低级别。
+     */
+    fun error(tag: String, message: String, reason: String): Boolean {
+        require(reason.isNotBlank()) { "error needs one reason" }
+        return invoke(LogLevel.Error, tag, message + ": " + reason)
     }
 
     /** 环里的内容（最旧在前）。 */

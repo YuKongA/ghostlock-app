@@ -1,0 +1,23 @@
+10-29 04:15:36.468  4594  5340 I E1-W1-ONLY: E1|attempt|n=1|phase=close|reason=close_chain|retained=false|all_released=true|termination=chain=skipped;
+10-29 04:15:36.469  4594  5340 I E1-W1-ONLY: E1|attempt|n=1|phase=landing|reason=cve43499:write.w1:landing:clean-failure:call=invalid-argument:errno=0|primitive=null|page_base=none
+10-29 04:15:36.472  4594  5340 I E1-W1-ONLY: E1|attempt|n=1|residual|threads=19|fds=106|children=0
+10-29 04:15:36.725  4594  5340 I E1-W1-ONLY: E1|attempt|n=2|phase=pre|reason=begin|primitive=MULTICAST|proc=threads=19|vmsize=17440452 kB|fds=106
+10-29 04:16:51.577  4594  5340 I E1-W1-ONLY: E1|attempt|n=2|phase=close|reason=close_chain|retained=false|all_released=true|termination=chain=skipped;
+10-29 04:16:51.577  4594  5340 I E1-W1-ONLY: E1|attempt|n=2|phase=actor-execute|reason=cve43499:write.w1:actor-execute:clean-failure:call=timeout:errno=110:consumer_success=0/0:carrier_armed=false:window_opened=false:carrier_ops=0:carrier_step=0:carrier_errno=0:retained=false:diag_stage=7:fail_stage=0:requeue_ret=0:requeue_errno=0:publish_count=1:requeue_calls=1:diag_version=0x26102804:waiter_waiting=1:owner_started=1:requeue_expected=0|primitive=1|page_base=none
+10-29 04:16:51.580  4594  5340 I E1-W1-ONLY: E1|attempt|n=2|residual|threads=23|fds=105|children=0
+10-29 04:16:51.841  4594  5340 I E1-W1-ONLY: E1|attempt|n=3|phase=pre|reason=begin|primitive=MULTICAST|proc=threads=23|vmsize=17241140 kB|fds=105
+10-29 04:18:05.307  4594  5340 I E1-W1-ONLY: E1|attempt|n=3|phase=close|reason=close_chain|retained=false|all_released=true|termination=chain=skipped;
+10-29 04:18:05.308  4594  5340 I E1-W1-ONLY: E1|attempt|n=3|phase=landing|reason=cve43499:write.w1:landing:clean-failure:call=invalid-argument:errno=0|primitive=null|page_base=none
+10-29 04:18:05.309  4594  5340 I E1-W1-ONLY: E1|attempt|n=3|residual|threads=25|fds=105|children=0
+10-29 04:18:05.567  4594  5340 I E1-W1-ONLY: E1|attempt|n=4|phase=pre|reason=begin|primitive=MULTICAST|proc=threads=25|vmsize=17276012 kB|fds=105
+10-29 04:18:31.198  4594  5340 I E1-W1-ONLY: E1|attempt|n=4|phase=close|reason=close_chain|retained=false|all_released=true|termination=chain=skipped;
+10-29 04:18:31.199  4594  5340 I E1-W1-ONLY: E1|attempt|n=4|phase=landing|reason=cve43499:write.w1:landing:clean-failure:call=invalid-argument:errno=0|primitive=null|page_base=none
+10-29 04:18:31.201  4594  5340 I E1-W1-ONLY: E1|attempt|n=4|residual|threads=25|fds=105|children=0
+10-29 04:18:31.463  4594  5340 I E1-W1-ONLY: E1|attempt|n=5|phase=pre|reason=begin|primitive=MULTICAST|proc=threads=25|vmsize=17276012 kB|fds=105
+10-29 04:18:56.478  4594  5340 I E1-W1-ONLY: E1|attempt|n=5|phase=close|reason=close_chain|retained=false|all_released=true|termination=chain=skipped;
+10-29 04:18:56.478  4594  5340 I E1-W1-ONLY: E1|attempt|n=5|phase=landing|reason=cve43499:write.w1:landing:clean-failure:call=invalid-argument:errno=0|primitive=null|page_base=none
+10-29 04:18:56.480  4594  5340 I E1-W1-ONLY: E1|attempt|n=5|residual|threads=25|fds=105|children=0
+10-29 04:18:56.737  4594  5340 I E1-W1-ONLY: E1|attempt|n=6|phase=pre|reason=begin|primitive=MULTICAST|proc=threads=25|vmsize=17276012 kB|fds=105
+10-29 04:20:07.304  4594  5340 I E1-W1-ONLY: E1|attempt|n=6|phase=close|reason=close_chain|retained=false|all_released=true|termination=chain=skipped;
+10-29 04:20:07.308  4594  5340 I E1-W1-ONLY: E1|report_file=/data/user/0/com.ghostlock.app/files/e1-w1-only-report.txt|lines=32
+10-29 04:20:07.313  4594  5340 E TestRunner: java.lang.AssertionError: E1|W1-FAILED|reason=cve43499:write.w1:placement:preparePlacement:system-error/not-applied:call=system-error:errno=13:diag_step=8:diag_syscall=11:diag_errno=13|retained=false|attempt=6

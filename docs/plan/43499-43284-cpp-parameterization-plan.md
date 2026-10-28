@@ -1,4 +1,5 @@
 # 43499 / 43284 核心参数化与 JNI 化计划（v4）
+> **取代注记（2026-10-27）**：本件 43499 Native 参数化段已被 [43499-native-parameterization-v2-plan.md](43499-native-parameterization-v2-plan.md)（R30/R1）取代；43284 段不受影响。正文保持历史原样。
 
 > **状态**：**P1 实施中**（用户 2026-10-21 临时批准：测试分支、git 备份、可自由改码、纯 C 可用、例外需注释）。P0a/P0b 完成。
 > **2026-10-22 冻结**：very_legacy 拆分路线判定成本过高；JNI 重写改见 [43499-43284-jni-rewrite-plan.md](43499-43284-jni-rewrite-plan.md)（待批）。

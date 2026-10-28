@@ -5,6 +5,8 @@
 > 不覆盖历史计划。
 > **2026-10-22 JNI 重写（待批）**：P0-4 / P6c-4 / P0-1 / P0-2 / P1 已被
 > [43499-43284-jni-rewrite-plan.md](43499-43284-jni-rewrite-plan.md) 并入；本文件只保留未被并入的清理项。
+> **2026-10-28 新增计划**：[98260-backend-plan.md](98260-backend-plan.md)（CVE-2026-98260 backend，L 级，待用户批准；不取代本文件任何在办项）。
+> **2026-10-28 结构适配补编（已批）**：[98260-project-structure-adaptation-plan.md](98260-project-structure-adaptation-plan.md)（R1a→R1c→R1e→R1b+R1d；R2 另立；不取代本文件任何在办项）。
 
 ## 当前事实
 

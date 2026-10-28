@@ -63,11 +63,12 @@ import com.ghostlock.app.R
 import com.ghostlock.app.attack.AttackSettings
 import com.ghostlock.app.core.flow.FlowResult
 import com.ghostlock.app.ui.backend.BackendRunDispatch
+import com.ghostlock.app.ui.backend.BackendRunDispatcher
 import com.ghostlock.app.ui.backend.BackendRunGate
 import com.ghostlock.app.ui.backend.RunPageContext
 import com.ghostlock.app.ui.screen.module.backends.BackendSelection
 import com.ghostlock.app.ui.screen.module.backends.Backends
-import com.ghostlock.app.ui.screen.module.backends.Cve43499RunUiState
+import com.ghostlock.app.ui.backend.BackendRunUiState
 import com.ghostlock.app.ui.viewmodel.BackendRunViewModel
 import com.ghostlock.app.log.LogLevel
 import com.ghostlock.app.log.LogOrigin
@@ -203,12 +204,15 @@ fun RunPageMaterial(bottomInnerPadding: Dp) {
     val backendRunViewModel: BackendRunViewModel = viewModel()
     val backendSpec = backendRunViewModel.selectedSpec()
     val backendReadiness = backendRunViewModel.readiness()
-    val backendRunState = backendRunViewModel.controller.state
+    val backendRunState = backendRunViewModel.runState
     /* task-25：唯一 allow/deny 决策点（含运行页上下文）。 */
     val backendDecision = BackendRunGate.decide(
         backendSpec,
         backendReadiness,
-        RunPageContext(backendRunInProgress = backendRunState is Cve43499RunUiState.Running),
+        RunPageContext(
+            backendRunInProgress = backendRunState is BackendRunUiState.Running,
+            executor = com.ghostlock.app.ui.backend.currentAttackExecutorState(),
+        ),
     )
     fun startAttack() {
         /* Gate 拒绝时禁用：不改变状态、不写日志（点击无效）。 */
@@ -225,10 +229,15 @@ fun RunPageMaterial(bottomInnerPadding: Dp) {
         )
         state = RunState.Running
         scope.launch {
-            val dispatch = backendRunViewModel.runOnce(context, runInProgress = true)
+            /* task-32：UI 只做状态 holder；门禁通过后经 Dispatcher 直接调用 Flow（无 Controller/Run 中间层）。 */
+            backendRunViewModel.runState = BackendRunUiState.Running
+            val dispatch = BackendRunDispatcher.dispatch(backendSpec, backendDecision, context) { line ->
+                channel.trySend(TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, line, 0L))
+            }
             val elapsed = android.os.SystemClock.elapsedRealtime() - runStartedAt
             when (dispatch) {
                 is BackendRunDispatch.Blocked -> {
+                    backendRunViewModel.runState = BackendRunUiState.Idle
                     for (reason in dispatch.reasons) {
                         channel.trySend(
                             TerminalEntry(
@@ -242,19 +251,20 @@ fun RunPageMaterial(bottomInnerPadding: Dp) {
                     state = RunState.Idle
                 }
                 is BackendRunDispatch.Executed -> {
+                    backendRunViewModel.runState = dispatch.state
                     when (val runState = dispatch.state) {
-                        Cve43499RunUiState.Idle -> channel.trySend(
+                        BackendRunUiState.Idle -> channel.trySend(
                             TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, "backend run: idle", elapsed),
                         )
-                        Cve43499RunUiState.Running -> channel.trySend(
+                        BackendRunUiState.Running -> channel.trySend(
                             TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, "backend run: running", elapsed),
                         )
-                        is Cve43499RunUiState.Refused -> for (reason in runState.reasons) {
+                        is BackendRunUiState.Refused -> for (reason in runState.reasons) {
                             channel.trySend(
                                 TerminalEntry(LogOrigin.KOTLIN, LogLevel.Warn, reason, elapsed),
                             )
                         }
-                        is Cve43499RunUiState.Finished -> when (val result = runState.result) {
+                        is BackendRunUiState.Finished -> when (val result = runState.result) {
                             is FlowResult.Ok -> {
                                 channel.trySend(
                                     TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, "backend run: ok", elapsed),
@@ -283,6 +293,26 @@ fun RunPageMaterial(bottomInnerPadding: Dp) {
                         }
                     }
                     state = RunState.Done
+                    /* 98260：成功也须重启清理（PARKED 持有 fake cred 页）；独立警示条。 */
+                    /* 98260：必须重启由 BootSafetyStore 唯一权威判定（Failed.evidence 不被基类合并）。 */
+                    val finalState = backendRunViewModel.runState
+                    if (backendSpec?.id == com.ghostlock.app.backend.BackendId.CVE_98260) {
+                        val evidenceReboot = finalState is BackendRunUiState.Finished &&
+                            finalState.result.evidence["mustReboot"] == "true"
+                        val storeReboot = runCatching {
+                            com.ghostlock.app.data.cve98260.BootSafetyStore.load(context).isBlocked()
+                        }.getOrDefault(false)
+                        if (evidenceReboot || storeReboot) {
+                            channel.trySend(
+                                TerminalEntry(
+                                    LogOrigin.KOTLIN,
+                                    LogLevel.Warn,
+                                    context.getString(R.string.run_restart_required),
+                                    elapsed,
+                                ),
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -383,7 +413,19 @@ fun RunPageMaterial(bottomInnerPadding: Dp) {
                                 startAttack()
                             }
                             RunState.Running -> {
-                                state = RunState.Aborted
+                                /* 98260：触发后不可中止（不得 kill/timeout payload）。 */
+                                if (backendSpec?.abortable == false) {
+                                    channel.trySend(
+                                        TerminalEntry(
+                                            LogOrigin.KOTLIN,
+                                            LogLevel.Warn,
+                                            context.getString(R.string.run_abort_disabled_cve98260),
+                                            0L,
+                                        ),
+                                    )
+                                } else {
+                                    state = RunState.Aborted
+                                }
                             }
                             RunState.Aborting -> Unit
                             RunState.Aborted, RunState.Done -> state = RunState.RerunReady
@@ -436,12 +478,15 @@ fun RunPageMiuix(bottomInnerPadding: Dp) {
     val backendRunViewModel: BackendRunViewModel = viewModel()
     val backendSpec = backendRunViewModel.selectedSpec()
     val backendReadiness = backendRunViewModel.readiness()
-    val backendRunState = backendRunViewModel.controller.state
+    val backendRunState = backendRunViewModel.runState
     /* task-25：唯一 allow/deny 决策点（含运行页上下文）。 */
     val backendDecision = BackendRunGate.decide(
         backendSpec,
         backendReadiness,
-        RunPageContext(backendRunInProgress = backendRunState is Cve43499RunUiState.Running),
+        RunPageContext(
+            backendRunInProgress = backendRunState is BackendRunUiState.Running,
+            executor = com.ghostlock.app.ui.backend.currentAttackExecutorState(),
+        ),
     )
     fun startAttack() {
         /* Gate 拒绝时禁用：不改变状态、不写日志（点击无效）。 */
@@ -458,10 +503,15 @@ fun RunPageMiuix(bottomInnerPadding: Dp) {
         )
         state = RunState.Running
         scope.launch {
-            val dispatch = backendRunViewModel.runOnce(context, runInProgress = true)
+            /* task-32：UI 只做状态 holder；门禁通过后经 Dispatcher 直接调用 Flow（无 Controller/Run 中间层）。 */
+            backendRunViewModel.runState = BackendRunUiState.Running
+            val dispatch = BackendRunDispatcher.dispatch(backendSpec, backendDecision, context) { line ->
+                channel.trySend(TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, line, 0L))
+            }
             val elapsed = android.os.SystemClock.elapsedRealtime() - runStartedAt
             when (dispatch) {
                 is BackendRunDispatch.Blocked -> {
+                    backendRunViewModel.runState = BackendRunUiState.Idle
                     for (reason in dispatch.reasons) {
                         channel.trySend(
                             TerminalEntry(
@@ -475,19 +525,20 @@ fun RunPageMiuix(bottomInnerPadding: Dp) {
                     state = RunState.Idle
                 }
                 is BackendRunDispatch.Executed -> {
+                    backendRunViewModel.runState = dispatch.state
                     when (val runState = dispatch.state) {
-                        Cve43499RunUiState.Idle -> channel.trySend(
+                        BackendRunUiState.Idle -> channel.trySend(
                             TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, "backend run: idle", elapsed),
                         )
-                        Cve43499RunUiState.Running -> channel.trySend(
+                        BackendRunUiState.Running -> channel.trySend(
                             TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, "backend run: running", elapsed),
                         )
-                        is Cve43499RunUiState.Refused -> for (reason in runState.reasons) {
+                        is BackendRunUiState.Refused -> for (reason in runState.reasons) {
                             channel.trySend(
                                 TerminalEntry(LogOrigin.KOTLIN, LogLevel.Warn, reason, elapsed),
                             )
                         }
-                        is Cve43499RunUiState.Finished -> when (val result = runState.result) {
+                        is BackendRunUiState.Finished -> when (val result = runState.result) {
                             is FlowResult.Ok -> {
                                 channel.trySend(
                                     TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, "backend run: ok", elapsed),
@@ -516,6 +567,26 @@ fun RunPageMiuix(bottomInnerPadding: Dp) {
                         }
                     }
                     state = RunState.Done
+                    /* 98260：成功也须重启清理（PARKED 持有 fake cred 页）；独立警示条。 */
+                    /* 98260：必须重启由 BootSafetyStore 唯一权威判定（Failed.evidence 不被基类合并）。 */
+                    val finalState = backendRunViewModel.runState
+                    if (backendSpec?.id == com.ghostlock.app.backend.BackendId.CVE_98260) {
+                        val evidenceReboot = finalState is BackendRunUiState.Finished &&
+                            finalState.result.evidence["mustReboot"] == "true"
+                        val storeReboot = runCatching {
+                            com.ghostlock.app.data.cve98260.BootSafetyStore.load(context).isBlocked()
+                        }.getOrDefault(false)
+                        if (evidenceReboot || storeReboot) {
+                            channel.trySend(
+                                TerminalEntry(
+                                    LogOrigin.KOTLIN,
+                                    LogLevel.Warn,
+                                    context.getString(R.string.run_restart_required),
+                                    elapsed,
+                                ),
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -618,7 +689,19 @@ fun RunPageMiuix(bottomInnerPadding: Dp) {
                                 startAttack()
                             }
                             RunState.Running -> {
-                                state = RunState.Aborted
+                                /* 98260：触发后不可中止（不得 kill/timeout payload）。 */
+                                if (backendSpec?.abortable == false) {
+                                    channel.trySend(
+                                        TerminalEntry(
+                                            LogOrigin.KOTLIN,
+                                            LogLevel.Warn,
+                                            context.getString(R.string.run_abort_disabled_cve98260),
+                                            0L,
+                                        ),
+                                    )
+                                } else {
+                                    state = RunState.Aborted
+                                }
                             }
                             RunState.Aborting -> Unit
                             RunState.Aborted, RunState.Done -> state = RunState.RerunReady

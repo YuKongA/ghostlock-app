@@ -1,0 +1,150 @@
+# 43499 R1 附件：R2 最终逐字段矩阵
+
+- 状态：R1 修订件 + **R2 实现态（2026-10-27，writer impl-43499）**；R2a/R2b 已按本表落地，落地核对见 §6。
+- 上级索引：[43499-r1-freeze-inventory.md](43499-r1-freeze-inventory.md)；决策 A（8 个 STRUCT_/WIRE_ 常量全部参数化，approval-status §6.5）。
+- 本表 = 当前 HEAD a9af5482 的 20 struct 逐字段（type/结构 loc/来源/消费者首处）+ §R2 差异（新增/删除/迁移）；列 `§V` 指向 [validation](43499-r1-freeze-validation.md) 行。
+
+## 1. 当前字段矩阵（HEAD 快照，R2 在此基础上修改）
+
+| 结构 (loc) | 逐字段 (type) | 来源 | 消费者(首处) |
+|---|---|---|---|
+| abi_header (abi.h:50-54) | struct_size:u32 abi_version:u32 reserved:u64[2] | REQ | actor.c:630 |
+| call_result (result.h:66-76) | abi:structabi call_status:status effect:effect resource_state:rstate system_error:i32 reserved_resource_serial:u64 retained_resource_count:u64 reserved:u64[4] | OUT | actor.c:642 jni43499.c:228 jni43499.c:201 |
+| close_result (result.h:79-86) | call:structcall_result stop_requested:u32 workers_joined:u32 owned_chain_released:u32 retained_for_process_exit:u32 reserved:u64[4] | OUT | actor.c:750 jni43499.c:239 jni43499.c:240 |
+| placement_request (placement.h:20-46) | abi:structabi page_size:u64 allocation_size:u64 required_alignment:u64 scan_lower_bound:u64 scan_upper_bound:u64 scan_step:u64 scan_round_limit:u64 timeout_ns:u64 placement_cpu:u32 measurement_cpu:u32 objects_per_slab:u32 prepare_object_count:u32 spray_object_count:u32 pre_object_count:u32 post_object_count:u32 reserved32:u32 slab_order:u64 mm_struct_size:u64 mm_partials:u64 prepare_slabs:u64 snitch_collisions:u64 poll_us:u64 reserved:u64[2] | DBG | actor.c:642 carrier_tcp.c:68 page.c:77 |
+| placement_facts (placement.h:49-59) | candidate_page_base:u64 page_size:u64 allocation_size:u64 required_alignment:u64 measured_object_address:u64 measurement_rounds:u64 retained_child_count:u64 retained_descriptor_count:u64 reserved:u64[8] | DBG | page.c:75 carrier_tcp.c:68 page.c:77 |
+| placement_result (placement.h:62-65) | call:structcall_result facts:structplacement_facts | OUT | actor.c:750 placement.c:737 |
+| page_bytes (page.h:18-24) | abi:structabi size:u64 content_generation:u64 reserved:u64[4] | REQ | actor.c:642 page.c:251 page.c:314 |
+| landing_request (page.h:30-43) | abi:structabi expected_page_base:u64 page_size:u64 allocation_size:u64 required_alignment:u64 reclaim_payload_size:u64 socket_send_buffer_size:u64 reclaim_send_limit:u64 timeout_ns:u64 fill_byte:u64 reserved:u64[7] | DBG | actor.c:642 page.c:75 carrier_tcp.c:68 |
+| landing_receipt (page.h:46-59) | actual_page_base:u64 content_generation:u64 closed_prepare_count:u64 closed_spray_count:u64 closed_pre_count:u64 closed_post_count:u64 reclaim_send_count:u64 commit_reached:u32 placement_consumed:u32 reclaim_retained:u32 reserved32:u32 reserved:u64[8] | OUT | page.c:314 actor.c:594 actor.c:630 |
+| landing_result (page.h:62-65) | call:structcall_result receipt:structlanding_receipt | OUT | actor.c:750 actor.c:754 |
+| actor_setup (actor.h:18-41) | abi:structabi owner_cpu:u32 waiter_cpu:u32 consumer_cpu:u32 owner_priority:i32 waiter_priority:i32 consumer_priority:i32 thread_count:u32 reserved32:u32 prepare_timeout_ns:u64 parked_timeout_ns:u64 execution_timeout_ns:u64 shutdown_timeout_ns:u64 consumer_max:u64 consumer_burst:u64 lock_pi_spin_ns:u64 poll_us:u64 setup_settle_us:u64 requeue_expected:int64_t disarm_spin_limit:u64 reserved:u64[1] | REQ | actor.c:642 actor.c:294 actor.c:348 |
+| actor_prepare_receipt (actor.h:44-55) | page_content_generation:u64 primitive_kind:pkind thread_count:u32 page_consumed:u32 owner_ready:u32 waiter_ready:u32 consumer_ready:u32 carrier_prepared:u32 reserved32:u32 reserved:u64[8] | OUT | actor.c:828 actor.c:594 actor.c:843 |
+| actor_execute_receipt (actor.h:58-71) | page_content_generation:u64 consumer_call_count:u64 consumer_success_count:u64 consumer_inflight_at_return:u64 owner_ready:u32 waiter_parked:u32 carrier_armed:u32 window_opened:u32 carrier_disarmed:u32 retained_for_process_exit:u32 reserved32:u32 reserved:u64[8] | OUT | actor.c:1044 actor.c:1043 actor.c:1066 |
+| actor_prepare_result (actor.h:74-77) | call:structcall_result receipt:structactor_prepare_receipt | OUT | actor.c:750 actor.c:754 |
+| actor_execute_result (actor.h:80-83) | call:structcall_result receipt:structactor_execute_receipt | OUT | actor.c:750 actor.c:754 |
+| primitive_addresses (primitive.h:26-31) | final_waiter_address:u64 final_task_address:u64 final_lock_address:u64 reserved:u64[4] | REQ | carrier_multicast.c:42 carrier_multicast.c:43 carrier_multicast.c:44 |
+| multicast_spec (primitive.h:34-47) | addresses:structaddresses frame_size:u64 socket_buffer_size:u64 operation_budget:u64 timeout_ns:u64 address_family:u32 reserved32:u32 arm_hold_ns:u64 arm_sequence:u64 reserved:u64[4] | REQ | carrier_multicast.c:55 carrier_multicast.c:56 carrier_multicast.c:71 |
+| pselect_spec (primitive.h:50-60) | addresses:structaddresses frame_size:u64 descriptor_capacity:u64 operation_budget:u64 timeout_ns:u64 per_attempt_delay_ns:u64 reserved:u64[5] | REQ | carrier_multicast.c:55 carrier_multicast.c:56 carrier_pselect.c:327 |
+| tcp_zerocopy_spec (primitive.h:63-78) | addresses:structaddresses frame_size:u64 mapping_size:u64 receive_size:u64 mapping_offset:u64 operation_budget:u64 timeout_ns:u64 punch_spin:u64 post_hold_ns:u64 zc_address_offset:u64 fill_byte:u64 reserved:u64[2] | DBG | carrier_multicast.c:55 carrier_multicast.c:56 carrier_tcp.c:231 |
+| primitive_spec (primitive.h:85-95) | abi:structabi kind:pkind reserved32:u32 UNION{multicast|pselect|tcp} reserved:u64[8] | REQ | actor.c:642 actor.c:471 actor.c:594 |
+
+- 来源列：`REQ`=Kotlin request 构造（JNI 编组）；`OUT`=Native 写回；`DBG`=debug 期 `A301SoDebugConfig` 取值（R2 起 request 构造器显式携带）。
+- 单位由字段名约定：`_size/_bytes/_offset/_address`=字节/VA，`_ns`=纳秒，`_us`=微秒，`_rounds/_count/_budget/_limit/_slabs/_collisions/_calls`=计数，`_order`=伙伴阶数，`_generation`=代次；无前缀的 `pid/uid/flag` 为 id/位域。
+
+## 2. R2 差异（相对 HEAD；A 决策 + P1/P3/P4 缺口）
+
+| 结构 | 新增字段（append-only） | 删除/迁移 | §V 行 |
+|---|---|---|---|
+| placement_request | identity_start:u64、identity_end:u64、leak_tag_nibble:u64、leak_tag_shift:u64、staging_capacity:u64、max_context_entries:u64、max_objects_per_slab:u64、max_measurement_rounds:u64 | 无（slab/tuning 已在 v4） | V1,V5,V9,V12 |
+| landing_request | （保留 fill_byte；owner=page.c） | 无 | V3,V4 |
+| actor_setup | （v4 已全） | 无 | V6,V7,V8 |
+| multicast_spec | max_frame:u64（原 STRUCT_MULTICAST_MAX_FRAME）、ghost_pid:i32、futex_waiter_flag:u32、disarm_required:u32（+显式对齐 pad） | 无 | V2,V10,V11 |
+| pselect_spec | max_nfds:u64（原 STRUCT_SELECT_MAX_NFDS） | 无 | V2 |
+| tcp_zerocopy_spec | max_mapping:u64、max_frame:u64（原 STRUCT_TCP_MAX_MAPPING/FRAME） | **删除 fill_byte**（唯一归属 landing） | V2,V3 |
+| kernel_internal.h | 8 个宏全部删除 → 上述请求字段 | 全删（PHYS_/STRUCT_/WIRE_=0） | V2,V9 |
+| page_internal/carrier_internal | page_impl.fill_byte 新增（landing→page），carrier 结构承载请求参数 | 无 | V3 |
+| 输出结构 | 无新字段；删除 reserved 槽 | reserved 全删 | V1 |
+
+## 3. 容量类字段 storage / owner / free / retain（A 决策后全部进请求字段）
+
+| 容量字段（原宏） | 请求归属 | storage / owner | free / retain |
+|---|---|---|---|
+| MULTICAST_MAX_FRAME | multicast_spec.max_frame | 无堆分配（carrier 深拷贝 frame ≤ max_frame）；owner=carrier_multicast | release free frame；dirty→retained |
+| SELECT_MAX_NFDS | pselect_spec.max_nfds | fd_set 定长（carrier_pselect）；owner=carrier | release 恢复 fd/关闭；未释放→retained |
+| TCP_MAX_MAPPING/FRAME | tcp_spec.max_mapping/max_frame | mapping mmap+send_buffer；owner=carrier_tcp | release munmap/free；失败/未知引用→retained |
+| MAX_CONTEXT_ENTRIES | placement_request.max_context_entries | ctx 数组 malloc；owner=placement | cleanup_all free；dirty→retained |
+| STAGING_CAPACITY | placement_request.staging_capacity | placement_impl.staging[]；owner=placement | 随 placement free；landing dirty→retained |
+| LEAK_TAG_NIBBLE/SHIFT | placement_request.leak_tag_nibble/leak_tag_shift | 无存储（校验/解码参数） | 无 |
+| IDENTITY_START/END | placement_request.identity_start/end | 无存储（区间校验） | 无 |
+
+## 4. fill_byte 唯一归属与 Page→Actor→Carrier 传递链
+
+唯一源=`landing_request.fill_byte`（page.h:42）→ `page_impl.fill_byte`（page_internal.h，落页写）→ `prepareActor` 读 Page → `carrier_<kind>.fill_byte`（carrier_internal.h）→ carrier 触页/填充点。`tcp_zerocopy_spec.fill_byte` R2 删除；`page.c` 是唯一 writer，carrier 只读。
+
+## 5. poll_us / pid / flag / disarm 归属（R2）
+
+- poll_us：`placement_request.poll_us`→placement.c:538；`actor_setup.poll_us`→actor.c:166/307/327/370/401/905/1021+carrier_tcp.c:453（经 actor 注入 carrier）。无 page 消费者。
+- pid/futex_waiter_flag/disarm_required：multicast_spec 尾部承载；ghost_pid=Kotlin Process.myPid()；futex_waiter_flag∈{0,0x80000000}（0=不置位）；disarm_required∈{0,1}（0/失败=不做 disarm，同 FAILURE→不做）。
+
+## 6. R2 落地核对（2026-10-27 实测，writer impl-43499）
+
+| 项 | 冻结目标 | 实现态 | 证据 |
+|---|---|---|---|
+| placement_request | 216B（+8×u64） | ✅ 216B | `tools/abi_layout_probe` / `_Static_assert` |
+| multicast_spec | 112B（+max_frame/ghost_pid/futex_waiter_flag/disarm_required） | ✅ 112B | 同上 |
+| pselect_spec | 80B（+max_nfds） | ✅ 80B | 同上 |
+| tcp_zerocopy_spec | 120B（+max_mapping/max_frame，−fill_byte） | ✅ 120B | 同上 |
+| primitive_spec | 136B | ✅ 136B | 同上 |
+| fill_byte 唯一归属 | landing→page_impl→Actor→TCP carrier | ✅ 已实现（`page.c` 唯一 writer） | `page_internal.h`/`actor.c` |
+| poll_us/pid/flag/disarm 归属 | §5 | ✅ 已实现（ghost 参数经 multicast_spec 传递，D3 在 waiter 内执行） | `actor.c` waiter_multicast |
+| staging 容量 | 运行期 malloc（owner=Placement） | ✅ `placement_impl.staging/staging_capacity`；失败/close/landing 收尾释放，retained 不释放 | `placement.c`/`page.c` |
+
+- 未实现（登记债）：compact nice 轮转（D5 剩余项，计划 §4 明确本批不做）；pselect/TCP 仅参数化未启用。
+
+## 7. R3 回填（R3a Native + R3b Kotlin，2026-10-27；writer routes-impl2/routes-impl3）
+
+> 本节是 R3 增量**唯一权威**；R2 段的字号/矩阵仍是 R2 时点历史（不得据此判断现工作树）。
+> 依据：`docs/analysis/43499-three-route-line-review-20261027.md` §5/§6。
+
+### 7.1 R3 新增字段（append-only；全部 REQ，无 Native 默认值）
+
+| 结构 | 新字段（offset） | 单位/域 | 来源（Kotlin） | 消费者（Native file:line） |
+| --- | --- | --- | --- | --- |
+| landing_request（104B） | page_accept_required(80)、page_accept_offset(88)、page_accept_bit(96) | 0/1；u64；bit<64（required=1 时） | generator 由 legacy `payload_write_layout+accepts_page` 派生 | page.c `glk43499_page_valid_landing_request` / 提交点前求值 |
+| landing_receipt（88B） | page_accept_value(72)、page_accept_checked(80)、page_accept_ok(84) | u64/u32 | —（Native 写回） | page.c 回执；Kotlin `Native43499LandingResult` |
+| actor_execute_receipt（88B） | carrier_operations(56)、carrier_error(64)、carrier_last_step(68)、carrier_last_errno(72)、carrier_punch_failed(76)、ghost_disarm_result(80)、ghost_disarm_errno(84) | u64/i32 | —（Native 写回） | actor.c/carrier_*.c；Kotlin `Native43499ActorExecuteResult` |
+| multicast_spec（112B） | arm_hold_ns(72)、arm_sequence(80)、max_frame(88)、ghost_pid(96)、futex_waiter_flag(100)、disarm_required(104) | ns/迭代数；u64；u64；i32；u32；u32 | `A301SoDebugConfig`（执行参数 + `generator.multicast`） | carrier_multicast.c:prepare/trigger（B2/B7）、actor.c waiter_multicast（D3） |
+| pselect_spec（104B） | max_nfds(72) + R3a enter_delay_ns(80)、fd_reserve_stride(88)、select_use_timeval(96) | u64 | `generator.pselect` + 执行参数 | carrier_pselect.c:prepare/trigger（P1/P7/P10） |
+| tcp_zerocopy_spec（176B） | punch_spin(80)、post_hold_ns(88)、zc_address_offset(96)、max_mapping(104)、max_frame(112)、arm_sequence(120)、zc_length_offset(128)、zc_task_offset(136)、zc_lock_offset(144)、punch_phase_spin(152)、**send_fill_byte(160)、mapping_fill_byte(168)** | u64 | `generator.tcp` | carrier_tcp.c:prepare/trigger（T1–T6） |
+| primitive_spec（192B） | union 起点 16；tcp 分支最大 176 ⇒ 总 192 | — | — | actor.c prepare 分派 |
+
+### 7.2 R3 后 sizeof（host 实测，`tools/abi_layout_probe.c`）
+
+| 结构 | R2 | R3 | 变化 |
+| --- | --- | --- | --- |
+| landing_request | 80 | **104** | +3×u64（页接受） |
+| landing_receipt | 72 | **88** | +u64+2×u32 |
+| landing_result | 104 | **120** | = call 32 + receipt 88 |
+| actor_execute_receipt | 56 | **88** | +u64+6×i32 |
+| actor_execute_result | 88 | **120** | = call 32 + receipt 88 |
+| pselect_spec | 80 | **104** | +3×u64 |
+| tcp_zerocopy_spec | 120 | **176** | R3a +5×u64；R3b +2×u64（双 fill） |
+| primitive_spec | 136 | **192** | tcp 分支 +56 |
+
+未变化的：abi_header 8、call_result 32、close_result 48、placement_request 216、placement_facts 64、placement_result 96、page_bytes 32、actor_setup 128、actor_prepare_receipt 40、actor_prepare_result 72、primitive_addresses 24、multicast_spec 112。
+
+### 7.3 fill_byte 归属变更（R3b 取代 §4）
+
+- §4 的“landing.fill_byte → page_impl → Actor → tcp carrier”传递链**已被 R3b 取代**：
+  tcp 发送小包填充=`tcp_zerocopy_spec.send_fill_byte`(0x33)、映射页填充=
+  `tcp_zerocopy_spec.mapping_fill_byte`(0x55)，二者各自唯一来源；
+- `landing_request.fill_byte` 保留 ABI v4 槽（append-only 不得删除），page.c 仍校验域并存于
+  Page；**不再参与任何 Carrier 填充**（内容由 Kotlin 全量 bytes 提供）；
+- 依据：legacy2 `route_tcp_session.cpp.disabled:61-64`；A 决策“每个物理使用者一个请求字段”。
+
+### 7.4 Kotlin DTO ↔ JNI ↔ C 三侧
+
+- Kotlin：`Native43499TcpZerocopySpec.sendFillByte/mappingFillByte`（无默认值）；
+  `Native43499LandingRequest.pageAccept*`；`Native43499PselectSpec.enterDelayNs/fdReserveStride/selectUseTimeval`；
+  `Native43499ActorExecuteResult.carrier*/ghostDisarm*`。
+- JNI：`jni43499.c` 按字段名逐项读取/写回；`GLK43499_INIT_ABI` 填 `sizeof`（不硬编码）。
+- C：`GLK43499_STATIC_ASSERT(sizeof(...) == R3 值)` 已同步（page.h/actor.h/primitive.h）。
+
+## 8. R3d（Kotlin 数据平面；Native ABI/字段矩阵不变）
+
+- **Native 字段 diff = 0**：R3d 未新增/删除/改名任何 C 结构字段；§7 的 R3 矩阵
+  （placement 216 / landing_request 104 / actor_setup 128 / actor_execute_result 120 /
+  multicast_spec 112 / pselect_spec 104 / tcp_zerocopy_spec 176 / primitive_spec 192）
+  全部继续有效；ABI probe 与 `_Static_assert` 无需变更。
+- 多写链（W1b/W2/W2b/W3）**不携带 Native 新字段**，其全部物理输入继续由既有
+  append-only 参数承载：
+  - 写目标/模式/preserve_child 只在 Kotlin generator 内部决定 landing bytes
+    （`Cve43499WriteRequest`），Native 不解释业务语义；
+  - fast-repair 时序复用 `actor_setup.{setup_settle_us, parked_timeout_ns, lock_pi_spin_ns}`；
+  - 页接受判据复用 `landing_request.page_accept_*`（Credential/W1b/W3 传 required=0）。
+- Kotlin 非 ABI：generator/planner/writeChain/targetSource/verifier/restarter/lifecycle 类型（证据键见 review §6.1）；`DebugCredentialGenerator`/`DebugWriteChainParameters` 仍为 debug 显式常量（迁移债，P0c 迁入配置）。
+
+### 10.6 R3e perf 新结构（2026-10-27；无既有字段变更）
+
+- 仅**新增** `core/perf.h` 4 结构（128/32/48/80；逐字段见 abi §10.6）；既有 20 结构字段/尺寸/顺序零改动；Kotlin 非 ABI 类型与 `perf` debug 段默认关闭（G1 未跑）。

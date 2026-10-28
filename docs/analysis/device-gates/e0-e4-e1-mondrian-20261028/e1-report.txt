@@ -1,0 +1,11 @@
+E1|device|model=23013RK75C|fingerprint=POCO/mondrian_global/mondrian:15/AQ3A.250226.002/OS3.0.5.0.VMNMIXM:user/release-keys
+E1|kernel=5.10.252-gki-gabcbe4b2bc10|uid=10177
+E1|selinux_self=u:r:untrusted_app:s0:c177,c256,c512,c768|enforce_file=unreadable
+E1|selinux|api=false|enforce_file=unreadable|proof=external-shell-ack|external_ack=true
+E1|ksu|existing_userspace_paths=[]|module_lines=0|sys_module_ksu=[]|proc_modules_lines=-1
+E1|cold_boot|elapsed_realtime_s=32|proc_uptime=unreadable|max=1800
+E1|power|interactive=true|device_idle=false|power_save=false
+E1|pstore|exists=true
+E1|debug_profile|release=5.10.252-gki-gabcbe4b2bc10|kernel_major=5|primitive=MULTICAST|mm_struct_sz=960
+E1|begin|primitive=MULTICAST|ghost_pid=7930
+E1|close_chain|retained=false|termination=chain=skipped;|all_released=true

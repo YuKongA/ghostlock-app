@@ -1,0 +1,4 @@
+10-29 05:46:45.056  4901  5494 I GLK-MCAST510: GLK-MCAST510|begin|kernel=5.10.252-gki-gabcbe4b2bc10|uid=10177|target_arg=0x1000|preserve_child=true
+10-29 05:46:45.056  4901  5494 I GLK-MCAST510: GLK-MCAST510|prepare=FAIL|reason=mcast510:landing:landing:clean-failure:call=invalid-argument:errno=0
+10-29 05:46:45.057  4901  5494 I GLK-MCAST510: GLK-MCAST510|begin|kernel=5.10.252-gki-gabcbe4b2bc10|uid=10177|target_arg=0x1000|preserve_child=true
+10-29 05:46:45.058  4901  5494 I GLK-MCAST510: GLK-MCAST510|prepare=FAIL|reason=mcast510:landing:landing:clean-failure:call=invalid-argument:errno=0

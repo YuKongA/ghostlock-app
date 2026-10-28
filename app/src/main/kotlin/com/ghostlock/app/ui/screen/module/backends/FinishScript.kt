@@ -47,6 +47,8 @@ fun FinishState.toRootScript(
         appendLine("log 'soft reboot zygote'")
         appendLine("setprop ctl.restart zygote")
     }
+    appendLine("log \"finish uid=\$(id -u)\"")
+    appendLine("log \"finish exit status=\$STATUS\"")
     appendLine("log 'finish done'")
     /* F-D：marker 写入本次 runId 内容（验收按内容对拍，不只检查存在）；无 runId 不写。 */
     appendLine("if [ -n \"\$RUN_ID\" ]; then")

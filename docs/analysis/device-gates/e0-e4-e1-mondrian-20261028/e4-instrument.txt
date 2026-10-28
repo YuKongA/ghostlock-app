@@ -1,0 +1,21 @@
+
+com.ghostlock.app.backend.cve43499.victim.JniVictimMechanismProbeTest:
+Error in e0EnvironmentAndE4JniVictimTransport(com.ghostlock.app.backend.cve43499.victim.JniVictimMechanismProbeTest):
+java.lang.AssertionError: E4|receive-failed|status=-1005
+	at com.ghostlock.app.backend.cve43499.victim.JniVictimMechanismProbeTest.roundTrip(JniVictimMechanismProbeTest.kt:409)
+	at com.ghostlock.app.backend.cve43499.victim.JniVictimMechanismProbeTest.e4Transport(JniVictimMechanismProbeTest.kt:177)
+	at com.ghostlock.app.backend.cve43499.victim.JniVictimMechanismProbeTest.e0EnvironmentAndE4JniVictimTransport(JniVictimMechanismProbeTest.kt:48)
+
+
+Time: 0.113
+There was 1 failure:
+1) e0EnvironmentAndE4JniVictimTransport(com.ghostlock.app.backend.cve43499.victim.JniVictimMechanismProbeTest)
+java.lang.AssertionError: E4|receive-failed|status=-1005
+	at com.ghostlock.app.backend.cve43499.victim.JniVictimMechanismProbeTest.roundTrip(JniVictimMechanismProbeTest.kt:409)
+	at com.ghostlock.app.backend.cve43499.victim.JniVictimMechanismProbeTest.e4Transport(JniVictimMechanismProbeTest.kt:177)
+	at com.ghostlock.app.backend.cve43499.victim.JniVictimMechanismProbeTest.e0EnvironmentAndE4JniVictimTransport(JniVictimMechanismProbeTest.kt:48)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
+
+

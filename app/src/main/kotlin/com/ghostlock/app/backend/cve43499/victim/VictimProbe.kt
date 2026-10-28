@@ -1,5 +1,7 @@
 package com.ghostlock.app.backend.cve43499.victim
 
+import com.ghostlock.app.core.victim.VictimIdentity
+
 /**
  * 受害者 uid 读回结果（自包含；不依赖已删除的 `engine.ktstep` 包）。
  *
@@ -13,21 +15,6 @@ internal sealed interface VictimUidResult {
     /** 读回失败；reason 是稳定可检索的具名文本（例如 `victim-probe:epipe`）。 */
     data class Failed(val reason: String) : VictimUidResult
 }
-
-/**
- * victim 身份证据：PID + `/proc/<pid>/stat` starttime + uid。
- *
- * @property pid 子进程 PID。
- * @property startTimeTicks `/proc/<pid>/stat` 第 22 字段（boot 起的 tick 数）；用于
- *   在 execute 之后复查「同一进程仍在」，防止 PID 被复用。
- * @property uid 读回的 uid。
- * @note 阶段：F-D victim↔Actor 可审计绑定。
- */
-internal data class VictimIdentity(
-    val pid: Int,
-    val startTimeTicks: Long,
-    val uid: Long,
-)
 
 /** uid 读回口的实现种类；生产路径必须显式声明 [PRODUCTION]。 */
 internal enum class VictimProbeKind { FIXTURE, PRODUCTION }

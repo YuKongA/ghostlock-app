@@ -29,6 +29,9 @@ struct glk43499_page_impl {
     uint64_t allocation_size;
     uint64_t required_alignment;
     uint64_t content_generation;
+    /* fill_byte 唯一源=landing_request.fill_byte；page.c 是唯一 writer，
+     * Actor/Carrier 只读（R2b 删除 tcp_zerocopy_spec.fill_byte）。 */
+    uint64_t fill_byte;
     /* 0=LANDED；1=CLOSING（close 已接受）；2=CONSUMED（已转移给 Actor）。 */
     int32_t state;
     /* 1 表示 reclaim 闭包无法证明完整释放：对象保留到进程退出（不 free、不 close）。 */

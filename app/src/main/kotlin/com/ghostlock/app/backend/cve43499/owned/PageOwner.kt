@@ -14,6 +14,27 @@ import com.ghostlock.app.jni.Native43499PrimitiveSpec
  *   事务前深拷贝，Native 在线程创建前再深拷贝一次并完成 dispatch。
  * @note 一个 [Native43499ActorSetup] 只能用于一次 prepareActor；本对象不缓存。
  */
+/**
+ * G08/task-96：Actor CPU pin 的本地预检（与 Native 0xFFFFFFFF NO_PIN 语义对齐）。
+ *
+ * @param ownerCpu owner 线程 CPU；`-1`=NO_PIN（透传 Native），其它负值拒绝。
+ * @param waiterCpu waiter 线程 CPU；`-1`=NO_PIN，其它负值拒绝。
+ * @param consumerCpu consumer 线程 CPU；必须 ≥0（不 pin 无法保证 PI 窗口消费者）。
+ * @return null=通过；否则具名 reason（`actor-cpu:owner|waiter|consumer`）。
+ * @note 不触 Native；与 `A301SoDebugConfig.NO_PIN_CPU` 同值（-1）。
+ */
+internal fun precheckActorCpuPinning(
+    ownerCpu: Int,
+    waiterCpu: Int,
+    consumerCpu: Int,
+): String? {
+    val noPin = com.ghostlock.app.data.cve43499.A301SoDebugConfig.NO_PIN_CPU
+    if (consumerCpu < 0) return "actor-cpu:consumer"
+    if (ownerCpu < noPin) return "actor-cpu:owner"
+    if (waiterCpu < noPin) return "actor-cpu:waiter"
+    return null
+}
+
 internal data class ActorPreparation(
     val setup: Native43499ActorSetup,
     val primitive: Native43499PrimitiveSpec,
@@ -175,9 +196,10 @@ internal class PageOwner private constructor(
     private fun precheckPreparation(preparation: ActorPreparation): String? {
         val setup = preparation.setup
         if (setup.threadCount != 3) return "actor-thread-count:" + setup.threadCount
-        if (setup.ownerCpu < 0 || setup.waiterCpu < 0 || setup.consumerCpu < 0) {
-            return "actor-cpu"
-        }
+        /* G08/task-96：owner/waiter 允许 NO_PIN_CPU 哨兵（-1 ⇒ Native 0xFFFFFFFF 不 pin），
+         * consumer 必须真实 CPU（≥0）；其它负值仍 fail-closed。 */
+        precheckActorCpuPinning(setup.ownerCpu, setup.waiterCpu, setup.consumerCpu)
+            ?.let { return it }
         val priorities = listOf(
             setup.ownerPriority,
             setup.waiterPriority,
@@ -188,6 +210,23 @@ internal class PageOwner private constructor(
             setup.executionTimeoutNanos <= 0L || setup.shutdownTimeoutNanos <= 0L
         ) {
             return "actor-timeout-nanos"
+        }
+        /* P0b：新增请求参数 fail-closed（无默认回退）。 */
+        if (setup.consumerMax <= 0L || setup.consumerBurst <= 0L ||
+            setup.consumerBurst > setup.consumerMax
+        ) {
+            return "actor-consumer-budget"
+        }
+        if (setup.lockPiSpinNs <= 0L || setup.lockPiSpinNs >= 1_000_000_000L ||
+            setup.pollUs < 0L || setup.pollUs > 1_000_000L ||
+            setup.setupSettleUs < 0L || setup.setupSettleUs > 1_000_000L
+        ) {
+            return "actor-wait-timing"
+        }
+        if (setup.requeueExpected < 0L || setup.requeueExpected > Int.MAX_VALUE.toLong() ||
+            setup.disarmSpinLimit <= 0L
+        ) {
+            return "actor-pi-tuning"
         }
         val primitive = preparation.primitive
         if (primitive.finalWaiterAddress == 0L ||

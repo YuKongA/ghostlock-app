@@ -1,0 +1,10 @@
+10-29 05:30:54.085  8350  8364 I TestRunner: run started: 1 tests
+10-29 05:30:54.085  8350  8364 I TestRunner: started: mcast510SingleShotProbe(com.ghostlock.app.backend.cve43499.victim.Mcast510ProbeTest)
+10-29 05:31:22.651  8350  8364 I GLK-MCAST510: GLK-MCAST510|begin|kernel=5.10.252-gki-gabcbe4b2bc10|uid=10177|target=0x1000
+10-29 05:31:22.652  8350  8364 I GLK-MCAST510: GLK-MCAST510|page|base=0x-7fbcd70000|fakeLock=0x-7fbcd70000|fakeTask=0x-7fbcd6fc00|fakeW0=0x-7fbcd6fd00|geometry=waiter96/task48/lock56/buffer264/compact1
+10-29 05:31:22.652  8350  8364 I GLK-MCAST510: GLK-MCAST510|result|pass=true|ret=-1|errno=99|calls=1|success=1|elapsed_ns=6837657|total_ms=28558|target=0x1000|page_base=0x-7fbcd70000|fake_lock=0x-7fbcd70000|fake_task=0x-7fbcd6fc00|fake_w0=0x-7fbcd6fd00
+10-29 05:31:22.654  8350  8364 I GLK-MCAST510: GLK-MCAST510|begin|kernel=5.10.252-gki-gabcbe4b2bc10|uid=10177|target=0x1000
+10-29 05:31:22.654  8350  8364 I GLK-MCAST510: GLK-MCAST510|page|base=0x-7fbcd70000|fakeLock=0x-7fbcd70000|fakeTask=0x-7fbcd6fc00|fakeW0=0x-7fbcd6fd00|geometry=waiter96/task48/lock56/buffer264/compact1
+10-29 05:31:22.654  8350  8364 I GLK-MCAST510: GLK-MCAST510|result|pass=true|ret=-1|errno=99|calls=1|success=1|elapsed_ns=6837657|total_ms=28558|target=0x1000|page_base=0x-7fbcd70000|fake_lock=0x-7fbcd70000|fake_task=0x-7fbcd6fc00|fake_w0=0x-7fbcd6fd00
+10-29 05:31:22.655  8350  8364 I TestRunner: finished: mcast510SingleShotProbe(com.ghostlock.app.backend.cve43499.victim.Mcast510ProbeTest)
+10-29 05:31:22.660  8350  8364 I TestRunner: run finished: 1 tests, 0 failed, 0 ignored

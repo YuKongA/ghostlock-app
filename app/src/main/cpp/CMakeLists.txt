@@ -80,20 +80,32 @@ set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/gl43284/exp.c PROPERTIES
 # `__ARM` selects the arm64 branch of the header-only KernelSnitch detector.
 add_library(ghostlock43499 SHARED
     gl43499/jni43499.c
+    # A1 debug-only 单发 multicast probe（release 不编入/不导出）。
+    $<$<CONFIG:Debug>:${CMAKE_CURRENT_SOURCE_DIR}/gl43499/mcast510_probe.c>
     gl43499/core/placement.c
     gl43499/core/page.c
     gl43499/core/actor.c
     gl43499/core/carrier_multicast.c
     gl43499/core/carrier_pselect.c
     gl43499/core/carrier_tcp.c
+    gl43499/core/perf.c
+    gl43499/core/victim_protocol.c
 )
 target_include_directories(ghostlock43499 PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/gl43499
     ${CMAKE_CURRENT_SOURCE_DIR}/glgeneral
 )
-target_compile_definitions(ghostlock43499 PRIVATE __ARM)
+target_compile_definitions(ghostlock43499 PRIVATE __ARM
+    # E4 零 fork ①/严格 ②（task-60）：wrap 计数仅 Debug 编入；Release 无 wrap。
+    $<$<CONFIG:Debug>:GLK_VICTIM_FORK_WRAP=1>
+)
 target_link_libraries(ghostlock43499 PRIVATE gl_common log)
-target_link_options(ghostlock43499 PRIVATE -Wl,-z,max-page-size=16384)
+target_link_options(ghostlock43499 PRIVATE -Wl,-z,max-page-size=16384
+    # E4 零 fork ①：仅 Debug 链接期 wrap，计数由 victim_protocol.c 提供
+    # （生产路径=0）；Release 不传 wrap ⇒ readelf 无 fork/vfork 导入（严格 ②）。
+    $<$<CONFIG:Debug>:-Wl,--wrap=fork>
+    $<$<CONFIG:Debug>:-Wl,--wrap=vfork>
+)
 set_target_properties(ghostlock43499 PROPERTIES
     PREFIX "lib"
     SUFFIX ".so"
@@ -101,3 +113,79 @@ set_target_properties(ghostlock43499 PROPERTIES
     C_VISIBILITY_PRESET hidden
 )
 
+# 通用 victim helper（实现批 A，task-52）：backend-agnostic PIE。
+# AGP 只打包 lib*.so 形态的文件（见上方 dfroot 先例）；app 用 posix_spawn 从
+# nativeLibraryDir 启动它（生产/JNI 路径零 fork）。helper 只承载机械能力：
+# probeUid/perfSelfSample(仅 syscall+raw memfd)/execScript(posix_spawn)/park/bye。
+add_executable(ghostlock_victim_helper
+    gl43499/core/victim_helper/victim_helper.c
+    gl43499/core/victim_protocol.c
+)
+target_include_directories(ghostlock_victim_helper PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/gl43499/core
+)
+target_compile_definitions(ghostlock_victim_helper PRIVATE
+    # E4 零 fork ①/严格 ②（task-60）：helper 侧 wrap 计数仅 Debug。
+    $<$<CONFIG:Debug>:GLK_VICTIM_FORK_WRAP=1>
+)
+target_link_options(ghostlock_victim_helper PRIVATE -Wl,-z,max-page-size=16384
+    # E4 零 fork ①（helper 侧计数随 bye 回执上报）；Release 不传 wrap。
+    $<$<CONFIG:Debug>:-Wl,--wrap=fork>
+    $<$<CONFIG:Debug>:-Wl,--wrap=vfork>
+)
+set_target_properties(ghostlock_victim_helper PROPERTIES
+    PREFIX "lib"
+    SUFFIX ".so"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}"
+)
+
+# 98260：上游 timer exploit 的独立 payload（GhostLock port，B1）。
+# 形态 = 静态 ET_EXEC：上游语义依赖 `/proc/self/exe` 重入自身（child `wait <mode>`
+# 与 target `argv[0]==""` 的 exec 成功信号）以及"失败即 park、重启唯一清理"的
+# 独立进程生命周期，in-process 无法等价。AGP 按 `lib*.so` 收集进 nativeLibraryDir，
+# 由 Shizuku UserService 侧 JNI posix_spawn 启动（D2 delta）；诊断 mode 仅 Debug 编入。
+add_executable(ghostlock98260_helper
+    gl98260/timer.c
+    gl98260/params.c
+)
+target_include_directories(ghostlock98260_helper PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/gl98260
+)
+target_compile_options(ghostlock98260_helper PRIVATE
+    -Wall -Wextra -Werror -pthread
+)
+target_link_options(ghostlock98260_helper PRIVATE
+    -static
+    -pthread
+    -Wl,--build-id=none
+    -Wl,-z,norelro
+    -Wl,-z,max-page-size=16384
+)
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_definitions(ghostlock98260_helper PRIVATE GLK98260_ENABLE_DIAGNOSTIC=1)
+endif()
+set_target_properties(ghostlock98260_helper PROPERTIES
+    PREFIX "lib"
+    SUFFIX ".so"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}"
+)
+
+# 98260：JNI 机械面（B2；在 Shizuku UserService 进程内加载）。
+# 只暴露 spawnStatic/waitExit；无 kill/signal/fork；不用 --wrap=fork（该证明只属 43499 app-JVM 路径）。
+add_library(ghostlock98260jni SHARED
+    gl98260/jni98260.c
+)
+target_include_directories(ghostlock98260jni PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/gl98260
+)
+target_compile_options(ghostlock98260jni PRIVATE
+    -Wall -Wextra -Werror
+)
+target_link_libraries(ghostlock98260jni PRIVATE gl_common log)
+target_link_options(ghostlock98260jni PRIVATE -Wl,-z,max-page-size=16384)
+set_target_properties(ghostlock98260jni PROPERTIES
+    PREFIX "lib"
+    SUFFIX ".so"
+    OUTPUT_NAME ghostlock98260jni
+    C_VISIBILITY_PRESET hidden
+)

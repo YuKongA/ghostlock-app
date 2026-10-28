@@ -1,0 +1,60 @@
+10-29 05:02:15.592  2164  2754 D WifiDataStall: L2 txTputKbps: 965882, rxTputKbps: 813375, L3 txTputKbps: 0, rxTputKbps: 1, TxTrafficHigh: false, RxTrafficHigh: false, Throughput Sufficient: true
+10-29 05:02:15.593  2164  2754 D WifiThroughputPredictor:  utilization (LLS) 15 isBluetoothConnected: false final utilization: 15
+10-29 05:02:15.593  2164  2754 D WifiThroughputPredictor:  BW: 2 RSSI: -54 Nss: 2 Mode: 6 symDur: 13600 snrDb 20 bitPerTone: 6660 rate: 959 throughput: 902
+10-29 05:02:15.593  2164  2754 D WifiThroughputPredictor:  utilization (LLS) 15 isBluetoothConnected: false final utilization: 15
+10-29 05:02:15.593  2164  2754 D WifiThroughputPredictor:  BW: 2 RSSI: -54 Nss: 2 Mode: 6 symDur: 13600 snrDb 20 bitPerTone: 6660 rate: 959 throughput: 902
+10-29 05:02:15.597  2164  2754 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 108753343 SSID: "BELL1143", BSSID: 18:fd:74:fe:34:a4, MAC: fe:42:88:6d:fa:00, IP: /10.0.149.176, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ax, RSSI: -54, Link speed: 1080Mbps, Tx Link speed: 1080Mbps, Max Supported Tx Link speed: 1200Mbps, Rx Link speed: 864Mbps, Max Supported Rx Link speed: 1200Mbps, Frequency: 5180MHz, Net ID: 0, Metered hint: false, score: 76, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"BELL1143"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+10-29 05:02:15.597  2164  2754 D WifiScoreCard: txRate: 1 txSpeed: 1080
+10-29 05:02:15.597  2164  2754 D WifiScoreCard: network update SIGNAL_POLL "BELL1143" ID: 434423101 RSSI -54 txSpeed -1
+10-29 05:02:15.597  2164  2754 D WifiClientModeImpl[16849:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "BELL1143" 18:fd:74:fe:34:a4 rssi=-54 f=5180 sc=76 link=1080 tx=0.0, 0.0, 0.0 rx=0.0 bcn=431 [on:163 tx:0 rx:4 period:3068] from screen [on:17285 period:-2074994131] score=76
+10-29 05:02:16.217    24    24 I [kworke][0x5b24bfc5][21:02:16.199868] wlan: [24:I:PMO] pmo_core_enable_wow_in_fw: drv wow is enabled
+10-29 05:02:16.254    24    24 I [kworke][0x5b2f8f00][21:02:16.236765] wlan: [24:I:HIF] hif_try_complete_tasks: waiting for tasklets 0 grp tasklets 0 work 2
+10-29 05:02:16.382  3895  3895 D WM-DelayedWorkTracker: Scheduling work e5ff607e-55f1-4dba-8c7a-126664323560
+10-29 05:02:16.382  3895  3895 D WM-GreedyScheduler: Starting work for e5ff607e-55f1-4dba-8c7a-126664323560
+10-29 05:02:16.384  3895  4082 D WM-Processor: Processor: processing WorkGenerationalId(workSpecId=e5ff607e-55f1-4dba-8c7a-126664323560, generation=0)
+10-29 05:02:16.386  3895  3895 D WM-WorkerWrapper: Starting work for com.android.providers.media.MediaServiceV2
+10-29 05:02:16.388  3895 16260 I MediaServiceV2: Work initiated for action [ android.intent.action.MEDIA_MOUNTED ]
+10-29 05:02:16.388  3895 16260 I MediaProvider: Volume MediaVolume name: [external_primary] id: [emulated;0] user: [UserHandle{0}] path: [/storage/emulated/0] externallyManaged: [false] mPublicVolume: [false] already attached
+10-29 05:02:16.388  3895 16260 I MediaServiceV2: Work ended for action [ android.intent.action.MEDIA_MOUNTED ]
+10-29 05:02:16.389  3895  4125 I WM-WorkerWrapper: Worker result SUCCESS for Work [ id=e5ff607e-55f1-4dba-8c7a-126664323560, tags={ com.android.providers.media.MediaServiceV2 } ]
+10-29 05:02:16.390  3895  4125 I WM-WorkerWrapper: Setting status to enqueued for c0215030-56b3-4df6-b802-312858e86923
+10-29 05:02:16.391  3895  3895 D WM-Processor: Processor e5ff607e-55f1-4dba-8c7a-126664323560 executed; reschedule = false
+10-29 05:02:16.395  3895  4125 D WM-GreedyScheduler: Cancelling work ID e5ff607e-55f1-4dba-8c7a-126664323560
+10-29 05:02:16.397  3895  4125 D WM-SystemJobScheduler: Scheduling work ID c0215030-56b3-4df6-b802-312858e86923Job ID 277
+10-29 05:02:16.403  2164  2612 D ActivityManager: sync unfroze 4718 com.facebook.katana for 6
+10-29 05:02:16.411  2164  2612 D ActivityManager: sync unfroze 7427 flar2.devcheck for 6
+10-29 05:02:16.415  2164  2612 W JobServiceContext: Sending onNetworkChanged for a job that isn't started. JobStatus{deb02db #u0a181/2131366310 com.facebook.katana/com.facebook.push.registration.FacebookPushServerFinishNotifiedLollipopService u=0 s=10181 TIME=-20s510ms:none NET READY}
+10-29 05:02:16.416  2164  2612 W JobServiceContext: Sending onNetworkChanged for a job that isn't started. JobStatus{e31a6c7 #u0a242/1436492456 flar2.devcheck/com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService u=0 s=10242 TIME=-18s690ms:none NET READY}
+10-29 05:02:16.428  3895  4125 D WM-GreedyScheduler: Ignoring {WorkSpec: ba3ed592-c30c-47a1-a4ee-a943a277773c}. Requires device idle.
+10-29 05:02:16.429  3895  4125 D WM-GreedyScheduler: Ignoring {WorkSpec: 587248d0-4845-4e67-b427-3580f6c55a75}. Requires device idle.
+10-29 05:02:16.429  3895  4125 D WM-GreedyScheduler: Ignoring {WorkSpec: c9f06c58-f07e-434d-9543-e258fb068eff}. Requires device idle.
+10-29 05:02:16.431  7518  7539 I TRuntime.CctTransportBackend: Making request to: https://firebaselogging.googleapis.com/v0cc/log/batch?format=json_proto3
+10-29 05:02:16.461    24    24 I [kworke][0x5b6c325c][21:02:16.443743] wlan: [24:I:PMO] pmo_core_psoc_send_host_wakeup_ind_to_fw: Host wakeup indication sent to fw
+10-29 05:02:16.473  2164  3100 D ConnectivityService: Returning UNBLOCKED NetworkInfo to uid=10181
+10-29 05:02:16.478  4718  4718 W fb4a.AppComponentFactory: Instantiating Service
+10-29 05:02:16.480  7427  7451 D CompatChangeReporter: Compat change id reported: 288912692; UID 10242; state: ENABLED
+10-29 05:02:16.486  4718  4772 W fb4a.CrashLoopRemedyLog: unable to delete remedy log, instaCrash: true
+10-29 05:02:16.500  4718  4718 E fb4a.SlowAppComponent: 0ms: FacebookPushServerFinishNotifiedLollipopService instantiating…
+10-29 05:02:16.500  4718  4718 E fb4a.SlowAppComponent: Main thread was blocked for 82ms in the background starting with FacebookPushServerFinishNotifiedLollipopService
+10-29 05:02:16.542  4718  4718 W fb4a.AppComponentFactory: Instantiating Service
+10-29 05:02:16.558  4718 16275 W fb4a.BlueServiceQueue: Exception during service
+10-29 05:02:16.558  4718 16275 W fb4a.BlueServiceQueue: X.3Y2: auth token is null, user logged out?
+10-29 05:02:16.558  4718 16275 W fb4a.BlueServiceQueue: 	at X.1Zs.A00(Unknown Source:1335)
+10-29 05:02:16.558  4718 16275 W fb4a.BlueServiceQueue: 	at X.1Zs.runInternal(Unknown Source:6)
+10-29 05:02:16.558  4718 16275 W fb4a.BlueServiceQueue: 	at X.1Zs.A08(Unknown Source:44)
+10-29 05:02:16.558  4718 16275 W fb4a.BlueServiceQueue: 	at X.Anr.CYB(Unknown Source:681)
+10-29 05:02:16.558  4718 16275 W fb4a.BlueServiceQueue: 	at X.51g.run(Unknown Source:283)
+10-29 05:02:16.558  4718 16275 W fb4a.BlueServiceQueue: 	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:520)
+10-29 05:02:16.558  4718 16275 W fb4a.BlueServiceQueue: 	at java.util.concurrent.FutureTask.run(FutureTask.java:317)
+10-29 05:02:16.558  4718 16275 W fb4a.BlueServiceQueue: 	at X.3Rx.run(Unknown Source:43)
+10-29 05:02:16.558  4718 16275 W fb4a.BlueServiceQueue: 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1154)
+10-29 05:02:16.558  4718 16275 W fb4a.BlueServiceQueue: 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:652)
+10-29 05:02:16.558  4718 16275 W fb4a.BlueServiceQueue: 	at X.1CH.run(Unknown Source:3)
+10-29 05:02:16.558  4718 16275 W fb4a.BlueServiceQueue: 	at X.1CJ.run(Unknown Source:17)
+10-29 05:02:16.558  4718 16275 W fb4a.BlueServiceQueue: 	at java.lang.Thread.run(Thread.java:1563)
+10-29 05:02:16.574  4718  7281 E fb4a.FacebookPushServerRegisterJobImpl: [PushRegFunnel] ClientRegistrationResponseReceived: requestId=e4f509f2-6d56-47c3-9db5-a5d893e39e95, reason=cold_start, serviceType=FCM, status=error, error=auth token is null, user logged out?
+10-29 05:02:16.689  7518  7539 I TRuntime.CctTransportBackend: Status Code: 200
+10-29 05:02:16.703  2164  3100 D OomAdjuster: Not killing cached processes
+10-29 05:02:16.993   921 16236 I keystore2: system/security/keystore2/watchdog/src/lib.rs:371 - Watchdog thread idle -> terminating. Have a great day.
+10-29 05:02:17.097  1955  3684 D qcrilNrd: SUB[0][xiaomi_qcril_mbn.cpp:3077] xiaomi_qcril_mbn_wait_s: wait-end(3s)
+10-29 05:02:17.097  1955  3684 D qcrilNrd: SUB[0][xiaomi_qcril_mbn.cpp:7813] xiaomi_qcril_mbn_selfreparing_thread_proc: function exit <-------------

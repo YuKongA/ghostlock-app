@@ -6,6 +6,8 @@ import com.ghostlock.app.backend.cve43499.flow.Flow43499Impl
 import com.ghostlock.app.backend.cve43499.flow.Flow43499KernelLayout
 import com.ghostlock.app.backend.cve43499.flow.Flow43499Request
 import com.ghostlock.app.backend.cve43499.flow.Flow43499Route
+import com.ghostlock.app.backend.cve98260.flow.Flow98260Impl
+import com.ghostlock.app.backend.cve98260.flow.Flow98260Request
 import com.ghostlock.app.backend.lua.FlowLuaImpl
 import com.ghostlock.app.backend.lua.FlowLuaRequest
 import kotlinx.coroutines.runBlocking
@@ -21,13 +23,16 @@ class FlowRequestTest {
         val lua: Flow<FlowLuaRequest> = FlowLuaImpl()
         val cve43499: Flow<Flow43499Request> = Flow43499Impl()
         val cve43284: Flow<Flow43284Request> = Flow43284Impl()
+        val cve98260: Flow<Flow98260Request> = Flow98260Impl()
 
         assertEquals(FlowLuaImpl::class, lua.backendClass)
         assertEquals(Flow43499Impl::class, cve43499.backendClass)
         assertEquals(Flow43284Impl::class, cve43284.backendClass)
+        assertEquals(Flow98260Impl::class, cve98260.backendClass)
         assertTrue(FlowRequest::class.java.isAssignableFrom(FlowLuaRequest::class.java))
         assertTrue(FlowRequest::class.java.isAssignableFrom(Flow43499Request::class.java))
         assertTrue(FlowRequest::class.java.isAssignableFrom(Flow43284Request::class.java))
+        assertTrue(FlowRequest::class.java.isAssignableFrom(Flow98260Request::class.java))
     }
 
     @Test

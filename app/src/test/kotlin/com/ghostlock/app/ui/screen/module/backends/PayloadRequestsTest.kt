@@ -17,7 +17,7 @@ class PayloadRequestsTest {
             ),
         )
         val context = PayloadContext(state, null, staged = mapOf("a" to "/tmp/custom.ko"))
-        assertEquals(listOf("a", "b", "c", "d"), state.payloadRequests(context).map { it.slot.id })
+        assertEquals(listOf("a", "c", "d", "b"), state.payloadRequests(context).map { it.slot.id })
     }
 
     @Test
@@ -53,7 +53,7 @@ class PayloadRequestsTest {
             ),
         )
         val context = PayloadContext(state, null, folkPatchLkm = "/data/local/tmp/kernelpatch.ko")
-        assertEquals(listOf("root", "slot-folk"), state.payloadRequests(context).map { it.slot.id })
+        assertEquals(listOf("slot-folk", "root"), state.payloadRequests(context).map { it.slot.id })
     }
 
     @Test
@@ -71,7 +71,7 @@ class PayloadRequestsTest {
             staged = mapOf("lkm" to "/data/x/k.ko"),
             folkPatchLkm = "/data/local/tmp/kernelpatch.ko",
         )
-        assertEquals(listOf("root", "lkm"), state.payloadRequests(context).map { it.slot.id })
+        assertEquals(listOf("lkm", "root"), state.payloadRequests(context).map { it.slot.id })
     }
 
     @Test

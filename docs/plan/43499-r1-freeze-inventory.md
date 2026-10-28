@@ -1,0 +1,88 @@
+# 43499 R1 冻结交付物（索引 / 摘要）
+
+- **状态**：R1 修订完成（用户决策 **A**）+ **R2 实现完成（2026-10-27，writer impl-43499，工作树未 commit）**；R2a/R2b/R2c 门禁证据见 §9。
+- **权威**：[43499-native-parameterization-v2-plan.md](43499-native-parameterization-v2-plan.md) §10 + [approval-status](43499-approval-status.md) §6.5（R0 方案 A + ABI v4 删 reserved + A 决策）。
+- **快照/基线**：HEAD `a9af5482`；当前工作树含 P0a/P0b 半成品（“待复核未交付”，R2 丢弃重建，见 §5）。
+- **writer**：R1=coding-agent；R2=impl-43499（单一 writer；coding-agent 会话预算耗尽停手且未留半成品）。
+- **本件为索引**（≤16 KiB）：逐字段/ABI/校验明细拆附件，避免配额截断。
+
+## 1. 交付物清单（本次修订）
+
+| 文件 | 内容 | 大小 |
+|---|---|---|
+| [43499-r1-freeze-fields.md](43499-r1-freeze-fields.md) | R2 最终逐字段矩阵（20 struct + R2 增/删/迁移；fill_byte 唯一归属与 Page→Actor→Carrier 链；poll_us/pid/futex_waiter_flag/disarm_required；容量 storage/owner/free/retain；§V 行号） | ~9.5 KB |
+| [43499-r1-freeze-abi.md](43499-r1-freeze-abi.md) | reserved 精确清点（24 声明）；before/after sizeof+offset 矩阵；landing_receipt 136→72 修正；三侧 struct_size/version 单源；abi.h 契约/INIT 修改点；R2 新字段；NDK `_Static_assert(sizeof)` | ~5.8 KB |
+| [43499-r1-freeze-validation.md](43499-r1-freeze-validation.md) | 校验矩阵 V1–V12；A 决策 8 常量→请求字段；static_assert 迁移逐条；P4 补缺（reclaim 2×alloc/socket 界/pselect nfds/identity∩scan/staging/context/LEAK_TAG/ghost/requeue） | ~6.2 KB |
+| `tools/scan_native_literals.py` | token 级扫描 + 逐 token 允许清单 + R1/R2 双 gate + 声明级 residue + 签核 sha256 | 见 §4 |
+
+## 2. A 决策落点（用户 2026-10-27「A」）
+
+- 删除 `GLK43499_STRUCT_*` 6 个 + `GLK43499_WIRE_*` 2 个宏；**容量/协议值全部进请求字段**：multicast.max_frame、pselect.max_nfds、tcp.max_mapping/max_frame、placement.max_context_entries/staging_capacity/max_objects_per_slab/max_measurement_rounds/identity_start/identity_end/leak_tag_nibble/leak_tag_shift（详见 fields §2/§3）。
+- Native 最终只保留 **ABI/sizeof 派生** 编译期常量；目标/容量/协议数值宏 = 0（R2 gate 判据：STRUCT_=WIRE_=PHYS_=reserved=0）。
+- 新语义字段：multicast_spec.ghost_pid（Process.myPid）、futex_waiter_flag（0/0x80000000）、disarm_required（0/1，失败→不做）。
+
+## 3. 扫描器与双 gate（R1 现状 / R2 目标）
+
+- 命令：`python3 tools/scan_native_literals.py --gate r1`（R1 阶段）；`--gate r2`（R2 目标）；`--signature`（签核 sha256）。
+- **R1 gate（R1 时点历史）**：`files=19 literals=1352 allowed=1343 unclassified=0 target_tokens=9`；`residue=PHYS_0/STRUCT_6/WIRE_2/reserved24`。
+- **R2 final（2026-10-27 实跑）**：`python3 tools/scan_native_literals.py --gate r2` → **exit 0**；`files=19 literals=1337 allowed=1337 unclassified=0 target_tokens=0`；`residue PHYS_0 / STRUCT_0 / WIRE_0 / reserved0`；`R2 target gate: CLOSED`。新增 `BANNED_MAGIC_TOKENS` 逃逸闭表（曾参数化的 1h/4MiB/64MiB/1e6/4096/0xff/FUTEX_WAITERS 等出现即 FAIL）。
+- 允许清单为逐 token（`file:line:token<TAB>受控类别`），**8 常量条目已从 allowlist 删除**；受控类别仅 6 类（sentinel/loop/index、bit-width/shift、system-header-derived、abi-alignment、jni-marshalling、numeric-literal）；重生成白名单必须更新 `ALLOWLIST_SHA256` 并经签核（`--signature` 输出 allowlist/script 双 sha256）。
+- 当前签核值（R2 final）：allowlist_sha256=`91ff6a312db9c8728df5a85a6bbc220f60f26aaeb055648e3ee90ecb1eaf6d67`；script_sha256=`452690b820ec57eb0b6b6c89c04372d25dd5350a9e042fa6703a457a8dcf5c88`（`--signature` 实跑，记录于 approval-status §6.5 与 §4）。
+
+## 4. 文档/工具资产 sha256（R1 修订态，供复核冻结；本件自引用不记录）
+
+| 资产 | sha256 |
+|---|---|
+| tools/scan_native_literals.py | `452690b820ec57eb0b6b6c89c04372d25dd5350a9e042fa6703a457a8dcf5c88` |
+| tools/abi_layout_probe.c | `9486d51a6a117a833de87707d2c4f1412a5265e46cd55f7a07b25d473cb46814` |
+| docs/plan/43499-r1-freeze-inventory.md | （自引用不记录；以 approval-status §6.5 记录的最新值为准） |
+| docs/plan/43499-r1-freeze-fields.md | `bb64aad483572d5ebf09e6d36f4dbf96b9cdf77c99106249b45cb2a0cddf9597`（R2 重出） |
+| docs/plan/43499-r1-freeze-abi.md | `d97b6132823edecf44629201ad97fb86f91dd7bfe0784ac06f345990d562604c`（R2 重出） |
+| docs/plan/43499-r1-freeze-validation.md | `16b2e8e236824aa4127f0d07f4713a3d24fc8fcc7af7085ae22104d3f04c0ae0`（R2 重出） |
+
+（生成：`shasum -a 256 <file>`；复核时以本表为准，改动须更新本表并重签。）
+
+## 5. 基线与半成品处置（R2 执行，命令可复制）
+
+- **R2 基线**：HEAD `a9af5482` + 本索引/附件/脚本（R1 交付物）。当前 worktree 的 P0a/P0b Native 半成品（消费 reserved 的 v4 中间态、含 untracked `lifecycle/`、`debug/` 等）**丢弃**，R2 从 HEAD 重建后按 R1 文档重新实现；**不得**在旧半成品上继续堆改。
+- 隔离 worktree（Lead 执行，含 untracked 方案）：若保留当前 Kotlin refactor 半成品，则从当前 worktree 快照复制到新 worktree 后重做 Native；否则 `git worktree add ../gl43499-r2 a9af5482` 后按 R1 重建（Kotlin P0b 由 task-37 交付物重放）。
+- 当前 worktree 基线 hash（sha256 前 16，供对拍）：kernel_internal.h `eb11a811`；abi.h `367ee7ad`；placement.h `e99847f1`；page.h `97a10072`；actor.h `2087bfd8`；primitive.h `a60174f0`；placement.c `05f11147`；page.c `b2302146`；actor.c `69ac70f1`；carrier_multicast.c `4f8353e0`；carrier_pselect.c `027a4f6e`；carrier_tcp.c `a01b74dd`；jni43499.c `5dc0a6fe`；debug-a301so.conf `4df21cf7`。
+- 命令：`shasum -a 256 <files>`；`git -C . status --short` 证明无代码改动（R1 只有 docs/tools）。
+
+## 6. host harness（具名方案；R2 实现）
+
+- 系统 clang 21/cmake 4.4（非 NDK）；文件：`core/validate_internal.h`、`core/validate.c`（NDK+host 共用）、`gl43499/host/CMakeLists.txt`（target `validation_host`）、`host/validation_host.c`（V1–V12 用例，TAP）；另有 `tools/abi_layout_probe.c`（sizeof/offsetof 探针）。
+- Gradle task（R2）：`hostValidation43499`；命令：`cmake -S app/src/main/cpp/gl43499/host -B build/host/43499 -DCMAKE_C_COMPILER=$(command -v clang) && cmake --build build/host/43499 --target validation_host && build/host/43499/validation_host`；exit 码判据；产物 gitignore。
+- cmp_disasm 按 D1/§8.2 可选（非阻断）；clang-tidy 可选；`:app:lintDebug` 按 AGENTS §8 非本批判据。**host harness 原为 R2 合入前提，本批经 Lead/用户「直接推进」以技术债形式后置（owner=Lead，偿还=P0b 前）**。
+
+## 7. R2 冻结文件清单（逐文件具名；单一 writer=coding-agent）
+
+`core/abi.h`、`core/result.h`、`core/placement.h`、`core/page.h`、`core/actor.h`、`core/primitive.h`、`core/kernel_internal.h`（删除 8 宏后仅 ABI/派生断言）、`core/validate_internal.h`(NEW)、`core/validate.c`(NEW)、`core/placement.c`、`core/page.c`、`core/page_internal.h`、`core/actor.c`、`core/carrier_internal.h`、`core/carrier_multicast.c`、`core/carrier_pselect.c`、`core/carrier_tcp.c`、`jni43499.c`、`jni/Native43499Jni.kt`、`backend/cve43499/{debug,owned,lifecycle,flow,finish}`、`app/build.gradle.kts`、`app/src/debug/assets/profile/43499/debug-a301so.conf`、`gl43499/host/CMakeLists.txt`(NEW)、`gl43499/host/validation_host.c`(NEW)、`tools/abi_layout_probe.c`(NEW)、`tools/scan_native_literals.py`（仅 allowlist/签核同步）。
+- **R2 验证矩阵**：scanner `--gate r2` exit 0 + 四项 residue=0；`:app:externalNativeBuildDebug`/`:app:compileDebugKotlin`/`:app:assembleRelease` BUILD SUCCESSFUL（literal+EXIT=0）；host harness 全绿；过滤单测（debug 解析/DTO 无默认/RequestFactory 拒绝）绿；真机门禁按用户裁定延至 P0c（tech-debt owner=Lead）。
+- 旧计划取代：`43499-43284-cpp-parameterization-plan.md` 43499 段由 v2 plan 取代（文件头注记，正文不动）；v2 plan 为唯一实施权威。
+
+## 8. 权威与历史
+
+- 唯一实施权威：v2 plan（R1 冻结 = 本文档集）；历史记录不改写（v3 注记只在 result.h 加“ABI v4 起”一行）。
+- 变更流程：任何修改需 design-critic 复核 + approval-status §6.5 记录 + sha256 重签。
+
+## 9. R2 实现与门禁证据（2026-10-27，writer impl-43499）
+
+| 批次 | 内容 | 门禁证据 |
+|---|---|---|
+| R2a | ABI v4：6 头删 24 处 reserved/reserved32 + 3 处 .c 引用；abi_header=8B；三侧 strict `struct_size==sizeof`；每头 `_Static_assert(sizeof)` | `:app:externalNativeBuildCleanDebug :app:externalNativeBuildDebug` → **EXIT=0，warning/error grep=0**（15 TU 全量重建） |
+| R2b | kernel_internal.h 8 宏全删；参数全进请求（216/112/80/120/136B）；21 个魔法阈值去常量；补校验 + D3/D5/D6；staging 运行期分配 | 同 NDK gate EXIT=0/0 warning；`--gate r2` **EXIT=0**（见 §3）；host probe 矩阵全等 |
+| R2c | Kotlin DTO 全字段对齐；debug loader 迁 data 层；debug asset 迁 `app/src/debug/assets`（main 旧文件删除）；RequestFactory 全参 + generator 缺失 fail-closed 具名 | `:app:compileDebugKotlin` EXIT=0；过滤单测 `17 tests / 0 failures / 0 errors`（`build/app/test-results` XML 全量计数）；`:app:assembleRelease` 见 §10 |
+
+- 回滚：R2 仅工作树改动，未 commit；`git diff` 可复核。真机门禁缺席按用户 2026-10-27 知情强制延至 P0c（owner=Lead）。
+
+## 10. R3 增量与重签（2026-10-27，writer routes-impl2/3）
+
+- R3a Native（三 carrier/actor/page/placement + 页接受/回执/时序）与 R3b Kotlin（三 generator/
+  debug 配置/RequestFactory）已在工作树实现；ABI 增量为 append-only（tcp_spec 176、primitive_spec 192，
+  详见 [abi](43499-r1-freeze-abi.md) §10、[fields](43499-r1-freeze-fields.md) §7、[validation](43499-r1-freeze-validation.md) §10）。
+- **scanner 重签**：R3b 后按新行号/新字面量重生成 allowlist 并重签
+  `ALLOWLIST_SHA256=07c8cad4a1a526fd80090314ab571ba3e918f33aed8ed5fe82db3b585f063e2c`，
+  script sha256=`2beeb25e43f68dd54fe7f1046bf9178bc479b1c4faeb288081e8ae854a613bba`（`--gate r2` EXIT=0）。
+  §4/§9 记录的 R2 时点 sha（allowlist `91ff6a31…`/script `452690b8…`）为历史值，**不再代表当前工作树**。
+- R2/R3 均未 commit；真机门禁缺席延 P0c（owner=Lead），三路标 UNSUPPORTED，不做 fallback。

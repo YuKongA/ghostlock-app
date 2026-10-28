@@ -1,0 +1,1463 @@
+caller_file	caller_line	caller	callee	callee_file	callee_line	resolved
+app/src/main/cpp/common/gl_log.c	26	gl_log_attach_fd	fcntl			0
+app/src/main/cpp/common/gl_log.c	26	gl_log_attach_fd	close			0
+app/src/main/cpp/common/gl_log.c	55	now_ms	clock_gettime			0
+app/src/main/cpp/common/gl_log.c	64	elapsed_ms	now_ms	app/src/main/cpp/common/gl_log.c	55	1
+app/src/main/cpp/common/gl_log.c	74	gl_log_level_from_name	strcmp			0
+app/src/main/cpp/common/gl_log.c	74	gl_log_level_from_name	strcmp			0
+app/src/main/cpp/common/gl_log.c	99	head_into	snprintf			0
+app/src/main/cpp/common/gl_log.c	99	head_into	snprintf			0
+app/src/main/cpp/common/gl_log.c	99	head_into	snprintf			0
+app/src/main/cpp/common/gl_log.c	99	head_into	level_mark	app/src/main/cpp/common/gl_log.c	87	1
+app/src/main/cpp/common/gl_log.c	99	head_into	elapsed_ms	app/src/main/cpp/common/gl_log.c	64	1
+app/src/main/cpp/common/gl_log.c	107	gl_log_write	__builtin_va_start			0
+app/src/main/cpp/common/gl_log.c	107	gl_log_write	vsnprintf			0
+app/src/main/cpp/common/gl_log.c	107	gl_log_write	vsnprintf			0
+app/src/main/cpp/common/gl_log.c	107	gl_log_write	vsnprintf			0
+app/src/main/cpp/common/gl_log.c	107	gl_log_write	__builtin_va_end			0
+app/src/main/cpp/common/gl_log.c	107	gl_log_write	snprintf			0
+app/src/main/cpp/common/gl_log.c	107	gl_log_write	snprintf			0
+app/src/main/cpp/common/gl_log.c	107	gl_log_write	snprintf			0
+app/src/main/cpp/common/gl_log.c	107	gl_log_write	__android_log_print			0
+app/src/main/cpp/common/gl_log.c	107	gl_log_write	head_into	app/src/main/cpp/common/gl_log.c	99	1
+app/src/main/cpp/common/gl_log.c	107	gl_log_write	strlen			0
+app/src/main/cpp/common/gl_log.c	107	gl_log_write	strlen			0
+app/src/main/cpp/common/gl_log.c	107	gl_log_write	strlen			0
+app/src/main/cpp/common/gl_log.c	107	gl_log_write	write			0
+app/src/main/cpp/common/gl_log.c	107	gl_log_write	write			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	139	pin_to_core	__builtin_memset			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	139	pin_to_core	__builtin_memset			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	139	pin_to_core	sched_setaffinity			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	139	pin_to_core	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	139	pin_to_core	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	139	pin_to_core	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	139	pin_to_core	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	147	reset_cpu_pin	memset			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	147	reset_cpu_pin	memset			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	147	reset_cpu_pin	memset			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	147	reset_cpu_pin	sched_setaffinity			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	147	reset_cpu_pin	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	147	reset_cpu_pin	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	147	reset_cpu_pin	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	147	reset_cpu_pin	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	154	set_limit	getrlimit			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	154	set_limit	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	154	set_limit	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	154	set_limit	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	154	set_limit	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	154	set_limit	setrlimit			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	165	set_unbuffer	setvbuf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	165	set_unbuffer	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	165	set_unbuffer	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	165	set_unbuffer	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	165	set_unbuffer	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	172	set_proc_name	prctl			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	172	set_proc_name	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	172	set_proc_name	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	172	set_proc_name	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	172	set_proc_name	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	177	gettime_ns	clock_gettime			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	177	gettime_ns	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	177	gettime_ns	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	177	gettime_ns	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	177	gettime_ns	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	184	write_file	open			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	184	write_file	open			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	184	write_file	open			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	184	write_file	open			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	184	write_file	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	184	write_file	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	184	write_file	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	184	write_file	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	184	write_file	write			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	184	write_file	write			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	184	write_file	strlen			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	184	write_file	strlen			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	184	write_file	strlen			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	184	write_file	close			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	193	set_user_namespace	getuid			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	193	set_user_namespace	getgid			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	193	set_user_namespace	unshare			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	193	set_user_namespace	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	193	set_user_namespace	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	193	set_user_namespace	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	193	set_user_namespace	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	193	set_user_namespace	write_file	app/src/main/cpp/glgeneral/kernelsnitch/utils.h	184	1
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	193	set_user_namespace	snprintf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	193	set_user_namespace	snprintf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	193	set_user_namespace	snprintf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	210	hexdump	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	210	hexdump	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	240	parse_ul	__errno			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	240	parse_ul	strtoul			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	240	parse_ul	strtoul			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	240	parse_ul	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	240	parse_ul	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	240	parse_ul	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	240	parse_ul	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	252	parse_xl	__errno			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	252	parse_xl	strtoul			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	252	parse_xl	strtoul			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	252	parse_xl	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	252	parse_xl	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	252	parse_xl	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	252	parse_xl	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/futex_hash.h	100	jhash2	rol32	app/src/main/cpp/glgeneral/kernelsnitch/futex_hash.h	17	1
+app/src/main/cpp/glgeneral/kernelsnitch/futex_hash.h	132	__jhash_nwords	rol32	app/src/main/cpp/glgeneral/kernelsnitch/futex_hash.h	17	1
+app/src/main/cpp/glgeneral/kernelsnitch/futex_hash.h	143	jhash_3words	__jhash_nwords	app/src/main/cpp/glgeneral/kernelsnitch/futex_hash.h	132	1
+app/src/main/cpp/glgeneral/kernelsnitch/futex_hash.h	148	jhash_2words	__jhash_nwords	app/src/main/cpp/glgeneral/kernelsnitch/futex_hash.h	132	1
+app/src/main/cpp/glgeneral/kernelsnitch/futex_hash.h	153	jhash_1word	__jhash_nwords	app/src/main/cpp/glgeneral/kernelsnitch/futex_hash.h	132	1
+app/src/main/cpp/glgeneral/kernelsnitch/futex_hash.h	184	futex_hash_no_trunc	jhash2	app/src/main/cpp/glgeneral/kernelsnitch/futex_hash.h	100	1
+app/src/main/cpp/glgeneral/kernelsnitch/futex_hash.h	192	__futex_hash	futex_hash_no_trunc	app/src/main/cpp/glgeneral/kernelsnitch/futex_hash.h	184	1
+app/src/main/cpp/glgeneral/kernelsnitch/futex_hash.h	199	futex_hash	__futex_hash	app/src/main/cpp/glgeneral/kernelsnitch/futex_hash.h	192	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	104	__futex	syscall			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	118	__do_increase	__futex	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	104	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	118	__do_increase	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	118	__do_increase	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	118	__do_increase	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	118	__do_increase	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	118	__do_increase	free			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	118	__do_increase	free			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	134	__increase	calloc			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	134	__increase	calloc			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	134	__increase	pthread_create			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	134	__increase	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	134	__increase	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	134	__increase	strerror			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	134	__increase	strerror			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	134	__increase	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	134	__increase	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	134	__increase	pthread_detach			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	134	__increase	sched_yield			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	171	__measure	sched_yield			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	171	__measure	rdtsc_begin	app/src/main/cpp/glgeneral/kernelsnitch/timeutils.h	20	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	171	__measure	__futex	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	104	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	171	__measure	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	171	__measure	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	171	__measure	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	171	__measure	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	171	__measure	rdtsc_end	app/src/main/cpp/glgeneral/kernelsnitch/timeutils.h	47	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	171	__measure	qsort			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	209	__mm_candidate_matches	futex_hash	app/src/main/cpp/glgeneral/kernelsnitch/futex_hash.h	199	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	219	__mm_mark_found	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	219	__mm_mark_found	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	227	__mm_leak	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	227	__mm_leak	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	227	__mm_leak	scan_limit	app/src/main/cpp/glgeneral/kernelsnitch/scan_bounds.h	7	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	227	__mm_leak	__mm_candidate_matches	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	209	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	227	__mm_leak	__mm_mark_found	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	219	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	227	__mm_leak	free			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	227	__mm_leak	free			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	268	__run_mm_leak_pass	calloc			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	268	__run_mm_leak_pass	calloc			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	268	__run_mm_leak_pass	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	268	__run_mm_leak_pass	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	268	__run_mm_leak_pass	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	268	__run_mm_leak_pass	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	268	__run_mm_leak_pass	pthread_create			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	268	__run_mm_leak_pass	pthread_join			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	304	kernelsnitch_possible_cpu_count	fopen			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	304	kernelsnitch_possible_cpu_count	fopen			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	304	kernelsnitch_possible_cpu_count	fgets			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	304	kernelsnitch_possible_cpu_count	fgets			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	304	kernelsnitch_possible_cpu_count	strtoul			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	304	kernelsnitch_possible_cpu_count	strtoul			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	304	kernelsnitch_possible_cpu_count	fclose			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	332	kernelsnitch_setup	mmap			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	332	kernelsnitch_setup	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	332	kernelsnitch_setup	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	332	kernelsnitch_setup	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	332	kernelsnitch_setup	exit			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	332	kernelsnitch_setup	sysconf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	332	kernelsnitch_setup	kernelsnitch_possible_cpu_count	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	304	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	332	kernelsnitch_setup	futex_hash_table_size_for	app/src/main/cpp/glgeneral/kernelsnitch/futex_hash.h	209	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	332	kernelsnitch_setup	pin_to_core	app/src/main/cpp/glgeneral/kernelsnitch/utils.h	139	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	401	__screen_collision_pool	__collision_pool_limit	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	392	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	401	__screen_collision_pool	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	401	__screen_collision_pool	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	401	__screen_collision_pool	__measure	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	171	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	421	__prove_collision_pool	__futex	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	104	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	421	__prove_collision_pool	usleep			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	421	__prove_collision_pool	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	421	__prove_collision_pool	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	421	__prove_collision_pool	__measure	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	171	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	421	__prove_collision_pool	__increase	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	134	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	464	__verify_collision_pool	__screen_collision_pool	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	401	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	464	__verify_collision_pool	__prove_collision_pool	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	421	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	472	__collision_pass	__measure	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	171	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	472	__collision_pass	__increase	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	134	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	472	__collision_pass	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	472	__collision_pass	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	472	__collision_pass	calloc			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	472	__collision_pass	calloc			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	472	__collision_pass	__screen_collision_pool	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	401	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	472	__collision_pass	__prove_collision_pool	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	421	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	472	__collision_pass	free			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	472	__collision_pass	free			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	472	__collision_pass	__verify_collision_pool	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	464	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	556	kernelsnitch_find_collisions	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	556	kernelsnitch_find_collisions	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	556	kernelsnitch_find_collisions	__collision_pass	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	472	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	576	kernelsnitch_found_collisions	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	576	kernelsnitch_found_collisions	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	586	kernelsnitch_bruteforce	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	586	kernelsnitch_bruteforce	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	586	kernelsnitch_bruteforce	reset_cpu_pin	app/src/main/cpp/glgeneral/kernelsnitch/utils.h	147	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	586	kernelsnitch_bruteforce	__run_mm_leak_pass	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	268	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	603	kernelsnitch_cleanup	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	603	kernelsnitch_cleanup	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	603	kernelsnitch_cleanup	munmap			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	629	kernelsnitch_param	kernelsnitch_setup	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	332	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	629	kernelsnitch_param	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	629	kernelsnitch_param	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	629	kernelsnitch_param	kernelsnitch_find_collisions	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	556	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	629	kernelsnitch_param	kernelsnitch_bruteforce	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	586	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	629	kernelsnitch_param	kernelsnitch_cleanup	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	603	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	644	kernelsnitch_print_state	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	644	kernelsnitch_print_state	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	653	kernelsnitch_print_collisions	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	653	kernelsnitch_print_collisions	printf			0
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	667	kernelsnitch	kernelsnitch_param	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	629	1
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	667	kernelsnitch	sysconf			0
+app/src/main/cpp/glgeneral/general_jni.c	71	glk_ks_create	glk_ks_args_valid	app/src/main/cpp/glgeneral/general_jni.c	45	1
+app/src/main/cpp/glgeneral/general_jni.c	71	glk_ks_create	kernelsnitch_setup	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	332	1
+app/src/main/cpp/glgeneral/general_jni.c	71	glk_ks_create	reset_cpu_pin	app/src/main/cpp/glgeneral/kernelsnitch/utils.h	147	1
+app/src/main/cpp/glgeneral/general_jni.c	98	Java_com_ghostlock_app_jni_NativeKernelSnitch_create	glk_ks_create	app/src/main/cpp/glgeneral/general_jni.c	71	1
+app/src/main/cpp/glgeneral/general_jni.c	116	Java_com_ghostlock_app_jni_NativeKernelSnitch_findCollisions	glk_ks_state	app/src/main/cpp/glgeneral/general_jni.c	61	1
+app/src/main/cpp/glgeneral/general_jni.c	116	Java_com_ghostlock_app_jni_NativeKernelSnitch_findCollisions	kernelsnitch_find_collisions	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	556	1
+app/src/main/cpp/glgeneral/general_jni.c	116	Java_com_ghostlock_app_jni_NativeKernelSnitch_findCollisions	kernelsnitch_found_collisions	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	576	1
+app/src/main/cpp/glgeneral/general_jni.c	134	Java_com_ghostlock_app_jni_NativeKernelSnitch_bruteforce	glk_ks_state	app/src/main/cpp/glgeneral/general_jni.c	61	1
+app/src/main/cpp/glgeneral/general_jni.c	134	Java_com_ghostlock_app_jni_NativeKernelSnitch_bruteforce	kernelsnitch_bruteforce	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	586	1
+app/src/main/cpp/glgeneral/general_jni.c	153	Java_com_ghostlock_app_jni_NativeKernelSnitch_state	glk_ks_state	app/src/main/cpp/glgeneral/general_jni.c	61	1
+app/src/main/cpp/glgeneral/general_jni.c	169	Java_com_ghostlock_app_jni_NativeKernelSnitch_destroy	glk_ks_state	app/src/main/cpp/glgeneral/general_jni.c	61	1
+app/src/main/cpp/glgeneral/general_jni.c	169	Java_com_ghostlock_app_jni_NativeKernelSnitch_destroy	kernelsnitch_cleanup	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	603	1
+app/src/main/cpp/glgeneral/general_jni.c	186	Java_com_ghostlock_app_jni_NativeKernelSnitch_run	glk_ks_create	app/src/main/cpp/glgeneral/general_jni.c	71	1
+app/src/main/cpp/glgeneral/general_jni.c	186	Java_com_ghostlock_app_jni_NativeKernelSnitch_run	kernelsnitch_find_collisions	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	556	1
+app/src/main/cpp/glgeneral/general_jni.c	186	Java_com_ghostlock_app_jni_NativeKernelSnitch_run	kernelsnitch_found_collisions	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	576	1
+app/src/main/cpp/glgeneral/general_jni.c	186	Java_com_ghostlock_app_jni_NativeKernelSnitch_run	kernelsnitch_bruteforce	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	586	1
+app/src/main/cpp/glgeneral/general_jni.c	186	Java_com_ghostlock_app_jni_NativeKernelSnitch_run	kernelsnitch_cleanup	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	603	1
+app/src/main/cpp/gl43499/jni43499.c	88	glk43499_jni_result_ready	ExceptionCheck			0
+app/src/main/cpp/gl43499/jni43499.c	88	glk43499_jni_result_ready	ExceptionClear			0
+app/src/main/cpp/gl43499/jni43499.c	88	glk43499_jni_result_ready	FindClass			0
+app/src/main/cpp/gl43499/jni43499.c	88	glk43499_jni_result_ready	IsInstanceOf			0
+app/src/main/cpp/gl43499/jni43499.c	88	glk43499_jni_result_ready	DeleteLocalRef			0
+app/src/main/cpp/gl43499/jni43499.c	110	glk43499_jni_clear_pending	ExceptionCheck			0
+app/src/main/cpp/gl43499/jni43499.c	110	glk43499_jni_clear_pending	ExceptionClear			0
+app/src/main/cpp/gl43499/jni43499.c	140	glk43499_field	GetObjectClass			0
+app/src/main/cpp/gl43499/jni43499.c	140	glk43499_field	GetFieldID			0
+app/src/main/cpp/gl43499/jni43499.c	140	glk43499_field	DeleteLocalRef			0
+app/src/main/cpp/gl43499/jni43499.c	151	glk43499_get_long	glk43499_field	app/src/main/cpp/gl43499/jni43499.c	140	1
+app/src/main/cpp/gl43499/jni43499.c	151	glk43499_get_long	GetLongField			0
+app/src/main/cpp/gl43499/jni43499.c	151	glk43499_get_long	ExceptionCheck			0
+app/src/main/cpp/gl43499/jni43499.c	160	glk43499_get_int	glk43499_field	app/src/main/cpp/gl43499/jni43499.c	140	1
+app/src/main/cpp/gl43499/jni43499.c	160	glk43499_get_int	GetIntField			0
+app/src/main/cpp/gl43499/jni43499.c	160	glk43499_get_int	ExceptionCheck			0
+app/src/main/cpp/gl43499/jni43499.c	169	glk43499_get_int32	glk43499_field	app/src/main/cpp/gl43499/jni43499.c	140	1
+app/src/main/cpp/gl43499/jni43499.c	169	glk43499_get_int32	GetIntField			0
+app/src/main/cpp/gl43499/jni43499.c	169	glk43499_get_int32	ExceptionCheck			0
+app/src/main/cpp/gl43499/jni43499.c	178	glk43499_get_byte_array	glk43499_field	app/src/main/cpp/gl43499/jni43499.c	140	1
+app/src/main/cpp/gl43499/jni43499.c	178	glk43499_get_byte_array	GetObjectField			0
+app/src/main/cpp/gl43499/jni43499.c	186	glk43499_set_int	glk43499_field	app/src/main/cpp/gl43499/jni43499.c	140	1
+app/src/main/cpp/gl43499/jni43499.c	186	glk43499_set_int	SetIntField			0
+app/src/main/cpp/gl43499/jni43499.c	186	glk43499_set_int	ExceptionCheck			0
+app/src/main/cpp/gl43499/jni43499.c	195	glk43499_set_long	glk43499_field	app/src/main/cpp/gl43499/jni43499.c	140	1
+app/src/main/cpp/gl43499/jni43499.c	195	glk43499_set_long	SetLongField			0
+app/src/main/cpp/gl43499/jni43499.c	195	glk43499_set_long	ExceptionCheck			0
+app/src/main/cpp/gl43499/jni43499.c	204	glk43499_set_bool	glk43499_field	app/src/main/cpp/gl43499/jni43499.c	140	1
+app/src/main/cpp/gl43499/jni43499.c	204	glk43499_set_bool	SetBooleanField			0
+app/src/main/cpp/gl43499/jni43499.c	204	glk43499_set_bool	ExceptionCheck			0
+app/src/main/cpp/gl43499/jni43499.c	222	glk43499_jni_reject_invalid_argument	glk43499_jni_clear_pending	app/src/main/cpp/gl43499/jni43499.c	110	1
+app/src/main/cpp/gl43499/jni43499.c	222	glk43499_jni_reject_invalid_argument	glk43499_write_call_status	app/src/main/cpp/gl43499/jni43499.c	212	1
+app/src/main/cpp/gl43499/jni43499.c	222	glk43499_jni_reject_invalid_argument	glk43499_write_call_status	app/src/main/cpp/gl43499/jni43499.c	212	1
+app/src/main/cpp/gl43499/jni43499.c	233	glk43499_init_call_result	memset			0
+app/src/main/cpp/gl43499/jni43499.c	233	glk43499_init_call_result	memset			0
+app/src/main/cpp/gl43499/jni43499.c	233	glk43499_init_call_result	memset			0
+app/src/main/cpp/gl43499/jni43499.c	241	glk43499_write_call_result_body	glk43499_set_int	app/src/main/cpp/gl43499/jni43499.c	186	1
+app/src/main/cpp/gl43499/jni43499.c	241	glk43499_write_call_result_body	glk43499_set_long	app/src/main/cpp/gl43499/jni43499.c	195	1
+app/src/main/cpp/gl43499/jni43499.c	257	glk43499_write_call_status	glk43499_set_int	app/src/main/cpp/gl43499/jni43499.c	186	1
+app/src/main/cpp/gl43499/jni43499.c	266	glk43499_write_call_result	glk43499_write_call_result_body	app/src/main/cpp/gl43499/jni43499.c	241	1
+app/src/main/cpp/gl43499/jni43499.c	266	glk43499_write_call_result	glk43499_write_call_status	app/src/main/cpp/gl43499/jni43499.c	212	1
+app/src/main/cpp/gl43499/jni43499.c	266	glk43499_write_call_result	glk43499_write_call_status	app/src/main/cpp/gl43499/jni43499.c	212	1
+app/src/main/cpp/gl43499/jni43499.c	286	glk43499_write_jni_failure_result	glk43499_jni_clear_pending	app/src/main/cpp/gl43499/jni43499.c	110	1
+app/src/main/cpp/gl43499/jni43499.c	286	glk43499_write_jni_failure_result	glk43499_init_call_result	app/src/main/cpp/gl43499/jni43499.c	233	1
+app/src/main/cpp/gl43499/jni43499.c	286	glk43499_write_jni_failure_result	glk43499_write_call_result	app/src/main/cpp/gl43499/jni43499.c	266	1
+app/src/main/cpp/gl43499/jni43499.c	305	glk43499_write_close_result	glk43499_write_call_result_body	app/src/main/cpp/gl43499/jni43499.c	241	1
+app/src/main/cpp/gl43499/jni43499.c	305	glk43499_write_close_result	glk43499_set_bool	app/src/main/cpp/gl43499/jni43499.c	204	1
+app/src/main/cpp/gl43499/jni43499.c	305	glk43499_write_close_result	glk43499_write_call_status	app/src/main/cpp/gl43499/jni43499.c	212	1
+app/src/main/cpp/gl43499/jni43499.c	305	glk43499_write_close_result	glk43499_write_call_status	app/src/main/cpp/gl43499/jni43499.c	212	1
+app/src/main/cpp/gl43499/jni43499.c	336	glk43499_jni_read_utf8	GetStringUTFChars			0
+app/src/main/cpp/gl43499/jni43499.c	336	glk43499_jni_read_utf8	GetStringUTFLength			0
+app/src/main/cpp/gl43499/jni43499.c	336	glk43499_jni_read_utf8	ReleaseStringUTFChars			0
+app/src/main/cpp/gl43499/jni43499.c	336	glk43499_jni_read_utf8	malloc			0
+app/src/main/cpp/gl43499/jni43499.c	336	glk43499_jni_read_utf8	malloc			0
+app/src/main/cpp/gl43499/jni43499.c	336	glk43499_jni_read_utf8	memcpy			0
+app/src/main/cpp/gl43499/jni43499.c	336	glk43499_jni_read_utf8	memcpy			0
+app/src/main/cpp/gl43499/jni43499.c	336	glk43499_jni_read_utf8	memcpy			0
+app/src/main/cpp/gl43499/jni43499.c	368	glk43499_jni_read_utf8_array	GetArrayLength			0
+app/src/main/cpp/gl43499/jni43499.c	368	glk43499_jni_read_utf8_array	calloc			0
+app/src/main/cpp/gl43499/jni43499.c	368	glk43499_jni_read_utf8_array	calloc			0
+app/src/main/cpp/gl43499/jni43499.c	368	glk43499_jni_read_utf8_array	GetObjectArrayElement			0
+app/src/main/cpp/gl43499/jni43499.c	368	glk43499_jni_read_utf8_array	glk43499_jni_read_utf8	app/src/main/cpp/gl43499/jni43499.c	336	1
+app/src/main/cpp/gl43499/jni43499.c	368	glk43499_jni_read_utf8_array	DeleteLocalRef			0
+app/src/main/cpp/gl43499/jni43499.c	368	glk43499_jni_read_utf8_array	free			0
+app/src/main/cpp/gl43499/jni43499.c	368	glk43499_jni_read_utf8_array	free			0
+app/src/main/cpp/gl43499/jni43499.c	403	glk43499_jni_free_utf8_array	free			0
+app/src/main/cpp/gl43499/jni43499.c	403	glk43499_jni_free_utf8_array	free			0
+app/src/main/cpp/gl43499/jni43499.c	410	glk43499_read_perf_open_request	memset			0
+app/src/main/cpp/gl43499/jni43499.c	410	glk43499_read_perf_open_request	memset			0
+app/src/main/cpp/gl43499/jni43499.c	410	glk43499_read_perf_open_request	memset			0
+app/src/main/cpp/gl43499/jni43499.c	410	glk43499_read_perf_open_request	glk43499_get_long	app/src/main/cpp/gl43499/jni43499.c	151	1
+app/src/main/cpp/gl43499/jni43499.c	439	glk43499_write_perf_collect_result	glk43499_write_call_result_body	app/src/main/cpp/gl43499/jni43499.c	241	1
+app/src/main/cpp/gl43499/jni43499.c	439	glk43499_write_perf_collect_result	glk43499_set_long	app/src/main/cpp/gl43499/jni43499.c	195	1
+app/src/main/cpp/gl43499/jni43499.c	439	glk43499_write_perf_collect_result	glk43499_set_bool	app/src/main/cpp/gl43499/jni43499.c	204	1
+app/src/main/cpp/gl43499/jni43499.c	439	glk43499_write_perf_collect_result	glk43499_write_call_status	app/src/main/cpp/gl43499/jni43499.c	212	1
+app/src/main/cpp/gl43499/jni43499.c	439	glk43499_write_perf_collect_result	glk43499_write_call_status	app/src/main/cpp/gl43499/jni43499.c	212	1
+app/src/main/cpp/gl43499/jni43499.c	470	glk43499_write_byte_array	SetByteArrayRegion			0
+app/src/main/cpp/gl43499/jni43499.c	470	glk43499_write_byte_array	ExceptionCheck			0
+app/src/main/cpp/gl43499/jni43499.c	504	glk43499_copy_bytes	GetArrayLength			0
+app/src/main/cpp/gl43499/jni43499.c	504	glk43499_copy_bytes	ExceptionCheck			0
+app/src/main/cpp/gl43499/jni43499.c	504	glk43499_copy_bytes	malloc			0
+app/src/main/cpp/gl43499/jni43499.c	504	glk43499_copy_bytes	malloc			0
+app/src/main/cpp/gl43499/jni43499.c	504	glk43499_copy_bytes	GetByteArrayRegion			0
+app/src/main/cpp/gl43499/jni43499.c	504	glk43499_copy_bytes	memset			0
+app/src/main/cpp/gl43499/jni43499.c	504	glk43499_copy_bytes	memset			0
+app/src/main/cpp/gl43499/jni43499.c	504	glk43499_copy_bytes	memset			0
+app/src/main/cpp/gl43499/jni43499.c	504	glk43499_copy_bytes	free			0
+app/src/main/cpp/gl43499/jni43499.c	504	glk43499_copy_bytes	free			0
+app/src/main/cpp/gl43499/jni43499.c	529	glk43499_clear_free	free			0
+app/src/main/cpp/gl43499/jni43499.c	529	glk43499_clear_free	free			0
+app/src/main/cpp/gl43499/jni43499.c	537	glk43499_read_placement_request	memset			0
+app/src/main/cpp/gl43499/jni43499.c	537	glk43499_read_placement_request	memset			0
+app/src/main/cpp/gl43499/jni43499.c	537	glk43499_read_placement_request	memset			0
+app/src/main/cpp/gl43499/jni43499.c	537	glk43499_read_placement_request	glk43499_get_long	app/src/main/cpp/gl43499/jni43499.c	151	1
+app/src/main/cpp/gl43499/jni43499.c	537	glk43499_read_placement_request	glk43499_get_int	app/src/main/cpp/gl43499/jni43499.c	160	1
+app/src/main/cpp/gl43499/jni43499.c	583	glk43499_read_landing_request	memset			0
+app/src/main/cpp/gl43499/jni43499.c	583	glk43499_read_landing_request	memset			0
+app/src/main/cpp/gl43499/jni43499.c	583	glk43499_read_landing_request	memset			0
+app/src/main/cpp/gl43499/jni43499.c	583	glk43499_read_landing_request	glk43499_get_long	app/src/main/cpp/gl43499/jni43499.c	151	1
+app/src/main/cpp/gl43499/jni43499.c	608	glk43499_read_actor_setup	memset			0
+app/src/main/cpp/gl43499/jni43499.c	608	glk43499_read_actor_setup	memset			0
+app/src/main/cpp/gl43499/jni43499.c	608	glk43499_read_actor_setup	memset			0
+app/src/main/cpp/gl43499/jni43499.c	608	glk43499_read_actor_setup	glk43499_get_int	app/src/main/cpp/gl43499/jni43499.c	160	1
+app/src/main/cpp/gl43499/jni43499.c	608	glk43499_read_actor_setup	glk43499_get_int32	app/src/main/cpp/gl43499/jni43499.c	169	1
+app/src/main/cpp/gl43499/jni43499.c	608	glk43499_read_actor_setup	glk43499_get_long	app/src/main/cpp/gl43499/jni43499.c	151	1
+app/src/main/cpp/gl43499/jni43499.c	646	glk43499_read_primitive_addresses	glk43499_get_long	app/src/main/cpp/gl43499/jni43499.c	151	1
+app/src/main/cpp/gl43499/jni43499.c	657	glk43499_read_primitive	memset			0
+app/src/main/cpp/gl43499/jni43499.c	657	glk43499_read_primitive	memset			0
+app/src/main/cpp/gl43499/jni43499.c	657	glk43499_read_primitive	memset			0
+app/src/main/cpp/gl43499/jni43499.c	657	glk43499_read_primitive	glk43499_get_byte_array	app/src/main/cpp/gl43499/jni43499.c	178	1
+app/src/main/cpp/gl43499/jni43499.c	657	glk43499_read_primitive	glk43499_copy_bytes	app/src/main/cpp/gl43499/jni43499.c	504	1
+app/src/main/cpp/gl43499/jni43499.c	657	glk43499_read_primitive	DeleteLocalRef			0
+app/src/main/cpp/gl43499/jni43499.c	657	glk43499_read_primitive	glk43499_get_int	app/src/main/cpp/gl43499/jni43499.c	160	1
+app/src/main/cpp/gl43499/jni43499.c	657	glk43499_read_primitive	glk43499_read_primitive_addresses	app/src/main/cpp/gl43499/jni43499.c	646	1
+app/src/main/cpp/gl43499/jni43499.c	657	glk43499_read_primitive	glk43499_get_long	app/src/main/cpp/gl43499/jni43499.c	151	1
+app/src/main/cpp/gl43499/jni43499.c	790	glk43499_write_placement_result	glk43499_write_call_result_body	app/src/main/cpp/gl43499/jni43499.c	241	1
+app/src/main/cpp/gl43499/jni43499.c	790	glk43499_write_placement_result	glk43499_set_long	app/src/main/cpp/gl43499/jni43499.c	195	1
+app/src/main/cpp/gl43499/jni43499.c	790	glk43499_write_placement_result	glk43499_set_int	app/src/main/cpp/gl43499/jni43499.c	186	1
+app/src/main/cpp/gl43499/jni43499.c	790	glk43499_write_placement_result	glk43499_write_call_status	app/src/main/cpp/gl43499/jni43499.c	212	1
+app/src/main/cpp/gl43499/jni43499.c	790	glk43499_write_placement_result	glk43499_write_call_status	app/src/main/cpp/gl43499/jni43499.c	212	1
+app/src/main/cpp/gl43499/jni43499.c	834	glk43499_write_landing_result	glk43499_write_call_result_body	app/src/main/cpp/gl43499/jni43499.c	241	1
+app/src/main/cpp/gl43499/jni43499.c	834	glk43499_write_landing_result	glk43499_set_long	app/src/main/cpp/gl43499/jni43499.c	195	1
+app/src/main/cpp/gl43499/jni43499.c	834	glk43499_write_landing_result	glk43499_set_bool	app/src/main/cpp/gl43499/jni43499.c	204	1
+app/src/main/cpp/gl43499/jni43499.c	834	glk43499_write_landing_result	glk43499_write_call_status	app/src/main/cpp/gl43499/jni43499.c	212	1
+app/src/main/cpp/gl43499/jni43499.c	834	glk43499_write_landing_result	glk43499_write_call_status	app/src/main/cpp/gl43499/jni43499.c	212	1
+app/src/main/cpp/gl43499/jni43499.c	869	glk43499_write_actor_prepare_result	glk43499_write_call_result_body	app/src/main/cpp/gl43499/jni43499.c	241	1
+app/src/main/cpp/gl43499/jni43499.c	869	glk43499_write_actor_prepare_result	glk43499_set_long	app/src/main/cpp/gl43499/jni43499.c	195	1
+app/src/main/cpp/gl43499/jni43499.c	869	glk43499_write_actor_prepare_result	glk43499_set_int	app/src/main/cpp/gl43499/jni43499.c	186	1
+app/src/main/cpp/gl43499/jni43499.c	869	glk43499_write_actor_prepare_result	glk43499_set_bool	app/src/main/cpp/gl43499/jni43499.c	204	1
+app/src/main/cpp/gl43499/jni43499.c	869	glk43499_write_actor_prepare_result	glk43499_write_call_status	app/src/main/cpp/gl43499/jni43499.c	212	1
+app/src/main/cpp/gl43499/jni43499.c	869	glk43499_write_actor_prepare_result	glk43499_write_call_status	app/src/main/cpp/gl43499/jni43499.c	212	1
+app/src/main/cpp/gl43499/jni43499.c	894	glk43499_write_actor_execute_result	glk43499_write_call_result_body	app/src/main/cpp/gl43499/jni43499.c	241	1
+app/src/main/cpp/gl43499/jni43499.c	894	glk43499_write_actor_execute_result	glk43499_set_long	app/src/main/cpp/gl43499/jni43499.c	195	1
+app/src/main/cpp/gl43499/jni43499.c	894	glk43499_write_actor_execute_result	glk43499_set_bool	app/src/main/cpp/gl43499/jni43499.c	204	1
+app/src/main/cpp/gl43499/jni43499.c	894	glk43499_write_actor_execute_result	glk43499_set_int	app/src/main/cpp/gl43499/jni43499.c	186	1
+app/src/main/cpp/gl43499/jni43499.c	894	glk43499_write_actor_execute_result	glk43499_write_call_status	app/src/main/cpp/gl43499/jni43499.c	212	1
+app/src/main/cpp/gl43499/jni43499.c	894	glk43499_write_actor_execute_result	glk43499_write_call_status	app/src/main/cpp/gl43499/jni43499.c	212	1
+app/src/main/cpp/gl43499/jni43499.c	1006	Java_com_ghostlock_app_jni_Native43499Jni_preparePlacement	glk43499_jni_result_ready	app/src/main/cpp/gl43499/jni43499.c	88	1
+app/src/main/cpp/gl43499/jni43499.c	1006	Java_com_ghostlock_app_jni_Native43499Jni_preparePlacement	glk43499_init_call_result	app/src/main/cpp/gl43499/jni43499.c	233	1
+app/src/main/cpp/gl43499/jni43499.c	1006	Java_com_ghostlock_app_jni_Native43499Jni_preparePlacement	glk43499_read_placement_request	app/src/main/cpp/gl43499/jni43499.c	537	1
+app/src/main/cpp/gl43499/jni43499.c	1006	Java_com_ghostlock_app_jni_Native43499Jni_preparePlacement	glk43499_jni_clear_pending	app/src/main/cpp/gl43499/jni43499.c	110	1
+app/src/main/cpp/gl43499/jni43499.c	1006	Java_com_ghostlock_app_jni_Native43499Jni_preparePlacement	glk43499_prepare_placement	app/src/main/cpp/gl43499/core/placement.h	160	1
+app/src/main/cpp/gl43499/jni43499.c	1006	Java_com_ghostlock_app_jni_Native43499Jni_preparePlacement	glk43499_prepare_placement	app/src/main/cpp/gl43499/core/placement.h	160	1
+app/src/main/cpp/gl43499/jni43499.c	1006	Java_com_ghostlock_app_jni_Native43499Jni_preparePlacement	glk43499_write_placement_result	app/src/main/cpp/gl43499/jni43499.c	790	1
+app/src/main/cpp/gl43499/jni43499.c	1033	glk43499_jni_placement_close_call	glk43499_jni_result_ready	app/src/main/cpp/gl43499/jni43499.c	88	1
+app/src/main/cpp/gl43499/jni43499.c	1033	glk43499_jni_placement_close_call	glk43499_init_call_result	app/src/main/cpp/gl43499/jni43499.c	233	1
+app/src/main/cpp/gl43499/jni43499.c	1033	glk43499_jni_placement_close_call	glk43499_close_placement	app/src/main/cpp/gl43499/core/placement.h	182	1
+app/src/main/cpp/gl43499/jni43499.c	1033	glk43499_jni_placement_close_call	glk43499_close_placement	app/src/main/cpp/gl43499/core/placement.h	182	1
+app/src/main/cpp/gl43499/jni43499.c	1033	glk43499_jni_placement_close_call	glk43499_cancel_placement	app/src/main/cpp/gl43499/core/placement.h	171	1
+app/src/main/cpp/gl43499/jni43499.c	1033	glk43499_jni_placement_close_call	glk43499_cancel_placement	app/src/main/cpp/gl43499/core/placement.h	171	1
+app/src/main/cpp/gl43499/jni43499.c	1033	glk43499_jni_placement_close_call	glk43499_write_close_result	app/src/main/cpp/gl43499/jni43499.c	305	1
+app/src/main/cpp/gl43499/jni43499.c	1033	glk43499_jni_placement_close_call	glk43499_jni_clear_pending	app/src/main/cpp/gl43499/jni43499.c	110	1
+app/src/main/cpp/gl43499/jni43499.c	1056	Java_com_ghostlock_app_jni_Native43499Jni_cancelPlacement	glk43499_jni_placement_close_call	app/src/main/cpp/gl43499/jni43499.c	1033	1
+app/src/main/cpp/gl43499/jni43499.c	1065	Java_com_ghostlock_app_jni_Native43499Jni_closePlacement	glk43499_jni_placement_close_call	app/src/main/cpp/gl43499/jni43499.c	1033	1
+app/src/main/cpp/gl43499/jni43499.c	1074	Java_com_ghostlock_app_jni_Native43499Jni_landPage	glk43499_jni_result_ready	app/src/main/cpp/gl43499/jni43499.c	88	1
+app/src/main/cpp/gl43499/jni43499.c	1074	Java_com_ghostlock_app_jni_Native43499Jni_landPage	memset			0
+app/src/main/cpp/gl43499/jni43499.c	1074	Java_com_ghostlock_app_jni_Native43499Jni_landPage	memset			0
+app/src/main/cpp/gl43499/jni43499.c	1074	Java_com_ghostlock_app_jni_Native43499Jni_landPage	memset			0
+app/src/main/cpp/gl43499/jni43499.c	1074	Java_com_ghostlock_app_jni_Native43499Jni_landPage	glk43499_init_call_result	app/src/main/cpp/gl43499/jni43499.c	233	1
+app/src/main/cpp/gl43499/jni43499.c	1074	Java_com_ghostlock_app_jni_Native43499Jni_landPage	glk43499_read_landing_request	app/src/main/cpp/gl43499/jni43499.c	583	1
+app/src/main/cpp/gl43499/jni43499.c	1074	Java_com_ghostlock_app_jni_Native43499Jni_landPage	glk43499_jni_clear_pending	app/src/main/cpp/gl43499/jni43499.c	110	1
+app/src/main/cpp/gl43499/jni43499.c	1074	Java_com_ghostlock_app_jni_Native43499Jni_landPage	glk43499_copy_bytes	app/src/main/cpp/gl43499/jni43499.c	504	1
+app/src/main/cpp/gl43499/jni43499.c	1074	Java_com_ghostlock_app_jni_Native43499Jni_landPage	glk43499_clear_free	app/src/main/cpp/gl43499/jni43499.c	529	1
+app/src/main/cpp/gl43499/jni43499.c	1074	Java_com_ghostlock_app_jni_Native43499Jni_landPage	glk43499_write_jni_failure_result	app/src/main/cpp/gl43499/jni43499.c	286	1
+app/src/main/cpp/gl43499/jni43499.c	1074	Java_com_ghostlock_app_jni_Native43499Jni_landPage	glk43499_land_page	app/src/main/cpp/gl43499/core/page.h	94	1
+app/src/main/cpp/gl43499/jni43499.c	1074	Java_com_ghostlock_app_jni_Native43499Jni_landPage	glk43499_land_page	app/src/main/cpp/gl43499/core/page.h	94	1
+app/src/main/cpp/gl43499/jni43499.c	1074	Java_com_ghostlock_app_jni_Native43499Jni_landPage	glk43499_write_landing_result	app/src/main/cpp/gl43499/jni43499.c	834	1
+app/src/main/cpp/gl43499/jni43499.c	1138	Java_com_ghostlock_app_jni_Native43499Jni_closePage	glk43499_jni_result_ready	app/src/main/cpp/gl43499/jni43499.c	88	1
+app/src/main/cpp/gl43499/jni43499.c	1138	Java_com_ghostlock_app_jni_Native43499Jni_closePage	glk43499_init_call_result	app/src/main/cpp/gl43499/jni43499.c	233	1
+app/src/main/cpp/gl43499/jni43499.c	1138	Java_com_ghostlock_app_jni_Native43499Jni_closePage	glk43499_close_page	app/src/main/cpp/gl43499/core/page.h	108	1
+app/src/main/cpp/gl43499/jni43499.c	1138	Java_com_ghostlock_app_jni_Native43499Jni_closePage	glk43499_close_page	app/src/main/cpp/gl43499/core/page.h	108	1
+app/src/main/cpp/gl43499/jni43499.c	1138	Java_com_ghostlock_app_jni_Native43499Jni_closePage	glk43499_write_close_result	app/src/main/cpp/gl43499/jni43499.c	305	1
+app/src/main/cpp/gl43499/jni43499.c	1138	Java_com_ghostlock_app_jni_Native43499Jni_closePage	glk43499_jni_clear_pending	app/src/main/cpp/gl43499/jni43499.c	110	1
+app/src/main/cpp/gl43499/jni43499.c	1158	Java_com_ghostlock_app_jni_Native43499Jni_prepareActor	glk43499_jni_result_ready	app/src/main/cpp/gl43499/jni43499.c	88	1
+app/src/main/cpp/gl43499/jni43499.c	1158	Java_com_ghostlock_app_jni_Native43499Jni_prepareActor	glk43499_init_call_result	app/src/main/cpp/gl43499/jni43499.c	233	1
+app/src/main/cpp/gl43499/jni43499.c	1158	Java_com_ghostlock_app_jni_Native43499Jni_prepareActor	glk43499_read_actor_setup	app/src/main/cpp/gl43499/jni43499.c	608	1
+app/src/main/cpp/gl43499/jni43499.c	1158	Java_com_ghostlock_app_jni_Native43499Jni_prepareActor	glk43499_read_primitive	app/src/main/cpp/gl43499/jni43499.c	657	1
+app/src/main/cpp/gl43499/jni43499.c	1158	Java_com_ghostlock_app_jni_Native43499Jni_prepareActor	glk43499_clear_free	app/src/main/cpp/gl43499/jni43499.c	529	1
+app/src/main/cpp/gl43499/jni43499.c	1158	Java_com_ghostlock_app_jni_Native43499Jni_prepareActor	glk43499_write_jni_failure_result	app/src/main/cpp/gl43499/jni43499.c	286	1
+app/src/main/cpp/gl43499/jni43499.c	1158	Java_com_ghostlock_app_jni_Native43499Jni_prepareActor	glk43499_jni_clear_pending	app/src/main/cpp/gl43499/jni43499.c	110	1
+app/src/main/cpp/gl43499/jni43499.c	1158	Java_com_ghostlock_app_jni_Native43499Jni_prepareActor	glk43499_prepare_actor	app/src/main/cpp/gl43499/core/actor.h	152	1
+app/src/main/cpp/gl43499/jni43499.c	1158	Java_com_ghostlock_app_jni_Native43499Jni_prepareActor	glk43499_prepare_actor	app/src/main/cpp/gl43499/core/actor.h	152	1
+app/src/main/cpp/gl43499/jni43499.c	1158	Java_com_ghostlock_app_jni_Native43499Jni_prepareActor	glk43499_write_actor_prepare_result	app/src/main/cpp/gl43499/jni43499.c	869	1
+app/src/main/cpp/gl43499/jni43499.c	1235	Java_com_ghostlock_app_jni_Native43499Jni_executeActor	glk43499_jni_result_ready	app/src/main/cpp/gl43499/jni43499.c	88	1
+app/src/main/cpp/gl43499/jni43499.c	1235	Java_com_ghostlock_app_jni_Native43499Jni_executeActor	glk43499_init_call_result	app/src/main/cpp/gl43499/jni43499.c	233	1
+app/src/main/cpp/gl43499/jni43499.c	1235	Java_com_ghostlock_app_jni_Native43499Jni_executeActor	glk43499_execute_actor	app/src/main/cpp/gl43499/core/actor.h	165	1
+app/src/main/cpp/gl43499/jni43499.c	1235	Java_com_ghostlock_app_jni_Native43499Jni_executeActor	glk43499_execute_actor	app/src/main/cpp/gl43499/core/actor.h	165	1
+app/src/main/cpp/gl43499/jni43499.c	1235	Java_com_ghostlock_app_jni_Native43499Jni_executeActor	glk43499_write_actor_execute_result	app/src/main/cpp/gl43499/jni43499.c	894	1
+app/src/main/cpp/gl43499/jni43499.c	1235	Java_com_ghostlock_app_jni_Native43499Jni_executeActor	glk43499_jni_clear_pending	app/src/main/cpp/gl43499/jni43499.c	110	1
+app/src/main/cpp/gl43499/jni43499.c	1255	glk43499_jni_actor_close_call	glk43499_jni_result_ready	app/src/main/cpp/gl43499/jni43499.c	88	1
+app/src/main/cpp/gl43499/jni43499.c	1255	glk43499_jni_actor_close_call	glk43499_init_call_result	app/src/main/cpp/gl43499/jni43499.c	233	1
+app/src/main/cpp/gl43499/jni43499.c	1255	glk43499_jni_actor_close_call	glk43499_close_actor	app/src/main/cpp/gl43499/core/actor.h	209	1
+app/src/main/cpp/gl43499/jni43499.c	1255	glk43499_jni_actor_close_call	glk43499_close_actor	app/src/main/cpp/gl43499/core/actor.h	209	1
+app/src/main/cpp/gl43499/jni43499.c	1255	glk43499_jni_actor_close_call	glk43499_cancel_actor	app/src/main/cpp/gl43499/core/actor.h	195	1
+app/src/main/cpp/gl43499/jni43499.c	1255	glk43499_jni_actor_close_call	glk43499_cancel_actor	app/src/main/cpp/gl43499/core/actor.h	195	1
+app/src/main/cpp/gl43499/jni43499.c	1255	glk43499_jni_actor_close_call	glk43499_write_close_result	app/src/main/cpp/gl43499/jni43499.c	305	1
+app/src/main/cpp/gl43499/jni43499.c	1255	glk43499_jni_actor_close_call	glk43499_jni_clear_pending	app/src/main/cpp/gl43499/jni43499.c	110	1
+app/src/main/cpp/gl43499/jni43499.c	1278	Java_com_ghostlock_app_jni_Native43499Jni_cancelActor	glk43499_jni_actor_close_call	app/src/main/cpp/gl43499/jni43499.c	1255	1
+app/src/main/cpp/gl43499/jni43499.c	1287	Java_com_ghostlock_app_jni_Native43499Jni_closeActor	glk43499_jni_actor_close_call	app/src/main/cpp/gl43499/jni43499.c	1255	1
+app/src/main/cpp/gl43499/jni43499.c	1296	Java_com_ghostlock_app_jni_Native43499Jni_openPerfSampler	glk43499_jni_result_ready	app/src/main/cpp/gl43499/jni43499.c	88	1
+app/src/main/cpp/gl43499/jni43499.c	1296	Java_com_ghostlock_app_jni_Native43499Jni_openPerfSampler	glk43499_init_call_result	app/src/main/cpp/gl43499/jni43499.c	233	1
+app/src/main/cpp/gl43499/jni43499.c	1296	Java_com_ghostlock_app_jni_Native43499Jni_openPerfSampler	glk43499_read_perf_open_request	app/src/main/cpp/gl43499/jni43499.c	410	1
+app/src/main/cpp/gl43499/jni43499.c	1296	Java_com_ghostlock_app_jni_Native43499Jni_openPerfSampler	glk43499_jni_clear_pending	app/src/main/cpp/gl43499/jni43499.c	110	1
+app/src/main/cpp/gl43499/jni43499.c	1296	Java_com_ghostlock_app_jni_Native43499Jni_openPerfSampler	glk43499_perf_open	app/src/main/cpp/gl43499/core/perf.h	96	1
+app/src/main/cpp/gl43499/jni43499.c	1296	Java_com_ghostlock_app_jni_Native43499Jni_openPerfSampler	glk43499_perf_open	app/src/main/cpp/gl43499/core/perf.h	96	1
+app/src/main/cpp/gl43499/jni43499.c	1296	Java_com_ghostlock_app_jni_Native43499Jni_openPerfSampler	glk43499_write_call_result	app/src/main/cpp/gl43499/jni43499.c	266	1
+app/src/main/cpp/gl43499/jni43499.c	1296	Java_com_ghostlock_app_jni_Native43499Jni_openPerfSampler	glk43499_perf_close	app/src/main/cpp/gl43499/core/perf.h	130	1
+app/src/main/cpp/gl43499/jni43499.c	1296	Java_com_ghostlock_app_jni_Native43499Jni_openPerfSampler	glk43499_perf_close	app/src/main/cpp/gl43499/core/perf.h	130	1
+app/src/main/cpp/gl43499/jni43499.c	1328	Java_com_ghostlock_app_jni_Native43499Jni_collectPerfSamples	glk43499_jni_result_ready	app/src/main/cpp/gl43499/jni43499.c	88	1
+app/src/main/cpp/gl43499/jni43499.c	1328	Java_com_ghostlock_app_jni_Native43499Jni_collectPerfSamples	GetArrayLength			0
+app/src/main/cpp/gl43499/jni43499.c	1328	Java_com_ghostlock_app_jni_Native43499Jni_collectPerfSamples	ExceptionCheck			0
+app/src/main/cpp/gl43499/jni43499.c	1328	Java_com_ghostlock_app_jni_Native43499Jni_collectPerfSamples	glk43499_jni_clear_pending	app/src/main/cpp/gl43499/jni43499.c	110	1
+app/src/main/cpp/gl43499/jni43499.c	1328	Java_com_ghostlock_app_jni_Native43499Jni_collectPerfSamples	malloc			0
+app/src/main/cpp/gl43499/jni43499.c	1328	Java_com_ghostlock_app_jni_Native43499Jni_collectPerfSamples	malloc			0
+app/src/main/cpp/gl43499/jni43499.c	1328	Java_com_ghostlock_app_jni_Native43499Jni_collectPerfSamples	glk43499_write_jni_failure_result	app/src/main/cpp/gl43499/jni43499.c	286	1
+app/src/main/cpp/gl43499/jni43499.c	1328	Java_com_ghostlock_app_jni_Native43499Jni_collectPerfSamples	glk43499_init_call_result	app/src/main/cpp/gl43499/jni43499.c	233	1
+app/src/main/cpp/gl43499/jni43499.c	1328	Java_com_ghostlock_app_jni_Native43499Jni_collectPerfSamples	glk43499_perf_collect	app/src/main/cpp/gl43499/core/perf.h	115	1
+app/src/main/cpp/gl43499/jni43499.c	1328	Java_com_ghostlock_app_jni_Native43499Jni_collectPerfSamples	glk43499_perf_collect	app/src/main/cpp/gl43499/core/perf.h	115	1
+app/src/main/cpp/gl43499/jni43499.c	1328	Java_com_ghostlock_app_jni_Native43499Jni_collectPerfSamples	glk43499_clear_free	app/src/main/cpp/gl43499/jni43499.c	529	1
+app/src/main/cpp/gl43499/jni43499.c	1328	Java_com_ghostlock_app_jni_Native43499Jni_collectPerfSamples	glk43499_write_byte_array	app/src/main/cpp/gl43499/jni43499.c	470	1
+app/src/main/cpp/gl43499/jni43499.c	1328	Java_com_ghostlock_app_jni_Native43499Jni_collectPerfSamples	glk43499_write_perf_collect_result	app/src/main/cpp/gl43499/jni43499.c	439	1
+app/src/main/cpp/gl43499/jni43499.c	1395	Java_com_ghostlock_app_jni_Native43499Jni_closePerfSampler	glk43499_jni_result_ready	app/src/main/cpp/gl43499/jni43499.c	88	1
+app/src/main/cpp/gl43499/jni43499.c	1395	Java_com_ghostlock_app_jni_Native43499Jni_closePerfSampler	glk43499_init_call_result	app/src/main/cpp/gl43499/jni43499.c	233	1
+app/src/main/cpp/gl43499/jni43499.c	1395	Java_com_ghostlock_app_jni_Native43499Jni_closePerfSampler	glk43499_perf_close	app/src/main/cpp/gl43499/core/perf.h	130	1
+app/src/main/cpp/gl43499/jni43499.c	1395	Java_com_ghostlock_app_jni_Native43499Jni_closePerfSampler	glk43499_perf_close	app/src/main/cpp/gl43499/core/perf.h	130	1
+app/src/main/cpp/gl43499/jni43499.c	1395	Java_com_ghostlock_app_jni_Native43499Jni_closePerfSampler	glk43499_write_close_result	app/src/main/cpp/gl43499/jni43499.c	305	1
+app/src/main/cpp/gl43499/jni43499.c	1395	Java_com_ghostlock_app_jni_Native43499Jni_closePerfSampler	glk43499_jni_clear_pending	app/src/main/cpp/gl43499/jni43499.c	110	1
+app/src/main/cpp/gl43499/jni43499.c	1431	glk43499_write_limits_result	glk43499_set_int	app/src/main/cpp/gl43499/jni43499.c	186	1
+app/src/main/cpp/gl43499/jni43499.c	1431	glk43499_write_limits_result	glk43499_set_long	app/src/main/cpp/gl43499/jni43499.c	195	1
+app/src/main/cpp/gl43499/jni43499.c	1431	glk43499_write_limits_result	glk43499_write_call_status	app/src/main/cpp/gl43499/jni43499.c	212	1
+app/src/main/cpp/gl43499/jni43499.c	1431	glk43499_write_limits_result	glk43499_write_call_status	app/src/main/cpp/gl43499/jni43499.c	212	1
+app/src/main/cpp/gl43499/jni43499.c	1472	Java_com_ghostlock_app_jni_Native43499Jni_raiseProcessLimits	glk43499_jni_result_ready	app/src/main/cpp/gl43499/jni43499.c	88	1
+app/src/main/cpp/gl43499/jni43499.c	1472	Java_com_ghostlock_app_jni_Native43499Jni_raiseProcessLimits	glk43499_jni_clear_pending	app/src/main/cpp/gl43499/jni43499.c	110	1
+app/src/main/cpp/gl43499/jni43499.c	1472	Java_com_ghostlock_app_jni_Native43499Jni_raiseProcessLimits	getrlimit			0
+app/src/main/cpp/gl43499/jni43499.c	1472	Java_com_ghostlock_app_jni_Native43499Jni_raiseProcessLimits	__errno			0
+app/src/main/cpp/gl43499/jni43499.c	1472	Java_com_ghostlock_app_jni_Native43499Jni_raiseProcessLimits	setrlimit			0
+app/src/main/cpp/gl43499/jni43499.c	1472	Java_com_ghostlock_app_jni_Native43499Jni_raiseProcessLimits	glk43499_write_limits_result	app/src/main/cpp/gl43499/jni43499.c	1431	1
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	gl_log_write	app/src/main/cpp/common/gl_log.h	93	1
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	gl_log_write	app/src/main/cpp/common/gl_log.h	93	1
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	gl_log_write	app/src/main/cpp/common/gl_log.h	93	1
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	glk43499_jni_result_ready	app/src/main/cpp/gl43499/jni43499.c	88	1
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	glk43499_jni_clear_pending	app/src/main/cpp/gl43499/jni43499.c	110	1
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	glk43499_jni_reject_invalid_argument	app/src/main/cpp/gl43499/jni43499.c	222	1
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	glk43499_jni_read_utf8	app/src/main/cpp/gl43499/jni43499.c	336	1
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	glk43499_jni_read_utf8_array	app/src/main/cpp/gl43499/jni43499.c	368	1
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	free			0
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	free			0
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	glk43499_jni_free_utf8_array	app/src/main/cpp/gl43499/jni43499.c	403	1
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	memset			0
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	memset			0
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	memset			0
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	glk_victim_spawn	app/src/main/cpp/gl43499/core/victim_protocol.h	239	1
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	glk_victim_spawn	app/src/main/cpp/gl43499/core/victim_protocol.h	239	1
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	glk43499_init_call_result	app/src/main/cpp/gl43499/jni43499.c	233	1
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	glk43499_write_call_result_body	app/src/main/cpp/gl43499/jni43499.c	241	1
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	glk43499_set_int	app/src/main/cpp/gl43499/jni43499.c	186	1
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	glk43499_write_call_status	app/src/main/cpp/gl43499/jni43499.c	212	1
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	glk43499_write_call_status	app/src/main/cpp/gl43499/jni43499.c	212	1
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	glk_victim_close	app/src/main/cpp/gl43499/core/victim_protocol.h	328	1
+app/src/main/cpp/gl43499/jni43499.c	1556	Java_com_ghostlock_app_jni_VictimTransportJni_spawnVictim	glk_victim_close	app/src/main/cpp/gl43499/core/victim_protocol.h	328	1
+app/src/main/cpp/gl43499/jni43499.c	1639	Java_com_ghostlock_app_jni_VictimTransportJni_sendVictim	GetArrayLength			0
+app/src/main/cpp/gl43499/jni43499.c	1639	Java_com_ghostlock_app_jni_VictimTransportJni_sendVictim	glk43499_jni_clear_pending	app/src/main/cpp/gl43499/jni43499.c	110	1
+app/src/main/cpp/gl43499/jni43499.c	1639	Java_com_ghostlock_app_jni_VictimTransportJni_sendVictim	malloc			0
+app/src/main/cpp/gl43499/jni43499.c	1639	Java_com_ghostlock_app_jni_VictimTransportJni_sendVictim	malloc			0
+app/src/main/cpp/gl43499/jni43499.c	1639	Java_com_ghostlock_app_jni_VictimTransportJni_sendVictim	GetByteArrayRegion			0
+app/src/main/cpp/gl43499/jni43499.c	1639	Java_com_ghostlock_app_jni_VictimTransportJni_sendVictim	ExceptionCheck			0
+app/src/main/cpp/gl43499/jni43499.c	1639	Java_com_ghostlock_app_jni_VictimTransportJni_sendVictim	free			0
+app/src/main/cpp/gl43499/jni43499.c	1639	Java_com_ghostlock_app_jni_VictimTransportJni_sendVictim	free			0
+app/src/main/cpp/gl43499/jni43499.c	1639	Java_com_ghostlock_app_jni_VictimTransportJni_sendVictim	glk_victim_send	app/src/main/cpp/gl43499/core/victim_protocol.h	252	1
+app/src/main/cpp/gl43499/jni43499.c	1639	Java_com_ghostlock_app_jni_VictimTransportJni_sendVictim	glk_victim_send	app/src/main/cpp/gl43499/core/victim_protocol.h	252	1
+app/src/main/cpp/gl43499/jni43499.c	1671	Java_com_ghostlock_app_jni_VictimTransportJni_receiveVictim	GetArrayLength			0
+app/src/main/cpp/gl43499/jni43499.c	1671	Java_com_ghostlock_app_jni_VictimTransportJni_receiveVictim	glk43499_jni_clear_pending	app/src/main/cpp/gl43499/jni43499.c	110	1
+app/src/main/cpp/gl43499/jni43499.c	1671	Java_com_ghostlock_app_jni_VictimTransportJni_receiveVictim	malloc			0
+app/src/main/cpp/gl43499/jni43499.c	1671	Java_com_ghostlock_app_jni_VictimTransportJni_receiveVictim	malloc			0
+app/src/main/cpp/gl43499/jni43499.c	1671	Java_com_ghostlock_app_jni_VictimTransportJni_receiveVictim	glk_victim_receive	app/src/main/cpp/gl43499/core/victim_protocol.h	265	1
+app/src/main/cpp/gl43499/jni43499.c	1671	Java_com_ghostlock_app_jni_VictimTransportJni_receiveVictim	glk_victim_receive	app/src/main/cpp/gl43499/core/victim_protocol.h	265	1
+app/src/main/cpp/gl43499/jni43499.c	1671	Java_com_ghostlock_app_jni_VictimTransportJni_receiveVictim	free			0
+app/src/main/cpp/gl43499/jni43499.c	1671	Java_com_ghostlock_app_jni_VictimTransportJni_receiveVictim	free			0
+app/src/main/cpp/gl43499/jni43499.c	1671	Java_com_ghostlock_app_jni_VictimTransportJni_receiveVictim	SetByteArrayRegion			0
+app/src/main/cpp/gl43499/jni43499.c	1671	Java_com_ghostlock_app_jni_VictimTransportJni_receiveVictim	ExceptionCheck			0
+app/src/main/cpp/gl43499/jni43499.c	1713	Java_com_ghostlock_app_jni_VictimTransportJni_readRawVictim	GetArrayLength			0
+app/src/main/cpp/gl43499/jni43499.c	1713	Java_com_ghostlock_app_jni_VictimTransportJni_readRawVictim	glk43499_jni_clear_pending	app/src/main/cpp/gl43499/jni43499.c	110	1
+app/src/main/cpp/gl43499/jni43499.c	1713	Java_com_ghostlock_app_jni_VictimTransportJni_readRawVictim	malloc			0
+app/src/main/cpp/gl43499/jni43499.c	1713	Java_com_ghostlock_app_jni_VictimTransportJni_readRawVictim	malloc			0
+app/src/main/cpp/gl43499/jni43499.c	1713	Java_com_ghostlock_app_jni_VictimTransportJni_readRawVictim	glk_victim_read_raw	app/src/main/cpp/gl43499/core/victim_protocol.h	279	1
+app/src/main/cpp/gl43499/jni43499.c	1713	Java_com_ghostlock_app_jni_VictimTransportJni_readRawVictim	glk_victim_read_raw	app/src/main/cpp/gl43499/core/victim_protocol.h	279	1
+app/src/main/cpp/gl43499/jni43499.c	1713	Java_com_ghostlock_app_jni_VictimTransportJni_readRawVictim	SetByteArrayRegion			0
+app/src/main/cpp/gl43499/jni43499.c	1713	Java_com_ghostlock_app_jni_VictimTransportJni_readRawVictim	ExceptionCheck			0
+app/src/main/cpp/gl43499/jni43499.c	1713	Java_com_ghostlock_app_jni_VictimTransportJni_readRawVictim	free			0
+app/src/main/cpp/gl43499/jni43499.c	1713	Java_com_ghostlock_app_jni_VictimTransportJni_readRawVictim	free			0
+app/src/main/cpp/gl43499/jni43499.c	1745	Java_com_ghostlock_app_jni_VictimTransportJni_rawSizeVictim	glk_victim_raw_size	app/src/main/cpp/gl43499/core/victim_protocol.h	285	1
+app/src/main/cpp/gl43499/jni43499.c	1745	Java_com_ghostlock_app_jni_VictimTransportJni_rawSizeVictim	glk_victim_raw_size	app/src/main/cpp/gl43499/core/victim_protocol.h	285	1
+app/src/main/cpp/gl43499/jni43499.c	1758	Java_com_ghostlock_app_jni_VictimTransportJni_waitExitVictim	glk_victim_wait	app/src/main/cpp/gl43499/core/victim_protocol.h	301	1
+app/src/main/cpp/gl43499/jni43499.c	1758	Java_com_ghostlock_app_jni_VictimTransportJni_waitExitVictim	glk_victim_wait	app/src/main/cpp/gl43499/core/victim_protocol.h	301	1
+app/src/main/cpp/gl43499/jni43499.c	1772	Java_com_ghostlock_app_jni_VictimTransportJni_killVictim	glk_victim_kill	app/src/main/cpp/gl43499/core/victim_protocol.h	311	1
+app/src/main/cpp/gl43499/jni43499.c	1772	Java_com_ghostlock_app_jni_VictimTransportJni_killVictim	glk_victim_kill	app/src/main/cpp/gl43499/core/victim_protocol.h	311	1
+app/src/main/cpp/gl43499/jni43499.c	1784	Java_com_ghostlock_app_jni_VictimTransportJni_detachVictim	glk_victim_detach	app/src/main/cpp/gl43499/core/victim_protocol.h	320	1
+app/src/main/cpp/gl43499/jni43499.c	1784	Java_com_ghostlock_app_jni_VictimTransportJni_detachVictim	glk_victim_detach	app/src/main/cpp/gl43499/core/victim_protocol.h	320	1
+app/src/main/cpp/gl43499/jni43499.c	1793	Java_com_ghostlock_app_jni_VictimTransportJni_closeVictim	glk43499_jni_result_ready	app/src/main/cpp/gl43499/jni43499.c	88	1
+app/src/main/cpp/gl43499/jni43499.c	1793	Java_com_ghostlock_app_jni_VictimTransportJni_closeVictim	glk43499_jni_clear_pending	app/src/main/cpp/gl43499/jni43499.c	110	1
+app/src/main/cpp/gl43499/jni43499.c	1793	Java_com_ghostlock_app_jni_VictimTransportJni_closeVictim	glk_victim_close	app/src/main/cpp/gl43499/core/victim_protocol.h	328	1
+app/src/main/cpp/gl43499/jni43499.c	1793	Java_com_ghostlock_app_jni_VictimTransportJni_closeVictim	glk_victim_close	app/src/main/cpp/gl43499/core/victim_protocol.h	328	1
+app/src/main/cpp/gl43499/jni43499.c	1793	Java_com_ghostlock_app_jni_VictimTransportJni_closeVictim	glk43499_init_call_result	app/src/main/cpp/gl43499/jni43499.c	233	1
+app/src/main/cpp/gl43499/jni43499.c	1793	Java_com_ghostlock_app_jni_VictimTransportJni_closeVictim	glk43499_write_call_result	app/src/main/cpp/gl43499/jni43499.c	266	1
+app/src/main/cpp/gl43499/jni43499.c	1829	Java_com_ghostlock_app_jni_VictimTransportJni_forkGuardSnapshot	glk_victim_fork_count	app/src/main/cpp/gl43499/core/victim_protocol.h	374	1
+app/src/main/cpp/gl43499/jni43499.c	1829	Java_com_ghostlock_app_jni_VictimTransportJni_forkGuardSnapshot	glk_victim_fork_count	app/src/main/cpp/gl43499/core/victim_protocol.h	374	1
+app/src/main/cpp/gl43499/jni43499.c	1829	Java_com_ghostlock_app_jni_VictimTransportJni_forkGuardSnapshot	glk_victim_vfork_count	app/src/main/cpp/gl43499/core/victim_protocol.h	379	1
+app/src/main/cpp/gl43499/jni43499.c	1829	Java_com_ghostlock_app_jni_VictimTransportJni_forkGuardSnapshot	glk_victim_vfork_count	app/src/main/cpp/gl43499/core/victim_protocol.h	379	1
+app/src/main/cpp/gl43499/jni43499.c	1839	Java_com_ghostlock_app_jni_VictimTransportJni_forkGuardReset	glk_victim_fork_count_reset	app/src/main/cpp/gl43499/core/victim_protocol.h	385	1
+app/src/main/cpp/gl43499/jni43499.c	1839	Java_com_ghostlock_app_jni_VictimTransportJni_forkGuardReset	glk_victim_fork_count_reset	app/src/main/cpp/gl43499/core/victim_protocol.h	385	1
+app/src/main/cpp/gl43499/jni43499.c	1848	Java_com_ghostlock_app_jni_VictimTransportJni_forkGuardCanary	fork			0
+app/src/main/cpp/gl43499/jni43499.c	1848	Java_com_ghostlock_app_jni_VictimTransportJni_forkGuardCanary	_exit			0
+app/src/main/cpp/gl43499/jni43499.c	1848	Java_com_ghostlock_app_jni_VictimTransportJni_forkGuardCanary	_exit			0
+app/src/main/cpp/gl43499/jni43499.c	1848	Java_com_ghostlock_app_jni_VictimTransportJni_forkGuardCanary	__errno			0
+app/src/main/cpp/gl43499/jni43499.c	1848	Java_com_ghostlock_app_jni_VictimTransportJni_forkGuardCanary	waitpid			0
+app/src/main/cpp/gl43499/jni43499.c	1875	Java_com_ghostlock_app_jni_Native43499Jni_actorFutexSelfTest	glk43499_actor_futex_selftest	app/src/main/cpp/gl43499/core/actor.h	177	1
+app/src/main/cpp/gl43499/jni43499.c	1875	Java_com_ghostlock_app_jni_Native43499Jni_actorFutexSelfTest	glk43499_actor_futex_selftest	app/src/main/cpp/gl43499/core/actor.h	177	1
+app/src/main/cpp/gl43499/jni43499.c	1875	Java_com_ghostlock_app_jni_Native43499Jni_actorFutexSelfTest	NewIntArray			0
+app/src/main/cpp/gl43499/jni43499.c	1875	Java_com_ghostlock_app_jni_Native43499Jni_actorFutexSelfTest	SetIntArrayRegion			0
+app/src/main/cpp/gl43499/jni43499.c	1889	Java_com_ghostlock_app_jni_Native43499Jni_actorDebugSnapshot	glk43499_actor_debug_snapshot	app/src/main/cpp/gl43499/core/actor.h	187	1
+app/src/main/cpp/gl43499/jni43499.c	1889	Java_com_ghostlock_app_jni_Native43499Jni_actorDebugSnapshot	glk43499_actor_debug_snapshot	app/src/main/cpp/gl43499/core/actor.h	187	1
+app/src/main/cpp/gl43499/jni43499.c	1889	Java_com_ghostlock_app_jni_Native43499Jni_actorDebugSnapshot	NewLongArray			0
+app/src/main/cpp/gl43499/jni43499.c	1889	Java_com_ghostlock_app_jni_Native43499Jni_actorDebugSnapshot	SetLongArrayRegion			0
+app/src/main/cpp/gl43499/mcast510_probe.c	95	mcast510_futex	syscall			0
+app/src/main/cpp/gl43499/mcast510_probe.c	102	mcast510_apply_nice	memset			0
+app/src/main/cpp/gl43499/mcast510_probe.c	102	mcast510_apply_nice	memset			0
+app/src/main/cpp/gl43499/mcast510_probe.c	102	mcast510_apply_nice	memset			0
+app/src/main/cpp/gl43499/mcast510_probe.c	102	mcast510_apply_nice	__errno			0
+app/src/main/cpp/gl43499/mcast510_probe.c	102	mcast510_apply_nice	syscall			0
+app/src/main/cpp/gl43499/mcast510_probe.c	102	mcast510_apply_nice	mcast510_futex	app/src/main/cpp/gl43499/mcast510_probe.c	95	1
+app/src/main/cpp/gl43499/mcast510_probe.c	124	mcast510_owner	__errno			0
+app/src/main/cpp/gl43499/mcast510_probe.c	124	mcast510_owner	mcast510_futex	app/src/main/cpp/gl43499/mcast510_probe.c	95	1
+app/src/main/cpp/gl43499/mcast510_probe.c	124	mcast510_owner	sched_yield			0
+app/src/main/cpp/gl43499/mcast510_probe.c	124	mcast510_owner	sleep			0
+app/src/main/cpp/gl43499/mcast510_probe.c	157	mcast510_waiter	__builtin_memset			0
+app/src/main/cpp/gl43499/mcast510_probe.c	157	mcast510_waiter	__builtin_memset			0
+app/src/main/cpp/gl43499/mcast510_probe.c	157	mcast510_waiter	sched_setaffinity			0
+app/src/main/cpp/gl43499/mcast510_probe.c	157	mcast510_waiter	syscall			0
+app/src/main/cpp/gl43499/mcast510_probe.c	157	mcast510_waiter	__errno			0
+app/src/main/cpp/gl43499/mcast510_probe.c	157	mcast510_waiter	mcast510_futex	app/src/main/cpp/gl43499/mcast510_probe.c	95	1
+app/src/main/cpp/gl43499/mcast510_probe.c	157	mcast510_waiter	sched_yield			0
+app/src/main/cpp/gl43499/mcast510_probe.c	157	mcast510_waiter	clock_gettime			0
+app/src/main/cpp/gl43499/mcast510_probe.c	199	mcast510_consumer	__builtin_memset			0
+app/src/main/cpp/gl43499/mcast510_probe.c	199	mcast510_consumer	__builtin_memset			0
+app/src/main/cpp/gl43499/mcast510_probe.c	199	mcast510_consumer	sched_setaffinity			0
+app/src/main/cpp/gl43499/mcast510_probe.c	199	mcast510_consumer	sched_yield			0
+app/src/main/cpp/gl43499/mcast510_probe.c	199	mcast510_consumer	usleep			0
+app/src/main/cpp/gl43499/mcast510_probe.c	199	mcast510_consumer	mcast510_apply_nice	app/src/main/cpp/gl43499/mcast510_probe.c	102	1
+app/src/main/cpp/gl43499/mcast510_probe.c	236	Java_com_ghostlock_app_jni_Native43499Jni_mcast510Probe	memset			0
+app/src/main/cpp/gl43499/mcast510_probe.c	236	Java_com_ghostlock_app_jni_Native43499Jni_mcast510Probe	memset			0
+app/src/main/cpp/gl43499/mcast510_probe.c	236	Java_com_ghostlock_app_jni_Native43499Jni_mcast510Probe	memset			0
+app/src/main/cpp/gl43499/mcast510_probe.c	236	Java_com_ghostlock_app_jni_Native43499Jni_mcast510Probe	memcpy			0
+app/src/main/cpp/gl43499/mcast510_probe.c	236	Java_com_ghostlock_app_jni_Native43499Jni_mcast510Probe	memcpy			0
+app/src/main/cpp/gl43499/mcast510_probe.c	236	Java_com_ghostlock_app_jni_Native43499Jni_mcast510Probe	memcpy			0
+app/src/main/cpp/gl43499/mcast510_probe.c	236	Java_com_ghostlock_app_jni_Native43499Jni_mcast510Probe	socket			0
+app/src/main/cpp/gl43499/mcast510_probe.c	236	Java_com_ghostlock_app_jni_Native43499Jni_mcast510Probe	__errno			0
+app/src/main/cpp/gl43499/mcast510_probe.c	236	Java_com_ghostlock_app_jni_Native43499Jni_mcast510Probe	NewLongArray			0
+app/src/main/cpp/gl43499/mcast510_probe.c	236	Java_com_ghostlock_app_jni_Native43499Jni_mcast510Probe	SetLongArrayRegion			0
+app/src/main/cpp/gl43499/mcast510_probe.c	236	Java_com_ghostlock_app_jni_Native43499Jni_mcast510Probe	getpid			0
+app/src/main/cpp/gl43499/mcast510_probe.c	236	Java_com_ghostlock_app_jni_Native43499Jni_mcast510Probe	pthread_create			0
+app/src/main/cpp/gl43499/mcast510_probe.c	236	Java_com_ghostlock_app_jni_Native43499Jni_mcast510Probe	close			0
+app/src/main/cpp/gl43499/mcast510_probe.c	236	Java_com_ghostlock_app_jni_Native43499Jni_mcast510Probe	clock_gettime			0
+app/src/main/cpp/gl43499/mcast510_probe.c	236	Java_com_ghostlock_app_jni_Native43499Jni_mcast510Probe	usleep			0
+app/src/main/cpp/gl43499/mcast510_probe.c	236	Java_com_ghostlock_app_jni_Native43499Jni_mcast510Probe	mcast510_futex	app/src/main/cpp/gl43499/mcast510_probe.c	95	1
+app/src/main/cpp/gl43499/mcast510_probe.c	236	Java_com_ghostlock_app_jni_Native43499Jni_mcast510Probe	setsockopt			0
+app/src/main/cpp/gl43499/mcast510_probe.c	236	Java_com_ghostlock_app_jni_Native43499Jni_mcast510Probe	pthread_join			0
+app/src/main/cpp/gl43499/core/core_internal.h	70	glk43499_internal_output_abi	glk43499_internal_valid_header	app/src/main/cpp/gl43499/core/core_internal.h	39	1
+app/src/main/cpp/gl43499/core/core_internal.h	111	glk43499_internal_set_close	glk43499_internal_set_call	app/src/main/cpp/gl43499/core/core_internal.h	87	1
+app/src/main/cpp/gl43499/core/core_internal.h	149	glk43499_internal_now_ns	clock_gettime			0
+app/src/main/cpp/gl43499/core/core_internal.h	161	glk43499_internal_deadline	glk43499_internal_now_ns	app/src/main/cpp/gl43499/core/core_internal.h	149	1
+app/src/main/cpp/gl43499/core/core_internal.h	170	glk43499_internal_expired	glk43499_internal_now_ns	app/src/main/cpp/gl43499/core/core_internal.h	149	1
+app/src/main/cpp/gl43499/core/core_internal.h	196	glk43499_internal_valid_cpu	sysconf			0
+app/src/main/cpp/gl43499/core/core_internal.h	212	glk43499_internal_pin_cpu	memset			0
+app/src/main/cpp/gl43499/core/core_internal.h	212	glk43499_internal_pin_cpu	memset			0
+app/src/main/cpp/gl43499/core/core_internal.h	212	glk43499_internal_pin_cpu	memset			0
+app/src/main/cpp/gl43499/core/core_internal.h	212	glk43499_internal_pin_cpu	syscall			0
+app/src/main/cpp/gl43499/core/core_internal.h	249	glk43499_internal_add_u64	__builtin_add_overflow	app/src/main/cpp/gl43499/core/core_internal.h	251	1
+app/src/main/cpp/gl43499/core/core_internal.h	262	glk43499_internal_add_uintptr	__builtin_add_overflow	app/src/main/cpp/gl43499/core/core_internal.h	251	1
+app/src/main/cpp/gl43499/core/placement_internal.h	107	glk43499_placement_free_staging	free			0
+app/src/main/cpp/gl43499/core/placement_internal.h	107	glk43499_placement_free_staging	free			0
+app/src/main/cpp/gl43499/core/placement_internal.h	121	glk43499_placement_from_handle	glk43499_internal_handle_ptr	app/src/main/cpp/gl43499/core/core_internal.h	131	1
+app/src/main/cpp/gl43499/core/placement.c	52	glk43499_placement_ctx_alloc	memset			0
+app/src/main/cpp/gl43499/core/placement.c	52	glk43499_placement_ctx_alloc	memset			0
+app/src/main/cpp/gl43499/core/placement.c	52	glk43499_placement_ctx_alloc	memset			0
+app/src/main/cpp/gl43499/core/placement.c	52	glk43499_placement_ctx_alloc	calloc			0
+app/src/main/cpp/gl43499/core/placement.c	52	glk43499_placement_ctx_alloc	calloc			0
+app/src/main/cpp/gl43499/core/placement.c	52	glk43499_placement_ctx_alloc	free			0
+app/src/main/cpp/gl43499/core/placement.c	52	glk43499_placement_ctx_alloc	free			0
+app/src/main/cpp/gl43499/core/placement.c	52	glk43499_placement_ctx_alloc	__errno			0
+app/src/main/cpp/gl43499/core/placement.c	75	glk43499_placement_free_ctx	free			0
+app/src/main/cpp/gl43499/core/placement.c	75	glk43499_placement_free_ctx	free			0
+app/src/main/cpp/gl43499/core/placement.c	75	glk43499_placement_free_ctx	memset			0
+app/src/main/cpp/gl43499/core/placement.c	75	glk43499_placement_free_ctx	memset			0
+app/src/main/cpp/gl43499/core/placement.c	75	glk43499_placement_free_ctx	memset			0
+app/src/main/cpp/gl43499/core/placement.c	90	glk43499_placement_clone_child	syscall			0
+app/src/main/cpp/gl43499/core/placement.c	90	glk43499_placement_clone_child	prctl			0
+app/src/main/cpp/gl43499/core/placement.c	90	glk43499_placement_clone_child	getppid			0
+app/src/main/cpp/gl43499/core/placement.c	90	glk43499_placement_clone_child	_exit			0
+app/src/main/cpp/gl43499/core/placement.c	90	glk43499_placement_clone_child	_exit			0
+app/src/main/cpp/gl43499/core/placement.c	90	glk43499_placement_clone_child	glk43499_internal_pin_cpu	app/src/main/cpp/gl43499/core/core_internal.h	212	1
+app/src/main/cpp/gl43499/core/placement.c	90	glk43499_placement_clone_child	pause			0
+app/src/main/cpp/gl43499/core/placement.c	107	glk43499_placement_clone_leak_child	syscall			0
+app/src/main/cpp/gl43499/core/placement.c	107	glk43499_placement_clone_leak_child	prctl			0
+app/src/main/cpp/gl43499/core/placement.c	107	glk43499_placement_clone_leak_child	getppid			0
+app/src/main/cpp/gl43499/core/placement.c	107	glk43499_placement_clone_leak_child	_exit			0
+app/src/main/cpp/gl43499/core/placement.c	107	glk43499_placement_clone_leak_child	_exit			0
+app/src/main/cpp/gl43499/core/placement.c	107	glk43499_placement_clone_leak_child	kernelsnitch_find_collisions	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	556	1
+app/src/main/cpp/gl43499/core/placement.c	125	glk43499_placement_open_memfd	snprintf			0
+app/src/main/cpp/gl43499/core/placement.c	125	glk43499_placement_open_memfd	snprintf			0
+app/src/main/cpp/gl43499/core/placement.c	125	glk43499_placement_open_memfd	snprintf			0
+app/src/main/cpp/gl43499/core/placement.c	125	glk43499_placement_open_memfd	__errno			0
+app/src/main/cpp/gl43499/core/placement.c	125	glk43499_placement_open_memfd	open			0
+app/src/main/cpp/gl43499/core/placement.c	125	glk43499_placement_open_memfd	open			0
+app/src/main/cpp/gl43499/core/placement.c	125	glk43499_placement_open_memfd	open			0
+app/src/main/cpp/gl43499/core/placement.c	125	glk43499_placement_open_memfd	open			0
+app/src/main/cpp/gl43499/core/placement.c	142	glk43499_placement_stop_child	kill			0
+app/src/main/cpp/gl43499/core/placement.c	142	glk43499_placement_stop_child	__errno			0
+app/src/main/cpp/gl43499/core/placement.c	142	glk43499_placement_stop_child	waitpid			0
+app/src/main/cpp/gl43499/core/placement.c	158	glk43499_placement_close_memfds	close			0
+app/src/main/cpp/gl43499/core/placement.c	177	glk43499_placement_close_memfds_stride	close			0
+app/src/main/cpp/gl43499/core/placement.c	196	glk43499_placement_close_memfds_except_tail	close			0
+app/src/main/cpp/gl43499/core/placement.c	215	glk43499_placement_kill_children	glk43499_placement_close_memfds	app/src/main/cpp/gl43499/core/placement.c	158	1
+app/src/main/cpp/gl43499/core/placement.c	215	glk43499_placement_kill_children	glk43499_placement_close_memfds	app/src/main/cpp/gl43499/core/placement.c	158	1
+app/src/main/cpp/gl43499/core/placement.c	215	glk43499_placement_kill_children	kill			0
+app/src/main/cpp/gl43499/core/placement.c	215	glk43499_placement_kill_children	__errno			0
+app/src/main/cpp/gl43499/core/placement.c	215	glk43499_placement_kill_children	glk43499_placement_stop_child	app/src/main/cpp/gl43499/core/placement.c	142	1
+app/src/main/cpp/gl43499/core/placement.c	246	glk43499_placement_discard_ctx	glk43499_placement_kill_children	app/src/main/cpp/gl43499/core/placement.c	215	1
+app/src/main/cpp/gl43499/core/placement.c	246	glk43499_placement_discard_ctx	glk43499_placement_kill_children	app/src/main/cpp/gl43499/core/placement.c	215	1
+app/src/main/cpp/gl43499/core/placement.c	246	glk43499_placement_discard_ctx	glk43499_placement_free_ctx	app/src/main/cpp/gl43499/core/placement.c	75	1
+app/src/main/cpp/gl43499/core/placement.c	246	glk43499_placement_discard_ctx	glk43499_placement_free_ctx	app/src/main/cpp/gl43499/core/placement.c	75	1
+app/src/main/cpp/gl43499/core/placement.c	255	glk43499_placement_detach_contexts	memset			0
+app/src/main/cpp/gl43499/core/placement.c	255	glk43499_placement_detach_contexts	memset			0
+app/src/main/cpp/gl43499/core/placement.c	255	glk43499_placement_detach_contexts	memset			0
+app/src/main/cpp/gl43499/core/placement.c	295	glk43499_placement_sync_account	glk43499_placement_account	app/src/main/cpp/gl43499/core/placement.c	275	1
+app/src/main/cpp/gl43499/core/placement.c	308	glk43499_placement_cleanup_all	glk43499_placement_stop_child	app/src/main/cpp/gl43499/core/placement.c	142	1
+app/src/main/cpp/gl43499/core/placement.c	308	glk43499_placement_cleanup_all	close			0
+app/src/main/cpp/gl43499/core/placement.c	308	glk43499_placement_cleanup_all	glk43499_placement_kill_children	app/src/main/cpp/gl43499/core/placement.c	215	1
+app/src/main/cpp/gl43499/core/placement.c	308	glk43499_placement_cleanup_all	glk43499_placement_kill_children	app/src/main/cpp/gl43499/core/placement.c	215	1
+app/src/main/cpp/gl43499/core/placement.c	308	glk43499_placement_cleanup_all	glk43499_placement_free_ctx	app/src/main/cpp/gl43499/core/placement.c	75	1
+app/src/main/cpp/gl43499/core/placement.c	308	glk43499_placement_cleanup_all	glk43499_placement_free_ctx	app/src/main/cpp/gl43499/core/placement.c	75	1
+app/src/main/cpp/gl43499/core/placement.c	308	glk43499_placement_cleanup_all	glk43499_placement_sync_account	app/src/main/cpp/gl43499/core/placement.c	295	1
+app/src/main/cpp/gl43499/core/placement.c	367	glk43499_placement_capture_leak_open	waitpid			0
+app/src/main/cpp/gl43499/core/placement.c	367	glk43499_placement_capture_leak_open	snprintf			0
+app/src/main/cpp/gl43499/core/placement.c	367	glk43499_placement_capture_leak_open	snprintf			0
+app/src/main/cpp/gl43499/core/placement.c	367	glk43499_placement_capture_leak_open	snprintf			0
+app/src/main/cpp/gl43499/core/placement.c	367	glk43499_placement_capture_leak_open	open			0
+app/src/main/cpp/gl43499/core/placement.c	367	glk43499_placement_capture_leak_open	open			0
+app/src/main/cpp/gl43499/core/placement.c	367	glk43499_placement_capture_leak_open	open			0
+app/src/main/cpp/gl43499/core/placement.c	367	glk43499_placement_capture_leak_open	open			0
+app/src/main/cpp/gl43499/core/placement.c	367	glk43499_placement_capture_leak_open	read			0
+app/src/main/cpp/gl43499/core/placement.c	367	glk43499_placement_capture_leak_open	read			0
+app/src/main/cpp/gl43499/core/placement.c	367	glk43499_placement_capture_leak_open	close			0
+app/src/main/cpp/gl43499/core/placement.c	367	glk43499_placement_capture_leak_open	strstr			0
+app/src/main/cpp/gl43499/core/placement.c	367	glk43499_placement_capture_leak_open	strstr			0
+app/src/main/cpp/gl43499/core/placement.c	367	glk43499_placement_capture_leak_open	sscanf			0
+app/src/main/cpp/gl43499/core/placement.c	367	glk43499_placement_capture_leak_open	sscanf			0
+app/src/main/cpp/gl43499/core/placement.c	402	glk43499_placement_acquire	glk43499_placement_ctx_alloc	app/src/main/cpp/gl43499/core/placement.c	52	1
+app/src/main/cpp/gl43499/core/placement.c	402	glk43499_placement_acquire	glk43499_placement_sync_account	app/src/main/cpp/gl43499/core/placement.c	295	1
+app/src/main/cpp/gl43499/core/placement.c	402	glk43499_placement_acquire	glk43499_internal_pin_cpu	app/src/main/cpp/gl43499/core/core_internal.h	212	1
+app/src/main/cpp/gl43499/core/placement.c	402	glk43499_placement_acquire	__errno			0
+app/src/main/cpp/gl43499/core/placement.c	402	glk43499_placement_acquire	glk43499_placement_clone_child	app/src/main/cpp/gl43499/core/placement.c	90	1
+app/src/main/cpp/gl43499/core/placement.c	402	glk43499_placement_acquire	glk43499_placement_open_memfd	app/src/main/cpp/gl43499/core/placement.c	125	1
+app/src/main/cpp/gl43499/core/placement.c	402	glk43499_placement_acquire	sysconf			0
+app/src/main/cpp/gl43499/core/placement.c	402	glk43499_placement_acquire	kernelsnitch_setup	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	332	1
+app/src/main/cpp/gl43499/core/placement.c	402	glk43499_placement_acquire	glk43499_placement_clone_leak_child	app/src/main/cpp/gl43499/core/placement.c	107	1
+app/src/main/cpp/gl43499/core/placement.c	402	glk43499_placement_acquire	glk43499_placement_capture_leak_open	app/src/main/cpp/gl43499/core/placement.c	367	1
+app/src/main/cpp/gl43499/core/placement.c	402	glk43499_placement_acquire	glk43499_placement_stop_child	app/src/main/cpp/gl43499/core/placement.c	142	1
+app/src/main/cpp/gl43499/core/placement.c	402	glk43499_placement_acquire	waitpid			0
+app/src/main/cpp/gl43499/core/placement.c	402	glk43499_placement_acquire	glk43499_internal_expired	app/src/main/cpp/gl43499/core/core_internal.h	170	1
+app/src/main/cpp/gl43499/core/placement.c	402	glk43499_placement_acquire	usleep			0
+app/src/main/cpp/gl43499/core/placement.c	402	glk43499_placement_acquire	kernelsnitch_found_collisions	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	576	1
+app/src/main/cpp/gl43499/core/placement.c	402	glk43499_placement_acquire	kernelsnitch_bruteforce	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	586	1
+app/src/main/cpp/gl43499/core/placement.c	402	glk43499_placement_acquire	kernelsnitch_cleanup	app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	603	1
+app/src/main/cpp/gl43499/core/placement.c	402	glk43499_placement_acquire	glk43499_placement_cleanup_all	app/src/main/cpp/gl43499/core/placement.c	308	1
+app/src/main/cpp/gl43499/core/placement.c	716	glk43499_placement_validate	glk43499_internal_valid_header	app/src/main/cpp/gl43499/core/core_internal.h	39	1
+app/src/main/cpp/gl43499/core/placement.c	716	glk43499_placement_validate	glk43499_internal_valid_pow2	app/src/main/cpp/gl43499/core/core_internal.h	237	1
+app/src/main/cpp/gl43499/core/placement.c	716	glk43499_placement_validate	glk43499_placement_objects_per_slab	app/src/main/cpp/gl43499/core/placement.h	31	1
+app/src/main/cpp/gl43499/core/placement.c	716	glk43499_placement_validate	glk43499_internal_mul_u64	app/src/main/cpp/gl43499/core/core_internal.h	276	1
+app/src/main/cpp/gl43499/core/placement.c	716	glk43499_placement_validate	glk43499_internal_now_ns	app/src/main/cpp/gl43499/core/core_internal.h	149	1
+app/src/main/cpp/gl43499/core/placement.c	716	glk43499_placement_validate	glk43499_internal_valid_cpu	app/src/main/cpp/gl43499/core/core_internal.h	196	1
+app/src/main/cpp/gl43499/core/placement.c	921	glk43499_prepare_placement	glk43499_internal_output_abi	app/src/main/cpp/gl43499/core/core_internal.h	70	1
+app/src/main/cpp/gl43499/core/placement.c	921	glk43499_prepare_placement	memset			0
+app/src/main/cpp/gl43499/core/placement.c	921	glk43499_prepare_placement	memset			0
+app/src/main/cpp/gl43499/core/placement.c	921	glk43499_prepare_placement	memset			0
+app/src/main/cpp/gl43499/core/placement.c	921	glk43499_prepare_placement	glk43499_internal_valid_header	app/src/main/cpp/gl43499/core/core_internal.h	39	1
+app/src/main/cpp/gl43499/core/placement.c	921	glk43499_prepare_placement	glk43499_internal_set_call	app/src/main/cpp/gl43499/core/core_internal.h	87	1
+app/src/main/cpp/gl43499/core/placement.c	921	glk43499_prepare_placement	calloc			0
+app/src/main/cpp/gl43499/core/placement.c	921	glk43499_prepare_placement	calloc			0
+app/src/main/cpp/gl43499/core/placement.c	921	glk43499_prepare_placement	glk43499_placement_validate	app/src/main/cpp/gl43499/core/placement.c	716	1
+app/src/main/cpp/gl43499/core/placement.c	921	glk43499_prepare_placement	glk43499_placement_free_staging	app/src/main/cpp/gl43499/core/placement_internal.h	107	1
+app/src/main/cpp/gl43499/core/placement.c	921	glk43499_prepare_placement	glk43499_placement_publish_diag	app/src/main/cpp/gl43499/core/placement.c	893	1
+app/src/main/cpp/gl43499/core/placement.c	921	glk43499_prepare_placement	free			0
+app/src/main/cpp/gl43499/core/placement.c	921	glk43499_prepare_placement	free			0
+app/src/main/cpp/gl43499/core/placement.c	921	glk43499_prepare_placement	malloc			0
+app/src/main/cpp/gl43499/core/placement.c	921	glk43499_prepare_placement	malloc			0
+app/src/main/cpp/gl43499/core/placement.c	921	glk43499_prepare_placement	glk43499_internal_deadline	app/src/main/cpp/gl43499/core/core_internal.h	161	1
+app/src/main/cpp/gl43499/core/placement.c	921	glk43499_prepare_placement	glk43499_internal_expired	app/src/main/cpp/gl43499/core/core_internal.h	170	1
+app/src/main/cpp/gl43499/core/placement.c	921	glk43499_prepare_placement	glk43499_placement_acquire	app/src/main/cpp/gl43499/core/placement.c	402	1
+app/src/main/cpp/gl43499/core/placement.c	921	glk43499_prepare_placement	glk43499_placement_sync_account	app/src/main/cpp/gl43499/core/placement.c	295	1
+app/src/main/cpp/gl43499/core/placement.c	921	glk43499_prepare_placement	glk43499_internal_ptr_handle	app/src/main/cpp/gl43499/core/core_internal.h	140	1
+app/src/main/cpp/gl43499/core/placement.c	1072	glk43499_cancel_placement	glk43499_internal_output_abi	app/src/main/cpp/gl43499/core/core_internal.h	70	1
+app/src/main/cpp/gl43499/core/placement.c	1072	glk43499_cancel_placement	glk43499_internal_set_close	app/src/main/cpp/gl43499/core/core_internal.h	111	1
+app/src/main/cpp/gl43499/core/placement.c	1072	glk43499_cancel_placement	glk43499_placement_from_handle	app/src/main/cpp/gl43499/core/placement_internal.h	121	1
+app/src/main/cpp/gl43499/core/placement.c	1103	glk43499_close_placement	glk43499_internal_output_abi	app/src/main/cpp/gl43499/core/core_internal.h	70	1
+app/src/main/cpp/gl43499/core/placement.c	1103	glk43499_close_placement	glk43499_internal_set_close	app/src/main/cpp/gl43499/core/core_internal.h	111	1
+app/src/main/cpp/gl43499/core/placement.c	1103	glk43499_close_placement	glk43499_placement_from_handle	app/src/main/cpp/gl43499/core/placement_internal.h	121	1
+app/src/main/cpp/gl43499/core/placement.c	1103	glk43499_close_placement	glk43499_placement_stop_child	app/src/main/cpp/gl43499/core/placement.c	142	1
+app/src/main/cpp/gl43499/core/placement.c	1103	glk43499_close_placement	close			0
+app/src/main/cpp/gl43499/core/placement.c	1103	glk43499_close_placement	glk43499_placement_kill_children	app/src/main/cpp/gl43499/core/placement.c	215	1
+app/src/main/cpp/gl43499/core/placement.c	1103	glk43499_close_placement	glk43499_placement_kill_children	app/src/main/cpp/gl43499/core/placement.c	215	1
+app/src/main/cpp/gl43499/core/placement.c	1103	glk43499_close_placement	glk43499_placement_sync_account	app/src/main/cpp/gl43499/core/placement.c	295	1
+app/src/main/cpp/gl43499/core/placement.c	1103	glk43499_close_placement	glk43499_placement_free_ctx	app/src/main/cpp/gl43499/core/placement.c	75	1
+app/src/main/cpp/gl43499/core/placement.c	1103	glk43499_close_placement	glk43499_placement_free_ctx	app/src/main/cpp/gl43499/core/placement.c	75	1
+app/src/main/cpp/gl43499/core/placement.c	1103	glk43499_close_placement	glk43499_placement_free_staging	app/src/main/cpp/gl43499/core/placement_internal.h	107	1
+app/src/main/cpp/gl43499/core/placement.c	1103	glk43499_close_placement	free			0
+app/src/main/cpp/gl43499/core/placement.c	1103	glk43499_close_placement	free			0
+app/src/main/cpp/gl43499/core/placement.c	1181	glk43499_placement_release	glk43499_placement_cleanup_all	app/src/main/cpp/gl43499/core/placement.c	308	1
+app/src/main/cpp/gl43499/core/placement.c	1181	glk43499_placement_release	glk43499_placement_free_staging	app/src/main/cpp/gl43499/core/placement_internal.h	107	1
+app/src/main/cpp/gl43499/core/placement.c	1181	glk43499_placement_release	free			0
+app/src/main/cpp/gl43499/core/placement.c	1181	glk43499_placement_release	free			0
+app/src/main/cpp/gl43499/core/page_internal.h	47	glk43499_page_from_handle	glk43499_internal_handle_ptr	app/src/main/cpp/gl43499/core/core_internal.h	131	1
+app/src/main/cpp/gl43499/core/page.c	38	glk43499_page_valid_bytes	glk43499_internal_valid_header	app/src/main/cpp/gl43499/core/core_internal.h	39	1
+app/src/main/cpp/gl43499/core/page.c	52	glk43499_page_valid_landing_request	glk43499_internal_valid_header	app/src/main/cpp/gl43499/core/core_internal.h	39	1
+app/src/main/cpp/gl43499/core/page.c	52	glk43499_page_valid_landing_request	glk43499_internal_mul_u64	app/src/main/cpp/gl43499/core/core_internal.h	276	1
+app/src/main/cpp/gl43499/core/page.c	52	glk43499_page_valid_landing_request	glk43499_internal_now_ns	app/src/main/cpp/gl43499/core/core_internal.h	149	1
+app/src/main/cpp/gl43499/core/page.c	107	glk43499_page_close_pair	close			0
+app/src/main/cpp/gl43499/core/page.c	127	glk43499_page_finish_placement	glk43499_placement_kill_children	app/src/main/cpp/gl43499/core/placement_internal.h	164	1
+app/src/main/cpp/gl43499/core/page.c	127	glk43499_page_finish_placement	glk43499_placement_kill_children	app/src/main/cpp/gl43499/core/placement_internal.h	164	1
+app/src/main/cpp/gl43499/core/page.c	127	glk43499_page_finish_placement	glk43499_placement_free_ctx	app/src/main/cpp/gl43499/core/placement_internal.h	172	1
+app/src/main/cpp/gl43499/core/page.c	127	glk43499_page_finish_placement	glk43499_placement_free_ctx	app/src/main/cpp/gl43499/core/placement_internal.h	172	1
+app/src/main/cpp/gl43499/core/page.c	127	glk43499_page_finish_placement	kill			0
+app/src/main/cpp/gl43499/core/page.c	127	glk43499_page_finish_placement	__errno			0
+app/src/main/cpp/gl43499/core/page.c	127	glk43499_page_finish_placement	waitpid			0
+app/src/main/cpp/gl43499/core/page.c	127	glk43499_page_finish_placement	close			0
+app/src/main/cpp/gl43499/core/page.c	127	glk43499_page_finish_placement	glk43499_placement_free_staging	app/src/main/cpp/gl43499/core/placement_internal.h	107	1
+app/src/main/cpp/gl43499/core/page.c	127	glk43499_page_finish_placement	free			0
+app/src/main/cpp/gl43499/core/page.c	127	glk43499_page_finish_placement	free			0
+app/src/main/cpp/gl43499/core/page.c	185	glk43499_page_abort_precommit	glk43499_page_close_pair	app/src/main/cpp/gl43499/core/page.c	107	1
+app/src/main/cpp/gl43499/core/page.c	185	glk43499_page_abort_precommit	free			0
+app/src/main/cpp/gl43499/core/page.c	185	glk43499_page_abort_precommit	free			0
+app/src/main/cpp/gl43499/core/page.c	185	glk43499_page_abort_precommit	glk43499_internal_set_call	app/src/main/cpp/gl43499/core/core_internal.h	87	1
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	glk43499_internal_output_abi	app/src/main/cpp/gl43499/core/core_internal.h	70	1
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	memset			0
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	memset			0
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	memset			0
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	glk43499_page_valid_bytes	app/src/main/cpp/gl43499/core/page.c	38	1
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	glk43499_internal_valid_header	app/src/main/cpp/gl43499/core/core_internal.h	39	1
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	glk43499_internal_set_call	app/src/main/cpp/gl43499/core/core_internal.h	87	1
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	glk43499_placement_from_handle	app/src/main/cpp/gl43499/core/placement_internal.h	121	1
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	glk43499_page_valid_landing_request	app/src/main/cpp/gl43499/core/page.c	52	1
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	glk43499_internal_add_u64	app/src/main/cpp/gl43499/core/core_internal.h	249	1
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	calloc			0
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	calloc			0
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	socketpair			0
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	__errno			0
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	glk43499_page_abort_precommit	app/src/main/cpp/gl43499/core/page.c	185	1
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	setsockopt			0
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	fcntl			0
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	memcpy			0
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	memcpy			0
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	memcpy			0
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	sendmsg			0
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	glk43499_internal_pin_cpu	app/src/main/cpp/gl43499/core/core_internal.h	212	1
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	sched_yield			0
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	glk43499_placement_close_memfds	app/src/main/cpp/gl43499/core/placement_internal.h	133	1
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	glk43499_placement_close_memfds	app/src/main/cpp/gl43499/core/placement_internal.h	133	1
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	glk43499_placement_close_memfds_except_tail	app/src/main/cpp/gl43499/core/placement_internal.h	155	1
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	glk43499_placement_close_memfds_except_tail	app/src/main/cpp/gl43499/core/placement_internal.h	155	1
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	glk43499_placement_close_memfds_stride	app/src/main/cpp/gl43499/core/placement_internal.h	144	1
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	glk43499_placement_close_memfds_stride	app/src/main/cpp/gl43499/core/placement_internal.h	144	1
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	glk43499_page_close_pair	app/src/main/cpp/gl43499/core/page.c	107	1
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	close			0
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	glk43499_page_finish_placement	app/src/main/cpp/gl43499/core/page.c	127	1
+app/src/main/cpp/gl43499/core/page.c	222	glk43499_land_page	glk43499_internal_ptr_handle	app/src/main/cpp/gl43499/core/core_internal.h	140	1
+app/src/main/cpp/gl43499/core/page.c	467	glk43499_close_page	glk43499_internal_output_abi	app/src/main/cpp/gl43499/core/core_internal.h	70	1
+app/src/main/cpp/gl43499/core/page.c	467	glk43499_close_page	glk43499_internal_set_close	app/src/main/cpp/gl43499/core/core_internal.h	111	1
+app/src/main/cpp/gl43499/core/page.c	467	glk43499_close_page	glk43499_page_from_handle	app/src/main/cpp/gl43499/core/page_internal.h	47	1
+app/src/main/cpp/gl43499/core/page.c	467	glk43499_close_page	glk43499_page_release_checked	app/src/main/cpp/gl43499/core/page.c	495	1
+app/src/main/cpp/gl43499/core/page.c	467	glk43499_close_page	glk43499_page_release_checked	app/src/main/cpp/gl43499/core/page.c	495	1
+app/src/main/cpp/gl43499/core/page.c	495	glk43499_page_release_checked	close			0
+app/src/main/cpp/gl43499/core/page.c	495	glk43499_page_release_checked	free			0
+app/src/main/cpp/gl43499/core/page.c	495	glk43499_page_release_checked	free			0
+app/src/main/cpp/gl43499/core/page.c	527	glk43499_page_release	glk43499_page_release_checked	app/src/main/cpp/gl43499/core/page.c	495	1
+app/src/main/cpp/gl43499/core/page.c	527	glk43499_page_release	glk43499_page_release_checked	app/src/main/cpp/gl43499/core/page.c	495	1
+app/src/main/cpp/gl43499/core/actor.c	33	glk43499_actor_now_ns	clock_gettime			0
+app/src/main/cpp/gl43499/core/actor.c	130	glk43499_actor_futex	syscall			0
+app/src/main/cpp/gl43499/core/actor.c	159	glk43499_actor_set_nice	memset			0
+app/src/main/cpp/gl43499/core/actor.c	159	glk43499_actor_set_nice	memset			0
+app/src/main/cpp/gl43499/core/actor.c	159	glk43499_actor_set_nice	memset			0
+app/src/main/cpp/gl43499/core/actor.c	159	glk43499_actor_set_nice	__errno			0
+app/src/main/cpp/gl43499/core/actor.c	159	glk43499_actor_set_nice	syscall			0
+app/src/main/cpp/gl43499/core/actor.c	182	glk43499_actor_join_thread	glk43499_internal_deadline	app/src/main/cpp/gl43499/core/core_internal.h	161	1
+app/src/main/cpp/gl43499/core/actor.c	182	glk43499_actor_join_thread	glk43499_internal_expired	app/src/main/cpp/gl43499/core/core_internal.h	170	1
+app/src/main/cpp/gl43499/core/actor.c	182	glk43499_actor_join_thread	usleep			0
+app/src/main/cpp/gl43499/core/actor.c	182	glk43499_actor_join_thread	pthread_join			0
+app/src/main/cpp/gl43499/core/actor.c	204	glk43499_actor_drain_consumer	glk43499_internal_deadline	app/src/main/cpp/gl43499/core/core_internal.h	161	1
+app/src/main/cpp/gl43499/core/actor.c	204	glk43499_actor_drain_consumer	glk43499_internal_expired	app/src/main/cpp/gl43499/core/core_internal.h	170	1
+app/src/main/cpp/gl43499/core/actor.c	204	glk43499_actor_drain_consumer	sched_yield			0
+app/src/main/cpp/gl43499/core/actor.c	221	glk43499_actor_request_stop	glk43499_actor_futex	app/src/main/cpp/gl43499/core/actor.c	130	1
+app/src/main/cpp/gl43499/core/actor.c	241	glk43499_actor_consumer_run	glk43499_internal_pin_cpu	app/src/main/cpp/gl43499/core/core_internal.h	212	1
+app/src/main/cpp/gl43499/core/actor.c	241	glk43499_actor_consumer_run	sched_yield			0
+app/src/main/cpp/gl43499/core/actor.c	241	glk43499_actor_consumer_run	usleep			0
+app/src/main/cpp/gl43499/core/actor.c	241	glk43499_actor_consumer_run	glk43499_actor_set_nice	app/src/main/cpp/gl43499/core/actor.c	159	1
+app/src/main/cpp/gl43499/core/actor.c	241	glk43499_actor_consumer_run	glk43499_internal_timespec	app/src/main/cpp/gl43499/core/core_internal.h	181	1
+app/src/main/cpp/gl43499/core/actor.c	241	glk43499_actor_consumer_run	glk43499_actor_futex	app/src/main/cpp/gl43499/core/actor.c	130	1
+app/src/main/cpp/gl43499/core/actor.c	319	glk43499_actor_owner_run	glk43499_internal_cpu_pin_required	app/src/main/cpp/gl43499/core/cpu_pin_internal.h	42	1
+app/src/main/cpp/gl43499/core/actor.c	319	glk43499_actor_owner_run	glk43499_internal_pin_cpu	app/src/main/cpp/gl43499/core/core_internal.h	212	1
+app/src/main/cpp/gl43499/core/actor.c	319	glk43499_actor_owner_run	glk43499_actor_futex	app/src/main/cpp/gl43499/core/actor.c	130	1
+app/src/main/cpp/gl43499/core/actor.c	319	glk43499_actor_owner_run	glk43499_internal_deadline	app/src/main/cpp/gl43499/core/core_internal.h	161	1
+app/src/main/cpp/gl43499/core/actor.c	319	glk43499_actor_owner_run	glk43499_internal_expired	app/src/main/cpp/gl43499/core/core_internal.h	170	1
+app/src/main/cpp/gl43499/core/actor.c	319	glk43499_actor_owner_run	usleep			0
+app/src/main/cpp/gl43499/core/actor.c	376	glk43499_actor_waiter_arm	glk43499_internal_cpu_pin_required	app/src/main/cpp/gl43499/core/cpu_pin_internal.h	42	1
+app/src/main/cpp/gl43499/core/actor.c	376	glk43499_actor_waiter_arm	glk43499_internal_pin_cpu	app/src/main/cpp/gl43499/core/core_internal.h	212	1
+app/src/main/cpp/gl43499/core/actor.c	376	glk43499_actor_waiter_arm	syscall			0
+app/src/main/cpp/gl43499/core/actor.c	376	glk43499_actor_waiter_arm	glk43499_actor_futex	app/src/main/cpp/gl43499/core/actor.c	130	1
+app/src/main/cpp/gl43499/core/actor.c	376	glk43499_actor_waiter_arm	glk43499_internal_deadline	app/src/main/cpp/gl43499/core/core_internal.h	161	1
+app/src/main/cpp/gl43499/core/actor.c	376	glk43499_actor_waiter_arm	glk43499_internal_expired	app/src/main/cpp/gl43499/core/core_internal.h	170	1
+app/src/main/cpp/gl43499/core/actor.c	376	glk43499_actor_waiter_arm	usleep			0
+app/src/main/cpp/gl43499/core/actor.c	376	glk43499_actor_waiter_arm	clock_gettime			0
+app/src/main/cpp/gl43499/core/actor.c	376	glk43499_actor_waiter_arm	glk43499_actor_now_ns	app/src/main/cpp/gl43499/core/actor.c	33	1
+app/src/main/cpp/gl43499/core/actor.c	376	glk43499_actor_waiter_arm	__errno			0
+app/src/main/cpp/gl43499/core/actor.c	451	glk43499_actor_waiter_finish	glk43499_actor_futex	app/src/main/cpp/gl43499/core/actor.c	130	1
+app/src/main/cpp/gl43499/core/actor.c	451	glk43499_actor_waiter_finish	glk43499_internal_deadline	app/src/main/cpp/gl43499/core/core_internal.h	161	1
+app/src/main/cpp/gl43499/core/actor.c	451	glk43499_actor_waiter_finish	glk43499_internal_expired	app/src/main/cpp/gl43499/core/core_internal.h	170	1
+app/src/main/cpp/gl43499/core/actor.c	451	glk43499_actor_waiter_finish	usleep			0
+app/src/main/cpp/gl43499/core/actor.c	472	glk43499_actor_waiter_multicast	glk43499_actor_waiter_arm	app/src/main/cpp/gl43499/core/actor.c	376	1
+app/src/main/cpp/gl43499/core/actor.c	472	glk43499_actor_waiter_multicast	glk43499_actor_now_ns	app/src/main/cpp/gl43499/core/actor.c	33	1
+app/src/main/cpp/gl43499/core/actor.c	472	glk43499_actor_waiter_multicast	glk43499_carrier_multicast_trigger	app/src/main/cpp/gl43499/core/carrier_internal.h	255	1
+app/src/main/cpp/gl43499/core/actor.c	472	glk43499_actor_waiter_multicast	glk43499_carrier_multicast_trigger	app/src/main/cpp/gl43499/core/carrier_internal.h	255	1
+app/src/main/cpp/gl43499/core/actor.c	472	glk43499_actor_waiter_multicast	__errno			0
+app/src/main/cpp/gl43499/core/actor.c	472	glk43499_actor_waiter_multicast	glk43499_actor_futex	app/src/main/cpp/gl43499/core/actor.c	130	1
+app/src/main/cpp/gl43499/core/actor.c	472	glk43499_actor_waiter_multicast	glk43499_actor_waiter_finish	app/src/main/cpp/gl43499/core/actor.c	451	1
+app/src/main/cpp/gl43499/core/actor.c	519	glk43499_actor_waiter_pselect	glk43499_actor_waiter_arm	app/src/main/cpp/gl43499/core/actor.c	376	1
+app/src/main/cpp/gl43499/core/actor.c	519	glk43499_actor_waiter_pselect	glk43499_actor_now_ns	app/src/main/cpp/gl43499/core/actor.c	33	1
+app/src/main/cpp/gl43499/core/actor.c	519	glk43499_actor_waiter_pselect	glk43499_carrier_pselect_trigger	app/src/main/cpp/gl43499/core/carrier_internal.h	287	1
+app/src/main/cpp/gl43499/core/actor.c	519	glk43499_actor_waiter_pselect	glk43499_carrier_pselect_trigger	app/src/main/cpp/gl43499/core/carrier_internal.h	287	1
+app/src/main/cpp/gl43499/core/actor.c	519	glk43499_actor_waiter_pselect	glk43499_actor_waiter_finish	app/src/main/cpp/gl43499/core/actor.c	451	1
+app/src/main/cpp/gl43499/core/actor.c	542	glk43499_actor_waiter_tcp	glk43499_actor_waiter_arm	app/src/main/cpp/gl43499/core/actor.c	376	1
+app/src/main/cpp/gl43499/core/actor.c	542	glk43499_actor_waiter_tcp	glk43499_actor_now_ns	app/src/main/cpp/gl43499/core/actor.c	33	1
+app/src/main/cpp/gl43499/core/actor.c	542	glk43499_actor_waiter_tcp	glk43499_carrier_tcp_trigger	app/src/main/cpp/gl43499/core/carrier_internal.h	322	1
+app/src/main/cpp/gl43499/core/actor.c	542	glk43499_actor_waiter_tcp	glk43499_carrier_tcp_trigger	app/src/main/cpp/gl43499/core/carrier_internal.h	322	1
+app/src/main/cpp/gl43499/core/actor.c	542	glk43499_actor_waiter_tcp	glk43499_actor_waiter_finish	app/src/main/cpp/gl43499/core/actor.c	451	1
+app/src/main/cpp/gl43499/core/actor.c	572	glk43499_actor_carrier_prepare	glk43499_carrier_multicast_prepare	app/src/main/cpp/gl43499/core/carrier_internal.h	245	1
+app/src/main/cpp/gl43499/core/actor.c	572	glk43499_actor_carrier_prepare	glk43499_carrier_multicast_prepare	app/src/main/cpp/gl43499/core/carrier_internal.h	245	1
+app/src/main/cpp/gl43499/core/actor.c	572	glk43499_actor_carrier_prepare	glk43499_carrier_pselect_prepare	app/src/main/cpp/gl43499/core/carrier_internal.h	277	1
+app/src/main/cpp/gl43499/core/actor.c	572	glk43499_actor_carrier_prepare	glk43499_carrier_pselect_prepare	app/src/main/cpp/gl43499/core/carrier_internal.h	277	1
+app/src/main/cpp/gl43499/core/actor.c	572	glk43499_actor_carrier_prepare	glk43499_carrier_tcp_prepare	app/src/main/cpp/gl43499/core/carrier_internal.h	312	1
+app/src/main/cpp/gl43499/core/actor.c	572	glk43499_actor_carrier_prepare	glk43499_carrier_tcp_prepare	app/src/main/cpp/gl43499/core/carrier_internal.h	312	1
+app/src/main/cpp/gl43499/core/actor.c	641	glk43499_actor_carrier_disarm	glk43499_carrier_multicast_disarm	app/src/main/cpp/gl43499/core/carrier_internal.h	260	1
+app/src/main/cpp/gl43499/core/actor.c	641	glk43499_actor_carrier_disarm	glk43499_carrier_multicast_disarm	app/src/main/cpp/gl43499/core/carrier_internal.h	260	1
+app/src/main/cpp/gl43499/core/actor.c	641	glk43499_actor_carrier_disarm	glk43499_carrier_pselect_disarm	app/src/main/cpp/gl43499/core/carrier_internal.h	292	1
+app/src/main/cpp/gl43499/core/actor.c	641	glk43499_actor_carrier_disarm	glk43499_carrier_pselect_disarm	app/src/main/cpp/gl43499/core/carrier_internal.h	292	1
+app/src/main/cpp/gl43499/core/actor.c	641	glk43499_actor_carrier_disarm	glk43499_carrier_tcp_disarm	app/src/main/cpp/gl43499/core/carrier_internal.h	327	1
+app/src/main/cpp/gl43499/core/actor.c	641	glk43499_actor_carrier_disarm	glk43499_carrier_tcp_disarm	app/src/main/cpp/gl43499/core/carrier_internal.h	327	1
+app/src/main/cpp/gl43499/core/actor.c	665	glk43499_actor_carrier_release	glk43499_carrier_multicast_release	app/src/main/cpp/gl43499/core/carrier_internal.h	264	1
+app/src/main/cpp/gl43499/core/actor.c	665	glk43499_actor_carrier_release	glk43499_carrier_multicast_release	app/src/main/cpp/gl43499/core/carrier_internal.h	264	1
+app/src/main/cpp/gl43499/core/actor.c	665	glk43499_actor_carrier_release	glk43499_carrier_pselect_release	app/src/main/cpp/gl43499/core/carrier_internal.h	296	1
+app/src/main/cpp/gl43499/core/actor.c	665	glk43499_actor_carrier_release	glk43499_carrier_pselect_release	app/src/main/cpp/gl43499/core/carrier_internal.h	296	1
+app/src/main/cpp/gl43499/core/actor.c	665	glk43499_actor_carrier_release	glk43499_carrier_tcp_release	app/src/main/cpp/gl43499/core/carrier_internal.h	331	1
+app/src/main/cpp/gl43499/core/actor.c	665	glk43499_actor_carrier_release	glk43499_carrier_tcp_release	app/src/main/cpp/gl43499/core/carrier_internal.h	331	1
+app/src/main/cpp/gl43499/core/actor.c	695	glk43499_actor_valid_setup	glk43499_internal_valid_cpu	app/src/main/cpp/gl43499/core/core_internal.h	196	1
+app/src/main/cpp/gl43499/core/actor.c	695	glk43499_actor_valid_setup	glk43499_internal_cpu_is_no_pin	app/src/main/cpp/gl43499/core/cpu_pin_internal.h	32	1
+app/src/main/cpp/gl43499/core/actor.c	695	glk43499_actor_valid_setup	glk43499_internal_now_ns	app/src/main/cpp/gl43499/core/core_internal.h	149	1
+app/src/main/cpp/gl43499/core/actor.c	695	glk43499_actor_valid_setup	glk43499_internal_mul_u64	app/src/main/cpp/gl43499/core/core_internal.h	276	1
+app/src/main/cpp/gl43499/core/actor.c	769	glk43499_actor_valid_primitive	glk43499_internal_valid_header	app/src/main/cpp/gl43499/core/core_internal.h	39	1
+app/src/main/cpp/gl43499/core/actor.c	811	glk43499_actor_rollback	glk43499_actor_request_stop	app/src/main/cpp/gl43499/core/actor.c	221	1
+app/src/main/cpp/gl43499/core/actor.c	811	glk43499_actor_rollback	glk43499_actor_drain_consumer	app/src/main/cpp/gl43499/core/actor.c	204	1
+app/src/main/cpp/gl43499/core/actor.c	811	glk43499_actor_rollback	glk43499_actor_carrier_disarm	app/src/main/cpp/gl43499/core/actor.c	641	1
+app/src/main/cpp/gl43499/core/actor.c	811	glk43499_actor_rollback	glk43499_actor_join_thread	app/src/main/cpp/gl43499/core/actor.c	182	1
+app/src/main/cpp/gl43499/core/actor.c	811	glk43499_actor_rollback	glk43499_actor_carrier_release	app/src/main/cpp/gl43499/core/actor.c	665	1
+app/src/main/cpp/gl43499/core/actor.c	852	glk43499_prepare_actor	glk43499_internal_output_abi	app/src/main/cpp/gl43499/core/core_internal.h	70	1
+app/src/main/cpp/gl43499/core/actor.c	852	glk43499_prepare_actor	memset			0
+app/src/main/cpp/gl43499/core/actor.c	852	glk43499_prepare_actor	memset			0
+app/src/main/cpp/gl43499/core/actor.c	852	glk43499_prepare_actor	memset			0
+app/src/main/cpp/gl43499/core/actor.c	852	glk43499_prepare_actor	glk43499_internal_valid_header	app/src/main/cpp/gl43499/core/core_internal.h	39	1
+app/src/main/cpp/gl43499/core/actor.c	852	glk43499_prepare_actor	glk43499_actor_valid_primitive	app/src/main/cpp/gl43499/core/actor.c	769	1
+app/src/main/cpp/gl43499/core/actor.c	852	glk43499_prepare_actor	glk43499_internal_set_call	app/src/main/cpp/gl43499/core/core_internal.h	87	1
+app/src/main/cpp/gl43499/core/actor.c	852	glk43499_prepare_actor	glk43499_actor_valid_setup	app/src/main/cpp/gl43499/core/actor.c	695	1
+app/src/main/cpp/gl43499/core/actor.c	852	glk43499_prepare_actor	calloc			0
+app/src/main/cpp/gl43499/core/actor.c	852	glk43499_prepare_actor	calloc			0
+app/src/main/cpp/gl43499/core/actor.c	852	glk43499_prepare_actor	glk43499_actor_carrier_prepare	app/src/main/cpp/gl43499/core/actor.c	572	1
+app/src/main/cpp/gl43499/core/actor.c	852	glk43499_prepare_actor	glk43499_actor_carrier_release	app/src/main/cpp/gl43499/core/actor.c	665	1
+app/src/main/cpp/gl43499/core/actor.c	852	glk43499_prepare_actor	free			0
+app/src/main/cpp/gl43499/core/actor.c	852	glk43499_prepare_actor	free			0
+app/src/main/cpp/gl43499/core/actor.c	852	glk43499_prepare_actor	pthread_create			0
+app/src/main/cpp/gl43499/core/actor.c	852	glk43499_prepare_actor	glk43499_internal_deadline	app/src/main/cpp/gl43499/core/core_internal.h	161	1
+app/src/main/cpp/gl43499/core/actor.c	852	glk43499_prepare_actor	glk43499_internal_expired	app/src/main/cpp/gl43499/core/core_internal.h	170	1
+app/src/main/cpp/gl43499/core/actor.c	852	glk43499_prepare_actor	usleep			0
+app/src/main/cpp/gl43499/core/actor.c	852	glk43499_prepare_actor	glk43499_actor_rollback	app/src/main/cpp/gl43499/core/actor.c	811	1
+app/src/main/cpp/gl43499/core/actor.c	852	glk43499_prepare_actor	glk43499_page_from_handle	app/src/main/cpp/gl43499/core/page_internal.h	47	1
+app/src/main/cpp/gl43499/core/actor.c	852	glk43499_prepare_actor	glk43499_page_content_generation	app/src/main/cpp/gl43499/core/page_internal.h	77	1
+app/src/main/cpp/gl43499/core/actor.c	852	glk43499_prepare_actor	glk43499_internal_ptr_handle	app/src/main/cpp/gl43499/core/core_internal.h	140	1
+app/src/main/cpp/gl43499/core/actor.c	1120	glk43499_execute_actor	glk43499_internal_output_abi	app/src/main/cpp/gl43499/core/core_internal.h	70	1
+app/src/main/cpp/gl43499/core/actor.c	1120	glk43499_execute_actor	memset			0
+app/src/main/cpp/gl43499/core/actor.c	1120	glk43499_execute_actor	memset			0
+app/src/main/cpp/gl43499/core/actor.c	1120	glk43499_execute_actor	memset			0
+app/src/main/cpp/gl43499/core/actor.c	1120	glk43499_execute_actor	glk43499_internal_set_call	app/src/main/cpp/gl43499/core/core_internal.h	87	1
+app/src/main/cpp/gl43499/core/actor.c	1120	glk43499_execute_actor	glk43499_internal_handle_ptr	app/src/main/cpp/gl43499/core/core_internal.h	131	1
+app/src/main/cpp/gl43499/core/actor.c	1120	glk43499_execute_actor	usleep			0
+app/src/main/cpp/gl43499/core/actor.c	1120	glk43499_execute_actor	glk43499_actor_now_ns	app/src/main/cpp/gl43499/core/actor.c	33	1
+app/src/main/cpp/gl43499/core/actor.c	1120	glk43499_execute_actor	glk43499_internal_deadline	app/src/main/cpp/gl43499/core/core_internal.h	161	1
+app/src/main/cpp/gl43499/core/actor.c	1120	glk43499_execute_actor	glk43499_internal_expired	app/src/main/cpp/gl43499/core/core_internal.h	170	1
+app/src/main/cpp/gl43499/core/actor.c	1120	glk43499_execute_actor	__errno			0
+app/src/main/cpp/gl43499/core/actor.c	1120	glk43499_execute_actor	glk43499_actor_futex	app/src/main/cpp/gl43499/core/actor.c	130	1
+app/src/main/cpp/gl43499/core/actor.c	1120	glk43499_execute_actor	glk43499_page_content_generation	app/src/main/cpp/gl43499/core/page_internal.h	77	1
+app/src/main/cpp/gl43499/core/actor.c	1120	glk43499_execute_actor	glk43499_actor_drain_consumer	app/src/main/cpp/gl43499/core/actor.c	204	1
+app/src/main/cpp/gl43499/core/actor.c	1120	glk43499_execute_actor	glk43499_actor_carrier_disarm	app/src/main/cpp/gl43499/core/actor.c	641	1
+app/src/main/cpp/gl43499/core/actor.c	1358	glk43499_cancel_actor	glk43499_internal_output_abi	app/src/main/cpp/gl43499/core/core_internal.h	70	1
+app/src/main/cpp/gl43499/core/actor.c	1358	glk43499_cancel_actor	glk43499_internal_set_close	app/src/main/cpp/gl43499/core/core_internal.h	111	1
+app/src/main/cpp/gl43499/core/actor.c	1358	glk43499_cancel_actor	glk43499_internal_handle_ptr	app/src/main/cpp/gl43499/core/core_internal.h	131	1
+app/src/main/cpp/gl43499/core/actor.c	1358	glk43499_cancel_actor	glk43499_actor_request_stop	app/src/main/cpp/gl43499/core/actor.c	221	1
+app/src/main/cpp/gl43499/core/actor.c	1358	glk43499_cancel_actor	glk43499_actor_drain_consumer	app/src/main/cpp/gl43499/core/actor.c	204	1
+app/src/main/cpp/gl43499/core/actor.c	1358	glk43499_cancel_actor	glk43499_actor_carrier_disarm	app/src/main/cpp/gl43499/core/actor.c	641	1
+app/src/main/cpp/gl43499/core/actor.c	1399	glk43499_close_actor	glk43499_internal_output_abi	app/src/main/cpp/gl43499/core/core_internal.h	70	1
+app/src/main/cpp/gl43499/core/actor.c	1399	glk43499_close_actor	glk43499_internal_set_close	app/src/main/cpp/gl43499/core/core_internal.h	111	1
+app/src/main/cpp/gl43499/core/actor.c	1399	glk43499_close_actor	glk43499_internal_handle_ptr	app/src/main/cpp/gl43499/core/core_internal.h	131	1
+app/src/main/cpp/gl43499/core/actor.c	1399	glk43499_close_actor	glk43499_actor_request_stop	app/src/main/cpp/gl43499/core/actor.c	221	1
+app/src/main/cpp/gl43499/core/actor.c	1399	glk43499_close_actor	glk43499_actor_drain_consumer	app/src/main/cpp/gl43499/core/actor.c	204	1
+app/src/main/cpp/gl43499/core/actor.c	1399	glk43499_close_actor	glk43499_actor_carrier_disarm	app/src/main/cpp/gl43499/core/actor.c	641	1
+app/src/main/cpp/gl43499/core/actor.c	1399	glk43499_close_actor	glk43499_actor_join_thread	app/src/main/cpp/gl43499/core/actor.c	182	1
+app/src/main/cpp/gl43499/core/actor.c	1399	glk43499_close_actor	glk43499_actor_carrier_release	app/src/main/cpp/gl43499/core/actor.c	665	1
+app/src/main/cpp/gl43499/core/actor.c	1399	glk43499_close_actor	glk43499_page_release_checked	app/src/main/cpp/gl43499/core/page_internal.h	61	1
+app/src/main/cpp/gl43499/core/actor.c	1399	glk43499_close_actor	glk43499_page_release_checked	app/src/main/cpp/gl43499/core/page_internal.h	61	1
+app/src/main/cpp/gl43499/core/actor.c	1399	glk43499_close_actor	free			0
+app/src/main/cpp/gl43499/core/actor.c	1399	glk43499_close_actor	free			0
+app/src/main/cpp/gl43499/core/actor.c	1519	glk43499_futex_selftest_owner	__errno			0
+app/src/main/cpp/gl43499/core/actor.c	1519	glk43499_futex_selftest_owner	glk43499_actor_futex	app/src/main/cpp/gl43499/core/actor.c	130	1
+app/src/main/cpp/gl43499/core/actor.c	1519	glk43499_futex_selftest_owner	gettid			0
+app/src/main/cpp/gl43499/core/actor.c	1519	glk43499_futex_selftest_owner	usleep			0
+app/src/main/cpp/gl43499/core/actor.c	1535	glk43499_futex_selftest_waiter	clock_gettime			0
+app/src/main/cpp/gl43499/core/actor.c	1535	glk43499_futex_selftest_waiter	__errno			0
+app/src/main/cpp/gl43499/core/actor.c	1535	glk43499_futex_selftest_waiter	glk43499_actor_futex	app/src/main/cpp/gl43499/core/actor.c	130	1
+app/src/main/cpp/gl43499/core/actor.c	1564	glk43499_actor_futex_selftest	memset			0
+app/src/main/cpp/gl43499/core/actor.c	1564	glk43499_actor_futex_selftest	memset			0
+app/src/main/cpp/gl43499/core/actor.c	1564	glk43499_actor_futex_selftest	memset			0
+app/src/main/cpp/gl43499/core/actor.c	1564	glk43499_actor_futex_selftest	pthread_create			0
+app/src/main/cpp/gl43499/core/actor.c	1564	glk43499_actor_futex_selftest	usleep			0
+app/src/main/cpp/gl43499/core/actor.c	1564	glk43499_actor_futex_selftest	glk43499_actor_futex	app/src/main/cpp/gl43499/core/actor.c	130	1
+app/src/main/cpp/gl43499/core/actor.c	1564	glk43499_actor_futex_selftest	pthread_join			0
+app/src/main/cpp/gl43499/core/actor.c	1564	glk43499_actor_futex_selftest	__errno			0
+app/src/main/cpp/gl43499/core/actor.c	1611	glk43499_actor_debug_snapshot	glk43499_internal_handle_ptr	app/src/main/cpp/gl43499/core/core_internal.h	131	1
+app/src/main/cpp/gl43499/core/carrier_multicast.c	38	glk43499_carrier_multicast_prepare	memset			0
+app/src/main/cpp/gl43499/core/carrier_multicast.c	38	glk43499_carrier_multicast_prepare	memset			0
+app/src/main/cpp/gl43499/core/carrier_multicast.c	38	glk43499_carrier_multicast_prepare	memset			0
+app/src/main/cpp/gl43499/core/carrier_multicast.c	38	glk43499_carrier_multicast_prepare	glk43499_multicast_valid_addresses	app/src/main/cpp/gl43499/core/carrier_multicast.c	31	1
+app/src/main/cpp/gl43499/core/carrier_multicast.c	38	glk43499_carrier_multicast_prepare	glk43499_internal_now_ns	app/src/main/cpp/gl43499/core/core_internal.h	149	1
+app/src/main/cpp/gl43499/core/carrier_multicast.c	38	glk43499_carrier_multicast_prepare	glk43499_internal_valid_futex_waiter_flag	app/src/main/cpp/gl43499/core/core_internal.h	228	1
+app/src/main/cpp/gl43499/core/carrier_multicast.c	38	glk43499_carrier_multicast_prepare	malloc			0
+app/src/main/cpp/gl43499/core/carrier_multicast.c	38	glk43499_carrier_multicast_prepare	malloc			0
+app/src/main/cpp/gl43499/core/carrier_multicast.c	38	glk43499_carrier_multicast_prepare	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_multicast.c	38	glk43499_carrier_multicast_prepare	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_multicast.c	38	glk43499_carrier_multicast_prepare	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_multicast.c	38	glk43499_carrier_multicast_prepare	socket			0
+app/src/main/cpp/gl43499/core/carrier_multicast.c	38	glk43499_carrier_multicast_prepare	__errno			0
+app/src/main/cpp/gl43499/core/carrier_multicast.c	38	glk43499_carrier_multicast_prepare	free			0
+app/src/main/cpp/gl43499/core/carrier_multicast.c	38	glk43499_carrier_multicast_prepare	free			0
+app/src/main/cpp/gl43499/core/carrier_multicast.c	119	glk43499_carrier_multicast_trigger	__errno			0
+app/src/main/cpp/gl43499/core/carrier_multicast.c	119	glk43499_carrier_multicast_trigger	setsockopt			0
+app/src/main/cpp/gl43499/core/carrier_multicast.c	225	glk43499_carrier_multicast_release	close			0
+app/src/main/cpp/gl43499/core/carrier_multicast.c	225	glk43499_carrier_multicast_release	free			0
+app/src/main/cpp/gl43499/core/carrier_multicast.c	225	glk43499_carrier_multicast_release	free			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	73	glk43499_pselect_backup_count	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	73	glk43499_pselect_backup_count	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	73	glk43499_pselect_backup_count	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	80	glk43499_pselect_set_backup_count	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	80	glk43499_pselect_set_backup_count	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	80	glk43499_pselect_set_backup_count	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	89	glk43499_pselect_load_sets	glk43499_pselect_words_per_set	app/src/main/cpp/gl43499/core/carrier_pselect.c	47	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	89	glk43499_pselect_load_sets	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	89	glk43499_pselect_load_sets	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	89	glk43499_pselect_load_sets	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	89	glk43499_pselect_load_sets	__FD_SET_chk			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	89	glk43499_pselect_load_sets	__builtin_object_size			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	89	glk43499_pselect_load_sets	__builtin_object_size			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	89	glk43499_pselect_load_sets	__builtin_object_size			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	89	glk43499_pselect_load_sets	__builtin_object_size			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	116	glk43499_pselect_close_sources	close			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	148	glk43499_pselect_collect_targets	glk43499_pselect_backup_entries	app/src/main/cpp/gl43499/core/carrier_pselect.c	68	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	148	glk43499_pselect_collect_targets	__FD_ISSET_chk			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	148	glk43499_pselect_collect_targets	__builtin_object_size			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	148	glk43499_pselect_collect_targets	__builtin_object_size			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	148	glk43499_pselect_collect_targets	__builtin_object_size			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	148	glk43499_pselect_collect_targets	__builtin_object_size			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	148	glk43499_pselect_collect_targets	glk43499_pselect_set_backup_count	app/src/main/cpp/gl43499/core/carrier_pselect.c	80	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	181	glk43499_pselect_restore_backups	glk43499_pselect_backup_table	app/src/main/cpp/gl43499/core/carrier_pselect.c	58	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	181	glk43499_pselect_restore_backups	glk43499_pselect_backup_entries	app/src/main/cpp/gl43499/core/carrier_pselect.c	68	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	181	glk43499_pselect_restore_backups	glk43499_pselect_backup_count	app/src/main/cpp/gl43499/core/carrier_pselect.c	73	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	181	glk43499_pselect_restore_backups	dup2			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	181	glk43499_pselect_restore_backups	close			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	181	glk43499_pselect_restore_backups	__errno			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	211	glk43499_pselect_close_backups	glk43499_pselect_backup_table	app/src/main/cpp/gl43499/core/carrier_pselect.c	58	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	211	glk43499_pselect_close_backups	glk43499_pselect_backup_entries	app/src/main/cpp/gl43499/core/carrier_pselect.c	68	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	211	glk43499_pselect_close_backups	glk43499_pselect_backup_count	app/src/main/cpp/gl43499/core/carrier_pselect.c	73	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	211	glk43499_pselect_close_backups	close			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	211	glk43499_pselect_close_backups	glk43499_pselect_set_backup_count	app/src/main/cpp/gl43499/core/carrier_pselect.c	80	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	234	glk43499_pselect_backup_targets	glk43499_pselect_backup_entries	app/src/main/cpp/gl43499/core/carrier_pselect.c	68	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	234	glk43499_pselect_backup_targets	glk43499_pselect_backup_count	app/src/main/cpp/gl43499/core/carrier_pselect.c	73	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	234	glk43499_pselect_backup_targets	fcntl			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	234	glk43499_pselect_backup_targets	__errno			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	234	glk43499_pselect_backup_targets	close			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	273	glk43499_pselect_install_targets	glk43499_pselect_backup_entries	app/src/main/cpp/gl43499/core/carrier_pselect.c	68	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	273	glk43499_pselect_install_targets	glk43499_pselect_backup_count	app/src/main/cpp/gl43499/core/carrier_pselect.c	73	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	273	glk43499_pselect_install_targets	__errno			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	273	glk43499_pselect_install_targets	fcntl			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	273	glk43499_pselect_install_targets	glk43499_pselect_block_fd	app/src/main/cpp/gl43499/core/carrier_pselect.c	105	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	273	glk43499_pselect_install_targets	dup2			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	273	glk43499_pselect_install_targets	close			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	273	glk43499_pselect_install_targets	glk43499_pselect_restore_backups	app/src/main/cpp/gl43499/core/carrier_pselect.c	181	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	316	glk43499_pselect_dispose	glk43499_pselect_restore_backups	app/src/main/cpp/gl43499/core/carrier_pselect.c	181	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	316	glk43499_pselect_dispose	glk43499_pselect_close_backups	app/src/main/cpp/gl43499/core/carrier_pselect.c	211	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	316	glk43499_pselect_dispose	glk43499_pselect_close_sources	app/src/main/cpp/gl43499/core/carrier_pselect.c	116	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	316	glk43499_pselect_dispose	free			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	316	glk43499_pselect_dispose	free			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	359	glk43499_carrier_pselect_prepare	memset			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	359	glk43499_carrier_pselect_prepare	memset			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	359	glk43499_carrier_pselect_prepare	memset			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	359	glk43499_carrier_pselect_prepare	glk43499_internal_now_ns	app/src/main/cpp/gl43499/core/core_internal.h	149	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	359	glk43499_carrier_pselect_prepare	glk43499_internal_add_u64	app/src/main/cpp/gl43499/core/core_internal.h	249	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	359	glk43499_carrier_pselect_prepare	glk43499_pselect_words_per_set	app/src/main/cpp/gl43499/core/carrier_pselect.c	47	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	359	glk43499_carrier_pselect_prepare	glk43499_internal_mul_u64	app/src/main/cpp/gl43499/core/core_internal.h	276	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	359	glk43499_carrier_pselect_prepare	calloc			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	359	glk43499_carrier_pselect_prepare	calloc			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	359	glk43499_carrier_pselect_prepare	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	359	glk43499_carrier_pselect_prepare	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	359	glk43499_carrier_pselect_prepare	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	359	glk43499_carrier_pselect_prepare	pipe			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	359	glk43499_carrier_pselect_prepare	__errno			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	359	glk43499_carrier_pselect_prepare	free			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	359	glk43499_carrier_pselect_prepare	free			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	359	glk43499_carrier_pselect_prepare	syscall			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	359	glk43499_carrier_pselect_prepare	glk43499_pselect_load_sets	app/src/main/cpp/gl43499/core/carrier_pselect.c	89	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	359	glk43499_carrier_pselect_prepare	glk43499_pselect_backup_table	app/src/main/cpp/gl43499/core/carrier_pselect.c	58	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	359	glk43499_carrier_pselect_prepare	glk43499_pselect_collect_targets	app/src/main/cpp/gl43499/core/carrier_pselect.c	148	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	359	glk43499_carrier_pselect_prepare	glk43499_pselect_backup_targets	app/src/main/cpp/gl43499/core/carrier_pselect.c	234	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	359	glk43499_carrier_pselect_prepare	glk43499_pselect_close_sources	app/src/main/cpp/gl43499/core/carrier_pselect.c	116	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	506	glk43499_carrier_pselect_trigger	glk43499_internal_deadline	app/src/main/cpp/gl43499/core/core_internal.h	161	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	506	glk43499_carrier_pselect_trigger	glk43499_pselect_per_attempt_timeout_ns	app/src/main/cpp/gl43499/core/pselect_timeout_internal.h	33	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	506	glk43499_carrier_pselect_trigger	glk43499_pselect_install_targets	app/src/main/cpp/gl43499/core/carrier_pselect.c	273	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	506	glk43499_carrier_pselect_trigger	glk43499_pselect_backup_table	app/src/main/cpp/gl43499/core/carrier_pselect.c	58	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	506	glk43499_carrier_pselect_trigger	glk43499_internal_expired	app/src/main/cpp/gl43499/core/core_internal.h	170	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	506	glk43499_carrier_pselect_trigger	glk43499_pselect_load_sets	app/src/main/cpp/gl43499/core/carrier_pselect.c	89	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	506	glk43499_carrier_pselect_trigger	glk43499_internal_now_ns	app/src/main/cpp/gl43499/core/core_internal.h	149	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	506	glk43499_carrier_pselect_trigger	glk43499_pselect_attempt_timeout_ns	app/src/main/cpp/gl43499/core/pselect_timeout_internal.h	46	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	506	glk43499_carrier_pselect_trigger	__errno			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	506	glk43499_carrier_pselect_trigger	glk43499_internal_timespec	app/src/main/cpp/gl43499/core/core_internal.h	181	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	506	glk43499_carrier_pselect_trigger	select			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	506	glk43499_carrier_pselect_trigger	pselect			0
+app/src/main/cpp/gl43499/core/carrier_pselect.c	506	glk43499_carrier_pselect_trigger	glk43499_pselect_restore_backups	app/src/main/cpp/gl43499/core/carrier_pselect.c	181	1
+app/src/main/cpp/gl43499/core/carrier_pselect.c	647	glk43499_carrier_pselect_release	glk43499_pselect_dispose	app/src/main/cpp/gl43499/core/carrier_pselect.c	316	1
+app/src/main/cpp/gl43499/core/carrier_tcp.c	46	glk43499_carrier_tcp_punch_run	sched_yield			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	46	glk43499_carrier_tcp_punch_run	__errno			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	46	glk43499_carrier_tcp_punch_run	fallocate			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	80	glk43499_carrier_tcp_make_pair	socket			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	80	glk43499_carrier_tcp_make_pair	__errno			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	80	glk43499_carrier_tcp_make_pair	setsockopt			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	80	glk43499_carrier_tcp_make_pair	memset			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	80	glk43499_carrier_tcp_make_pair	memset			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	80	glk43499_carrier_tcp_make_pair	memset			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	80	glk43499_carrier_tcp_make_pair	__builtin_bswap32			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	80	glk43499_carrier_tcp_make_pair	bind			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	80	glk43499_carrier_tcp_make_pair	listen			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	80	glk43499_carrier_tcp_make_pair	close			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	80	glk43499_carrier_tcp_make_pair	getsockname			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	80	glk43499_carrier_tcp_make_pair	connect			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	80	glk43499_carrier_tcp_make_pair	accept4			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	142	glk43499_carrier_tcp_discard	pthread_join			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	142	glk43499_carrier_tcp_discard	munmap			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	142	glk43499_carrier_tcp_discard	close			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	142	glk43499_carrier_tcp_discard	free			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	142	glk43499_carrier_tcp_discard	free			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	203	glk43499_tcp_valid_zc_offsets	glk43499_internal_add_u64	app/src/main/cpp/gl43499/core/core_internal.h	249	1
+app/src/main/cpp/gl43499/core/carrier_tcp.c	246	glk43499_tcp_store_field	glk43499_internal_add_u64	app/src/main/cpp/gl43499/core/core_internal.h	249	1
+app/src/main/cpp/gl43499/core/carrier_tcp.c	246	glk43499_tcp_store_field	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	246	glk43499_tcp_store_field	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	246	glk43499_tcp_store_field	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	257	glk43499_carrier_tcp_prepare	memset			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	257	glk43499_carrier_tcp_prepare	memset			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	257	glk43499_carrier_tcp_prepare	memset			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	257	glk43499_carrier_tcp_prepare	glk43499_internal_now_ns	app/src/main/cpp/gl43499/core/core_internal.h	149	1
+app/src/main/cpp/gl43499/core/carrier_tcp.c	257	glk43499_carrier_tcp_prepare	sysconf			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	257	glk43499_carrier_tcp_prepare	glk43499_internal_add_u64	app/src/main/cpp/gl43499/core/core_internal.h	249	1
+app/src/main/cpp/gl43499/core/carrier_tcp.c	257	glk43499_carrier_tcp_prepare	glk43499_tcp_valid_zc_offsets	app/src/main/cpp/gl43499/core/carrier_tcp.c	203	1
+app/src/main/cpp/gl43499/core/carrier_tcp.c	257	glk43499_carrier_tcp_prepare	malloc			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	257	glk43499_carrier_tcp_prepare	malloc			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	257	glk43499_carrier_tcp_prepare	free			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	257	glk43499_carrier_tcp_prepare	free			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	257	glk43499_carrier_tcp_prepare	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	257	glk43499_carrier_tcp_prepare	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	257	glk43499_carrier_tcp_prepare	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	257	glk43499_carrier_tcp_prepare	glk43499_carrier_tcp_make_pair	app/src/main/cpp/gl43499/core/carrier_tcp.c	80	1
+app/src/main/cpp/gl43499/core/carrier_tcp.c	257	glk43499_carrier_tcp_prepare	glk43499_carrier_tcp_discard	app/src/main/cpp/gl43499/core/carrier_tcp.c	142	1
+app/src/main/cpp/gl43499/core/carrier_tcp.c	257	glk43499_carrier_tcp_prepare	syscall			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	257	glk43499_carrier_tcp_prepare	__errno			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	257	glk43499_carrier_tcp_prepare	fallocate			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	257	glk43499_carrier_tcp_prepare	mmap			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	257	glk43499_carrier_tcp_prepare	pthread_create			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	443	glk43499_carrier_tcp_trigger	glk43499_internal_deadline	app/src/main/cpp/gl43499/core/core_internal.h	161	1
+app/src/main/cpp/gl43499/core/carrier_tcp.c	443	glk43499_carrier_tcp_trigger	glk43499_internal_expired	app/src/main/cpp/gl43499/core/core_internal.h	170	1
+app/src/main/cpp/gl43499/core/carrier_tcp.c	443	glk43499_carrier_tcp_trigger	__errno			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	443	glk43499_carrier_tcp_trigger	send			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	443	glk43499_carrier_tcp_trigger	send			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	443	glk43499_carrier_tcp_trigger	sched_yield			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	443	glk43499_carrier_tcp_trigger	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	443	glk43499_carrier_tcp_trigger	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	443	glk43499_carrier_tcp_trigger	memcpy			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	443	glk43499_carrier_tcp_trigger	glk43499_internal_add_uintptr	app/src/main/cpp/gl43499/core/core_internal.h	262	1
+app/src/main/cpp/gl43499/core/carrier_tcp.c	443	glk43499_carrier_tcp_trigger	glk43499_tcp_store_field	app/src/main/cpp/gl43499/core/carrier_tcp.c	246	1
+app/src/main/cpp/gl43499/core/carrier_tcp.c	443	glk43499_carrier_tcp_trigger	getsockopt			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	565	glk43499_carrier_tcp_disarm	sched_yield			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	578	glk43499_carrier_tcp_release	glk43499_internal_deadline	app/src/main/cpp/gl43499/core/core_internal.h	161	1
+app/src/main/cpp/gl43499/core/carrier_tcp.c	578	glk43499_carrier_tcp_release	glk43499_internal_expired	app/src/main/cpp/gl43499/core/core_internal.h	170	1
+app/src/main/cpp/gl43499/core/carrier_tcp.c	578	glk43499_carrier_tcp_release	usleep			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	578	glk43499_carrier_tcp_release	pthread_join			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	578	glk43499_carrier_tcp_release	munmap			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	578	glk43499_carrier_tcp_release	close			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	578	glk43499_carrier_tcp_release	free			0
+app/src/main/cpp/gl43499/core/carrier_tcp.c	578	glk43499_carrier_tcp_release	free			0
+app/src/main/cpp/gl43499/core/perf.c	56	glk43499_perf_from_handle	glk43499_internal_handle_ptr	app/src/main/cpp/gl43499/core/core_internal.h	131	1
+app/src/main/cpp/gl43499/core/perf.c	68	glk43499_perf_release_resources	munmap			0
+app/src/main/cpp/gl43499/core/perf.c	68	glk43499_perf_release_resources	__errno			0
+app/src/main/cpp/gl43499/core/perf.c	68	glk43499_perf_release_resources	close			0
+app/src/main/cpp/gl43499/core/perf.c	98	glk43499_perf_valid_open_request	sysconf			0
+app/src/main/cpp/gl43499/core/perf.c	98	glk43499_perf_valid_open_request	glk43499_internal_mul_u64	app/src/main/cpp/gl43499/core/core_internal.h	276	1
+app/src/main/cpp/gl43499/core/perf.c	125	glk43499_perf_read_ring_geometry	glk43499_internal_add_u64	app/src/main/cpp/gl43499/core/core_internal.h	249	1
+app/src/main/cpp/gl43499/core/perf.c	125	glk43499_perf_read_ring_geometry	glk43499_internal_mul_u64	app/src/main/cpp/gl43499/core/core_internal.h	276	1
+app/src/main/cpp/gl43499/core/perf.c	153	glk43499_perf_open	glk43499_internal_output_abi	app/src/main/cpp/gl43499/core/core_internal.h	70	1
+app/src/main/cpp/gl43499/core/perf.c	153	glk43499_perf_open	glk43499_internal_valid_header	app/src/main/cpp/gl43499/core/core_internal.h	39	1
+app/src/main/cpp/gl43499/core/perf.c	153	glk43499_perf_open	glk43499_internal_set_call	app/src/main/cpp/gl43499/core/core_internal.h	87	1
+app/src/main/cpp/gl43499/core/perf.c	153	glk43499_perf_open	glk43499_perf_valid_open_request	app/src/main/cpp/gl43499/core/perf.c	98	1
+app/src/main/cpp/gl43499/core/perf.c	153	glk43499_perf_open	calloc			0
+app/src/main/cpp/gl43499/core/perf.c	153	glk43499_perf_open	calloc			0
+app/src/main/cpp/gl43499/core/perf.c	153	glk43499_perf_open	memset			0
+app/src/main/cpp/gl43499/core/perf.c	153	glk43499_perf_open	memset			0
+app/src/main/cpp/gl43499/core/perf.c	153	glk43499_perf_open	memset			0
+app/src/main/cpp/gl43499/core/perf.c	153	glk43499_perf_open	__errno			0
+app/src/main/cpp/gl43499/core/perf.c	153	glk43499_perf_open	syscall			0
+app/src/main/cpp/gl43499/core/perf.c	153	glk43499_perf_open	free			0
+app/src/main/cpp/gl43499/core/perf.c	153	glk43499_perf_open	free			0
+app/src/main/cpp/gl43499/core/perf.c	153	glk43499_perf_open	mmap			0
+app/src/main/cpp/gl43499/core/perf.c	153	glk43499_perf_open	glk43499_perf_release_resources	app/src/main/cpp/gl43499/core/perf.c	68	1
+app/src/main/cpp/gl43499/core/perf.c	153	glk43499_perf_open	glk43499_perf_read_ring_geometry	app/src/main/cpp/gl43499/core/perf.c	125	1
+app/src/main/cpp/gl43499/core/perf.c	153	glk43499_perf_open	ioctl			0
+app/src/main/cpp/gl43499/core/perf.c	153	glk43499_perf_open	ioctl			0
+app/src/main/cpp/gl43499/core/perf.c	153	glk43499_perf_open	glk43499_internal_ptr_handle	app/src/main/cpp/gl43499/core/core_internal.h	140	1
+app/src/main/cpp/gl43499/core/perf.c	290	glk43499_perf_collect	glk43499_internal_output_abi	app/src/main/cpp/gl43499/core/core_internal.h	70	1
+app/src/main/cpp/gl43499/core/perf.c	290	glk43499_perf_collect	memset			0
+app/src/main/cpp/gl43499/core/perf.c	290	glk43499_perf_collect	memset			0
+app/src/main/cpp/gl43499/core/perf.c	290	glk43499_perf_collect	memset			0
+app/src/main/cpp/gl43499/core/perf.c	290	glk43499_perf_collect	glk43499_internal_set_call	app/src/main/cpp/gl43499/core/core_internal.h	87	1
+app/src/main/cpp/gl43499/core/perf.c	290	glk43499_perf_collect	glk43499_perf_from_handle	app/src/main/cpp/gl43499/core/perf.c	56	1
+app/src/main/cpp/gl43499/core/perf.c	290	glk43499_perf_collect	__errno			0
+app/src/main/cpp/gl43499/core/perf.c	290	glk43499_perf_collect	ioctl			0
+app/src/main/cpp/gl43499/core/perf.c	290	glk43499_perf_collect	ioctl			0
+app/src/main/cpp/gl43499/core/perf.c	290	glk43499_perf_collect	__atomic_thread_fence	app/src/main/cpp/gl43499/core/perf.c	331	1
+app/src/main/cpp/gl43499/core/perf.c	290	glk43499_perf_collect	__atomic_thread_fence	app/src/main/cpp/gl43499/core/perf.c	331	1
+app/src/main/cpp/gl43499/core/perf.c	290	glk43499_perf_collect	memcpy			0
+app/src/main/cpp/gl43499/core/perf.c	290	glk43499_perf_collect	memcpy			0
+app/src/main/cpp/gl43499/core/perf.c	290	glk43499_perf_collect	memcpy			0
+app/src/main/cpp/gl43499/core/perf.c	354	glk43499_perf_close	glk43499_internal_output_abi	app/src/main/cpp/gl43499/core/core_internal.h	70	1
+app/src/main/cpp/gl43499/core/perf.c	354	glk43499_perf_close	glk43499_internal_set_close	app/src/main/cpp/gl43499/core/core_internal.h	111	1
+app/src/main/cpp/gl43499/core/perf.c	354	glk43499_perf_close	glk43499_perf_from_handle	app/src/main/cpp/gl43499/core/perf.c	56	1
+app/src/main/cpp/gl43499/core/perf.c	354	glk43499_perf_close	__errno			0
+app/src/main/cpp/gl43499/core/perf.c	354	glk43499_perf_close	ioctl			0
+app/src/main/cpp/gl43499/core/perf.c	354	glk43499_perf_close	ioctl			0
+app/src/main/cpp/gl43499/core/perf.c	354	glk43499_perf_close	glk43499_perf_release_resources	app/src/main/cpp/gl43499/core/perf.c	68	1
+app/src/main/cpp/gl43499/core/perf.c	354	glk43499_perf_close	free			0
+app/src/main/cpp/gl43499/core/perf.c	354	glk43499_perf_close	free			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	61	glk_victim_now_ms	clock_gettime			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	71	glk_victim_sleep_us	nanosleep			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	83	glk_victim_deadline	glk_victim_now_ms	app/src/main/cpp/gl43499/core/victim_protocol.c	61	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	94	glk_victim_poll_until	glk_victim_now_ms	app/src/main/cpp/gl43499/core/victim_protocol.c	61	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	94	glk_victim_poll_until	memset			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	94	glk_victim_poll_until	memset			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	94	glk_victim_poll_until	memset			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	94	glk_victim_poll_until	poll			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	94	glk_victim_poll_until	poll			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	94	glk_victim_poll_until	__errno			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	122	glk_victim_read_exact_until	glk_victim_poll_until	app/src/main/cpp/gl43499/core/victim_protocol.c	94	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	122	glk_victim_read_exact_until	read			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	122	glk_victim_read_exact_until	read			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	122	glk_victim_read_exact_until	__errno			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	148	glk_victim_read_exact	read			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	148	glk_victim_read_exact	read			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	148	glk_victim_read_exact	__errno			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	171	glk_victim_write_exact_until	glk_victim_poll_until	app/src/main/cpp/gl43499/core/victim_protocol.c	94	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	171	glk_victim_write_exact_until	write			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	171	glk_victim_write_exact_until	write			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	171	glk_victim_write_exact_until	__errno			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	218	glk_victim_frame_valid	glk_victim_load_u32	app/src/main/cpp/gl43499/core/victim_protocol.c	195	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	251	__wrap_fork	__real_fork	app/src/main/cpp/gl43499/core/victim_protocol.c	247	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	257	__wrap_vfork	__real_vfork	app/src/main/cpp/gl43499/core/victim_protocol.c	249	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	300	glk_victim_write_frame_fd	glk_victim_frame_valid	app/src/main/cpp/gl43499/core/victim_protocol.c	218	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	300	glk_victim_write_frame_fd	glk_victim_store_u32	app/src/main/cpp/gl43499/core/victim_protocol.c	205	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	300	glk_victim_write_frame_fd	write			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	300	glk_victim_write_frame_fd	write			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	300	glk_victim_write_frame_fd	__errno			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	334	glk_victim_read_frame_fd	glk_victim_read_exact	app/src/main/cpp/gl43499/core/victim_protocol.c	148	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	334	glk_victim_read_frame_fd	glk_victim_load_u32	app/src/main/cpp/gl43499/core/victim_protocol.c	195	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	334	glk_victim_read_frame_fd	memcpy			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	334	glk_victim_read_frame_fd	memcpy			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	334	glk_victim_read_frame_fd	memcpy			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	356	glk_victim_spawn	socketpair			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	356	glk_victim_spawn	__errno			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	356	glk_victim_spawn	syscall			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	356	glk_victim_spawn	close			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	356	glk_victim_spawn	ftruncate			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	356	glk_victim_spawn	posix_spawnattr_init			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	356	glk_victim_spawn	posix_spawn_file_actions_init			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	356	glk_victim_spawn	posix_spawn_file_actions_adddup2			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	356	glk_victim_spawn	posix_spawn			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	356	glk_victim_spawn	posix_spawn_file_actions_destroy			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	356	glk_victim_spawn	posix_spawnattr_destroy			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	356	glk_victim_spawn	calloc			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	356	glk_victim_spawn	calloc			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	356	glk_victim_spawn	kill			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	356	glk_victim_spawn	waitpid			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	469	glk_victim_send	glk_victim_from_token	app/src/main/cpp/gl43499/core/victim_protocol.c	52	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	469	glk_victim_send	glk_victim_frame_valid	app/src/main/cpp/gl43499/core/victim_protocol.c	218	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	469	glk_victim_send	glk_victim_write_exact_until	app/src/main/cpp/gl43499/core/victim_protocol.c	171	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	469	glk_victim_send	glk_victim_deadline	app/src/main/cpp/gl43499/core/victim_protocol.c	83	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	480	glk_victim_receive	glk_victim_from_token	app/src/main/cpp/gl43499/core/victim_protocol.c	52	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	480	glk_victim_receive	glk_victim_deadline	app/src/main/cpp/gl43499/core/victim_protocol.c	83	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	480	glk_victim_receive	glk_victim_read_exact_until	app/src/main/cpp/gl43499/core/victim_protocol.c	122	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	480	glk_victim_receive	glk_victim_load_u32	app/src/main/cpp/gl43499/core/victim_protocol.c	195	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	480	glk_victim_receive	memcpy			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	480	glk_victim_receive	memcpy			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	480	glk_victim_receive	memcpy			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	511	glk_victim_read_raw	glk_victim_from_token	app/src/main/cpp/gl43499/core/victim_protocol.c	52	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	511	glk_victim_read_raw	pread			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	511	glk_victim_read_raw	pread			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	511	glk_victim_read_raw	__errno			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	536	glk_victim_raw_size	glk_victim_from_token	app/src/main/cpp/gl43499/core/victim_protocol.c	52	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	543	glk_victim_pid	glk_victim_from_token	app/src/main/cpp/gl43499/core/victim_protocol.c	52	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	568	glk_victim_wait_impl	waitpid			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	568	glk_victim_wait_impl	glk_victim_exit_code	app/src/main/cpp/gl43499/core/victim_protocol.c	555	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	568	glk_victim_wait_impl	__errno			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	568	glk_victim_wait_impl	glk_victim_now_ms	app/src/main/cpp/gl43499/core/victim_protocol.c	61	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	568	glk_victim_wait_impl	glk_victim_sleep_us	app/src/main/cpp/gl43499/core/victim_protocol.c	71	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	598	glk_victim_wait	glk_victim_from_token	app/src/main/cpp/gl43499/core/victim_protocol.c	52	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	598	glk_victim_wait	glk_victim_wait_impl	app/src/main/cpp/gl43499/core/victim_protocol.c	568	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	598	glk_victim_wait	glk_victim_deadline	app/src/main/cpp/gl43499/core/victim_protocol.c	83	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	607	glk_victim_kill	glk_victim_from_token	app/src/main/cpp/gl43499/core/victim_protocol.c	52	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	607	glk_victim_kill	kill			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	607	glk_victim_kill	__errno			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	607	glk_victim_kill	glk_victim_wait_impl	app/src/main/cpp/gl43499/core/victim_protocol.c	568	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	607	glk_victim_kill	glk_victim_deadline	app/src/main/cpp/gl43499/core/victim_protocol.c	83	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	627	glk_victim_release_handle	close			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	627	glk_victim_release_handle	free			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	627	glk_victim_release_handle	free			0
+app/src/main/cpp/gl43499/core/victim_protocol.c	639	glk_victim_detach	glk_victim_from_token	app/src/main/cpp/gl43499/core/victim_protocol.c	52	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	639	glk_victim_detach	glk_victim_release_handle	app/src/main/cpp/gl43499/core/victim_protocol.c	627	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	647	glk_victim_close	glk_victim_from_token	app/src/main/cpp/gl43499/core/victim_protocol.c	52	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	647	glk_victim_close	glk_victim_kill	app/src/main/cpp/gl43499/core/victim_protocol.c	607	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	647	glk_victim_close	glk_victim_kill	app/src/main/cpp/gl43499/core/victim_protocol.c	607	1
+app/src/main/cpp/gl43499/core/victim_protocol.c	647	glk_victim_close	glk_victim_release_handle	app/src/main/cpp/gl43499/core/victim_protocol.c	627	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	116	glk_helper_now_ms	clock_gettime			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	126	glk_helper_sleep_ms	nanosleep			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	152	glk_helper_write_reply	memset			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	152	glk_helper_write_reply	memset			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	152	glk_helper_write_reply	memset			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	152	glk_helper_write_reply	glk_helper_store_u32	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	94	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	152	glk_helper_write_reply	glk_helper_store_u16	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	84	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	152	glk_helper_write_reply	memcpy			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	152	glk_helper_write_reply	memcpy			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	152	glk_helper_write_reply	memcpy			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	152	glk_helper_write_reply	glk_victim_crc32	app/src/main/cpp/gl43499/core/victim_protocol.h	394	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	152	glk_helper_write_reply	glk_victim_crc32	app/src/main/cpp/gl43499/core/victim_protocol.h	394	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	152	glk_helper_write_reply	glk_victim_write_frame_fd	app/src/main/cpp/gl43499/core/victim_protocol.h	342	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	152	glk_helper_write_reply	glk_victim_write_frame_fd	app/src/main/cpp/gl43499/core/victim_protocol.h	342	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	182	glk_helper_reply_ok	memcpy			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	182	glk_helper_reply_ok	memcpy			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	182	glk_helper_reply_ok	memcpy			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	182	glk_helper_reply_ok	glk_helper_write_reply	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	152	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	197	glk_helper_reply_error	glk_helper_store_u32	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	94	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	197	glk_helper_reply_error	glk_helper_write_reply	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	152	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	213	glk_helper_converge_fds	syscall			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	213	glk_helper_converge_fds	__errno			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	213	glk_helper_converge_fds	fcntl			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	213	glk_helper_converge_fds	sysconf			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	213	glk_helper_converge_fds	close			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	235	glk_helper_assert_contract_fds	fcntl			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	250	glk_helper_write_raw	glk_helper_store_u32	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	94	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	250	glk_helper_write_raw	glk_helper_store_u16	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	84	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	250	glk_helper_write_raw	glk_helper_store_u64	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	106	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	250	glk_helper_write_raw	pwrite			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	250	glk_helper_write_raw	pwrite			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	250	glk_helper_write_raw	__errno			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	286	glk_helper_raw_size	fstat			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	296	glk_helper_probe_uid	glk_helper_store_u32	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	94	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	296	glk_helper_probe_uid	getuid			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	296	glk_helper_probe_uid	glk_helper_reply_ok	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	182	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	309	glk_helper_probe_status	open			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	309	glk_helper_probe_status	open			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	309	glk_helper_probe_status	open			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	309	glk_helper_probe_status	open			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	309	glk_helper_probe_status	glk_helper_reply_error	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	197	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	309	glk_helper_probe_status	__errno			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	309	glk_helper_probe_status	read			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	309	glk_helper_probe_status	read			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	309	glk_helper_probe_status	close			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	309	glk_helper_probe_status	glk_helper_reply_ok	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	182	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	355	glk_helper_probe_comm_set	glk_helper_reply_error	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	197	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	355	glk_helper_probe_comm_set	open			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	355	glk_helper_probe_comm_set	open			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	355	glk_helper_probe_comm_set	open			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	355	glk_helper_probe_comm_set	open			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	355	glk_helper_probe_comm_set	__errno			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	355	glk_helper_probe_comm_set	write			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	355	glk_helper_probe_comm_set	write			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	355	glk_helper_probe_comm_set	close			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	355	glk_helper_probe_comm_set	glk_helper_reply_ok	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	182	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	400	glk_helper_probe_comm	open			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	400	glk_helper_probe_comm	open			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	400	glk_helper_probe_comm	open			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	400	glk_helper_probe_comm	open			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	400	glk_helper_probe_comm	glk_helper_reply_error	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	197	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	400	glk_helper_probe_comm	__errno			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	400	glk_helper_probe_comm	read			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	400	glk_helper_probe_comm	read			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	400	glk_helper_probe_comm	close			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	400	glk_helper_probe_comm	memcpy			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	400	glk_helper_probe_comm	memcpy			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	400	glk_helper_probe_comm	memcpy			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	400	glk_helper_probe_comm	glk_helper_reply_ok	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	182	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	glk_helper_reply_error	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	197	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	glk_helper_load_u64	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	71	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	sysconf			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	glk_helper_raw_size	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	286	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	memset			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	memset			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	memset			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	syscall			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	__errno			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	mmap			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	close			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	ioctl			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	ioctl			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	munmap			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	__atomic_thread_fence	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	521	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	__atomic_thread_fence	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	521	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	malloc			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	malloc			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	memcpy			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	memcpy			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	memcpy			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	glk_helper_write_raw	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	250	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	free			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	free			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	glk_helper_store_u64	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	106	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	glk_helper_store_u32	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	94	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	glk_helper_perf_self_sample	glk_helper_reply_ok	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	182	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	570	glk_helper_next_bytes	glk_helper_load_u16	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	52	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	570	glk_helper_next_bytes	malloc			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	570	glk_helper_next_bytes	malloc			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	570	glk_helper_next_bytes	memcpy			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	570	glk_helper_next_bytes	memcpy			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	570	glk_helper_next_bytes	memcpy			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	591	glk_helper_free_argv	free			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	591	glk_helper_free_argv	free			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	glk_helper_next_bytes	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	570	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	free			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	free			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	glk_helper_reply_error	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	197	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	glk_helper_load_u16	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	52	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	calloc			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	calloc			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	glk_helper_load_u64	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	71	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	glk_helper_free_argv	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	591	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	pipe2			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	__errno			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	posix_spawn_file_actions_init			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	posix_spawn_file_actions_adddup2			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	posix_spawn_file_actions_addclose			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	posix_spawn			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	posix_spawn_file_actions_destroy			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	close			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	glk_helper_raw_size	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	286	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	malloc			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	malloc			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	glk_helper_now_ms	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	116	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	kill			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	memset			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	memset			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	memset			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	poll			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	poll			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	read			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	read			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	waitpid			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	glk_helper_sleep_ms	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	126	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	glk_helper_write_raw	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	250	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	glk_helper_exit_code	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	138	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	glk_helper_store_u32	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	94	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	glk_helper_store_u64	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	106	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	glk_helper_exec_script	glk_helper_reply_ok	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	182	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	867	glk_helper_park	glk_helper_reply_ok	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	182	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	867	glk_helper_park	syscall			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	880	glk_helper_bye	glk_helper_store_u32	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	94	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	880	glk_helper_bye	glk_victim_fork_count	app/src/main/cpp/gl43499/core/victim_protocol.h	374	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	880	glk_helper_bye	glk_victim_fork_count	app/src/main/cpp/gl43499/core/victim_protocol.h	374	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	880	glk_helper_bye	glk_victim_vfork_count	app/src/main/cpp/gl43499/core/victim_protocol.h	379	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	880	glk_helper_bye	glk_victim_vfork_count	app/src/main/cpp/gl43499/core/victim_protocol.h	379	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	880	glk_helper_bye	glk_helper_reply_ok	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	182	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	880	glk_helper_bye	_exit			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	880	glk_helper_bye	_exit			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	901	glk_helper_parse_command	glk_helper_load_u32	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	61	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	901	glk_helper_parse_command	glk_helper_load_u16	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	52	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	901	glk_helper_parse_command	glk_victim_crc32	app/src/main/cpp/gl43499/core/victim_protocol.h	394	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	901	glk_helper_parse_command	glk_victim_crc32	app/src/main/cpp/gl43499/core/victim_protocol.h	394	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	938	glk_helper_run	glk_victim_read_frame_fd	app/src/main/cpp/gl43499/core/victim_protocol.h	354	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	938	glk_helper_run	glk_victim_read_frame_fd	app/src/main/cpp/gl43499/core/victim_protocol.h	354	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	938	glk_helper_run	glk_helper_reply_error	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	197	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	938	glk_helper_run	glk_helper_parse_command	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	901	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	938	glk_helper_run	glk_helper_probe_uid	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	296	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	938	glk_helper_run	glk_helper_perf_self_sample	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	453	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	938	glk_helper_run	glk_helper_exec_script	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	609	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	938	glk_helper_run	glk_helper_park	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	867	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	938	glk_helper_run	glk_helper_bye	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	880	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	938	glk_helper_run	glk_helper_probe_status	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	309	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	938	glk_helper_run	glk_helper_probe_comm_set	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	355	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	938	glk_helper_run	glk_helper_probe_comm	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	400	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	996	main	signal			0
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	996	main	glk_helper_assert_contract_fds	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	235	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	996	main	glk_helper_converge_fds	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	213	1
+app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	996	main	glk_helper_run	app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c	938	1

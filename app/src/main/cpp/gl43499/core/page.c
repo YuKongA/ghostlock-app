@@ -29,15 +29,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-/** @brief SO_SNDBUF 的物理上限：旧实现固定 1 MiB，这里只做上界校验。 */
-#define GLK43499_PAGE_MAX_SNDBUF (UINT64_C(1) << 22)
-
-/** @brief reclaim sendmsg 次数的物理上限；旧实现固定 4 次。 */
-#define GLK43499_PAGE_MAX_RECLAIM_SENDS UINT64_C(16)
-
-/** @brief landing 超时的物理上限（1 小时）；landing 本身不等待，只做边界校验。 */
-#define GLK43499_PAGE_MAX_TIMEOUT_NS UINT64_C(3600000000000)
-
 /**
  * @brief 校验 PageBytes 顶层 ABI 与保留字段。
  * @param bytes 调用期借用；可为 NULL。
@@ -48,10 +39,7 @@ static int32_t glk43499_page_valid_bytes(
     const struct glk43499_page_bytes *bytes) {
     return bytes != NULL &&
            glk43499_internal_valid_header(&bytes->abi,
-                                          (uint32_t) sizeof(*bytes)) &&
-           glk43499_internal_zero_u64(
-               bytes->reserved,
-               sizeof(bytes->reserved) / sizeof(bytes->reserved[0]));
+                                          (uint32_t) sizeof(*bytes));
 }
 
 /**
@@ -66,10 +54,7 @@ static int32_t glk43499_page_valid_landing_request(
     const struct glk43499_placement_impl *placement) {
     if (request == NULL ||
         !glk43499_internal_valid_header(&request->abi,
-                                        (uint32_t) sizeof(*request)) ||
-        !glk43499_internal_zero_u64(
-            request->reserved,
-            sizeof(request->reserved) / sizeof(request->reserved[0]))) {
+                                        (uint32_t) sizeof(*request))) {
         return 0;
     }
     if (request->expected_page_base != placement->candidate_page_base ||
@@ -78,19 +63,37 @@ static int32_t glk43499_page_valid_landing_request(
         request->required_alignment != placement->required_alignment) {
         return 0;
     }
-    if (request->reclaim_payload_size != GLK43499_PHYS_SKB_SEND_SIZE) {
+    /* A 决策（R2b）：SKB 闭包长度由请求给出，只校验结构关系与 staging 容量。
+     * staging_capacity 来自同一 Placement 请求（owner=Placement），不内置容量宏。 */
+    uint64_t reclaim_need = 0;
+    if (!glk43499_internal_mul_u64(request->allocation_size, UINT64_C(2),
+                                   &reclaim_need) ||
+        request->reclaim_payload_size != reclaim_need ||
+        request->reclaim_payload_size > placement->staging_capacity) {
         return 0;
     }
-    if (request->socket_send_buffer_size < 4096 ||
-        request->socket_send_buffer_size > GLK43499_PAGE_MAX_SNDBUF) {
+    if (request->fill_byte > UINT8_MAX) {
+        return 0;
+    }
+    /* R3a-2/B6：页接受判据域（required 只能 0/1；启用时 bit 是可移位宽内）。
+     * 判据值 = candidate_page_base + accept_offset；加法溢出在求值处拒绝。 */
+    if (request->page_accept_required > 1 ||
+        (request->page_accept_required != 0 &&
+         request->page_accept_bit >= (uint64_t) 64)) {
+        return 0;
+    }
+    /* SO_SNDBUF 的 setsockopt 参数是 int：上限用系统头派生 INT32_MAX，不用目标常量。 */
+    if (request->socket_send_buffer_size == 0 ||
+        request->socket_send_buffer_size > (uint64_t) INT32_MAX) {
         return 0;
     }
     if (request->reclaim_send_limit == 0 ||
-        request->reclaim_send_limit > GLK43499_PAGE_MAX_RECLAIM_SENDS) {
+        request->reclaim_send_limit > request->reclaim_payload_size) {
         return 0;
     }
+    const uint64_t now_ns = glk43499_internal_now_ns();
     if (request->timeout_ns == 0 ||
-        request->timeout_ns > GLK43499_PAGE_MAX_TIMEOUT_NS) {
+        request->timeout_ns > UINT64_MAX - now_ns) {
         return 0;
     }
     return 1;
@@ -156,9 +159,10 @@ static int32_t glk43499_page_finish_placement(
         }
     }
     if (clean != 0) {
+        glk43499_placement_free_staging(placement);
         free(placement);
     } else {
-        placement->retained = 1; /* 身份保留到进程退出 */
+        placement->retained = 1; /* 身份保留到进程退出（staging 随保留不释放） */
     }
     return clean;
 }
@@ -166,22 +170,30 @@ static int32_t glk43499_page_finish_placement(
 /**
  * @brief 提交前失败的统一回滚：关掉本次新建的 socketpair，只在全部成功时释放候选对象。
  * @param page 候选 Page 对象（可能从未对外暴露）。
- * @param first 第一对 socketpair（可为 NULL）。
- * @param second 第二对 socketpair（可为 NULL）。
+ * @param shaping 第二对 socketpair（shaping；可为 NULL；不归 Page 所有）。
+ * @param reclaim 第一对 socketpair（reclaim；可为 NULL；归 Page 所有）。
  * @param result 输出回执。
  * @param status 回执状态（未接受时用 SYSTEM_ERROR；不得为 OK）。
  * @param system_error 错误码。
  * @note clean 时 effect=NOT_APPLIED、Placement 未消费；清理失败时改为 DIRTY/QUARANTINED
  *       并保留候选对象身份（不 free、不 close 残余 fd）。
+ * @note B17：reclaim fd 在 abort 前已写入 page（见 landPage 建立 socketpair 后）；
+ *       close_pair 失败时 page->reclaim_* 保留未关 fd 身份，retained Page 仍可由
+ *       closePage/Page owner 关闭（禁止「终态不可关闭」）。
  * @note 阶段：landing 的提交前失败路径。
  */
 static void glk43499_page_abort_precommit(
-    struct glk43499_page_impl *page, int32_t first[2], int32_t second[2],
+    struct glk43499_page_impl *page, int32_t shaping[2], int32_t reclaim[2],
     struct glk43499_landing_result *result, glk43499_call_status status,
     int32_t system_error) {
     int32_t clean = 1;
-    if (first != NULL && glk43499_page_close_pair(first) == 0) clean = 0;
-    if (second != NULL && glk43499_page_close_pair(second) == 0) clean = 0;
+    if (shaping != NULL && glk43499_page_close_pair(shaping) == 0) clean = 0;
+    if (reclaim != NULL) {
+        if (glk43499_page_close_pair(reclaim) == 0) clean = 0;
+        /* B17：把未关成功的 reclaim fd 身份同步回 Page，供 retained close 使用。 */
+        page->reclaim_read = reclaim[0];
+        page->reclaim_write = reclaim[1];
+    }
     if (clean != 0) {
         free(page);
         glk43499_internal_set_call(&result->call, status,
@@ -242,12 +254,41 @@ glk43499_handle glk43499_land_page(
         return GLK43499_INVALID_HANDLE;
     }
     if (bytes->data == NULL ||
-        bytes->size != request->reclaim_payload_size ||
-        bytes->size != GLK43499_PHYS_SKB_SEND_SIZE) {
+        bytes->size != request->reclaim_payload_size) {
         glk43499_internal_set_call(&result->call, GLK43499_CALL_INVALID_ARGUMENT,
                                    GLK43499_EFFECT_NOT_APPLIED,
                                    GLK43499_RESOURCE_INVALID, 0, 0);
         return GLK43499_INVALID_HANDLE;
+    }
+
+    /* R3a-2/B6 页接受判据（参数化 legacy2 `memory.cpp:210-227`）：必须在提交点
+     * 之前求值。旧实现拒绝「把偶数写到 selinux_state.initialized 上」的页并换页，
+     * 否则后续每次 SID 查找都会失效（真机 panic）。required=1 时要求
+     * accepted=(candidate_page_base + offset) 非零且第 accept_bit 位为 1；
+     * 求值失败只拒绝本次 landing，Placement 不消费（clean failure）。
+     * 回执记录 checked/value/ok，供真机失败定位（可证伪）。 */
+    {
+        uint64_t accept_value = 0;
+        int32_t accept_ok = 1;
+        if (request->page_accept_required != 0) {
+            result->receipt.page_accept_checked = 1;
+            if (!glk43499_internal_add_u64(holder->candidate_page_base,
+                                           request->page_accept_offset,
+                                           &accept_value)) {
+                accept_ok = 0;
+            } else if (((accept_value >> request->page_accept_bit) &
+                        UINT64_C(1)) == 0) {
+                accept_ok = 0;
+            }
+            result->receipt.page_accept_value = accept_value;
+            result->receipt.page_accept_ok = (uint32_t) (accept_ok != 0);
+        }
+        if (accept_ok == 0) {
+            glk43499_internal_set_call(
+                &result->call, GLK43499_CALL_INVALID_ARGUMENT,
+                GLK43499_EFFECT_NOT_APPLIED, GLK43499_RESOURCE_INVALID, 0, 0);
+            return GLK43499_INVALID_HANDLE;
+        }
     }
 
     struct glk43499_page_impl *page =
@@ -271,27 +312,32 @@ glk43499_handle glk43499_land_page(
                                       GLK43499_CALL_SYSTEM_ERROR, saved);
         return GLK43499_INVALID_HANDLE;
     }
+    /* B17：在可能失败/abort 的下一步之前即写回 reclaim fd 身份，保证
+     * abort close_pair 失败时 retained Page 仍持有可关闭的 fd。 */
+    page->reclaim_read = reclaim_pair[0];
+    page->reclaim_write = reclaim_pair[1];
     {
         const int32_t sndbuf = (int32_t) request->socket_send_buffer_size;
-        if (setsockopt(reclaim_pair[0], SOL_SOCKET, SO_SNDBUF, &sndbuf,
+        /* D6：SO_SNDBUF 必须设在真正 sendmsg 的那个 fd 上（reclaim_pair[1]）。 */
+        if (setsockopt(reclaim_pair[1], SOL_SOCKET, SO_SNDBUF, &sndbuf,
                        (socklen_t) sizeof(sndbuf)) != 0) {
             const int32_t saved = errno;
-            glk43499_page_abort_precommit(page, reclaim_pair, NULL, result,
+            glk43499_page_abort_precommit(page, NULL, reclaim_pair, result,
                                           GLK43499_CALL_SYSTEM_ERROR, saved);
             return GLK43499_INVALID_HANDLE;
         }
-        const int32_t flags = fcntl(reclaim_pair[0], F_GETFL, 0);
+        const int32_t flags = fcntl(reclaim_pair[1], F_GETFL, 0);
         if (flags < 0 ||
-            fcntl(reclaim_pair[0], F_SETFL, flags | O_NONBLOCK) != 0) {
+            fcntl(reclaim_pair[1], F_SETFL, flags | O_NONBLOCK) != 0) {
             const int32_t saved = errno;
-            glk43499_page_abort_precommit(page, reclaim_pair, NULL, result,
+            glk43499_page_abort_precommit(page, NULL, reclaim_pair, result,
                                           GLK43499_CALL_SYSTEM_ERROR, saved);
             return GLK43499_INVALID_HANDLE;
         }
     }
     if (socketpair(AF_UNIX, SOCK_STREAM, 0, shaping_pair) != 0) {
         const int32_t saved = errno;
-        glk43499_page_abort_precommit(page, reclaim_pair, NULL, result,
+        glk43499_page_abort_precommit(page, NULL, reclaim_pair, result,
                                       GLK43499_CALL_SYSTEM_ERROR, saved);
         return GLK43499_INVALID_HANDLE;
     }
@@ -306,12 +352,14 @@ glk43499_handle glk43499_land_page(
     page->allocation_size = holder->allocation_size;
     page->required_alignment = holder->required_alignment;
     page->content_generation = bytes->content_generation;
+    /* fill_byte 唯一源=landing_request；page.c 是唯一 writer，Actor/Carrier 只读。 */
+    page->fill_byte = request->fill_byte;
     page->state = 0;
 
     struct iovec iov;
     memset(&iov, 0, sizeof(iov));
     iov.iov_base = holder->staging;
-    iov.iov_len = (size_t) GLK43499_PHYS_SKB_SEND_SIZE;
+    iov.iov_len = (size_t) request->reclaim_payload_size;
     struct msghdr message;
     memset(&message, 0, sizeof(message));
     message.msg_iov = &iov;
@@ -319,7 +367,8 @@ glk43499_handle glk43499_land_page(
 
     /* ---------- 提交点：pcp shaping skb 一旦成功入队即不可回滚 ---------- */
     errno = 0;
-    const ssize_t shaped = sendmsg(shaping_pair[0], &message, 0);
+    /* G09：MSG_NOSIGNAL 抑制对端已关时 SIGPIPE 杀进程（legacy backend:431）。 */
+    const ssize_t shaped = sendmsg(shaping_pair[0], &message, MSG_NOSIGNAL);
     if (shaped <= 0) {
         const int32_t saved = errno != 0 ? errno : EIO;
         glk43499_page_abort_precommit(page, shaping_pair, reclaim_pair, result,
@@ -362,7 +411,8 @@ glk43499_handle glk43499_land_page(
              ++send_index) {
             errno = 0;
             const ssize_t sent =
-                sendmsg(page->reclaim_write, &message, MSG_DONTWAIT);
+                sendmsg(page->reclaim_write, &message,
+                        MSG_DONTWAIT | MSG_NOSIGNAL);
             if (sent <= 0) break;
             ++result->receipt.reclaim_send_count;
         }

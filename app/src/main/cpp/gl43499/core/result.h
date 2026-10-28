@@ -1,6 +1,10 @@
 /**
  * @file result.h
  * @brief 43499 调用状态、物理效果与资源状态的正交回执。
+ *
+ * @note ABI v4 起 reserved 槽删除，同一构建内无需兼容旧二进制；输出结构只由
+ *       Native 写出，Kotlin 读取语义字段，不读取 struct_size/abi_version。
+ * @note 阶段：ABI v4（43499 Native 全参数化 R2a）。
  */
 #ifndef GHOSTLOCK_GL43499_CORE_RESULT_H
 #define GHOSTLOCK_GL43499_CORE_RESULT_H
@@ -62,6 +66,8 @@ enum {
 /**
  * @brief 所有入口共有的回执前缀。
  * @note system_error 仅在 call_status 为 GLK43499_CALL_SYSTEM_ERROR 时有意义。
+ * @note abi.struct_size 由 JNI 以**外层输出结构**的 sizeof 填写；core 严格校验
+ *       `== sizeof(外层输出结构)`，漂移即 BAD_ABI（fail-closed，不写输出边界）。
  */
 struct glk43499_call_result {
     struct glk43499_abi_header abi;
@@ -69,10 +75,7 @@ struct glk43499_call_result {
     glk43499_effect effect;
     glk43499_resource_state resource_state;
     int32_t system_error;
-    /** @brief ABI v3布局保留；线性owner实现必须写0。 */
-    uint64_t reserved_resource_serial;
     uint64_t retained_resource_count;
-    uint64_t reserved[4];
 };
 
 /** @brief close/cancel 的资源终结回执。 */
@@ -82,8 +85,12 @@ struct glk43499_close_result {
     uint32_t workers_joined;
     uint32_t owned_chain_released;
     uint32_t retained_for_process_exit;
-    uint64_t reserved[4];
 };
+
+GLK43499_STATIC_ASSERT(sizeof(struct glk43499_call_result) == 32,
+                       "ABI v4 call_result layout drift (expected 32)");
+GLK43499_STATIC_ASSERT(sizeof(struct glk43499_close_result) == 48,
+                       "ABI v4 close_result layout drift (expected 48)");
 
 #ifdef __cplusplus
 }

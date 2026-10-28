@@ -882,4 +882,19 @@
     <string name="run_rerun_title">Run again?</string>
     <string name="run_rerun_message">This starts the attack again. Continue?</string>
     <string name="run_backend_not_wired">Execution backend is not connected yet.</string>
+    <string name="backend_cve_2026_98260">CVE-2026-98260</string>
+    <string name="backend_status_cve98260_not_ready">Not ready: environment unverified</string>
+    <string name="backend_readiness_cve98260_payload">Exploit payload missing/invalid in APK (nativeLibraryDir)</string>
+    <string name="backend_readiness_cve98260_profile_missing">Kernel profile missing (only debug builds ship the 98260 profile)</string>
+    <string name="backend_readiness_cve98260_profile_release">Kernel release does not match the profile</string>
+    <string name="backend_readiness_cve98260_must_reboot">Must reboot before another run</string>
+    <string name="backend_readiness_cve98260_boot_id">Boot id unavailable</string>
+    <string name="backend_readiness_cve98260_not_probed">Environment not probed yet</string>
+    <string name="backend_row_requires">Requires</string>
+    <string name="backend_row_payload">Payload</string>
+    <string name="backend_row_channel">Channel</string>
+    <string name="run_restart_required">MUST REBOOT: the exploit is parked (fake cred page held); reboot is the only cleanup</string>
+    <string name="run_abort_disabled_cve98260">Abort disabled: after trigger nothing may kill/timeout the payload; reboot is the only cleanup</string>
+    <string name="backend_run_uid_requirement">Executor uid does not satisfy this backend\'s declared requirement</string>
+    <string name="backend_run_executor_unavailable">Executor is not available or not granted; authorize Shizuku or switch to App</string>
 </resources>

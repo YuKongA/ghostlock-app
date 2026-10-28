@@ -1,0 +1,11 @@
+POCO/mondrian_global/mondrian:15/AQ3A.250226.002/OS3.0.5.0.VMNMIXM:user/release-keys
+16
+36
+mondrian
+Enforcing
+1-1
+Linux localhost 5.10.252-gki-gabcbe4b2bc10 #1 SMP PREEMPT Sun May 31 01:41:06 UTC 2026 aarch64 Toybox
+16.34
+    State: RUNNING_UNLOCKED
+0
+orange

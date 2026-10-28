@@ -1,0 +1,21 @@
+
+com.ghostlock.app.backend.cve43499.victim.Mcast510ProbeTest:
+Error in mcast510SingleShotProbe(com.ghostlock.app.backend.cve43499.victim.Mcast510ProbeTest):
+java.lang.AssertionError: mcast510 prepare failed: mcast510:landing:landing:clean-failure:call=invalid-argument:errno=0
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.ghostlock.app.backend.cve43499.victim.Mcast510ProbeTest.mcast510SingleShotProbe(Mcast510ProbeTest.kt:163)
+
+
+Time: 29.82
+There was 1 failure:
+1) mcast510SingleShotProbe(com.ghostlock.app.backend.cve43499.victim.Mcast510ProbeTest)
+java.lang.AssertionError: mcast510 prepare failed: mcast510:landing:landing:clean-failure:call=invalid-argument:errno=0
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.ghostlock.app.backend.cve43499.victim.Mcast510ProbeTest.mcast510SingleShotProbe(Mcast510ProbeTest.kt:163)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
+
+

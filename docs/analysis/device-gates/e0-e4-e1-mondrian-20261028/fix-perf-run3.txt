@@ -1,0 +1,17 @@
+
+com.ghostlock.app.backend.cve43499.victim.Mcast510ProbeTest:
+Error in mcast510SingleShotProbe(com.ghostlock.app.backend.cve43499.victim.Mcast510ProbeTest):
+java.lang.IllegalStateException: mcast510_preserve_child 非法: pctrue
+	at com.ghostlock.app.backend.cve43499.victim.Mcast510ProbeTest.mcast510SingleShotProbe(Mcast510ProbeTest.kt:54)
+
+
+Time: 0.009
+There was 1 failure:
+1) mcast510SingleShotProbe(com.ghostlock.app.backend.cve43499.victim.Mcast510ProbeTest)
+java.lang.IllegalStateException: mcast510_preserve_child 非法: pctrue
+	at com.ghostlock.app.backend.cve43499.victim.Mcast510ProbeTest.mcast510SingleShotProbe(Mcast510ProbeTest.kt:54)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
+
+

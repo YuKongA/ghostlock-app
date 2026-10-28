@@ -29,24 +29,25 @@ extern "C" {
 /**
  * @brief 校验由调用方初始化的 ABI 头。
  * @param header 调用方提供的头；可为 NULL。
- * @param minimum_size 本入口要求的最小结构宽度。
- * @return 1 表示版本正确、宽度足够且 reserved 全零；0 表示拒绝。
+ * @param expected_size 调用方声明并实际分配的结构尺寸（通常 `sizeof(*request)`）。
+ * @return 1 表示版本正确且 struct_size **严格等于** expected_size；0 表示拒绝。
+ * @note ABI v4 起无 reserved 槽；struct_size 不允许大于/小于本入口的结构尺寸
+ *       （无跨版本二进制兼容需求，补零/向后兼容一律拒绝）。
  * @note 前提：只在读其它字段之前调用。失败语义：仅返回 0，不写任何内存。
  * @note 阶段：每个入口的第一道校验（输出 ABI 优先、输入 ABI 其次）。
  */
 static inline int32_t glk43499_internal_valid_header(
-    const struct glk43499_abi_header *header, uint32_t minimum_size) {
-    return header != NULL && header->struct_size >= minimum_size &&
-           header->abi_version == GLK43499_ABI_VERSION &&
-           header->reserved[0] == 0 && header->reserved[1] == 0;
+    const struct glk43499_abi_header *header, uint32_t expected_size) {
+    return header != NULL && header->struct_size == expected_size &&
+           header->abi_version == GLK43499_ABI_VERSION;
 }
 
 /**
- * @brief 校验固定宽度保留字段是否全零。
- * @param values 保留字段数组；可为 NULL 仅当 count 为 0。
+ * @brief 校验一段 uint64_t 是否全零（通用 helper；ABI v4 起不再用于 reserved 槽）。
+ * @param values 待检查数组；可为 NULL 仅当 count 为 0。
  * @param count 字段个数。
  * @return 1 全零；0 存在非零。
- * @note 阶段：输入 ABI 校验的一部分；不做范围推导。
+ * @note 阶段：输入结构“未使用字段必须为零”的显式校验；不做范围推导。
  */
 static inline int32_t glk43499_internal_zero_u64(const uint64_t *values,
                                                  size_t count) {
@@ -60,14 +61,16 @@ static inline int32_t glk43499_internal_zero_u64(const uint64_t *values,
 /**
  * @brief 校验输出结构的 ABI 前缀（`call.abi`）。
  * @param call 调用方提供的输出回执；可为 NULL。
- * @param minimum_size 本入口会写出的最小结构宽度（通常为整个输出结构）。
+ * @param expected_size 本入口会写出的外层输出结构尺寸（通常 `sizeof(*result)`）。
  * @return 1 可写；0 表示输出 ABI 无效，入口必须未接受 token。
+ * @note 严格相等：JNI 以 sizeof(外层输出结构) 初始化 `call.abi.struct_size`，
+ *       core 同值比对；不匹配即拒绝，绝不写输出边界外内存。
  * @note 阶段：所有入口最前面的动作；失败时不写输出边界外内存。
  */
 static inline int32_t glk43499_internal_output_abi(
-    const struct glk43499_call_result *call, uint32_t minimum_size) {
+    const struct glk43499_call_result *call, uint32_t expected_size) {
     return call != NULL &&
-           glk43499_internal_valid_header(&call->abi, minimum_size);
+           glk43499_internal_valid_header(&call->abi, expected_size);
 }
 
 /**
@@ -78,7 +81,7 @@ static inline int32_t glk43499_internal_output_abi(
  * @param state 资源状态。
  * @param system_error 仅 SYSTEM_ERROR 有意义；其余写 0。
  * @param retained 保留到进程退出的资源数。
- * @note 前提：`call->abi` 已被调用方初始化且未在本函数内改写。
+ * @note 前提：`call->abi` 已被调用方初始化且未在本函数内改写；ABI v4 起无 reserved 槽。
  * @note 阶段：每个入口的出口；不改写调用方填写的 abi 字段。
  */
 static inline void glk43499_internal_set_call(
@@ -89,12 +92,7 @@ static inline void glk43499_internal_set_call(
     call->effect = effect;
     call->resource_state = state;
     call->system_error = system_error;
-    call->reserved_resource_serial = 0;
     call->retained_resource_count = retained;
-    for (size_t index = 0;
-         index < sizeof(call->reserved) / sizeof(call->reserved[0]); ++index) {
-        call->reserved[index] = 0;
-    }
 }
 
 /**
@@ -108,7 +106,7 @@ static inline void glk43499_internal_set_call(
  * @param workers_joined 是否已按经验证顺序 join 全部 worker。
  * @param owned_chain_released 是否已释放完整所有权链。
  * @param retained 是否保留闭包到进程退出。
- * @note 阶段：close/cancel 的出口；把 reserved 全部写零。
+ * @note 阶段：close/cancel 的出口；ABI v4 起无 reserved 槽，只写语义字段。
  */
 static inline void glk43499_internal_set_close(
     struct glk43499_close_result *result, glk43499_call_status status,
@@ -121,11 +119,6 @@ static inline void glk43499_internal_set_close(
     result->workers_joined = workers_joined;
     result->owned_chain_released = owned_chain_released;
     result->retained_for_process_exit = retained;
-    for (size_t index = 0;
-         index < sizeof(result->reserved) / sizeof(result->reserved[0]);
-         ++index) {
-        result->reserved[index] = 0;
-    }
 }
 
 /**
@@ -223,6 +216,17 @@ static inline int32_t glk43499_internal_pin_cpu(uint32_t cpu) {
         << (cpu % (8U * sizeof(unsigned long)));
     return (int32_t) syscall(SYS_sched_setaffinity, 0, (size_t) sizeof(mask),
                              mask);
+}
+
+/**
+ * @brief 校验 futex waiter 标志位域（0 或 FUTEX_WAITERS 位）。
+ * @param flag Kotlin 请求给出的位掩码。
+ * @return 1 合法（0=不置位，或等价于内核 FUTEX_WAITERS 的 1<<31）；0 拒绝。
+ * @note 用移位表达 FUTEX_WAITERS，避免在 Native 保留协议数值字面量
+ *       （R2b 参数化：位值由请求承载，Native 只校验位域形状）。
+ */
+static inline int32_t glk43499_internal_valid_futex_waiter_flag(uint32_t flag) {
+    return flag == 0 || flag == (UINT32_C(1) << 31) ? 1 : 0;
 }
 
 /**

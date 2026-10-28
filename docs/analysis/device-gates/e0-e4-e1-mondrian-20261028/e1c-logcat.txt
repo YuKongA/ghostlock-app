@@ -1,0 +1,9 @@
+10-29 03:21:51.504  4708  5227 I E1-W1-ONLY: E1|attempt|n=1|reason=close_chain|retained=false|all_released=true|termination=chain=skipped;
+10-29 03:21:51.505  4708  5227 I E1-W1-ONLY: E1|attempt|n=1|reason=cve43499:write.w1:landing:clean-failure:call=invalid-argument:errno=0|primitive=null
+10-29 03:21:51.505  4708  5227 I E1-W1-ONLY: E1|attempt|n=2|reason=begin|primitive=MULTICAST
+10-29 03:22:17.403  4708  5227 I E1-W1-ONLY: E1|attempt|n=2|reason=close_chain|retained=false|all_released=true|termination=chain=skipped;
+10-29 03:22:17.403  4708  5227 I E1-W1-ONLY: E1|attempt|n=2|reason=cve43499:write.w1:landing:clean-failure:call=invalid-argument:errno=0|primitive=null
+10-29 03:22:17.403  4708  5227 I E1-W1-ONLY: E1|attempt|n=3|reason=begin|primitive=MULTICAST
+10-29 03:23:29.307  4708  5227 I E1-W1-ONLY: E1|attempt|n=3|reason=close_chain|retained=false|all_released=true|termination=chain=skipped;
+10-29 03:23:29.311  4708  5227 I E1-W1-ONLY: E1|report_file=/data/user/0/com.ghostlock.app/files/e1-w1-only-report.txt|lines=18
+10-29 03:23:29.316  4708  5227 E TestRunner: java.lang.AssertionError: E1|W1-FAILED|reason=cve43499:write.w1:placement:preparePlacement:system-error/not-applied|retained=false|attempt=3

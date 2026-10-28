@@ -1,0 +1,38 @@
+INSTRUMENTATION_STATUS: class=com.ghostlock.app.backend.cve43499.perf.PerfMechanismProbeTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+com.ghostlock.app.backend.cve43499.perf.PerfMechanismProbeTest:
+INSTRUMENTATION_STATUS: test=perfMechanismProbeOnSameAppChild
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.ghostlock.app.backend.cve43499.perf.PerfMechanismProbeTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: App-domain perf_event_open denied (G1 app-level FAIL): matrix=label=self_pid0|pid=0|handle=0|call=8|errno=13;label=self_task|pid=23219|handle=0|call=8|errno=13;label=child_task|pid=23516|handle=0|call=8|errno=13 (see PERF-G1 logcat/report)
+	at org.junit.Assert.fail(Assert.java:89)
+	at com.ghostlock.app.backend.cve43499.perf.PerfMechanismProbeTest.perfMechanismProbeOnSameAppChild(PerfMechanismProbeTest.kt:288)
+
+INSTRUMENTATION_STATUS: stream=
+Error in perfMechanismProbeOnSameAppChild(com.ghostlock.app.backend.cve43499.perf.PerfMechanismProbeTest):
+java.lang.AssertionError: App-domain perf_event_open denied (G1 app-level FAIL): matrix=label=self_pid0|pid=0|handle=0|call=8|errno=13;label=self_task|pid=23219|handle=0|call=8|errno=13;label=child_task|pid=23516|handle=0|call=8|errno=13 (see PERF-G1 logcat/report)
+	at org.junit.Assert.fail(Assert.java:89)
+	at com.ghostlock.app.backend.cve43499.perf.PerfMechanismProbeTest.perfMechanismProbeOnSameAppChild(PerfMechanismProbeTest.kt:288)
+
+INSTRUMENTATION_STATUS: test=perfMechanismProbeOnSameAppChild
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_RESULT: stream=
+
+Time: 0.266
+There was 1 failure:
+1) perfMechanismProbeOnSameAppChild(com.ghostlock.app.backend.cve43499.perf.PerfMechanismProbeTest)
+java.lang.AssertionError: App-domain perf_event_open denied (G1 app-level FAIL): matrix=label=self_pid0|pid=0|handle=0|call=8|errno=13;label=self_task|pid=23219|handle=0|call=8|errno=13;label=child_task|pid=23516|handle=0|call=8|errno=13 (see PERF-G1 logcat/report)
+	at org.junit.Assert.fail(Assert.java:89)
+	at com.ghostlock.app.backend.cve43499.perf.PerfMechanismProbeTest.perfMechanismProbeOnSameAppChild(PerfMechanismProbeTest.kt:288)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
+
+
+INSTRUMENTATION_CODE: -1

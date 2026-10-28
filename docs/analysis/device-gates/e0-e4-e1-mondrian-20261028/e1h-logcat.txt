@@ -1,0 +1,6 @@
+10-29 03:47:07.518  4617  5332 I E1-W1-ONLY: E1|attempt|n=1|phase=close|reason=close_chain|retained=false|all_released=true|termination=chain=skipped;
+10-29 03:47:07.519  4617  5332 I E1-W1-ONLY: E1|attempt|n=1|phase=actor-execute|reason=cve43499:write.w1:actor-execute:clean-failure:call=timeout:errno=110:consumer_success=0/0:carrier_armed=false:window_opened=false:carrier_ops=0:carrier_step=0:carrier_errno=0:retained=false|primitive=1|page_base=none
+10-29 03:47:07.773  4617  5332 I E1-W1-ONLY: E1|attempt|n=2|phase=pre|reason=begin|primitive=MULTICAST|proc=threads=18|vmsize=17279616 kB|fds=106
+10-29 03:48:22.169  4617  5332 I E1-W1-ONLY: E1|attempt|n=2|phase=close|reason=close_chain|retained=false|all_released=true|termination=chain=skipped;
+10-29 03:48:22.173  4617  5332 I E1-W1-ONLY: E1|report_file=/data/user/0/com.ghostlock.app/files/e1-w1-only-report.txt|lines=15
+10-29 03:48:22.180  4617  5332 E TestRunner: java.lang.AssertionError: E1|W1-FAILED|reason=cve43499:write.w1:placement:preparePlacement:system-error/not-applied:call=system-error:errno=13:diag_step=0:diag_syscall=0:diag_errno=0|retained=false|attempt=2

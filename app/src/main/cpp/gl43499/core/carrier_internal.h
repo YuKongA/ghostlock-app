@@ -59,6 +59,33 @@ struct glk43499_pi_shared {
     atomic_int window_opened;
     /** @brief 窗口结束（无论 Carrier 是否成功）；execute 的唯一完成信号。 */
     atomic_int window_done;
+    /** @brief R3a-2/B7：multicast ghost disarm 的 FUTEX_LOCK_PI ret/errno（可证伪）。 */
+    atomic_int ghost_disarm_result;
+    atomic_int ghost_disarm_errno;
+    /** @brief task-108 追加：waiter futex 证据（进入/返回/ret/errno/dispatch）+ 时间戳。 */
+    atomic_int waiter_in_futex;
+    atomic_int waiter_wait_ret;
+    atomic_int waiter_wait_errno;
+    atomic_int waiter_dispatched;
+    atomic_int target_value_at_requeue;
+    atomic_uint_fast64_t waiter_futex_enter_ns;
+    atomic_uint_fast64_t waiter_futex_exit_ns;
+    atomic_uint_fast64_t settle_done_ns;
+    atomic_uint_fast64_t requeue_call_ns;
+    atomic_int owner_tid;
+    /* task-113：carrier 崩溃前快照（只写 atomic；无 IO/日志）。 */
+    atomic_int carrier_started;
+    atomic_int carrier_frames_sent;
+    atomic_int carrier_step;
+    atomic_int carrier_last_errno;
+    atomic_uint_fast64_t route_enter_ns;
+    atomic_uint_fast64_t route_exit_ns;
+    atomic_uint_fast64_t waiter_parked_timeout_ns;
+    atomic_int waiter_op;
+    atomic_int waiter_val;
+    atomic_int waiter_val3;
+    atomic_int waiter_uaddr2_tid;
+
     /** @brief 三个 worker 的「已退出」发布点；有界 join 先等它再 pthread_join。 */
     atomic_int waiter_exited;
     atomic_int owner_exited;
@@ -73,6 +100,14 @@ struct glk43499_carrier_multicast {
     uint32_t address_family;
     uint64_t operation_budget;
     uint64_t timeout_ns;
+    /* P0a：来自请求的 arm 时序/序列与 disarm 上限（外部不可见）。 */
+    uint64_t arm_hold_ns;
+    uint64_t arm_sequence;
+    uint64_t disarm_spin_limit;
+    /* A 决策（R2b）：ghost disarm 参数来自 multicast_spec 请求字段。 */
+    int32_t ghost_pid;
+    uint32_t futex_waiter_flag;
+    uint32_t disarm_required;
     int32_t prepared;
 };
 
@@ -97,6 +132,18 @@ struct glk43499_carrier_pselect {
     uint32_t nfds;
     uint64_t operation_budget;
     uint64_t timeout_ns;
+    /* P0a：来自请求的尝试延时与 disarm 上限。 */
+    uint64_t per_attempt_delay_ns;
+    uint64_t disarm_spin_limit;
+    /* R3a-2/P1/P7/P10：consumer 起跑延迟、select 分支、fd 备份起点步长。 */
+    uint64_t enter_delay_ns;
+    uint64_t fd_reserve_stride;
+    uint64_t select_use_timeval;
+    /* R3a-2/P8：最后一次 select 的 ret/errno（进入回执 last_step/last_errno）。 */
+    int32_t select_result;
+    int32_t select_errno;
+    /* R3a-2/P11：prepare 清理不干净时上报 retained（禁止假 released）。 */
+    int32_t retained;
     int32_t prepared;
 };
 
@@ -115,6 +162,23 @@ struct glk43499_carrier_tcp {
     uint64_t mapping_offset;
     uint64_t operation_budget;
     uint64_t timeout_ns;
+    /* P0a：来自请求的 punch/post hold、地址偏移、disarm 与轮询参数。 */
+    uint64_t punch_spin;
+    uint64_t post_hold_ns;
+    uint64_t zc_address_offset;
+    uint64_t disarm_spin_limit;
+    uint64_t poll_us;
+    /* R3b：发送小包与映射页的填充字节各有唯一请求来源（tcp_spec 双字段）。 */
+    uint64_t send_fill_byte;
+    uint64_t mapping_fill_byte;
+    /* R3a-2/T2–T4：zc 请求体四字段偏移、arm 序列与 punch 相位独立上限。 */
+    uint64_t arm_sequence;
+    uint64_t zc_length_offset;
+    uint64_t zc_task_offset;
+    uint64_t zc_lock_offset;
+    uint64_t punch_phase_spin;
+    uint64_t final_task_address;
+    uint64_t final_lock_address;
     uint8_t *send_buffer;
     pthread_t punch_worker;
     int32_t punch_started;
@@ -145,12 +209,27 @@ struct glk43499_carrier {
  * @note 结构由 waiter 线程在 PI 窗口结束时填写，经 `window_done` 的 release/acquire
  *       对发布给 executeActor 读取；不加锁。
  */
+/** @brief Carrier 回执里的 `last_step` 语义（可证伪诊断；不是业务结果）。 */
+typedef int32_t glk43499_carrier_step;
+enum {
+    GLK43499_CARRIER_STEP_NONE = 0,
+    GLK43499_CARRIER_STEP_SEND = 1,
+    GLK43499_CARRIER_STEP_PUNCH = 2,
+    GLK43499_CARRIER_STEP_ARM = 3,
+    GLK43499_CARRIER_STEP_REQUEST = 4,
+    GLK43499_CARRIER_STEP_IO = 5,
+    GLK43499_CARRIER_STEP_INFLIGHT = 6
+};
+
 struct glk43499_carrier_outcome {
     uint64_t operations;
     uint64_t calls;
     uint64_t successes;
     int32_t failed;
     int32_t observed_write;
+    /* R3a-2：失败定位（最后执行的物理步骤与 errno 语义错误码）。 */
+    glk43499_carrier_step last_step;
+    int32_t last_errno;
 };
 
 /* ------------------------------------------------------------------------- */
@@ -224,8 +303,11 @@ int32_t glk43499_carrier_pselect_release(
 /**
  * @brief 准备 TCP Carrier：loopback pair、打洞 memfd、映射、punch 线程。
  * @param carrier 目标 Carrier；`kind` 已由 Actor 设置。
- * @param spec 调用期借用的 TCP zerocopy 物理参数（frame 会被深拷贝）。
+ * @param spec 调用期借用的 TCP zerocopy 物理参数（frame 会被深拷贝；
+ *   `send_fill_byte`/`mapping_fill_byte` 是发送缓冲与映射页的唯一填充来源）。
  * @return 0 成功；负 errno 语义失败。
+ * @note R3b：删除 prepare 的额外 fill 参数；两个填充字节改由 tcp spec 携带
+ *   （legacy2 `route_tcp_session.cpp:61-64` send=0x33 / mapping=0x55，A 决策）。
  */
 int32_t glk43499_carrier_tcp_prepare(
     struct glk43499_carrier *carrier,
