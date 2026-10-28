@@ -2079,5 +2079,46 @@
       "task_tasks": 1360,
       "task_tgid": 1564
     }
+  },
+  {
+    "release": "6.1.128-android14-11-32532371-abX216BXXSCEZE8",
+    "recommend_shizuku": 1,
+    "kernel_phys_load": 2818572288,
+    "kernel_phys_offset": 2147483648,
+    "mm_struct_sz": 960,
+    "symbols": {
+      "off_init_task": 34338432,
+      "off_init_cred": 34413352,
+      "off_root_task_group": 36347264,
+      "off_selinux_enforcing": 37216120,
+      "off_selinux_blob_sizes": 23337992,
+      "off_security_hook_heads": 23336184,
+      "off_slide_nfulnl_logger": 34286024,
+      "off_slide_boot_id": 38144608,
+      "off_slide_loggers_0_1": 34285848
+    },
+    "struct_fields": {
+      "task_prio": 132,
+      "task_normal_prio": 140,
+      "task_sched_task_group": 840,
+      "task_pi_lock": 2340,
+      "task_pi_waiters": 2360,
+      "task_pi_top_task": 2376,
+      "task_pi_blocked_on": 2384,
+      "task_pid": 1584,
+      "task_tgid": 1588,
+      "task_atomic_flags": 1520,
+      "task_real_cred": 2096,
+      "task_cred": 2104,
+      "task_comm": 2120,
+      "task_tasks": 1360,
+      "task_seccomp": 2304
+    },
+    "route": {
+      "select_stack": {
+        "compact_waiter": 1,
+        "waiter_shift": 1
+      }
+    }
   }
 ]
