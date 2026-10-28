@@ -4,6 +4,8 @@ local.properties
 .idea/
 .kotlin/
 cmake-build-*/
+# AGP/CMake 构建暂存目录（每次构建都会重写，见 chore(build) 未跟踪化提交）
+app/.cxx/
 *.iml
 app/build/
 libghostlock.so
