@@ -26,9 +26,14 @@ pub fn pselect_waiter_shift_for(release: Option<&str>) -> Option<i64> {
 
 /// SLUB stride each family's layout macro already carries. A measured stride
 /// only needs spelling out when it differs from this.
+///
+/// 5.10 has no entry: the only shipped 5.10 profile (Sony Xperia 5 IV) states
+/// 0x500, while mm_cache_init on three unrelated 5.10 images passes 0x3c0.
+/// The family is not uniform, so a default here would be a guess. A 5.10
+/// image whose stride could not be measured emits `null` and native falls back
+/// to `MM_STRUCT_SZ`.
 fn mm_default(macro_name: Option<&str>) -> Option<u32> {
     match macro_name {
-        Some("STRUCT_OFFSETS_5_10") => Some(0x3c0),
         Some("STRUCT_OFFSETS_5_15") | Some("STRUCT_OFFSETS_6_1") => Some(0x400),
         Some("STRUCT_OFFSETS_6_6") | Some("STRUCT_OFFSETS_6_12") => Some(0x500),
         _ => None,
@@ -449,7 +454,8 @@ pub fn render_conf(input: &ConfInputs<'_>) -> String {
             // = kernelsnitch-6x.conf; 5.15 keeps the bundled profile's values.
             Some("STRUCT_OFFSETS_5_10") => {
                 // 4 is carried from the hantu build, which ran every 5.10
-                // kernel at 4; only the stride is measured from this image.
+                // kernel at 4. The stride has no family default, so an image
+                // that could not be measured leaves the field null.
                 snitch.push(("collisions".to_string(), "4".to_string()));
                 if let Some(stride) = input.mm_stride.or_else(|| mm_default(macro_name)) {
                     snitch.push(("mm_struct_sz".to_string(), stride.to_string()));
@@ -932,7 +938,7 @@ mod tests {
     }
 
     #[test]
-    fn json_report_falls_back_to_the_510_family_stride() {
+    fn json_report_omits_an_unmeasured_510_stride() {
         let report = build_report(
             Some("5.10.198-android12-9-00085-g226a9632f13d-ab11136126"),
             0,
@@ -943,7 +949,9 @@ mod tests {
             Some(-2),
             None,
         );
-        assert_eq!(report["mm_struct_sz"], 0x3c0);
+        // 5.10 strides disagree across images, so an unmeasured one is null
+        // rather than a family guess.
+        assert!(report["mm_struct_sz"].is_null());
     }
 
     /// Flatten a HOCON-ish profile into `section.key` -> value, ignoring

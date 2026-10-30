@@ -18,7 +18,8 @@
 - `derive_pselect_layout` and `derive_nf_logger_registration` take `btf: &Btf` and hard-fail
   when the image has no embedded BTF. Vendor 5.10 images often ship without one.
 - No `mm_cache_init` reference exists anywhere in the extractor, so nothing measures the
-  `mm_struct` SLUB stride. `MM_STRUCT_SZ` in `src/core/common.h` is a 6.x constant.
+  `mm_struct` SLUB stride. Native falls back to `MM_STRUCT_SZ` in
+  `src/core/kernel/constants.hpp`, which is `0x500`.
 - `route.select_stack` in `CONF_ROUTE_FIELDS` carries only `waiter_shift`. Native
   `kRouteSelect` already reads `compact_waiter` (`src/core/profile/binary.cpp`), and a flat
   5.10 `rt_mutex_waiter` needs the compact word table, so a 5.10 profile has no way to state
@@ -42,8 +43,33 @@ Non-goals:
   `route` section and in `kernel`; only the select branch gains the key.
 - Port `--register`, `--format c`, `--name`, `--force`, `src/kernels/` output, or
   `derive_sigreturn_layout`. Those belong to the branch format, not upstream.
+- Add a `--btf <blob>` flag. Upstream has no such flag and no other way to hand the
+  extractor a reference vmlinux, so on this tree the no-BTF path is the only path. The BTF
+  branch of `derive_pselect_layout` and the BTF gate on `derive_nf_logger_registration` stay
+  as they are, but only an image with embedded BTF reaches them.
 - Derive `task_struct` or the `cred` layout without BTF. That is the parent plan's stage 2/3
   and remains unstarted; this change leaves those fields `null` on a BTF-less image.
+
+## Limitation: a BTF-less image yields geometry only
+
+`resolve_structs(None)` sets all fifteen `task_struct` fields and every `cred` scalar to
+`None`, and `derive_cred_5x` is called through `btf.as_ref().and_then(...)`, so it never runs
+without BTF. `ProfileResolver.validateMerged` requires all fifteen `task_struct` fields and a
+non-zero `cred.copy_size` and `cred.caps_count`, and the app blocks a run while
+`invalidPaths` is non-empty. A profile generated from a BTF-less image is therefore route
+geometry plus symbol offsets, and stays unrunnable until an author fills `task_struct` and
+`cred` from the matching source. That is the documented candidate contract, not a defect in
+this change, but it is the whole of what the extractor delivers for such an image.
+
+## Limitation: upstream cannot express a short pselect window
+
+The hantu fork carries `pselect_waiter_off` and a sigreturn route. Upstream has neither
+(`git grep pselect_waiter_off -- src/core` returns nothing). So when the pselect window on a
+given 5.10 image stops short of the waiter, there is no way to say so in a profile and no
+fallback transport to name. `conf_route_geometry` returns an empty geometry when the
+derivation is infeasible, `main.rs` exits 3 for `select_stack`, and the app rejects the
+result, so this fails safe. The cost is that such a kernel gets no route at all from the
+extractor.
 
 ## Change list
 
@@ -55,7 +81,7 @@ Non-goals:
 | `tools/extract_rs/src/derive.rs` | `derive_pselect_layout` takes `btf: Option<&Btf>`; with no BTF it seeds the waiter local from the `add x0, sp, #imm` before `bl rt_mutex_init_waiter`, then falls back to the zero-store sweep | The waiter local is the only thing BTF supplied for the frame arithmetic |
 | `tools/extract_rs/src/analysis.rs` | Call `derive_pselect_layout` with `input.btf` instead of gating on `Some(btf)` | Same reason; `--analysis` must report the derived layout on a BTF-less image |
 | `tools/extract_rs/src/report.rs` | `pselect_waiter_shift_for` returns `-2` for `STRUCT_OFFSETS_5_10` / `_5_15` | Both frames put the waiter two words below the `fd_set` base |
-| `tools/extract_rs/src/report.rs` | `mm_default` maps 5.10 to `0x3c0`, 5.15/6.1 to `0x400`, 6.6/6.12 to `0x500`; `build_report` takes `mm_stride` and emits the measured value or the family default | The JSON report carried no stride for 5.x and a hardcoded 1024 in conf |
+| `tools/extract_rs/src/report.rs` | `mm_default` maps 5.15/6.1 to `0x400` and 6.6/6.12 to `0x500`; 5.10 has no entry. `build_report` takes `mm_stride` and emits the measured value or the family default | The JSON report carried no stride for 5.x and a hardcoded 1024 in conf. 5.10 strides are not uniform, so there is no default to borrow |
 | `tools/extract_rs/src/report.rs` | `CONF_ROUTE_FIELDS["select_stack"]` gains `compact_waiter`; `conf_route_geometry` writes `compact_waiter = 1` for the flat-waiter family only | A flat 5.10 waiter needs the compact word table; 5.15 and 6.x keep their geometry |
 | `tools/extract_rs/src/report.rs` | `multicast_geometry_fits` drops geometry that cannot fit the option buffer, with a warning | The 5.x multicast branch was emitting a stamp the kernel cannot copy |
 | `tools/extract_rs/src/report.rs` | `render_conf` splits the KernelSnitch block by family: 5.10 `collisions = 4` + measured stride, 5.15 `collisions = 8` + stride, other 5.x keeps the shipped 8/1024 | 1024 is the 5.15 stride and is wrong for 5.10 |
@@ -87,7 +113,8 @@ Invariants:
 
 - A family default is written only when `kernel_layout_verified` accepts the release; a
   measured value wins over it. A BTF-less image that cannot be disassembled yields no
-  stride at all, never a guess.
+  stride at all, never a guess. 5.10 has no family default, so an unmeasurable 5.10 image
+  emits `null` and native keeps `MM_STRUCT_SZ`.
 - `compact_waiter` in a v1 JSON report means the 6.1 tcp arm to
   `LegacyProfileConverter.inferRoute`, so a 5.x report still does not carry it. Only the
   `--format conf` select branch states it.
@@ -101,6 +128,12 @@ The 6.x output is unchanged: 6.6 emits no `mm_struct_sz` (the layout macro carri
 6.6 stride (0x500) equals the family default, so it is not emitted. Reverting this change is
 a straight revert of the listed files; no persistent state, no format migration, and no
 profile already shipped changes meaning.
+
+A 5.10 image whose `mm_cache_init` cannot be read now emits `mm_struct_sz = null` rather
+than a family guess. Native then uses `MM_STRUCT_SZ = 0x500`, which is what the one shipped
+5.10 profile states. Three unrelated 5.10 images measure 0x3c0, so the family is not
+uniform and the Sony value may be copied from the compile-time default rather than measured.
+A maintainer with the Sony device should settle that before any 5.10 profile ships.
 
 The one behavior change outside 5.10 is the `loggers` fallback. It corrects a value that
 native never reads (`slide_loggers_0_1` has no runtime consumer on this tree), so the
@@ -141,9 +174,10 @@ index no longer matches, and `ExporterAgreementTest` then disagrees with the app
 
 ## Explicit preservation
 
-The BTF path, `derive_nf_logger_registration`'s BTF gate, the `kernel_layout_verified`
-gate, the v1 JSON shape, `LegacyProfileConverter.kt` and its v1 conversion, the GLK1 wire
-format, all native code, `kernelsnitch/`, and every profile already shipped.
+The BTF code path (reachable only from an image with embedded BTF, since there is no
+`--btf` flag), `derive_nf_logger_registration`'s BTF gate, the `kernel_layout_verified` gate,
+the v1 JSON shape, `LegacyProfileConverter.kt` and its v1 conversion, the GLK1 wire format,
+all native code, `kernelsnitch/`, and every profile already shipped.
 
 ## Progress
 

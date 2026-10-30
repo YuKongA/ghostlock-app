@@ -16,7 +16,7 @@
 - `derive_pselect_layout` 与 `derive_nf_logger_registration` 的签名是 `btf: &Btf`，
   镜像没有内嵌 BTF 时直接失败。vendor 5.10 镜像经常没有 BTF。
 - 提取器里没有任何 `mm_cache_init` 引用，因此无人测量 `mm_struct` 的 SLUB stride。
-  `src/core/common.h` 的 `MM_STRUCT_SZ` 是 6.x 常量。
+  native 回退到 `src/core/kernel/constants.hpp` 的 `MM_STRUCT_SZ`，值为 `0x500`。
 - `CONF_ROUTE_FIELDS` 里 `route.select_stack` 只有 `waiter_shift`。native 的
   `kRouteSelect` 已经会读 `compact_waiter`（`src/core/profile/binary.cpp`），而 5.10 的
   平坦 `rt_mutex_waiter` 必须走紧凑字表，select 分支却无法表达这一点。
@@ -37,8 +37,28 @@
   段中已存在，只有 select 分支新增该键。
 - 不移植 `--register`、`--format c`、`--name`、`--force`、`src/kernels/` 输出、
   `derive_sigreturn_layout`。那些属于分支自己的格式，不属于 upstream。
+- 不新增 `--btf <blob>` 开关。upstream 没有这个开关，也没有别的办法把参考 vmlinux 交给
+  提取器，所以本树只有无 BTF 一条路径。`derive_pselect_layout` 的 BTF 分支与
+  `derive_nf_logger_registration` 的 BTF 门保持原样，但只有内嵌 BTF 的镜像才会走到。
 - 不在无 BTF 时推导 `task_struct` 或 `cred` 布局。那是父计划第 2/3 阶段，尚未开始；
   本次改动在无 BTF 镜像上仍让这些字段保持 `null`。
+
+## 限制：无 BTF 镜像只产出几何
+
+`resolve_structs(None)` 把 15 个 `task_struct` 字段与全部 `cred` 标量都置为 `None`，
+`derive_cred_5x` 通过 `btf.as_ref().and_then(...)` 调用，无 BTF 时不会执行。
+`ProfileResolver.validateMerged` 要求 15 个 `task_struct` 字段齐全，且 `cred.copy_size`
+与 `cred.caps_count` 非零，`invalidPaths` 非空时 app 会拦截运行。因此从无 BTF 镜像生成的
+profile 只有路由几何与符号偏移，需要作者从对应源码补齐 `task_struct` 与 `cred` 才能运行。
+这是文档化的候选契约，不是本次改动的缺陷，但它就是提取器对这类镜像的全部产出。
+
+## 限制：upstream 无法表达 pselect 窗口不够深
+
+hantu 分支有 `pselect_waiter_off` 和 sigreturn 路由，upstream 两者都没有
+（`git grep pselect_waiter_off -- src/core` 无结果）。因此当某个 5.10 镜像的 pselect
+窗口够不到 waiter 时，profile 无法表达这一点，也没有可指定的回退传输。
+`conf_route_geometry` 在推导不可行时返回空几何，`main.rs` 对 `select_stack` 退出码 3，
+app 随即拒绝该结果，所以是安全失败。代价是这类内核从提取器拿不到任何路由。
 
 ## 改动清单
 
@@ -50,7 +70,7 @@
 | `tools/extract_rs/src/derive.rs` | `derive_pselect_layout` 改收 `btf: Option<&Btf>`；无 BTF 时用 `bl rt_mutex_init_waiter` 之前的 `add x0, sp, #imm` 作为 waiter local，再退回零写扫描 | waiter local 是 BTF 在帧算术里唯一提供的东西 |
 | `tools/extract_rs/src/analysis.rs` | `derive_pselect_layout` 改为直接传 `input.btf`，不再以 `Some(btf)` 为门 | 同上；`--analysis` 也要在无 BTF 镜像上报出推导结果 |
 | `tools/extract_rs/src/report.rs` | `pselect_waiter_shift_for` 对 `STRUCT_OFFSETS_5_10` / `_5_15` 返回 `-2` | 两个族的帧都把 waiter 放在 `fd_set` 基址下方两个字 |
-| `tools/extract_rs/src/report.rs` | `mm_default` 映射 5.10→`0x3c0`、5.15/6.1→`0x400`、6.6/6.12→`0x500`；`build_report` 新增 `mm_stride` 参数，写测量值或 family 默认 | JSON 报告对 5.x 不带 stride，conf 又写死 1024 |
+| `tools/extract_rs/src/report.rs` | `mm_default` 映射 5.15/6.1→`0x400`、6.6/6.12→`0x500`，5.10 没有条目；`build_report` 新增 `mm_stride` 参数，写测量值或 family 默认 | JSON 报告对 5.x 不带 stride，conf 又写死 1024。5.10 各镜像 stride 并不一致，没有可借用的默认值 |
 | `tools/extract_rs/src/report.rs` | `CONF_ROUTE_FIELDS["select_stack"]` 增加 `compact_waiter`；`conf_route_geometry` 只对平坦 waiter 族写 `compact_waiter = 1` | 5.10 平坦 waiter 需要紧凑字表；5.15 与 6.x 保持原有几何 |
 | `tools/extract_rs/src/report.rs` | 新增 `multicast_geometry_fits`，放不进 option buffer 的几何直接丢弃并告警 | 5.x multicast 分支此前会写出内核拷不进去的 stamp |
 | `tools/extract_rs/src/report.rs` | `render_conf` 的 KernelSnitch 块按 family 拆分：5.10 `collisions = 4` + 测量 stride，5.15 `collisions = 8` + stride，其他 5.x 保留 8/1024 | 1024 是 5.15 的 stride，对 5.10 是错的 |
@@ -81,7 +101,8 @@ flowchart TD
 不变量：
 
 - 只有在 `kernel_layout_verified` 接受该 release 时才写 family 默认值，测量值优先。
-  无 BTF 且无法反汇编的镜像不产生 stride，绝不用猜测值。
+  无 BTF 且无法反汇编的镜像不产生 stride，绝不用猜测值。5.10 没有 family 默认值，无法测量的
+  5.10 镜像写 `null`，native 继续用 `MM_STRUCT_SZ`。
 - v1 JSON 报告里的 `compact_waiter` 对 `LegacyProfileConverter.inferRoute` 只意味着
   6.1 的 tcp 分支，所以 5.x 报告仍不带它；只有 `--format conf` 的 select 分支声明。
 - `derive_pselect_layout` 仍要求 waiter 候选唯一。无 BTF 的种子只是增加候选，
@@ -93,6 +114,11 @@ flowchart TD
 `compact_waiter = 1` 与 `mm_struct_sz = 1024`，6.12 两者都不写。6.6 的测量 stride（0x500）
 等于 family 默认值，因此不输出。回滚就是整体 revert 上述文件；没有持久状态、
 没有格式迁移，已发布的 profile 语义不变。
+
+无法读取 `mm_cache_init` 的 5.10 镜像现在写 `mm_struct_sz = null`，不再借用 family 猜测值。
+native 随后使用 `MM_STRUCT_SZ = 0x500`，也就是唯一已发布 5.10 profile 的取值。
+三个互不相关的 5.10 镜像都测得 0x3c0，说明该族并不统一，Sony 的值可能是照抄编译期默认值。
+在发布任何 5.10 profile 之前，应由持有该设备的维护者确认。
 
 5.10 之外唯一的行为变化是 `loggers` 回退。它修正的值 native 从不读取
 （`slide_loggers_0_1` 在本树没有运行时使用者），影响只限于输出 profile。
@@ -131,8 +157,9 @@ native 目前还跑不了 5.10 平坦 waiter。`src/core/support/util.cpp` 的�
 
 ## 明确保留
 
-BTF 路径、`derive_nf_logger_registration` 的 BTF 门、`kernel_layout_verified` 门、
-v1 JSON 形状、`LegacyProfileConverter.kt` 及其 v1 转换、GLK1 wire 格式、全部 native 代码、
+BTF 代码路径（只有内嵌 BTF 的镜像会走到，因为没有 `--btf` 开关）、
+`derive_nf_logger_registration` 的 BTF 门、`kernel_layout_verified` 门、v1 JSON 形状、
+`LegacyProfileConverter.kt` 及其 v1 转换、GLK1 wire 格式、全部 native 代码、
 `kernelsnitch/`，以及所有已发布的 profile。
 
 ## 进度
