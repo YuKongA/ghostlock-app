@@ -109,15 +109,19 @@ pub fn kernel_struct_macro(release: Option<&str>) -> Option<&'static str> {
         (6, 1) => Some("STRUCT_OFFSETS_6_1"),
         (6, 6) => Some("STRUCT_OFFSETS_6_6"),
         (6, 12) => Some("STRUCT_OFFSETS_6_12"),
+        (5, 10) => Some("STRUCT_OFFSETS_5_10"),
+        (5, 15) => Some("STRUCT_OFFSETS_5_15"),
         _ => None,
     }
 }
 
 /// Whether this release belongs to a layout family with retained verification
 /// evidence. Verification is per Android train, the same way the 6.x templates
-/// are keyed: `android14-6.1`, `android15-6.6`, `android16-6.12`, and
-/// `android13-5.15` (whose multicast layout was measured on the A301SO image).
-/// A mere `major.minor` match without the train suffix is not verified.
+/// are keyed: `android14-6.1`, `android15-6.6`, `android16-6.12`,
+/// `android12-5.10` (whose flat waiter and 0x3c0 stride were measured on the
+/// Poco F5 image) and `android13-5.15` (whose multicast layout was measured on
+/// the A301SO image). A mere `major.minor` match without the train suffix is
+/// not verified.
 pub fn kernel_layout_verified(release: Option<&str>) -> bool {
     let Some(release) = release else {
         return false;
@@ -129,6 +133,7 @@ pub fn kernel_layout_verified(release: Option<&str>) -> bool {
         (Some(6), Some(1)) => release.contains("-android14-"),
         (Some(6), Some(6)) => release.contains("-android15-"),
         (Some(6), Some(12)) => release.contains("-android16-"),
+        (Some(5), Some(10)) => release.contains("-android12-"),
         (Some(5), Some(15)) => release.contains("-android13-"),
         _ => false,
     }
@@ -225,5 +230,17 @@ mod tests {
         assert!(!kernel_layout_verified(Some(
             "5.15.178-g3575c47dc7ce-dirty"
         )));
+    }
+
+    #[test]
+    fn five_ten_layout_verification_follows_the_android12_train() {
+        assert_eq!(
+            kernel_struct_macro(Some("5.10.198-android12-9-00085-g226a9632f13d-ab11136126")),
+            Some("STRUCT_OFFSETS_5_10")
+        );
+        assert!(kernel_layout_verified(Some(
+            "5.10.198-android12-9-00085-g226a9632f13d-ab11136126"
+        )));
+        assert!(!kernel_layout_verified(Some("5.10.198-generic")));
     }
 }

