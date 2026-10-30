@@ -17,8 +17,35 @@ pub fn pselect_waiter_shift_for(release: Option<&str>) -> Option<i64> {
         // 6.6; the committed tables all measure 1.
         Some("STRUCT_OFFSETS_6_1") => Some(1),
         Some("STRUCT_OFFSETS_6_6") => Some(-2),
+        // The android12-5.10 and android13-5.15 select frames place the
+        // waiter two words below the fd_set base, the same as 6.6.
+        Some("STRUCT_OFFSETS_5_10") | Some("STRUCT_OFFSETS_5_15") => Some(-2),
         _ => None,
     }
+}
+
+/// SLUB stride each family's layout macro already carries. A measured stride
+/// only needs spelling out when it differs from this.
+///
+/// 5.10 has no entry: the only shipped 5.10 profile (Sony Xperia 5 IV) states
+/// 0x500, while mm_cache_init on three unrelated 5.10 images passes 0x3c0.
+/// The family is not uniform, so a default here would be a guess. A 5.10
+/// image whose stride could not be measured emits `null` and native falls back
+/// to `MM_STRUCT_SZ`.
+fn mm_default(macro_name: Option<&str>) -> Option<u32> {
+    match macro_name {
+        Some("STRUCT_OFFSETS_5_15") | Some("STRUCT_OFFSETS_6_1") => Some(0x400),
+        Some("STRUCT_OFFSETS_6_6") | Some("STRUCT_OFFSETS_6_12") => Some(0x500),
+        _ => None,
+    }
+}
+
+/// Families whose select route needs the compact waiter word table: the flat
+/// 5.10 `rt_mutex_waiter` has no `wake_state`, so `task`/`lock`/`prio`/
+/// `deadline`/`ww_ctx` sit at 0x30..0x50 and only the compact arm reaches
+/// them. 6.1 and 5.15 keep their existing geometry.
+fn flat_waiter_family(macro_name: Option<&str>) -> bool {
+    macro_name == Some("STRUCT_OFFSETS_5_10")
 }
 
 pub fn build_report(
@@ -29,6 +56,7 @@ pub fn build_report(
     structs: &BTreeMap<String, Option<u32>>,
     btf_size: usize,
     pselect_shift: Option<i64>,
+    mm_stride: Option<u32>,
 ) -> Value {
     let symbol_json: BTreeMap<String, Value> = symbols
         .iter()
@@ -63,12 +91,28 @@ pub fn build_report(
         "struct_fields": struct_json,
         "btf_size": btf_size,
     });
-    if kernel_layout_verified(release)
-        && crate::symbols::kernel_struct_macro(release) == Some("STRUCT_OFFSETS_6_1")
-    {
-        // 0x400 is the device SLUB stride, not the BTF 0x3c0
-        report["compact_waiter"] = json!(1);
-        report["mm_struct_sz"] = json!(0x400);
+    let macro_name = crate::symbols::kernel_struct_macro(release);
+    if kernel_layout_verified(release) {
+        // `compact_waiter` in a v1 report only ever meant the 6.1 tcp arm;
+        // the legacy importer routes on it, so a 5.x report must not carry it.
+        if macro_name == Some("STRUCT_OFFSETS_6_1") {
+            report["compact_waiter"] = json!(1);
+        }
+        // The stride is the SLUB object size, ALIGN(sizeof + 8, 64), not the
+        // BTF sizeof: the measured value when mm_cache_init could be
+        // disassembled, otherwise the family default. The 6.6/6.12 layout
+        // macros already carry their stride, so only a measured deviation is
+        // worth emitting there.
+        let default = mm_default(macro_name);
+        let emitted = match macro_name {
+            Some("STRUCT_OFFSETS_6_1")
+            | Some("STRUCT_OFFSETS_5_10")
+            | Some("STRUCT_OFFSETS_5_15") => mm_stride.or(default),
+            _ => mm_stride.filter(|measured| Some(*measured) != default),
+        };
+        if let Some(stride) = emitted {
+            report["mm_struct_sz"] = json!(stride);
+        }
     }
     report
 }
@@ -97,7 +141,9 @@ const CONF_TASK_FIELDS: &[(&str, &str)] = &[
 /// `null` so every generated profile carries every field of its route.
 const CONF_ROUTE_FIELDS: &[(&str, &[&str])] = &[
     ("tcp_zerocopy", &["compact_waiter"]),
-    ("select_stack", &["waiter_shift"]),
+    // `compact_waiter` selects the flat-waiter word table in the native
+    // select route, so a 5.10 profile needs it here.
+    ("select_stack", &["waiter_shift", "compact_waiter"]),
     (
         "multicast_waiter",
         &[
@@ -211,9 +257,18 @@ pub fn conf_route_geometry(
         .split('.')
         .next()
         .and_then(|part| part.parse::<u32>().ok());
+    let macro_name = crate::symbols::kernel_struct_macro(Some(release));
     match route {
         "select_stack" => pselect_shift
-            .map(|shift| vec![("waiter_shift", shift)])
+            .map(|shift| {
+                let mut geometry = vec![("waiter_shift", shift)];
+                // The flat 5.10 waiter has no `wake_state`, so the native
+                // compact word table is the only correct stamp for it.
+                if flat_waiter_family(macro_name) {
+                    geometry.push(("compact_waiter", 1));
+                }
+                geometry
+            })
             .unwrap_or_default(),
         // android14-6.1 is the compact-waiter family; no other family has a
         // measured tcp layout.
@@ -229,11 +284,40 @@ pub fn conf_route_geometry(
         // task/lock offsets and the fixed 5.x waiter-layout flag. Emit all of
         // them for every 5.x kernel so the generated profile runs without
         // manual edits; a kernel without BTF omits only the task/lock keys.
+        // Geometry that cannot fit the copied option buffer is dropped rather
+        // than written, since the app would otherwise accept an unrunnable
+        // branch.
         "multicast_waiter" if major == Some(5) => {
-            crate::derive::multicast_geometry_corroborated(structs)
+            let geometry = crate::derive::multicast_geometry_corroborated(structs);
+            if multicast_geometry_fits(&geometry) {
+                geometry
+            } else {
+                eprintln!(
+                    "warning: multicast geometry cannot fit the {} byte option buffer; \
+                     no multicast branch emitted",
+                    crate::derive::MULTICAST_5X_BUFFER_SIZE
+                );
+                Vec::new()
+            }
         }
         _ => Vec::new(),
     }
+}
+
+/// Whether a 5.x multicast stamp lands the whole `rt_mutex_waiter` inside the
+/// option buffer the kernel copies. `lock_offset` is absent when the image has
+/// no BTF; the check then uses the smallest possible lock field.
+pub fn multicast_geometry_fits(geometry: &[(&'static str, i64)]) -> bool {
+    let value = |key: &str| {
+        geometry
+            .iter()
+            .find(|(name, _)| *name == key)
+            .map(|(_, value)| *value)
+    };
+    let (Some(waiter_off), Some(buffer_size)) = (value("waiter_off"), value("buffer_size")) else {
+        return false;
+    };
+    waiter_off + value("lock_offset").unwrap_or(0) + 8 <= buffer_size
 }
 
 /// `offset` keys in the bundled profiles' order; `empty_zero_page` comes from
@@ -290,6 +374,9 @@ pub struct ConfInputs<'a> {
     pub phys_offset: Option<u64>,
     pub symbols: &'a BTreeMap<String, Option<u64>>,
     pub structs: &'a BTreeMap<String, Option<u32>>,
+    /// SLUB stride measured from `mm_cache_init`; the family default fills in
+    /// when the image could not be disassembled.
+    pub mm_stride: Option<u32>,
     pub route: Option<&'a str>,
     pub route_geometry: &'a [(&'static str, i64)],
     pub cred: &'a [(String, String)],
@@ -360,24 +447,38 @@ pub fn render_conf(input: &ConfInputs<'_>) -> String {
     // KernelSnitch: full universe. `collisions` is emitted for a verified
     // train (and every 5.x kernel); `mm_struct_sz` only where it applies. An
     // unverified release keeps both as `null` rather than omitting the block.
+    let macro_name = crate::symbols::kernel_struct_macro(Some(release));
     let mut snitch = Vec::new();
     if kernel_layout_verified(Some(release)) || major == Some(5) {
-        match major {
-            Some(6) => {
-                // = kernelsnitch-6x.conf
+        match macro_name {
+            // = kernelsnitch-6x.conf; 5.15 keeps the bundled profile's values.
+            Some("STRUCT_OFFSETS_5_10") => {
+                // 4 is carried from the hantu build, which ran every 5.10
+                // kernel at 4. The stride has no family default, so an image
+                // that could not be measured leaves the field null.
                 snitch.push(("collisions".to_string(), "4".to_string()));
-                if crate::symbols::kernel_struct_macro(Some(release)) == Some("STRUCT_OFFSETS_6_1")
-                {
+                if let Some(stride) = input.mm_stride.or_else(|| mm_default(macro_name)) {
+                    snitch.push(("mm_struct_sz".to_string(), stride.to_string()));
+                }
+            }
+            Some("STRUCT_OFFSETS_5_15") => {
+                snitch.push(("collisions".to_string(), "8".to_string()));
+                if let Some(stride) = input.mm_stride.or_else(|| mm_default(macro_name)) {
+                    snitch.push(("mm_struct_sz".to_string(), stride.to_string()));
+                }
+            }
+            // Other 5.x kernels keep the 5.15 defaults they shipped with.
+            _ if major == Some(5) => {
+                snitch.push(("collisions".to_string(), "8".to_string()));
+                snitch.push(("mm_struct_sz".to_string(), "1024".to_string()));
+            }
+            _ => {
+                snitch.push(("collisions".to_string(), "4".to_string()));
+                if macro_name == Some("STRUCT_OFFSETS_6_1") {
                     // 0x400 is the device SLUB stride, not the BTF sizeof (0x3c0).
                     snitch.push(("mm_struct_sz".to_string(), "1024".to_string()));
                 }
             }
-            Some(5) => {
-                // android13-5.15 measured defaults (bundled 5.15 profile).
-                snitch.push(("collisions".to_string(), "8".to_string()));
-                snitch.push(("mm_struct_sz".to_string(), "1024".to_string()));
-            }
-            _ => {}
         }
     }
     push_conf_block(
@@ -493,6 +594,7 @@ mod tests {
             phys_offset: None,
             symbols: &symbols,
             structs: &structs,
+            mm_stride: None,
             route: Some("select_stack"),
             route_geometry: &geometry,
             cred: &conf_cred_6x(),
@@ -500,7 +602,9 @@ mod tests {
         });
         assert!(!out.contains("include"));
         assert!(out.contains("kernel_phys_load = 1073741824"));
-        assert!(out.contains("route {\n  select_stack {\n    waiter_shift = -2\n  }\n}"));
+        assert!(out.contains(
+            "route {\n  select_stack {\n    waiter_shift = -2\n    compact_waiter = null\n  }\n}"
+        ));
         assert!(out.contains("collisions = 4"));
         assert!(out.contains("mm_struct_sz = null"));
         assert!(!out.contains("task_prio"));
@@ -524,6 +628,7 @@ mod tests {
             phys_offset: None,
             symbols: &symbols,
             structs: &structs,
+            mm_stride: None,
             route: Some("tcp_zerocopy"),
             route_geometry: &geometry,
             cred: &conf_cred_6x(),
@@ -560,6 +665,7 @@ mod tests {
             phys_offset: None,
             symbols: &symbols,
             structs: &structs,
+            mm_stride: None,
             route: Some("multicast_waiter"),
             route_geometry: &geometry,
             cred: &conf_cred_5x(&cred, 176),
@@ -596,6 +702,25 @@ mod tests {
         );
         assert!(
             conf_route_geometry("select_stack", "6.6.89-android15-8", None, &structs).is_empty()
+        );
+        // 5.10's flat waiter needs the compact word table; 5.15 keeps its own.
+        assert_eq!(
+            conf_route_geometry(
+                "select_stack",
+                "5.10.198-android12-9-00085-g226a9632f13d-ab11136126",
+                Some(-2),
+                &structs
+            ),
+            vec![("waiter_shift", -2), ("compact_waiter", 1)]
+        );
+        assert_eq!(
+            conf_route_geometry(
+                "select_stack",
+                "5.15.189-android13-8-00016-g51bba4309aac-ab14546557",
+                Some(-2),
+                &structs
+            ),
+            vec![("waiter_shift", -2)]
         );
         assert_eq!(
             conf_route_geometry("tcp_zerocopy", "6.1.118-android14-11", Some(1), &structs),
@@ -690,6 +815,7 @@ mod tests {
             phys_offset: None,
             symbols: &symbols,
             structs: &structs,
+            mm_stride: None,
             route: Some("multicast_waiter"),
             route_geometry: &[],
             cred: &[],
@@ -711,6 +837,7 @@ mod tests {
             phys_offset: None,
             symbols: &symbols,
             structs: &structs,
+            mm_stride: None,
             route: None,
             route_geometry: &[],
             cred: &[],
@@ -736,6 +863,7 @@ mod tests {
             phys_offset: None,
             symbols: &symbols,
             structs: &structs,
+            mm_stride: None,
             route: Some("multicast_waiter"),
             route_geometry: &geometry,
             cred: &[],
@@ -783,8 +911,47 @@ mod tests {
             &structs,
             0,
             pselect_waiter_shift_for(Some("6.7.1-generic")),
+            None,
         );
         assert!(report["pselect_waiter_shift"].is_null());
+    }
+
+    #[test]
+    fn json_report_carries_the_measured_510_stride_and_shift() {
+        let report = build_report(
+            Some("5.10.198-android12-9-00085-g226a9632f13d-ab11136126"),
+            0,
+            None,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            0,
+            pselect_waiter_shift_for(Some(
+                "5.10.198-android12-9-00085-g226a9632f13d-ab11136126",
+            )),
+            Some(0x3c0),
+        );
+        assert_eq!(report["pselect_waiter_shift"], -2);
+        assert_eq!(report["mm_struct_sz"], 0x3c0);
+        // A v1 report's `compact_waiter` means the 6.1 tcp arm to the legacy
+        // importer, so a 5.x report must not carry it.
+        assert!(report["compact_waiter"].is_null());
+    }
+
+    #[test]
+    fn json_report_omits_an_unmeasured_510_stride() {
+        let report = build_report(
+            Some("5.10.198-android12-9-00085-g226a9632f13d-ab11136126"),
+            0,
+            None,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            0,
+            Some(-2),
+            None,
+        );
+        // 5.10 strides disagree across images, so an unmeasured one is null
+        // rather than a family guess.
+        assert!(report["mm_struct_sz"].is_null());
     }
 
     /// Flatten a HOCON-ish profile into `section.key` -> value, ignoring
@@ -897,6 +1064,7 @@ mod tests {
             phys_offset: None,
             symbols: &symbols,
             structs: &structs,
+            mm_stride: None,
             route: Some("multicast_waiter"),
             route_geometry: &geometry,
             cred: &cred,

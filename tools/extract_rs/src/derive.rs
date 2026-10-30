@@ -48,6 +48,80 @@ pub fn unique_offset_optional(symbols: &RelSymbols, name: &str) -> Option<u64> {
     unique_offset(symbols, name).ok()
 }
 
+/// SLUB stride of the mm_struct slab, as the kernel actually creates it.
+/// `mm_cache_init` passes a size to `kmem_cache_create_usercopy` under
+/// `SLAB_HWCACHE_ALIGN`, so `calculate_sizes()` rounds the object up to the
+/// 64-byte cache line and the stride is `ALIGN(size, 64)`, never the raw
+/// `sizeof`. Only the disassembled argument is trusted: from 5.15 on the
+/// argument is `sizeof + cpumask_size()`, which the extractor cannot compute
+/// without the build's `NR_CPUS`, so a BTF sizeof is not a substitute.
+pub fn derive_mm_stride(
+    kernel: &[u8],
+    symbols: &RelSymbols,
+    sorted_offsets: &[u64],
+) -> Option<u32> {
+    let lines = match disassemble_symbol(
+        kernel,
+        symbols,
+        sorted_offsets,
+        "mm_cache_init",
+        OBJDUMP_CAP,
+    ) {
+        Ok(lines) => lines,
+        Err(err) => {
+            eprintln!("warning: mm_cache_init not disassembled ({err}); no stride measured");
+            return None;
+        }
+    };
+    let Some(size) = mm_cache_size_arg(&lines) else {
+        eprintln!(
+            "warning: mm_cache_init has no literal kmem_cache_create_usercopy size; \
+             no stride measured"
+        );
+        return None;
+    };
+    let stride = size.checked_add(63).map(|value| value & !63)?;
+    eprintln!("info: mm_struct cache size=0x{size:x} from mm_cache_init, stride=0x{stride:x}");
+    Some(stride)
+}
+
+/// The size argument `mm_cache_init` passes to `kmem_cache_create_usercopy`:
+/// the `mov w1, #<size>` (or movz/movk pair) that feeds the call.
+pub fn mm_cache_size_arg(lines: &[String]) -> Option<u32> {
+    let mov = Regex::new(r"(?i)\bmov\s+w1,\s*#0x([0-9a-f]+)").unwrap();
+    let movz = Regex::new(r"(?i)\bmovz\s+w1,\s*#0x([0-9a-f]+)(?:,\s*lsl\s*#(\d+))?").unwrap();
+    let movk = Regex::new(r"(?i)\bmovk\s+w1,\s*#0x([0-9a-f]+)(?:,\s*lsl\s*#(\d+))?").unwrap();
+    let call = Regex::new(r"(?i)\bbl\s+0x[0-9a-f]+").unwrap();
+    for (i, line) in lines.iter().enumerate() {
+        if !call.is_match(line) {
+            continue;
+        }
+        let mut size: Option<u32> = None;
+        for candidate in &lines[i.saturating_sub(12)..i] {
+            if let Some(caps) = mov.captures(candidate) {
+                return u32::from_str_radix(&caps[1], 16).ok();
+            }
+            if let Some(caps) = movz.captures(candidate) {
+                let imm = u32::from_str_radix(&caps[1], 16).ok()?;
+                size = Some(imm << shift_of(&caps));
+            } else if let Some(caps) = movk.captures(candidate) {
+                let imm = u32::from_str_radix(&caps[1], 16).ok()?;
+                size = Some(size.unwrap_or(0) | (imm << shift_of(&caps)));
+            }
+        }
+        if size.is_some() {
+            return size;
+        }
+    }
+    None
+}
+
+fn shift_of(caps: &regex::Captures) -> u32 {
+    caps.get(2)
+        .and_then(|m| m.as_str().parse::<u32>().ok())
+        .unwrap_or(0)
+}
+
 fn disassemble_symbol(
     kernel: &[u8],
     symbols: &RelSymbols,
@@ -234,10 +308,31 @@ pub fn multicast_waiter_off(
 #[cfg(test)]
 mod tests {
     use super::{
-        multicast_geometry_5x, multicast_geometry_btf_only, remove_waiter_uses_current,
-        select_cred_caps, select_cred_refs,
+        mm_cache_size_arg, multicast_geometry_5x, multicast_geometry_btf_only,
+        remove_waiter_uses_current, select_cred_caps, select_cred_refs,
     };
     use std::collections::BTreeMap;
+
+    #[test]
+    fn mm_cache_size_comes_from_the_argument_fed_to_the_call() {
+        let lines = vec![
+            "0000: stp x29, x30, [sp, #-0x20]!".to_string(),
+            "0004: mov w1, #0x3c0".to_string(),
+            "0008: mov x0, x20".to_string(),
+            "000c: bl 0x1234".to_string(),
+        ];
+        assert_eq!(mm_cache_size_arg(&lines), Some(0x3c0));
+    }
+
+    #[test]
+    fn mm_cache_size_assembles_a_movz_movk_pair() {
+        let lines = vec![
+            "0000: movz w1, #0x500".to_string(),
+            "0004: movk w1, #0x1, lsl #16".to_string(),
+            "0008: bl 0x1234".to_string(),
+        ];
+        assert_eq!(mm_cache_size_arg(&lines), Some(0x10000 | 0x500));
+    }
 
     #[test]
     fn cred_caps_selects_the_contiguous_non_zero_run() {
@@ -366,6 +461,32 @@ mod tests {
     }
 }
 
+/// Waiter sp locals proven by the `bl rt_mutex_init_waiter` call: the
+/// `add x0, sp, #imm` that precedes it. When the build inlines the init the
+/// symbol is absent and the caller falls back to the zero sweep.
+fn waiter_locals_from_init_call(lines: &[String], symbols: &RelSymbols) -> BTreeSet<u64> {
+    let mut locals = BTreeSet::new();
+    let Some(init_addr) = unique_offset_optional(symbols, "rt_mutex_init_waiter") else {
+        return locals;
+    };
+    let call_re = Regex::new(&format!(r"(?i)\bbl\s+0x{init_addr:x}\b")).unwrap();
+    let add_re = Regex::new(r"(?i)\badd\s+x0,\s*sp,\s*#0x([0-9a-f]+)\b").unwrap();
+    for (i, line) in lines.iter().enumerate() {
+        if !call_re.is_match(line) {
+            continue;
+        }
+        for back in (i.saturating_sub(12)..i).rev() {
+            if let Some(caps) = add_re.captures(&lines[back]) {
+                if let Ok(value) = u64::from_str_radix(&caps[1], 16) {
+                    locals.insert(value);
+                }
+                break;
+            }
+        }
+    }
+    locals
+}
+
 pub struct PselectLayout {
     pub shift: u64,
     pub waiter_local: u64,
@@ -381,7 +502,7 @@ pub fn derive_pselect_layout(
     kernel: &[u8],
     symbols: &RelSymbols,
     sorted_offsets: &[u64],
-    btf: &Btf,
+    btf: Option<&Btf>,
     route_nfds: u64,
 ) -> Result<PselectLayout> {
     let mut names: Vec<(&str, &str)> = vec![
@@ -471,20 +592,38 @@ pub fn derive_pselect_layout(
     }
 
     // 6.6 names the rb_nodes tree/pi_tree; 6.1 calls them
-    // tree_entry/pi_tree_entry (same offsets in the struct).
+    // tree_entry/pi_tree_entry (same offsets in the struct). Without BTF the
+    // waiter is seeded from the rt_mutex_init_waiter call instead.
     let pi_tree = btf
-        .field("rt_mutex_waiter", "pi_tree")
-        .or_else(|| btf.field("rt_mutex_waiter", "pi_tree_entry"));
-    let wake_state = btf.field("rt_mutex_waiter", "wake_state");
-    if pi_tree.is_none() || wake_state.is_none() {
-        return Err(ExtractError::new(
-            "BTF rt_mutex_waiter.pi_tree/wake_state missing",
-        ));
-    }
-    let pi_tree = pi_tree.unwrap() as u64;
-    let wake_state = wake_state.unwrap() as u64;
+        .and_then(|btf| btf.field("rt_mutex_waiter", "pi_tree"))
+        .or_else(|| btf.and_then(|btf| btf.field("rt_mutex_waiter", "pi_tree_entry")));
+    let wake_state = btf.and_then(|btf| btf.field("rt_mutex_waiter", "wake_state"));
+    let (pi_tree, wake_state) = match (pi_tree, wake_state) {
+        (Some(pi_tree), Some(wake_state)) => (pi_tree as u64, wake_state as u64),
+        (None, None) => {
+            eprintln!(
+                "info: no BTF rt_mutex_waiter pi_tree/wake_state; seeding the waiter \
+                 local from the rt_mutex_init_waiter argument and the zero store"
+            );
+            (0, 0)
+        }
+        _ => {
+            return Err(ExtractError::new(
+                "BTF rt_mutex_waiter has one of pi_tree/wake_state but not the other",
+            ))
+        }
+    };
 
     let mut waiter_candidates: Vec<(String, u64)> = Vec::new();
+    // A waiter local sourced from the rt_mutex_init_waiter argument is already
+    // validated by that call, so it bypasses the self-store filter below.
+    let mut from_init_call: BTreeSet<u64> = BTreeSet::new();
+    if btf.is_none() {
+        from_init_call = waiter_locals_from_init_call(&dis["futex_wait"], symbols);
+        for local in &from_init_call {
+            waiter_candidates.push(("x0".to_string(), *local));
+        }
+    }
     for (reg, imm) in add_sp_immediates(&dis["futex_wait"]) {
         if pi_tree != 0 {
             let re =
@@ -503,6 +642,31 @@ pub fn derive_pselect_layout(
     // Several registers may materialize the same sp local; dedupe by offset.
     let mut seen = BTreeSet::new();
     waiter_candidates.retain(|(_, imm)| seen.insert(*imm));
+    if waiter_candidates.len() != 1 {
+        // Other locals take a +pi_tree sized add too, so keep only candidates
+        // that self-store their base, and store a wake_state when there is one.
+        let lines = &dis["futex_wait"];
+        waiter_candidates.retain(|(reg, imm)| {
+            if from_init_call.contains(imm) {
+                return true;
+            }
+            let self_store = lines.iter().any(|line| {
+                Regex::new(&format!(r"(?i)\bstr\s+{reg},\s*\[sp,\s*#0x{imm:x}\]"))
+                    .unwrap()
+                    .is_match(line)
+            });
+            let wake_store = wake_state != 0
+                && lines.iter().any(|line| {
+                    Regex::new(&format!(
+                        r"(?i)\bstr\s+w\d+,\s*\[sp,\s*#0x{:x}\]",
+                        imm + wake_state
+                    ))
+                    .unwrap()
+                    .is_match(line)
+                });
+            self_store || wake_store
+        });
+    }
     if waiter_candidates.len() != 1 {
         return Err(ExtractError::new(format!(
             "futex waiter stack local not unique: {waiter_candidates:?}"

@@ -176,6 +176,7 @@ route { multicast_waiter { waiter_off = 96, buffer_size = 264 } }
 | 字段 | 含义 |
 |---|---|
 | `route.select_stack.waiter_shift` | select 路由 waiter 在栈上的相对位移（0 合法）；回退声明下对应 `fallback.route.select_stack.waiter_shift` |
+| `route.select_stack.compact_waiter` | select 路由的可选紧凑 waiter 标记。5.10 的平坦 `rt_mutex_waiter` 没有 `wake_state`，填 1 选择 native 的紧凑字表；6.x 配置省略该键 |
 | `route.tcp_zerocopy.compact_waiter` | tcp 路由的紧凑 waiter 布局标记；multicast 分支下同样需要（`route.multicast_waiter.compact_waiter`） |
 
 ### 4.5 multicast_waiter 路由字段（`route.multicast_waiter`）
