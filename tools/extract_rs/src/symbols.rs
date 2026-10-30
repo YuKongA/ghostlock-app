@@ -83,9 +83,12 @@ pub fn resolve_symbols(symbols: &BTreeMap<String, BTreeSet<u64>>, base: u64) -> 
     for (name, symbol) in SYMBOLS {
         result.insert((*name).to_string(), unique(symbols, symbol));
     }
+    // `loggers[NFPROTO_UNSPEC][NF_LOG_TYPE_ULOG]`, the slot
+    // `nfnetlink_log_init` registers `nfulnl_logger` into. `NF_LOG_TYPE_ULOG`
+    // is 1, so the slot is the second pointer of the row, not the third.
     result.insert(
         "off_slide_loggers_0_1".to_string(),
-        unique(symbols, "loggers").map(|value| value + 0x10),
+        unique(symbols, "loggers").map(|value| value + 8),
     );
     result
         .iter_mut()
