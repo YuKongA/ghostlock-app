@@ -194,6 +194,7 @@ addresses into runtime addresses.
 | Field | Meaning |
 |---|---|
 | `route.select_stack.waiter_shift` | Relative shift of the select-route waiter on the stack (0 is valid); under a fallback declaration this is `fallback.route.select_stack.waiter_shift` |
+| `route.select_stack.compact_waiter` | Optional compact-waiter flag for the select route. A 5.10 flat `rt_mutex_waiter` has no `wake_state`, so it states 1 to select the native compact word table; a 6.x profile omits it |
 | `route.tcp_zerocopy.compact_waiter` | Compact-waiter layout flag for the tcp route; the multicast branch needs it too (`route.multicast_waiter.compact_waiter`) |
 
 ### 4.5 multicast_waiter route fields (`route.multicast_waiter`)

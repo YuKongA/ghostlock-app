@@ -158,6 +158,11 @@ internal class AndroidProfileConfigController(
                 ) {
                     invalid += "$routePrefix.waiter_shift"
                 }
+                /* Absent means the 6.x split waiter; a 5.10 flat waiter states 1. */
+                val compact = value("$routePrefix.compact_waiter")
+                if (compact != null && (compact < 0L || compact > 0xffL)) {
+                    invalid += "$routePrefix.compact_waiter"
+                }
             }
 
             "multicast_waiter" -> {
@@ -874,7 +879,7 @@ internal class AndroidProfileConfigController(
         /** Fields each route branch carries, used to seed a switched-to route. */
         private val RouteBranchFields = mapOf(
             "tcp_zerocopy" to listOf("compact_waiter"),
-            "select_stack" to listOf("waiter_shift"),
+            "select_stack" to listOf("waiter_shift", "compact_waiter"),
             "multicast_waiter" to listOf(
                 "waiter_off", "buffer_size", "task_offset", "lock_offset",
                 "compact_waiter",
