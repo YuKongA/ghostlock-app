@@ -102,7 +102,7 @@ flowchart TD
 
 - 只有在 `kernel_layout_verified` 接受该 release 时才写 family 默认值，测量值优先。
   无 BTF 且无法反汇编的镜像不产生 stride，绝不用猜测值。5.10 没有 family 默认值，无法测量的
-  5.10 镜像写 `null`，native 继续用 `MM_STRUCT_SZ`。
+  5.10 镜像写 `null`，native 继续用 `MM_STRUCT_SZ = 0x500`。
 - v1 JSON 报告里的 `compact_waiter` 对 `LegacyProfileConverter.inferRoute` 只意味着
   6.1 的 tcp 分支，所以 5.x 报告仍不带它；只有 `--format conf` 的 select 分支声明。
 - `derive_pselect_layout` 仍要求 waiter 候选唯一。无 BTF 的种子只是增加候选，
@@ -116,8 +116,9 @@ flowchart TD
 没有格式迁移，已发布的 profile 语义不变。
 
 无法读取 `mm_cache_init` 的 5.10 镜像现在写 `mm_struct_sz = null`，不再借用 family 猜测值。
-native 随后使用 `MM_STRUCT_SZ = 0x500`，也就是唯一已发布 5.10 profile 的取值。
-三个互不相关的 5.10 镜像都测得 0x3c0，说明该族并不统一，Sony 的值可能是照抄编译期默认值。
+这不等于"没有值"：native 随后使用 `MM_STRUCT_SZ = 0x500`（1280），正是本次改动认为可疑的
+Sony 取值，因此无法测量的 5.10 镜像会悄悄拿到 1280 而不是 0x3c0。三个互不相关的 5.10 镜像
+都测得 0x3c0，说明该族并不统一，Sony 的值可能是照抄编译期默认值。
 在发布任何 5.10 profile 之前，应由持有该设备的维护者确认。
 
 5.10 之外唯一的行为变化是 `loggers` 回退。它修正的值 native 从不读取
@@ -135,6 +136,18 @@ native 目前还跑不了 5.10 平坦 waiter。`src/core/support/util.cpp` 的�
 提取器能产出几何、app 也会接受，但 native 的 stamp 是错的。修复应作为独立改动并附真机门禁，
 它所需的形态（新增 `waiter_prio_off` profile 字段，或按 `kernel_major == 5 && compact_waiter`
 判断）属于另一项契约决策。
+
+## 5.10 profile 的凭据 caps 值
+
+已发布的 Sony 5.10 profile 使用 `caps_value = -1`、`caps_count = 5`。
+`fill_profile_cred_copy` 会把这个值写进 `caps_count` 个连续字，因此 `cap_inheritable` 与
+`cap_ambient` 也会变成全 1，而不只是中间三个字。镜像里真实的 `init_cred` 这两个字为 0，
+中间三个为 `0x1ffffffffff`。
+
+提取器已经优先采用真实值：`select_cred_caps` 从第一个非零槽位起取连续等值段，因此带 BTF 的
+5.10 镜像会得到 `0x1ffffffffff` 与 `caps_count = 3`，与 5.15 profile 一致。Poco F5 profile
+应使用该测量值而非 `-1`。两者都能拿到 root，但只有测量值对应 `init_cred` 真实持有的状态。
+本次不附带任何 5.10 profile，因此这一点不阻塞。
 
 ## 验证矩阵
 

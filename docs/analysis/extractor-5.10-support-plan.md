@@ -130,10 +130,12 @@ a straight revert of the listed files; no persistent state, no format migration,
 profile already shipped changes meaning.
 
 A 5.10 image whose `mm_cache_init` cannot be read now emits `mm_struct_sz = null` rather
-than a family guess. Native then uses `MM_STRUCT_SZ = 0x500`, which is what the one shipped
-5.10 profile states. Three unrelated 5.10 images measure 0x3c0, so the family is not
-uniform and the Sony value may be copied from the compile-time default rather than measured.
-A maintainer with the Sony device should settle that before any 5.10 profile ships.
+than a family guess. That is not the same as "no value": native then uses
+`MM_STRUCT_SZ = 0x500` (1280), which is exactly the Sony figure this change treats as
+suspect, so an unmeasurable 5.10 image silently gets 1280 rather than 0x3c0. Three unrelated
+5.10 images measure 0x3c0, so the family is not uniform and the Sony value may be copied
+from the compile-time default rather than measured. A maintainer with the Sony device should
+settle that before any 5.10 profile ships.
 
 The one behavior change outside 5.10 is the `loggers` fallback. It corrects a value that
 native never reads (`slide_loggers_0_1` has no runtime consumer on this tree), so the
@@ -152,6 +154,19 @@ no Poco F5 profile ships in this change: the extractor can produce the geometry,
 will accept it, but the native stamp would be wrong. The fix belongs in its own change with a
 device gate, and the shape it needs (a `waiter_prio_off` profile field, or deriving the arm
 from `kernel_major == 5 && compact_waiter`) is a separate contract decision.
+
+## Credential caps value for a 5.10 profile
+
+The shipped Sony 5.10 profile uses `caps_value = -1` with `caps_count = 5`.
+`fill_profile_cred_copy` writes that value into every one of the `caps_count` words, so
+`cap_inheritable` and `cap_ambient` become all-ones as well as the three middle words. The
+image's real `init_cred` holds zero in those two and `0x1ffffffffff` in the middle three.
+
+The extractor already prefers the real value: `select_cred_caps` starts at the first non-zero
+slot and takes the contiguous run, so a 5.10 image with BTF yields `0x1ffffffffff` with
+`caps_count = 3`, matching the 5.15 profiles. A Poco F5 profile should carry that, not `-1`.
+Both reach root, but only the measured one is a state `init_cred` actually holds. No 5.10
+profile ships in this change, so nothing here depends on it.
 
 ## Verification matrix
 
