@@ -82,16 +82,85 @@ pub fn ensure_rtmutex_43499_unpatched(
         return Ok(start);
     }
     Err(ExtractError::already_fixed(format!(
-        "remove_waiter()@{start:#x} never reads current (no mrs sp_el0); \
-         rtmutex UAF fix is present"
+        "remove_waiter()@{start:#x} clears pi_blocked_on through waiter->task \
+         instead of current; rtmutex UAF fix (CVE-2026-43499) is present"
     )))
 }
 
-/// True when `remove_waiter()` still operates on `current` (vulnerable):
-/// the fixed variant no longer contains `mrs xN, sp_el0`.
+/// Registers reachable from `seeds` through `mov xD, xS` copies.
+fn propagate_mov_aliases(dis: &[String], seeds: &[String]) -> BTreeSet<String> {
+    let mov = Regex::new(r"(?i)\bmov\s+(x\d+)\s*,\s*(x\d+)\b").unwrap();
+    let mut set: BTreeSet<String> = seeds.iter().map(|seed| seed.to_ascii_lowercase()).collect();
+    loop {
+        let mut grew = false;
+        for line in dis {
+            if let Some(caps) = mov.captures(line) {
+                let destination = caps[1].to_ascii_lowercase();
+                let source = caps[2].to_ascii_lowercase();
+                if set.contains(&source) && set.insert(destination) {
+                    grew = true;
+                }
+            }
+        }
+        if !grew {
+            return set;
+        }
+    }
+}
+
+/// True when `remove_waiter()` still operates on `current` (vulnerable).
+///
+/// The CVE-2026-43499 fix (upstream `3bfdc63`, plus the CVE-2026-53163
+/// follow-up) moves the `pi_lock` / `pi_blocked_on` handling from `current` to
+/// `waiter->task` and hands that task to `rt_mutex_adjust_prio_chain()`.
+/// Patched functions still read `sp_el0` for their own preempt / lockdep
+/// bookkeeping, so "contains `mrs xN, sp_el0`" is not a patch signal on its
+/// own: it classified patched 5.15/6.x kernels as vulnerable.
+///
+/// The verdict comes from the base register of the zero store that clears
+/// `pi_blocked_on`:
+///   * vulnerable: the base is `current` (`mrs Xn, sp_el0` or a copy of it);
+///   * patched:    the base is `waiter->task` (`ldr Xn, [waiter, #task_off]`).
+/// When neither shape is present the legacy `mrs` test is kept, so kernels
+/// that match neither pattern keep their previous verdict.
 pub fn remove_waiter_uses_current(dis: &[String]) -> bool {
-    let mrs_current = Regex::new(r"(?i)\bmrs\s+x\d+,\s*s3_0_c4_c1_0\b").unwrap();
-    dis.iter().any(|line| mrs_current.is_match(line))
+    let mrs_current = Regex::new(r"(?i)\bmrs\s+(x\d+)\s*,\s*(?:sp_el0|s3_0_c4_c1_0)\b").unwrap();
+    let load_task =
+        Regex::new(r"(?i)\bldr\s+(x\d+)\s*,\s*\[\s*(x\d+)\s*(?:,\s*#[^\]]*)?\]").unwrap();
+    let zero_store =
+        Regex::new(r"(?i)\bstr\s+xzr\s*,\s*\[\s*(x\d+)\s*(?:,\s*#[^\]]*)?\]").unwrap();
+
+    let mrs_seeds: Vec<String> = dis
+        .iter()
+        .filter_map(|line| mrs_current.captures(line).map(|caps| caps[1].to_string()))
+        .collect();
+    if mrs_seeds.is_empty() {
+        // No `current` at all: the fix removed it from the function.
+        return false;
+    }
+    let current = propagate_mov_aliases(dis, &mrs_seeds);
+    let waiter = propagate_mov_aliases(dis, &["x1".to_string()]);
+    let waiter_task: BTreeSet<String> = dis
+        .iter()
+        .filter_map(|line| load_task.captures(line))
+        .filter(|caps| waiter.contains(&caps[2].to_ascii_lowercase()))
+        .map(|caps| caps[1].to_ascii_lowercase())
+        .collect();
+
+    let mut clears_on_waiter_task = false;
+    for line in dis {
+        let Some(caps) = zero_store.captures(line) else {
+            continue;
+        };
+        let base = caps[1].to_ascii_lowercase();
+        if current.contains(&base) {
+            return true;
+        }
+        if waiter_task.contains(&base) {
+            clears_on_waiter_task = true;
+        }
+    }
+    !clears_on_waiter_task
 }
 
 /// Some Android kernels inline `tcp_zerocopy_receive()` into the TCP option
@@ -316,7 +385,7 @@ mod tests {
     }
 
     #[test]
-    fn patched_remove_waiter_never_reads_current() {
+    fn patched_remove_waiter_clears_pi_blocked_on_on_waiter_task() {
         let dis = vec![
             "0106f91c: ldr x20, [x23, #0x50]".to_string(),
             "0106f964: str xzr, [x20, #0x938]".to_string(),
@@ -333,6 +402,34 @@ mod tests {
             "01068e30: str xzr, [x20, #0x938]".to_string(),
         ];
         assert!(remove_waiter_uses_current(&dis));
+    }
+
+    #[test]
+    fn vulnerable_remove_waiter_through_a_current_copy() {
+        let dis = vec![
+            "01068de0: mrs x20, sp_el0".to_string(),
+            "01068de4: mov x21, x20".to_string(),
+            "01068e30: str xzr, [x21, #0x938]".to_string(),
+        ];
+        assert!(remove_waiter_uses_current(&dis));
+    }
+
+    /// PD2361 5.15.197 after the Android backport: `remove_waiter()` still
+    /// reads `SP_EL0` for preempt/lockdep bookkeeping, but it clears
+    /// `pi_blocked_on` on `waiter->task`. The old `mrs`-only test called this
+    /// kernel vulnerable.
+    #[test]
+    fn patched_backport_still_reads_sp_el0() {
+        let dis = vec![
+            "ffffffc009852e48: mov x23, x1".to_string(),
+            "ffffffc009852e64: ldr x20, [x23, #0x30]".to_string(),
+            "ffffffc009852e6c: mrs x25, SP_EL0".to_string(),
+            "ffffffc009852e78: add x22, x20, #0x884".to_string(),
+            "ffffffc009852ef0: str xzr, [x20, #0x8b0]".to_string(),
+            "ffffffc009853024: str xzr, [x8, #0x28]".to_string(),
+            "ffffffc009853104: mov x5, x20".to_string(),
+        ];
+        assert!(!remove_waiter_uses_current(&dis));
     }
 
     #[test]
@@ -1025,4 +1122,144 @@ pub fn multicast_geometry_btf_only(
         geometry.push(("lock_offset", i64::from(lock)));
     }
     geometry
+}
+
+/// Recover the image offset of `__tracepoint_sys_exit->funcs` — the write
+/// target of the vr.ko neutralization (W1c). The tracepoint struct is a data
+/// symbol and is absent from kallsyms on CONFIG_KALLSYMS_ALL=n kernels, so
+/// derive it from the iterator's code instead: `__traceiter_sys_exit` loads
+/// `tp->funcs` with `adrp xA, <page>` + `ldr xB, [xA, #imm]` and immediately
+/// null-checks the loaded register (the `cbz xB` that guards the probe loop).
+///
+/// Validation gates (all must pass, else Err):
+///   * the adrp+ldr+cbz signature must be found on __traceiter_sys_exit;
+///   * the same signature must be found on __traceiter_sys_enter;
+///   * the two recovered &__tracepoint structs must sit exactly one BTF
+///     `sizeof(struct tracepoint)` apart (sys_enter and sys_exit are emitted
+///     back-to-back by the same trace/events/syscalls.h unit);
+///   * with BTF present, each struct's +funcs member offset must match
+///     BTF `struct tracepoint .funcs`.
+pub fn derive_sys_exit_tp_funcs(
+    kernel: &[u8],
+    symbols: &RelSymbols,
+    sorted_offsets: &[u64],
+    btf: Option<&Btf>,
+) -> Result<u64> {
+    let btf_funcs = btf.and_then(|b| b.field("tracepoint", "funcs"));
+    let btf_tp_size = btf.and_then(|b| b.size("tracepoint"));
+
+    let sys_exit = tracepoint_funcs_field(
+        kernel,
+        symbols,
+        sorted_offsets,
+        "__traceiter_sys_exit",
+        btf_funcs,
+    )?;
+    let sys_enter = tracepoint_funcs_field(
+        kernel,
+        symbols,
+        sorted_offsets,
+        "__traceiter_sys_enter",
+        btf_funcs,
+    )?;
+    // __tracepoint_sys_exit->funcs - __tracepoint_sys_enter->funcs
+    let delta = sys_exit
+        .checked_sub(sys_enter)
+        .ok_or_else(|| ExtractError::new("sys_exit funcs field precedes sys_enter"))?;
+    let size = btf_tp_size.unwrap_or(0x50);
+    if delta != u64::from(size) {
+        return Err(ExtractError::new(format!(
+            "sys_exit/sys_enter tracepoint structs are {delta:#x} apart, expected {size:#x} \
+             (sizeof(struct tracepoint)); refusing to emit sys_exit_tp_funcs"
+        )));
+    }
+    Ok(sys_exit)
+}
+
+/// One tracepoint's `tp->funcs` field address, from its iterator's code.
+fn tracepoint_funcs_field(
+    kernel: &[u8],
+    symbols: &RelSymbols,
+    sorted_offsets: &[u64],
+    iterator: &str,
+    btf_funcs: Option<u32>,
+) -> Result<u64> {
+    let text = disassemble_symbol(kernel, symbols, sorted_offsets, iterator, 0x40)?;
+    let adrp_re = Regex::new(r"(?i)^adrp\s+(x\d+),\s*0x([0-9a-f]+)$").unwrap();
+    let ldr_re = Regex::new(r"(?i)^ldr\s+(x\d+),\s*\[(x\d+),\s*#(0x[0-9a-f]+|\d+)\]$")
+        .unwrap();
+    let cbz_re = Regex::new(r"(?i)^cbz\s+(x\d+),").unwrap();
+
+    // (base register, page base) for every materialized adrp, in order.
+    let adrp_pages: Vec<(String, u64)> = text
+        .iter()
+        .filter_map(|line| adrp_caps_or_none(&adrp_re, line))
+        .collect();
+    for (index, line) in text.iter().enumerate() {
+        let (dest, base, imm) = match ldr_caps_or_none(&ldr_re, line) {
+            Some(caps) => caps,
+            None => continue,
+        };
+        // the ldr base register must come from an adrp that precedes it
+        let page_base = adrp_pages
+            .iter()
+            .take(index)
+            .rev()
+            .find(|(reg, _)| *reg == base)
+            .map(|(_, page)| *page);
+        let page_base = match page_base {
+            Some(page) => page,
+            None => continue,
+        };
+        // the destination register must be null-checked within 2 insns
+        // (the guard in front of the probe loop)
+        let checked = text
+            .iter()
+            .skip(index + 1)
+            .take(2)
+            .any(|l| match cbz_re.captures(l) {
+                Some(caps) => caps[1].eq_ignore_ascii_case(&dest),
+                None => false,
+            });
+        if !checked {
+            continue;
+        }
+        let field = page_base + imm;
+        // BTF corroboration: the struct base must be a plausible kernel
+        // image offset (>= 0x100000, 8-aligned after removing the funcs
+        // member offset).
+        if let Some(funcs_off) = btf_funcs {
+            let struct_base = field
+                .checked_sub(u64::from(funcs_off))
+                .ok_or_else(|| ExtractError::new("funcs field underflows BTF offset"))?;
+            if struct_base < 0x100000 || (field & 7) != 0 {
+                return Err(ExtractError::new(format!(
+                    "implausible tracepoint struct base {struct_base:#x} for {iterator}"
+                )));
+            }
+        }
+        return Ok(field);
+    }
+    Err(ExtractError::new(format!(
+        "no adrp+ldr+cbz funcs-load signature found in {iterator}"
+    )))
+}
+
+fn adrp_caps_or_none(re: &Regex, line: &str) -> Option<(String, u64)> {
+    let caps = re.captures(line)?;
+    let page = u64::from_str_radix(&caps[2], 16).ok()?;
+    Some((caps[1].to_ascii_lowercase(), page))
+}
+
+fn ldr_caps_or_none(re: &Regex, line: &str) -> Option<(String, String, u64)> {
+    let caps = re.captures(line)?;
+    let imm_text = caps[3].replace("0x", "");
+    let imm = u64::from_str_radix(&imm_text, 16)
+        .or_else(|_| caps[3].parse::<u64>())
+        .ok()?;
+    Some((
+        caps[1].to_ascii_lowercase(),
+        caps[2].to_ascii_lowercase(),
+        imm,
+    ))
 }
