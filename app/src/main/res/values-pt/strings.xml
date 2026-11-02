@@ -17,7 +17,6 @@
 <string name="action_running">Correndo…</string>
 <string name="advanced_settings">Opções avançadas</string>
 <string name="advanced_settings_summary">Perfis, logs de depuração e configurações de teste</string>
-<string name="androidx_startup">androidx.startup</string>
 <string name="app_name">GhostLock</string>
 <string name="builtin_auto_no_match">Correspondência automática selecionada; nenhum perfil corresponde a este kernel</string>
 <string name="builtin_edit_save_hint">Perfis integrados não podem ser salvos; use Salvar como para armazenar uma cópia.</string>
@@ -37,7 +36,6 @@
 <string name="debug_profile_override">Substituições de parâmetros avançados</string>
 <string name="debug_profile_override_summary">Substitua qualquer campo numérico do perfil</string>
 <string name="debug_profile_override_warning">Não altere os parâmetros padrão a menos que saiba exatamente o que está fazendo.</string>
-<string name="default_popup_window_title">Janela pop-up</string>
 <string name="device_label">Dispositivo</string>
 <string name="dialog_dismiss">Liberar</string>
 <string name="dialog_open_guide">Guia aberto</string>
@@ -138,8 +136,6 @@
 <string name="import_no_match">Importado, mas seu lançamento não corresponde a este kernel e não será aplicado</string>
 <string name="import_result_title">Resultado da importação</string>
 <string name="import_success">Deslocamentos importados</string>
-<string name="in_progress">Em andamento</string>
-<string name="indeterminate">Parcialmente verificado</string>
 <string name="kernel_label">Núcleo</string>
 <string name="kernel_profile_invalid">Perfil precisa de correção</string>
 <string name="kernel_profile_invalid_summary">Corrija os campos marcados</string>
@@ -169,7 +165,6 @@
 <string name="manager_picker_title">Escolha o gerenciador raiz</string>
 <string name="manager_show_all">Mostrar todos os aplicativos</string>
 <string name="manager_summary_auto">Automático (recomendado)</string>
-<string name="not_selected">Não selecionado</string>
 <string name="offsets_already_exist">Os deslocamentos já existem (integrados)</string>
 <string name="opensource_info">Direitos autorais © 2026 YuKongA</string>
 <string name="override_export">Exportar configuração</string>
@@ -229,7 +224,6 @@ Substituí-los pelos novos valores?"</string>
 <string name="run_interrupted_title">Execução anterior interrompida</string>
 <string name="safe_mode_label">Modo de segurança</string>
 <string name="safe_mode_summary">Desative todos os módulos</string>
-<string name="selected">Selecionada</string>
 <string name="shizuku_label">Executar via Shizuku</string>
 <string name="shizuku_recommended_hint">Este kernel recomenda rodar via Shizuku</string>
 <string name="shizuku_status_checking">Verificando o status da Shizuku</string>
@@ -238,13 +232,7 @@ Substituí-los pelos novos valores?"</string>
 <string name="shizuku_status_ready">Shizuku pronto</string>
 <string name="shizuku_summary">Ignorar desvio de Seccomp</string>
 <string name="soc_label">SoC</string>
-<string name="state_empty">Vazia</string>
-<string name="state_off">Desligada</string>
-<string name="state_on">Ativado</string>
-<string name="switch_role">Interruptor</string>
-<string name="tab">Guia</string>
 <string name="target_kernel">Kernel de destino: %1$s</string>
-<string name="template_percent">%1$d por cento.</string>
 <string name="templates_section">Modelos (referência, não preenchidos)</string>
 <string name="user_profile_convert">Exportar como v2</string>
 <string name="user_profile_convert_failed">Não foi possível exportar uma cópia v2</string>
@@ -278,24 +266,4 @@ Substituí-los pelos novos valores?"</string>
 <string name="w3_shizuku_hint_enable">Habilitar</string>
 <string name="w3_shizuku_hint_message">A última execução falhou no estágio de desvio do seccomp W3. A execução via Shizuku (shell uid, sem seccomp) ignora isso.</string>
 <string name="w3_shizuku_hint_title">Habilitar Shizuku?</string>
-<string name="dummy_ae_11">false</string>
-<string name="dummy_ae_12">false</string>
-<string name="dummy_ae_19">false</string>
-<string name="dummy_ae_1a">false</string>
-<string name="dummy_ae_1b">false</string>
-<string name="dummy_ae_1c">false</string>
-<string name="dummy_ae_1d">false</string>
-<string name="dummy_ae_1e">false</string>
-<string name="dummy_ae_1f">false</string>
-<string name="dummy_ae_21">false</string>
-<string name="dummy_ae_22">false</string>
-<string name="dummy_ae_30">false</string>
-<string name="dummy_ae_35">false</string>
-<string name="dummy_ae_b6">false</string>
-<string name="dummy_ae_e8">false</string>
-<string name="dummy_ae_e9">false</string>
-<string name="dummy_ae_fa">false</string>
-<string name="dummy_ae_ff">false</string>
-<string name="dummy_ae_105">false</string>
-<string name="dummy_ae_106">false</string>
 </resources>
