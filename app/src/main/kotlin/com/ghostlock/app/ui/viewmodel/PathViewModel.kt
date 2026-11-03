@@ -6,7 +6,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import com.ghostlock.app.ui.backend.BackendSessionStore
-import com.ghostlock.app.ui.screen.module.backends.BackendSelection
+import com.ghostlock.app.backend.declarations.BackendSelection
+import com.ghostlock.app.backend.registry.Backends
 
 /**
  * 「路径」页（backend 选择 + CVE-2026-43499 实验链）的页面状态。
@@ -34,10 +35,11 @@ class PathViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * 切换选中的 backend。
      *
-     * @param index [com.ghostlock.app.ui.screen.module.backends.Backends.all] 的下标。
+     * @param index [com.ghostlock.app.backend.registry.Backends.all] 的下标。
      * @note 同步写回 [BackendSelection]，保持主页 badge/底部导航与路径页一致。
      */
     fun selectBackend(index: Int) {
+        if (Backends.all.getOrNull(index)?.let { Backends.isSelectable(it) } != true) return
         selectedIndex = index
         BackendSelection.index = index
         /* task-27：保存选择并同步该 backend 的配置内容（框架负责，内容由 backend 提供）。 */

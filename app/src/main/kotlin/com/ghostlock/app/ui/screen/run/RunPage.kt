@@ -66,8 +66,8 @@ import com.ghostlock.app.ui.backend.BackendRunDispatch
 import com.ghostlock.app.ui.backend.BackendRunDispatcher
 import com.ghostlock.app.ui.backend.BackendRunGate
 import com.ghostlock.app.ui.backend.RunPageContext
-import com.ghostlock.app.ui.screen.module.backends.BackendSelection
-import com.ghostlock.app.ui.screen.module.backends.Backends
+import com.ghostlock.app.backend.declarations.BackendSelection
+import com.ghostlock.app.backend.registry.Backends
 import com.ghostlock.app.ui.backend.BackendRunUiState
 import com.ghostlock.app.ui.viewmodel.BackendRunViewModel
 import com.ghostlock.app.log.LogLevel
@@ -264,6 +264,14 @@ fun RunPageMaterial(bottomInnerPadding: Dp) {
                                 TerminalEntry(LogOrigin.KOTLIN, LogLevel.Warn, reason, elapsed),
                             )
                         }
+                        BackendRunUiState.HandoffRequested -> channel.trySend(
+                            TerminalEntry(
+                                LogOrigin.KOTLIN,
+                                LogLevel.Info,
+                                "backend run: handoff-requested",
+                                elapsed,
+                            ),
+                        )
                         is BackendRunUiState.Finished -> when (val result = runState.result) {
                             is FlowResult.Ok -> {
                                 channel.trySend(
@@ -293,26 +301,6 @@ fun RunPageMaterial(bottomInnerPadding: Dp) {
                         }
                     }
                     state = RunState.Done
-                    /* 98260：成功也须重启清理（PARKED 持有 fake cred 页）；独立警示条。 */
-                    /* 98260：必须重启由 BootSafetyStore 唯一权威判定（Failed.evidence 不被基类合并）。 */
-                    val finalState = backendRunViewModel.runState
-                    if (backendSpec?.id == com.ghostlock.app.backend.BackendId.CVE_98260) {
-                        val evidenceReboot = finalState is BackendRunUiState.Finished &&
-                            finalState.result.evidence["mustReboot"] == "true"
-                        val storeReboot = runCatching {
-                            com.ghostlock.app.data.cve98260.BootSafetyStore.load(context).isBlocked()
-                        }.getOrDefault(false)
-                        if (evidenceReboot || storeReboot) {
-                            channel.trySend(
-                                TerminalEntry(
-                                    LogOrigin.KOTLIN,
-                                    LogLevel.Warn,
-                                    context.getString(R.string.run_restart_required),
-                                    elapsed,
-                                ),
-                            )
-                        }
-                    }
                 }
             }
         }
@@ -413,13 +401,13 @@ fun RunPageMaterial(bottomInnerPadding: Dp) {
                                 startAttack()
                             }
                             RunState.Running -> {
-                                /* 98260：触发后不可中止（不得 kill/timeout payload）。 */
+                                /* 不可中止 backend：触发后不得 kill/timeout payload。 */
                                 if (backendSpec?.abortable == false) {
                                     channel.trySend(
                                         TerminalEntry(
                                             LogOrigin.KOTLIN,
                                             LogLevel.Warn,
-                                            context.getString(R.string.run_abort_disabled_cve98260),
+                                            context.getString(R.string.run_abort_disabled),
                                             0L,
                                         ),
                                     )
@@ -538,6 +526,14 @@ fun RunPageMiuix(bottomInnerPadding: Dp) {
                                 TerminalEntry(LogOrigin.KOTLIN, LogLevel.Warn, reason, elapsed),
                             )
                         }
+                        BackendRunUiState.HandoffRequested -> channel.trySend(
+                            TerminalEntry(
+                                LogOrigin.KOTLIN,
+                                LogLevel.Info,
+                                "backend run: handoff-requested",
+                                elapsed,
+                            ),
+                        )
                         is BackendRunUiState.Finished -> when (val result = runState.result) {
                             is FlowResult.Ok -> {
                                 channel.trySend(
@@ -567,26 +563,6 @@ fun RunPageMiuix(bottomInnerPadding: Dp) {
                         }
                     }
                     state = RunState.Done
-                    /* 98260：成功也须重启清理（PARKED 持有 fake cred 页）；独立警示条。 */
-                    /* 98260：必须重启由 BootSafetyStore 唯一权威判定（Failed.evidence 不被基类合并）。 */
-                    val finalState = backendRunViewModel.runState
-                    if (backendSpec?.id == com.ghostlock.app.backend.BackendId.CVE_98260) {
-                        val evidenceReboot = finalState is BackendRunUiState.Finished &&
-                            finalState.result.evidence["mustReboot"] == "true"
-                        val storeReboot = runCatching {
-                            com.ghostlock.app.data.cve98260.BootSafetyStore.load(context).isBlocked()
-                        }.getOrDefault(false)
-                        if (evidenceReboot || storeReboot) {
-                            channel.trySend(
-                                TerminalEntry(
-                                    LogOrigin.KOTLIN,
-                                    LogLevel.Warn,
-                                    context.getString(R.string.run_restart_required),
-                                    elapsed,
-                                ),
-                            )
-                        }
-                    }
                 }
             }
         }
@@ -689,13 +665,13 @@ fun RunPageMiuix(bottomInnerPadding: Dp) {
                                 startAttack()
                             }
                             RunState.Running -> {
-                                /* 98260：触发后不可中止（不得 kill/timeout payload）。 */
+                                /* 不可中止 backend：触发后不得 kill/timeout payload。 */
                                 if (backendSpec?.abortable == false) {
                                     channel.trySend(
                                         TerminalEntry(
                                             LogOrigin.KOTLIN,
                                             LogLevel.Warn,
-                                            context.getString(R.string.run_abort_disabled_cve98260),
+                                            context.getString(R.string.run_abort_disabled),
                                             0L,
                                         ),
                                     )

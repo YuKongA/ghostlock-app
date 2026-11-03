@@ -1,5 +1,7 @@
-/** @file common/gl_log.c
- *  纯 C 实现（2026-10-18 用户裁定）。状态只有两个：导出 fd 与阈值，见头文件。
+/**
+ * @file common/gl_log.c
+ * @brief Implement the shared C logger for JNI libraries and standalone executables.
+ * @note Each linked DSO owns independent fd, severity, and elapsed-time state.
  */
 #include "common/gl_log.h"
 
@@ -8,10 +10,9 @@
 #include <unistd.h>
 #include <time.h>
 
-/* 每个 DSO 一份：本文件编进静态库后分别链进三个 JNI 库，各自拿到自己的副本。 */
+/* Each DSO or standalone executable owns its logger state. */
 static _Atomic int g_export_fd = -1;
 static _Atomic int g_min_level = GL_LOG_INFO;
-static _Atomic int g_timestamps = 1;
 /* 启动（首次用到日志）之后的毫秒数：单调时钟，不受系统改时间影响。 */
 static _Atomic long long g_start_ms = -1;
 
@@ -24,6 +25,7 @@ int gl_log_export_fd(void) {
 }
 
 int gl_log_attach_fd(const int fd, const int timestamps, const gl_log_level min_level) {
+    (void)timestamps;
     int owned = -1;
     if (fd >= 0) {
         owned = fcntl(fd, F_DUPFD_CLOEXEC, 0);
@@ -31,7 +33,6 @@ int gl_log_attach_fd(const int fd, const int timestamps, const gl_log_level min_
     }
     const int previous = atomic_exchange(&g_export_fd, owned);
     if (previous >= 0) close(previous);
-    atomic_store(&g_timestamps, timestamps != 0 ? 1 : 0);
     atomic_store(&g_min_level, (int) min_level);
     return owned;
 }
@@ -45,11 +46,11 @@ gl_log_level gl_log_min_level(void) {
 }
 
 void gl_log_set_timestamps(const int enabled) {
-    atomic_store(&g_timestamps, enabled != 0 ? 1 : 0);
+    (void)enabled;
 }
 
 int gl_log_timestamps(void) {
-    return atomic_load(&g_timestamps);
+    return 1;
 }
 
 static long long now_ms(void) {
@@ -60,13 +61,20 @@ static long long now_ms(void) {
     return (long long) ts.tv_sec * 1000LL + (long long) (ts.tv_nsec / 1000000L);
 }
 
-/** 首次调用时记下起点；之后返回“启动后毫秒数”。 */
+/**
+ * @brief Return monotonic milliseconds since the first logger call.
+ * @return Nonnegative elapsed milliseconds; zero when the clock is unavailable.
+ */
 static long long elapsed_ms(void) {
     const long long now = now_ms();
     long long base = atomic_load(&g_start_ms);
     if (base < 0) {
-        atomic_store(&g_start_ms, now);
-        base = now;
+        long long expected = -1;
+        if (atomic_compare_exchange_strong(&g_start_ms, &expected, now)) {
+            base = now;
+        } else {
+            base = expected;
+        }
     }
     return now - base;
 }
@@ -83,37 +91,91 @@ gl_log_level gl_log_level_from_name(const char *name) {
     return GL_LOG_INFO;
 }
 
-/* V / ~ / * / - / !（与 Kotlin 侧同一张表）。 */
+/**
+ * @brief Return the canonical one-letter marker for a log level.
+ * @param level Project severity.
+ * @return V, D, I, W, or E; invalid values map to I.
+ */
 static char level_mark(const gl_log_level level) {
     switch (level) {
         case GL_LOG_VERBOSE: return 'V';
-        case GL_LOG_DEBUG: return '~';
-        case GL_LOG_WARN: return '-';
-        case GL_LOG_ERROR: return '!';
-        case GL_LOG_INFO: break;
+        case GL_LOG_DEBUG: return 'D';
+        case GL_LOG_INFO: return 'I';
+        case GL_LOG_WARN: return 'W';
+        case GL_LOG_ERROR: return 'E';
     }
-    return '*';
+    return 'I';
 }
 
-/* 行首方括号里的内容：有开关时 `* 1234ms`，没有时只有级别符号。 */
-static void head_into(char *out, const size_t capacity, const gl_log_level level) {
-    if (atomic_load(&g_timestamps) != 0) {
-        snprintf(out, capacity, "%c %lldms", level_mark(level), elapsed_ms());
-    } else {
-        snprintf(out, capacity, "%c", level_mark(level));
+/**
+ * @brief Map a project severity to Android's matching log priority.
+ * @param level Project severity.
+ * @return Matching Android priority, with invalid values mapped to INFO.
+ */
+#if defined(__ANDROID__)
+static int android_priority(const gl_log_level level) {
+    switch (level) {
+        case GL_LOG_VERBOSE: return ANDROID_LOG_VERBOSE;
+        case GL_LOG_DEBUG: return ANDROID_LOG_DEBUG;
+        case GL_LOG_INFO: return ANDROID_LOG_INFO;
+        case GL_LOG_WARN: return ANDROID_LOG_WARN;
+        case GL_LOG_ERROR: return ANDROID_LOG_ERROR;
     }
+    return ANDROID_LOG_INFO;
+}
+#endif
+
+/**
+ * @brief Normalize controls to spaces and replace non-ASCII bytes with '?'.
+ * @param text NUL-terminated message buffer.
+ * @return Sanitized byte count, excluding the terminator.
+ */
+static size_t sanitize_ascii(char *text) {
+    size_t output = 0;
+    int pending_space = 0;
+    for (size_t input = 0; text[input] != '\0'; ++input) {
+        unsigned char value = (unsigned char)text[input];
+        if (value < 0x20U || value == 0x7fU) {
+            pending_space = output != 0U;
+            continue;
+        }
+        if (value > 0x7eU) {
+            value = '?';
+        }
+        if (pending_space != 0) {
+            text[output++] = ' ';
+            pending_space = 0;
+        }
+        text[output++] = (char)value;
+    }
+    while (output > 0U && text[output - 1U] == ' ') {
+        --output;
+    }
+    text[output] = '\0';
+    return output;
+}
+
+/**
+ * @brief Return the source basename used in logcat records.
+ * @param file Compiler-provided path, possibly NULL.
+ * @return Nonempty basename or '?'.
+ */
+static const char *source_basename(const char *file) {
+    if (file == NULL) {
+        return "?";
+    }
+    const char *basename = file;
+    for (const char *cursor = file; *cursor != '\0'; ++cursor) {
+        if (*cursor == '/') {
+            basename = cursor + 1;
+        }
+    }
+    return *basename == '\0' ? "?" : basename;
 }
 
 void gl_log_write(const gl_log_level level, const char *file, const int line, const char *fmt, ...) {
     if ((int) level < atomic_load(&g_min_level)) {
         return; /* 低于阈值：不格式化、不写任何去处。 */
-    }
-    const char *slash = file;
-    const char *cursor = file;
-    for (; *cursor != '\0'; ++cursor) {
-        if (*cursor == '/') {
-            slash = cursor + 1;
-        }
     }
     char body[512] = {0};
     va_list args;
@@ -123,32 +185,26 @@ void gl_log_write(const gl_log_level level, const char *file, const int line, co
     if (written < 0) {
         return;
     }
-    char full[640] = {0};
-    snprintf(full, sizeof(full), "%s:%d %s", slash, line, body);
+    (void)sanitize_ascii(body);
 #if defined(__ANDROID__)
-    __android_log_print(ANDROID_LOG_INFO, GL_LOG_TAG, "%s", full);
+    char logcat_line[640] = {0};
+    snprintf(logcat_line, sizeof(logcat_line), "%s:%d %s", source_basename(file), line, body);
+    (void)sanitize_ascii(logcat_line);
+    (void)__android_log_write(android_priority(level), GL_LOG_TAG, logcat_line);
+#endif
     const int fd = atomic_load(&g_export_fd);
     if (fd >= 0) {
-        char head[32] = {0};
-        head_into(head, sizeof(head), level);
         char exported[768] = {0};
-        /* 与 Kotlin 侧同一形状、窄屏友好：[<级别符号> <启动毫秒>] 正文（方括号 = native）。 */
-        snprintf(exported, sizeof(exported), "[%s] %s\n", head, body);
-        const size_t want = strlen(exported);
-        size_t done = 0;
-        while (done < want) {
-            const ssize_t wrote = write(fd, exported + done, want - done);
-            if (wrote <= 0) {
-                break; /* 日志写失败绝不影响主流程。 */
-            }
-            done += (size_t) wrote;
-        }
+        snprintf(exported, sizeof(exported), "[%c/%lldms] %s\n",
+                 level_mark(level), elapsed_ms(), body);
+        (void)write(fd, exported, strlen(exported));
+        return;
     }
-#else
-    {
-        char head[32] = {0};
-        head_into(head, sizeof(head), level);
-        fprintf(stderr, "[%s] %s\n", head, full);
-    }
+#if !defined(__ANDROID__)
+    char host_line[768] = {0};
+    snprintf(host_line, sizeof(host_line), "[%c/%lldms] %s:%d %s\n",
+             level_mark(level), elapsed_ms(), source_basename(file), line, body);
+    (void)sanitize_ascii(host_line);
+    (void)write(STDERR_FILENO, host_line, strlen(host_line));
 #endif
 }

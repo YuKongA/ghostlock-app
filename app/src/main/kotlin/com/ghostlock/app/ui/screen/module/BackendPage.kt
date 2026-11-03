@@ -31,10 +31,9 @@ import com.ghostlock.app.R
 import com.ghostlock.app.ui.component.material.ExpressiveScaffold
 import com.ghostlock.app.ui.component.material.SegmentedColumn
 import com.ghostlock.app.ui.component.material.SegmentedDropdownItem
-import com.ghostlock.app.ui.component.material.SegmentedListItem
 import com.ghostlock.app.ui.component.material.TonalCard
 import com.ghostlock.app.ui.component.material.expressiveTopAppBarColors
-import com.ghostlock.app.ui.screen.module.backends.Backends
+import com.ghostlock.app.backend.registry.Backends
 import com.ghostlock.app.ui.viewmodel.PathViewModel
 import com.ghostlock.app.ui.screen.module.backends.FinishCard
 import com.ghostlock.app.ui.screen.module.backends.FinishSettingsCard
@@ -43,11 +42,13 @@ import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold as MiuixScaffold
 import top.yukonga.miuix.kmp.basic.Text as MiuixText
 import top.yukonga.miuix.kmp.basic.TopAppBar as MiuixTopAppBar
+import top.yukonga.miuix.kmp.basic.DropdownEntry
+import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- *  「路径」页（2026-10-18）：顶部选后端（CVE 编号），下面显示对应后端的配置项。
+ *  「路径」页：顶部展示全部 backend；仅 selectable spec 可选择，disabled spec 灰显。
  *
  *  配置项来自 backends/ 下每个 backend 自己的 .kt 文件；本页只做渲染。
  *
@@ -59,7 +60,7 @@ fun BackendPageMaterial(bottomInnerPadding: Dp) {
     val pathViewModel: PathViewModel = viewModel()
     val selected = pathViewModel.selectedIndex
     val specs = Backends.all
-    val titles = specs.map { stringResource(it.titleRes) }
+    val titles = specs.map { stringResource(it.displayNameRes) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
 
     ExpressiveScaffold(
@@ -91,6 +92,7 @@ fun BackendPageMaterial(bottomInnerPadding: Dp) {
                         summary = titles[selected],
                         items = titles,
                         selectedIndex = selected,
+                        itemEnabled = { specs.getOrNull(it)?.let { spec -> Backends.isSelectable(spec) } == true },
                         onItemSelected = { pathViewModel.selectBackend(it) },
                     )
                 }
@@ -98,21 +100,8 @@ fun BackendPageMaterial(bottomInnerPadding: Dp) {
             FinishCard(miuix = false, onOpen = { com.ghostlock.app.ui.PageChrome.showFinish = true })
             FinishSettingsCard(miuix = false, onOpen = { com.ghostlock.app.ui.PageChrome.showFinishSettings = true })
             TonalCard {
-                val custom = specs[selected].customConfig
-                if (custom != null) {
-                    custom(false)
-                } else {
-                SegmentedColumn(modifier = Modifier.fillMaxWidth()) {
-                    for (row in specs[selected].rows()) {
-                        item {
-                            SegmentedListItem(
-                                headlineContent = { Text(stringResource(row.label)) },
-                                supportingContent = { Text(row.value) },
-                            )
-                        }
-                    }
-                }
-                }
+                /* 唯一渲染路径：backend 自己的 ConfigCard（默认卡内部读 rows）。 */
+                specs[selected].ConfigCard(miuix = false)
             }
         }
     }
@@ -123,7 +112,17 @@ fun BackendPageMiuix(bottomInnerPadding: Dp) {
     val pathViewModel: PathViewModel = viewModel()
     val selected = pathViewModel.selectedIndex
     val specs = Backends.all
-    val titles = specs.map { stringResource(it.titleRes) }
+    val backendEntry = DropdownEntry(
+        items = specs.mapIndexed { index, spec ->
+            DropdownItem(
+                text = stringResource(spec.displayNameRes),
+                enabled = Backends.isSelectable(spec),
+                selected = index == selected,
+                onClick = { if (Backends.isSelectable(spec)) pathViewModel.selectBackend(index) },
+            )
+        },
+    )
+    val selectedTitle = specs.getOrNull(selected)?.let { stringResource(it.displayNameRes) }.orEmpty()
     val scrollBehavior = MiuixScrollBehavior()
 
     MiuixScaffold(
@@ -156,28 +155,15 @@ fun BackendPageMiuix(bottomInnerPadding: Dp) {
                         )
                     },
                     title = stringResource(R.string.backend_label),
-                    summary = stringResource(R.string.backend_label),
-                    items = titles,
-                    selectedIndex = selected,
-                    onSelectedIndexChange = { pathViewModel.selectBackend(it) },
+                    summary = selectedTitle,
+                    entry = backendEntry,
                 )
             }
             FinishCard(miuix = true, onOpen = { com.ghostlock.app.ui.PageChrome.showFinish = true })
             FinishSettingsCard(miuix = true, onOpen = { com.ghostlock.app.ui.PageChrome.showFinishSettings = true })
             Card(modifier = Modifier.fillMaxWidth()) {
-                val custom = specs[selected].customConfig
-                if (custom != null) {
-                    custom(true)
-                } else {
-                Column {
-                    for (row in specs[selected].rows()) {
-                        top.yukonga.miuix.kmp.basic.BasicComponent(
-                            title = stringResource(row.label),
-                            summary = row.value,
-                        )
-                    }
-                }
-                }
+                /* 唯一渲染路径：backend 自己的 ConfigCard（默认卡内部读 rows）。 */
+                specs[selected].ConfigCard(miuix = true)
             }
 
         }

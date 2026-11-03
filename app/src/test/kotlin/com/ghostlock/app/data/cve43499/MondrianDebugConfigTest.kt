@@ -1,17 +1,11 @@
 package com.ghostlock.app.data.cve43499
 
-import com.ghostlock.app.backend.cve43499.flow.Cve43499TargetAcquisition
-import com.ghostlock.app.backend.cve43499.flow.Cve43499WriteTargetSource
-import com.ghostlock.app.backend.cve43499.generator.Cve43499DebugWritePlanner
-import com.ghostlock.app.backend.cve43499.generator.Cve43499GeneratorContext
-import com.ghostlock.app.backend.cve43499.generator.Cve43499PselectInputGenerator
-import com.ghostlock.app.backend.cve43499.generator.Cve43499RouteGeneratorFactory
-import com.ghostlock.app.backend.cve43499.lifecycle.Cve43499PlacementFacts
+import com.ghostlock.app.backend.backends.cve43499.generator.Cve43499GeneratorContext
+import com.ghostlock.app.backend.backends.cve43499.generator.Cve43499PselectInputGenerator
+import com.ghostlock.app.backend.backends.cve43499.generator.Cve43499RouteGeneratorFactory
+import com.ghostlock.app.backend.backends.cve43499.lifecycle.Cve43499PlacementFacts
 import com.ghostlock.app.jni.Native43499PselectSpec
-import com.ghostlock.app.backend.cve43499.finish.FinishHandoff
-import com.ghostlock.app.backend.cve43499.flow.Cve43499WriteChainPolicy
-import com.ghostlock.app.ui.screen.module.backends.Cve43499RequestBuild
-import com.ghostlock.app.ui.screen.module.backends.Cve43499RequestFactory
+import com.ghostlock.app.backend.backends.cve43499.flow.Cve43499WriteChainPolicy
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -274,68 +268,6 @@ class MondrianDebugConfigTest {
         assertEquals(34L * (1 + execution.mmPartials), execution.sprayObjectCount.toLong())
         assertEquals(34, execution.postObjectCount)
         assertEquals(34L, execution.maxObjectsPerSlab)
-    }
-
-    @Test
-    fun `request factory builds floor placement for mondrian and unchanged a301so`() {
-        val mondrian = A301SoDebugConfig.parse(readAsset(MONDRIAN_ASSET))
-        val execution = A301SoDebugConfig.executionParameters(mondrian)
-        val built = buildChain(mondrian, execution)
-        val placement = built.request.runSpec!!.placement
-        assertEquals(960L, placement.mmStructSize)
-        assertEquals(34, placement.objectsPerSlab)
-        assertEquals(34L * 8, placement.prepareObjectCount.toLong())
-        assertEquals(34L * 6, placement.sprayObjectCount.toLong())
-        assertEquals(33, placement.preObjectCount)
-        assertEquals(34, placement.postObjectCount)
-        assertTrue(placement.maxObjectsPerSlab >= 34L)
-
-        val a301so = A301SoDebugConfig.parse(readAsset(A301SO_ASSET))
-        val oldExecution = A301SoDebugConfig.executionParameters(a301so)
-        val oldBuilt = buildChain(a301so, oldExecution)
-        val oldPlacement = oldBuilt.request.runSpec!!.placement
-        assertEquals(1024L, oldPlacement.mmStructSize)
-        assertEquals(32, oldPlacement.objectsPerSlab)
-        assertEquals(256, oldPlacement.prepareObjectCount)
-        assertEquals(192, oldPlacement.sprayObjectCount)
-        assertEquals(31, oldPlacement.preObjectCount)
-        assertEquals(32, oldPlacement.postObjectCount)
-    }
-
-    /**
-     * @param debug 已解析 debug 参数。
-     * @param execution 设备相关执行参数。
-     * @return 用 fake target source/planner 构造的多写链请求（Built）。
-     */
-    private fun buildChain(
-        debug: A301SoDebugParameters,
-        execution: DebugExecutionParameters,
-    ): Cve43499RequestBuild.Built {
-        val context = Cve43499GeneratorContext(debug, execution, 4242)
-        val generator = Cve43499RouteGeneratorFactory.create(
-            debug = debug,
-            execution = execution,
-            ghostPid = 4242,
-        )
-        val planner = Cve43499DebugWritePlanner(context)
-        val handoff = requireNotNull(
-            FinishHandoff.create("/tmp/mondrian-config-test.sh", byteArrayOf(1, 2, 3)),
-        )
-        val targetSource = Cve43499WriteTargetSource { Cve43499TargetAcquisition.Missing("test") }
-        val result = Cve43499RequestFactory.buildFromDebug(
-            debug = debug,
-            execution = execution,
-            handoff = handoff,
-            payload = null,
-            primitive = null,
-            generator = generator,
-            writeTargetSource = targetSource,
-            writePlanner = planner,
-            writeVerifier = com.ghostlock.app.backend.cve43499.flow.Cve43499UnsupportedWriteVerifier,
-            debugWriteParameters = A301SoDebugConfig.writeChainParameters(),
-        )
-        assertTrue("mondrian request must build: $result", result is Cve43499RequestBuild.Built)
-        return result as Cve43499RequestBuild.Built
     }
 
     /** @return 测试用设备身份。 */

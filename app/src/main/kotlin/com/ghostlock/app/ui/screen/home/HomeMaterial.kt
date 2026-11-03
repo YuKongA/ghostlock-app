@@ -74,8 +74,8 @@ import com.ghostlock.app.R
 import com.ghostlock.app.ui.component.WarningLevel
 import com.ghostlock.app.ui.component.dialog.rememberConfirmDialog
 import com.ghostlock.app.ui.LocalMainPagerState
-import com.ghostlock.app.ui.screen.module.backends.BackendSelection
-import com.ghostlock.app.ui.screen.module.backends.Backends
+import com.ghostlock.app.backend.declarations.BackendSelection
+import com.ghostlock.app.backend.registry.Backends
 import com.ghostlock.app.ui.backend.statusTone
 import com.ghostlock.app.ui.component.material.ExpressiveScaffold
 import com.ghostlock.app.ui.component.statuscard.BackendStatusCard

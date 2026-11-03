@@ -46,6 +46,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- B2a：通用 Flow 宿主（独立进程；每次 run 新进程由 launcher/stopWithTask 保证）。 -->
+        <service
+            android:name="com.ghostlock.app.backend.host.FlowHostService"
+            android:process=":flowhost"
+            android:exported="false"
+            android:stopWithTask="false" />
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.ghostlock.fileprovider"

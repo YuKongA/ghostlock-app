@@ -1,5 +1,10 @@
 package com.ghostlock.app.ui.screen.module.backends
 
+import com.ghostlock.app.core.finish.FinishState
+import com.ghostlock.app.core.finish.PayloadKind
+import com.ghostlock.app.core.finish.PayloadSlot
+import com.ghostlock.app.core.finish.toRootScript
+
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test

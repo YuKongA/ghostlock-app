@@ -1,5 +1,12 @@
 package com.ghostlock.app.ui.screen.module.backends
 
+import com.ghostlock.app.core.finish.FinishState
+import com.ghostlock.app.core.finish.PayloadKind
+import com.ghostlock.app.core.finish.PayloadSlot
+import com.ghostlock.app.core.payload.EffectReport
+import com.ghostlock.app.core.payload.EffectState
+import com.ghostlock.app.core.payload.PayloadEffects
+
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

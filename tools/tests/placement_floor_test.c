@@ -10,7 +10,7 @@
  *
  * 编译/运行（macOS host，无 Android 依赖）：
  *   clang -std=c11 -Wall -Wextra -Werror \
- *     -I app/src/main/cpp/gl43499/core \
+ *     -I app/src/main/cpp/backends/43499/core \
  *     tools/tests/placement_floor_test.c -o /tmp/placement_floor_test
  *   /tmp/placement_floor_test
  */

@@ -23,8 +23,8 @@ class VictimArchitectureTest {
         val files = victimKotlinFiles()
         assertTrue("core/victim 至少应有实现文件", files.isNotEmpty())
         val banned = listOf(
-            "backend.cve43499",
-            "backend/cve43499",
+            "backend.backends.cve43499",
+            "backend/backends/cve43499",
             "Cve43499",
             "43499",
             "cve_2026",
@@ -46,7 +46,7 @@ class VictimArchitectureTest {
 
     @Test
     fun `native header freezes fd and frame contract`() {
-        val header = readCFile("app/src/main/cpp/gl43499/core/victim_protocol.h")
+        val header = readCFile("app/src/main/cpp/backends/43499/core/victim_protocol.h")
         assertTrue(header.contains("#define GLK_VICTIM_CONTROL_FD 3"))
         assertTrue(header.contains("#define GLK_VICTIM_RAW_FD 4"))
         assertTrue(header.contains("#define GLK_VICTIM_FRAME_MAX_BODY"))
@@ -58,7 +58,7 @@ class VictimArchitectureTest {
 
     @Test
     fun `native transport is mechanical and fork free`() {
-        val protocol = readCFile("app/src/main/cpp/gl43499/core/victim_protocol.c")
+        val protocol = readCFile("app/src/main/cpp/backends/43499/core/victim_protocol.c")
         assertTrue(protocol.contains("posix_spawn("))
         assertTrue(protocol.contains("glk_victim_spawn"))
         assertTrue(protocol.contains("waitpid("))
@@ -72,7 +72,7 @@ class VictimArchitectureTest {
     @Test
     fun `helper is a pie with fd self check and posix spawn only`() {
         val helper = readCFile(
-            "app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c",
+            "app/src/main/cpp/backends/43499/core/victim_helper/victim_helper.c",
         )
         assertTrue(helper.contains("glk_helper_assert_contract_fds"))
         assertTrue(helper.contains("F_GETFD"))
@@ -90,17 +90,17 @@ class VictimArchitectureTest {
 
     @Test
     fun `cmake packages helper as lib so executable in native lib dir`() {
-        val cmake = readCFile("app/src/main/cpp/CMakeLists.txt")
+        val cmake = readCFile("app/src/main/cpp/backends/43499/CMakeLists.txt")
         assertTrue(cmake.contains("add_executable(ghostlock_victim_helper"))
         assertTrue(cmake.contains("PREFIX \"lib\""))
         assertTrue(cmake.contains("SUFFIX \".so\""))
         assertTrue(cmake.contains("RUNTIME_OUTPUT_DIRECTORY"))
-        assertTrue(cmake.contains("gl43499/core/victim_protocol.c"))
+        assertTrue(cmake.contains("core/victim_protocol.c"))
     }
 
     @Test
     fun `zero fork wrap counters are linked for lib and helper`() {
-        val cmake = readCFile("app/src/main/cpp/CMakeLists.txt")
+        val cmake = readCFile("app/src/main/cpp/backends/43499/CMakeLists.txt")
         assertTrue(
             "lib 缺 --wrap=fork",
             cmake.contains("target_link_options(ghostlock43499 PRIVATE -Wl,-z,max-page-size=16384") &&
@@ -112,7 +112,7 @@ class VictimArchitectureTest {
             cmake.contains("target_link_options(ghostlock_victim_helper PRIVATE") &&
                 cmake.contains("-Wl,--wrap=vfork"),
         )
-        val protocol = readCFile("app/src/main/cpp/gl43499/core/victim_protocol.c")
+        val protocol = readCFile("app/src/main/cpp/backends/43499/core/victim_protocol.c")
         listOf(
             "__wrap_fork",
             "__wrap_vfork",
@@ -124,7 +124,7 @@ class VictimArchitectureTest {
         ).forEach { token ->
             assertTrue("victim_protocol.c 缺零 fork ① 计数构件：$token", protocol.contains(token))
         }
-        val helper = readCFile("app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c")
+        val helper = readCFile("app/src/main/cpp/backends/43499/core/victim_helper/victim_helper.c")
         assertTrue(
             "helper bye 未携带 fork/vfork 计数",
             helper.contains("glk_victim_fork_count()") &&
@@ -132,7 +132,7 @@ class VictimArchitectureTest {
         )
         /* 生产符号路径不得调用 fork/vfork（wrapper/canary 之外）：main/cpp 中仅协议文件
          * 存在 wrapper 定义（__wrap_*）与 JNI canary（debug-only，见 jni43499.c 注释）。 */
-        val jni = readCFile("app/src/main/cpp/gl43499/jni43499.c")
+        val jni = readCFile("app/src/main/cpp/backends/43499/jni43499.c")
         assertTrue("JNI 缺 forkGuardCanary", jni.contains("forkGuardCanary"))
         assertTrue(
             "canary 必须在子进程立即 _exit",
@@ -142,7 +142,7 @@ class VictimArchitectureTest {
 
     @Test
     fun `victim spawn file actions close before dup2 and skip control fds`() {
-        val protocol = readCFile("app/src/main/cpp/gl43499/core/victim_protocol.c")
+        val protocol = readCFile("app/src/main/cpp/backends/43499/core/victim_protocol.c")
         val dup2Index = protocol.indexOf("posix_spawn_file_actions_adddup2")
         assertTrue("必须存在 adddup2", dup2Index >= 0)
         /* A16/mondrian E4 实测修订：源 fd 可能恰为 3/4，addclose 会先关掉
@@ -158,7 +158,7 @@ class VictimArchitectureTest {
     @Test
     fun `helper perf copy has acquire barrier before ring memcpy`() {
         val helper = readCFile(
-            "app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c",
+            "app/src/main/cpp/backends/43499/core/victim_helper/victim_helper.c",
         )
         assertTrue(
             "N03：data_head 必须 acquire load",
@@ -176,8 +176,8 @@ class VictimArchitectureTest {
 
     @Test
     fun `sigpipe sensitive writes are marked no signal`() {
-        val page = readCFile("app/src/main/cpp/gl43499/core/page.c")
-        val tcp = readCFile("app/src/main/cpp/gl43499/core/carrier_tcp.c")
+        val page = readCFile("app/src/main/cpp/backends/43499/core/page.c")
+        val tcp = readCFile("app/src/main/cpp/backends/43499/core/carrier_tcp.c")
         assertTrue(
             "G09：shaping sendmsg 必须带 MSG_NOSIGNAL",
             page.contains("sendmsg(shaping_pair[0], &message, MSG_NOSIGNAL)"),
@@ -194,7 +194,7 @@ class VictimArchitectureTest {
 
     @Test
     fun `g08 cpu pin sentinel skips owner waiter and keeps consumer pinned`() {
-        val actor = readCFile("app/src/main/cpp/gl43499/core/actor.c")
+        val actor = readCFile("app/src/main/cpp/backends/43499/core/actor.c")
         assertTrue(
             "G08：owner 必须按 no-pin 哨兵跳过 pin",
             actor.contains("glk43499_internal_cpu_pin_required(actor->owner_cpu)"),

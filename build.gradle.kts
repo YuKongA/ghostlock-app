@@ -97,7 +97,6 @@ tasks.register<Delete>("clean") {
     subprojects.forEach { delete(it.layout.buildDirectory) }
 }
 
-
 /**
  * 清理 build/ 下由文件同步工具（iCloud Drive / Finder）产生的污染副本。
  *

@@ -78,8 +78,8 @@ import com.ghostlock.app.ui.util.BlurredBar
 import com.ghostlock.app.ui.util.module.LatestVersionInfo
 import com.ghostlock.app.ui.util.rememberBlurBackdrop
 import com.ghostlock.app.ui.LocalMainPagerState
-import com.ghostlock.app.ui.screen.module.backends.BackendSelection
-import com.ghostlock.app.ui.screen.module.backends.Backends
+import com.ghostlock.app.backend.declarations.BackendSelection
+import com.ghostlock.app.backend.registry.Backends
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card

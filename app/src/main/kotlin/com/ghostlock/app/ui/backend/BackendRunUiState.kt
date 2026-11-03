@@ -11,7 +11,7 @@ import com.ghostlock.app.core.flow.FlowResult
  *
  * @note 「不确定但必须重启」不以独立态表达：它是 `Finished(Failed)` 的 evidence
  *   （`mustReboot=true`）+ 独立重启警示条（见计划 delta §E）；`must_reboot` 唯一权威
- *   仍是 `data/cve98260/BootSafetyStore`。
+ *   仍是 `BootSafetyStore`（历史 storage 名保留）。
  */
 @Immutable
 sealed interface BackendRunUiState {
@@ -26,4 +26,12 @@ sealed interface BackendRunUiState {
 
     /** 执行前/执行中被具名拒绝；reasons 稳定可检索。 */
     data class Refused(val reasons: List<String>) : BackendRunUiState
+
+    /**
+     * 终态=交接已请求（handoff）：**不报成功、不等待、不写状态**。
+     *
+     * @note 计划 §2.5 D5=B：不为 handoff 新增 FlowResult 变体；terminal 证据与
+     *   launcher 映射承担语义（B7/ADR-0022 不动）。
+     */
+    data object HandoffRequested : BackendRunUiState
 }

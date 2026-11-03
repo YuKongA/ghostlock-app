@@ -6,7 +6,8 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.res.stringResource
 import com.ghostlock.app.R
 import com.ghostlock.app.core.flow.FlowResult
-import com.ghostlock.app.ui.screen.module.backends.BackendSpec
+import com.ghostlock.app.backend.declarations.BackendSpec
+import com.ghostlock.app.backend.registry.Backends
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -45,10 +46,11 @@ data class RunDecision(
  *
  * 规则（顺序固定，原因全部保留）：
  * 1. 未选择 backend ⇒ deny `backend_run_no_backend`；
- * 2. readiness 为 NotReady ⇒ deny 并附全部声明原因；
- * 3. backend 无 Flow 运行入口（如 43284 只有 Finish/LKM relay）⇒ deny `backend_run_no_flow_entry`；
- * 4. 已有 backend run 在执行 ⇒ deny `backend_run_in_progress`；
- * 5. 以上皆无 ⇒ allow。
+ * 2. backend disabled ⇒ deny `backend_run_backend_disabled`；
+ * 3. readiness 为 NotReady ⇒ deny 并附全部声明原因；
+ * 4. backend 无 Flow 运行入口（如 43284 只有 Finish/LKM relay）⇒ deny `backend_run_no_flow_entry`；
+ * 5. 已有 backend run 在执行 ⇒ deny `backend_run_in_progress`；
+ * 6. 以上皆无 ⇒ allow。
  *
  * @note 本对象不执行任何 I/O；Lua 脚本运行仍由 `ScriptRunUiState.canRun` 决定，不经过本门禁。
  * @note 阶段：task-21（实验态；未过真机）。
@@ -70,6 +72,8 @@ object BackendRunGate {
         val reasons = mutableListOf<ReadinessReason>()
         if (spec == null) {
             reasons += ReadinessReason(R.string.backend_run_no_backend)
+        } else if (!Backends.isSelectable(spec)) {
+            reasons += ReadinessReason(R.string.backend_run_backend_disabled)
         }
         if (readiness is BackendReadiness.NotReady) {
             reasons += readiness.reasons
@@ -110,12 +114,11 @@ internal sealed interface BackendRunDispatch {
  * UI 框架的 backend 执行分发器：门禁通过后**直接**把 run 交给 Flow
  * （task-32 分层：不再经 Controller/Run 等中间类）。
  *
- * 链路：`BackendRunDispatcher.dispatch` → `Cve43499RequestFactory.build`（UI 输入组装）
- * → `Flow43499Impl().run(request)`（唯一编排）→ `Cve43499Lifecycle`（唯一生命周期层）
- * → `Native43499Jni`。
+ * 链路：`BackendRunDispatcher.dispatch` → `FlowLaunchParent.launch` → 新进程 launcher
+ * （APP/Shizuku）→ 该 backend 的 Flow。旧 in-process runner 通道已删除（B5c-1）。
  *
- * 当前只有 CVE-2026-43499 具备 `FLOW_RUN` 入口；其它 backend 即使声明允许也会以
- * `backend_run_no_flow_entry` 拒绝（防御性双保险）。
+ * exec-glue build 中只有 `43499-Glued` 与 `43284Glued` 可选择并具备 `FLOW_RUN` 入口；
+ * 原版 backend 与 Lua 由注册表 allowlist 拒绝（防御性双保险）。
  *
  * @note 决策由 [BackendRunGate] 给出；本对象不重新判断“是否应该允许”，只路由到 Flow。
  * @note 阶段：task-32；不接默认 Flow/UI 入口，页面必须显式调用。
@@ -124,8 +127,8 @@ internal object BackendRunDispatcher {
     /**
      * 执行一次已获门禁允许的 backend run。
      *
-     * R1a：**只调用 `spec.runner`**（单一注册点；无 backend 分支）。runner 内部已把异常映射为
-     * 具名 Refused；本函数只兜底 runner 抛出的非预期异常。
+     * B5c-1：**只调用 `FlowLaunchParent.launch`**（单一入口；无 backend 分支）。launcher 内部
+     * 把异常映射为具名 Refused；本函数只兜底 launcher 抛出的非预期异常。
      *
      * @param spec 当前选中的 backend。
      * @param decision 门禁决策；allowed=false 时直接返回 [BackendRunDispatch.Blocked]。
@@ -142,18 +145,18 @@ internal object BackendRunDispatcher {
         if (!decision.allowed) {
             return BackendRunDispatch.Blocked(decision.reasons)
         }
-        if (spec == null || spec.runner == null) {
+        if (spec == null || spec.flowSymbol == null) {
             return BackendRunDispatch.Blocked(
                 listOf(ReadinessReason(R.string.backend_run_no_flow_entry)),
             )
         }
         return try {
-            /* 唯一入口：UI → dispatcher → FlowLaunchParent（多态执行体）→ symbol 解析 → Flow。 */
-            val invocation = FlowSymbolInvocation(symbol = spec.key)
+            /* B5c-1 唯一入口：dispatcher → FlowLaunchParent.launchSymbol → APP/Shizuku 新进程 launcher。 */
+            val selectedExecutor = currentAttackExecutorState()
             val state = FlowLaunchParent.launch(
                 context = context.applicationContext,
-                executor = currentAttackExecutorState(),
-                invocation = invocation,
+                executor = selectedExecutor,
+                spec = spec,
                 onLine = onLine,
             )
             BackendRunDispatch.Executed(state)
@@ -162,7 +165,9 @@ internal object BackendRunDispatcher {
         } catch (problem: Throwable) {
             BackendRunDispatch.Executed(
                 BackendRunUiState.Refused(
-                    listOf("backend-run-execution:exception:" + problem::class.java.simpleName),
+                    listOf(
+                        "backend-run-execution:exception:" + problem::class.java.simpleName,
+                    ),
                 ),
             )
         }
@@ -198,6 +203,8 @@ fun BackendRunUiState.displayLines(): List<String> = when (this) {
     BackendRunUiState.Running -> listOf(stringResource(R.string.backend_run_in_progress))
     is BackendRunUiState.Refused ->
         listOf(stringResource(R.string.backend_run_denied)) + reasons
+    BackendRunUiState.HandoffRequested ->
+        listOf(stringResource(R.string.backend_run_handoff_requested))
     is BackendRunUiState.Finished -> when (val result = result) {
         is FlowResult.Ok ->
             listOf("OK") + result.evidence.map { (key, value) -> key + " = " + value }

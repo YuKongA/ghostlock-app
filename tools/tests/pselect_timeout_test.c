@@ -9,7 +9,7 @@
  *
  * 编译/运行（macOS host）：
  *   clang -std=c11 -Wall -Wextra -Werror \
- *     -I app/src/main/cpp/gl43499/core \
+ *     -I app/src/main/cpp/backends/43499/core \
  *     tools/tests/pselect_timeout_test.c -o /tmp/pselect_timeout_test
  *   /tmp/pselect_timeout_test
  */

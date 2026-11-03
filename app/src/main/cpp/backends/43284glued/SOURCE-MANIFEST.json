@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "upstream": {
+    "repository": "https://github.com/diabl0w/DFRoot",
+    "revision": "49e992ef3c9f7ec03c8efea6e3cf552f7ec6a347",
+    "revisionObjectAvailableInExternalCheckout": false,
+    "note": "Pristine input hashes were frozen before logger edits. The external checkout was not modified; its local tree does not contain the pinned revision object."
+  },
+  "files": [
+    {
+      "path": "exp.c",
+      "pristineSha256": "afdd68cb6b07fa9b04f93c7d4bd9f8ce0333f4dd2265416959cf9c630d55ac39",
+      "adaptedSha256": "a835ac58ab6fdc17d598a32d9dc65bd8aadcfd93c2690e4ba378532876846b8b",
+      "change": "Shared logger calls only; original trigger-boundary stdout line is retained."
+    },
+    {
+      "path": "elf_parser.c",
+      "pristineSha256": "03500a7e5c635d46a92adc87b899a3eef2933c7c27cce3c66128cdd81d5ffb3e",
+      "adaptedSha256": "63d5337c7cdfdc644555a198cb89cdd2f2b49ebc75df038dbd25b9109325788e",
+      "change": "Shared logger diagnostics only."
+    },
+    {
+      "path": "bootstrap.c",
+      "pristineSha256": "5b19bfe9d4c632794d52de71a513d1bac2820e0fbd474ce19813913782111ce9",
+      "adaptedSha256": "d383ee46709813f785eb637475739ec6476f4565ad19ed91d409d635171a0e94",
+      "change": "Logcat-only stage and failure diagnostics; no log call in the late-load polling loop."
+    },
+    {
+      "path": "CMakeLists.txt",
+      "pristineSha256": "772b21c8858936aa734e7f0c5cc63223fb9893b535e556896d948ad33c68b7cf",
+      "adaptedSha256": "cd2f8650783e395b9dfa8354d9d90ea2cee2173d35a09b96f8cf19e0bb248de9",
+      "change": "Link production executable and bootstrap targets to gl_common; M0 fixture branch remains isolated."
+    }
+  ],
+  "logger": {
+    "target": "gl_common",
+    "source": {
+      "path": "app/src/main/cpp/common/gl_log.c",
+      "sha256": "40ae26e3e64050dfb36c8abc8f1f75a8e63c567a993cc3cfe1873af61d21b54d",
+      "baselineSha256": "0e96159b2c2d248479d782adfa1b9aecf848675811e758f41a91045a2c3045f0"
+    },
+    "callsiteAudit": "../../../../../docs/analysis/dfroot-log-callsite-audit-20261029.tsv",
+    "header": {
+      "path": "app/src/main/cpp/common/gl_log.h",
+      "sha256": "ba62afbb21829f345100e205d4918a3d4775cfda3a64c16bb766052256f4e777",
+      "baselineSha256": "14fd4b71617f571b21effc178bd07dee4f56c2c16fc5303100471513a7b4a84f"
+    },
+    "hostTest": {
+      "path": "tools/tests/gl_log_test.c",
+      "sha256": "146dd09713277d4048f83bf605ce4c48bd2b9e3dcad1ff48fd300dd2dfcb114a",
+      "baselineSha256": "c7ed911c9699741035451c57e18eca95f284fdb1198eaa61e4c7847929b5def5"
+    }
+  }
+}

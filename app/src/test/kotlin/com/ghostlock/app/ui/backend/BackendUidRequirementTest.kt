@@ -1,8 +1,9 @@
 package com.ghostlock.app.ui.backend
 
 import com.ghostlock.app.R
-import com.ghostlock.app.ui.screen.module.backends.BackendCve202643499
-import com.ghostlock.app.ui.screen.module.backends.BackendCve202698260
+import com.ghostlock.app.backend.backends.cve43499.BackendCve43499
+import com.ghostlock.app.backend.backends.cve43499glued.BackendCve43499Glued
+import com.ghostlock.app.backend.backends.cve43284glued.BackendCve43284Glued
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -19,41 +20,20 @@ class BackendUidRequirementTest {
 
     @Test
     fun backendsDeclareUidRequirement() {
-        assertEquals(BackendUidRequirement.SHELL_UID_2000, BackendCve202698260.uidRequirement)
-        assertEquals(BackendUidRequirement.ANY_UID, BackendCve202643499.uidRequirement)
+        assertEquals(BackendUidRequirement.ANY_UID, BackendCve43499.uidRequirement)
         assertTrue(BackendUidRequirement.SHELL_UID_2000.satisfiedBy(AttackExecutorKind.SHIZUKU))
         assertFalse(BackendUidRequirement.SHELL_UID_2000.satisfiedBy(AttackExecutorKind.APP))
         assertTrue(BackendUidRequirement.ANY_UID.satisfiedBy(AttackExecutorKind.APP))
         assertTrue(BackendUidRequirement.ANY_UID.satisfiedBy(AttackExecutorKind.SHIZUKU))
     }
 
-    @Test
-    fun uiRejectsShellBackendOnAppAttackThread() {
-        val decision = BackendRunGate.decide(
-            spec = BackendCve202698260,
-            readiness = BackendReadiness.Ready(),
-            context = RunPageContext(executor = app()),
-        )
-        assertFalse(decision.allowed)
-        assertTrue(decision.reasons.any { it.messageRes == R.string.backend_run_uid_requirement })
-    }
 
-    @Test
-    fun uiRejectsWhenShizukuNotAuthorized() {
-        val decision = BackendRunGate.decide(
-            spec = BackendCve202698260,
-            readiness = BackendReadiness.Ready(),
-            context = RunPageContext(executor = shizuku(authorized = false)),
-        )
-        assertFalse(decision.allowed)
-        assertTrue(decision.reasons.any { it.messageRes == R.string.backend_run_executor_unavailable })
-    }
 
     @Test
     fun anyUidBackendRunsFromBothAttackThreads() {
         for (executor in listOf(app(), shizuku())) {
             val decision = BackendRunGate.decide(
-                spec = BackendCve202643499,
+                spec = BackendCve43499Glued,
                 readiness = BackendReadiness.Ready(),
                 context = RunPageContext(executor = executor),
             )
@@ -62,12 +42,22 @@ class BackendUidRequirementTest {
     }
 
     @Test
-    fun shellBackendAllowedWhenShizukuAuthorized() {
-        val decision = BackendRunGate.decide(
-            spec = BackendCve202698260,
-            readiness = BackendReadiness.Ready(),
-            context = RunPageContext(executor = shizuku(authorized = true)),
-        )
-        assertTrue(decision.allowed)
+    fun gluedBackendsRequireAvailableExecutorForNewProcessChannel() {
+        for (spec in listOf(BackendCve43499Glued, BackendCve43284Glued)) {
+            assertTrue(spec.key, spec.flowSymbol != null)
+            val decision = BackendRunGate.decide(
+                spec = spec,
+                readiness = BackendReadiness.Ready(),
+                context = RunPageContext(executor = shizuku(authorized = false)),
+            )
+            assertFalse(spec.key, decision.allowed)
+            assertTrue(
+                spec.key,
+                decision.reasons.any {
+                    it.messageRes == R.string.backend_run_executor_unavailable
+                },
+            )
+        }
     }
+
 }

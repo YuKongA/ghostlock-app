@@ -265,9 +265,9 @@ class VictimProtocolTest {
     /** @return C 头文本（repo 根解析，含 IDE/命令行两种 cwd）。 */
     private fun readHeader(): String {
         val candidates = listOf(
-            File("app/src/main/cpp/gl43499/core/victim_protocol.h"),
-            File("../app/src/main/cpp/gl43499/core/victim_protocol.h"),
-            File("../../app/src/main/cpp/gl43499/core/victim_protocol.h"),
+            File("app/src/main/cpp/backends/43499/core/victim_protocol.h"),
+            File("../app/src/main/cpp/backends/43499/core/victim_protocol.h"),
+            File("../../app/src/main/cpp/backends/43499/core/victim_protocol.h"),
         )
         val file = candidates.firstOrNull { it.isFile }
             ?: error("victim_protocol.h not found from ${File(".").absolutePath}")

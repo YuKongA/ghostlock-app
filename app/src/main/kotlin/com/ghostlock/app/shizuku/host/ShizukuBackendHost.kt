@@ -1,5 +1,6 @@
 package com.ghostlock.app.shizuku.host
 
+import android.content.Context
 import android.os.Bundle
 
 /**
@@ -45,8 +46,8 @@ internal interface ShizukuBackendHost {
     /**
      * 接上 app 日志 fd。
      *
-     * @param rawFd detached raw fd（**实现必须接管并关闭**，无论成功与否）。
-     * @return true=已接上（native 日志管线）；false=不支持（general 层回退 AIDL onLog）。
+     * @param rawFd detached raw fd.
+     * @return true=host 接管并关闭 fd；false=通用层关闭 fd 并回退 AIDL onLog。
      */
     fun attachLogFd(rawFd: Int): Boolean
 
@@ -58,25 +59,24 @@ internal interface ShizukuBackendHost {
      */
     fun logLine(level: Int, line: String)
 
-    /** 清 host 状态（**不 kill payload**；由 Shizuku destroy 约定调用）。 */
+    /**
+     * 释放该 host 自己拥有的资源，由 Shizuku destroy 约定调用。
+     *
+     * @note Detached payload policy is backend-specific（历史 backend 语义保留；
+     *   新进程 FlowHost 为独立进程，不在此接口内）。
+     */
     fun destroy()
 }
 
 /**
  * backend host 注册表（公用 Shizuku 启动器的唯一分发点）。
  *
- * @note 新 backend 需要在 `create` 增加分支并实现 [ShizukuBackendHost]；app 侧只用稳定 id。
+ * @note 当前无内置 host（legacy 98260 host 已移除）；未知 id 一律 fail-closed 返回 null。
  */
 internal object ShizukuBackendHosts {
-    /** CVE-2026-98260 的稳定 wire id（app/service 两侧必须一致）。 */
-    const val CVE_98260: String = "CVE_2026_98260"
-
     /**
      * @param backendId 稳定 wire id。
      * @return 新 host 实例；未知 id 返回 null（fail-closed）。
      */
-    fun create(backendId: String): ShizukuBackendHost? = when (backendId) {
-        CVE_98260 -> com.ghostlock.app.backend.cve98260.service.Cve98260ShizukuHost()
-        else -> null
-    }
+    fun create(backendId: String, context: Context? = null): ShizukuBackendHost? = null
 }

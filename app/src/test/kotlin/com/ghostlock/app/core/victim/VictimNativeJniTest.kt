@@ -104,7 +104,7 @@ class VictimNativeJniTest {
 
     @Test
     fun `native error codes mirror victim protocol header`() {
-        val header = readRepoFile("app/src/main/cpp/gl43499/core/victim_protocol.h")
+        val header = readRepoFile("app/src/main/cpp/backends/43499/core/victim_protocol.h")
         val expected = mapOf(
             "GLK_VICTIM_ERR_INVALID_ARGUMENT" to VictimTransportCodes.INVALID_ARGUMENT,
             "GLK_VICTIM_ERR_BAD_FRAME" to VictimTransportCodes.BAD_FRAME,
@@ -123,7 +123,7 @@ class VictimNativeJniTest {
 
     @Test
     fun `jni entry points forward to mechanical core api only`() {
-        val source = readRepoFile("app/src/main/cpp/gl43499/jni43499.c")
+        val source = readRepoFile("app/src/main/cpp/backends/43499/jni43499.c")
         val entries = listOf(
             "spawnVictim", "sendVictim", "receiveVictim", "readRawVictim",
             "rawSizeVictim", "waitExitVictim", "killVictim", "detachVictim",
@@ -174,7 +174,7 @@ class VictimNativeJniTest {
 
     @Test
     fun `native detach and close release parent fds and free handle`() {
-        val source = readRepoFile("app/src/main/cpp/gl43499/core/victim_protocol.c")
+        val source = readRepoFile("app/src/main/cpp/backends/43499/core/victim_protocol.c")
         val release = source.indexOf("static void glk_victim_release_handle")
         assertTrue("缺少 release_handle", release >= 0)
         val body = source.substring(release, (release + 700).coerceAtMost(source.length))
@@ -235,7 +235,7 @@ class VictimNativeJniTest {
         ).forEach { token ->
             assertTrue("Native43499Jni.kt 缺 $token", source.contains(token))
         }
-        val jni = readRepoFile("app/src/main/cpp/gl43499/jni43499.c")
+        val jni = readRepoFile("app/src/main/cpp/backends/43499/jni43499.c")
         listOf(
             "Java_com_ghostlock_app_jni_VictimTransportJni_forkGuardSnapshot",
             "Java_com_ghostlock_app_jni_VictimTransportJni_forkGuardReset",

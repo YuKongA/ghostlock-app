@@ -9,7 +9,7 @@
  *
  * 编译/运行：
  *   clang -std=c11 -Wall -Wextra -Werror \
- *     -I app/src/main/cpp/gl43499/core tools/tests/cpu_pin_test.c \
+ *     -I app/src/main/cpp/backends/43499/core tools/tests/cpu_pin_test.c \
  *     -o /tmp/cpu_pin_test && /tmp/cpu_pin_test
  */
 #include <inttypes.h>

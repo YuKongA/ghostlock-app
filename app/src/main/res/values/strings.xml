@@ -59,12 +59,14 @@
     <string name="backend_readiness_custom_script">Custom Lua script is not selected (runtime not wired)</string>
     <string name="backend_run_no_backend">No backend selected</string>
     <string name="backend_run_no_flow_entry">This backend has no Flow run entry (Finish/LKM relay only)</string>
+    <string name="backend_run_backend_disabled">This backend is disabled and cannot be selected</string>
     <string name="backend_run_in_progress">A backend run is already in progress</string>
     <string name="backend_run_section">Backend run readiness</string>
     <string name="backend_run_action">Run selected backend</string>
     <string name="backend_run_denied">Run blocked by UI gate</string>
     <string name="backend_run_denied_first_reason">Run blocked by UI gate: %1$s</string>
     <string name="backend_run_allowed">Gate: allowed</string>
+    <string name="backend_run_handoff_requested">Handoff requested; the previous run is not reported as success</string>
     <string name="module_install_prompt_with_name">The following modules will be installed: %1$s</string>
     <string name="module_sort_action_first">Action first</string>
     <string name="module_sort_enabled_first">Enabled first</string>
@@ -135,7 +137,7 @@
     <string name="home_click_to_learn_kernelsu">Tap to learn how GhostLock works</string>
     <string name="home_support_title">About GhostLock</string>
     <string name="home_support_content">GhostLock is an open research project for Android kernel-level exploit chains. The interface currently runs on demo data.</string>
-    <string name="home_gki_warning">GhostLock is running with demo data; chain execution is not wired yet.</string>
+    <string name="home_gki_warning">Home status cards use demo data; backend configuration is available on the Paths page.</string>
     <string name="about_source_code">Source code</string>
     <string name="profile" translatable="false">App Profile</string>
     <string name="profile_default">Default</string>
@@ -493,8 +495,17 @@
     <string name="backend_label">Backend</string>
     <string name="backend_cve_2026_43499">CVE-2026-43499</string>
     <string name="backend_cve_2026_43499_summary">PI-futex race; SELinux overwrite / forge credential / seccomp bypass, or Shizuku</string>
+    <string name="backend_cve_2026_43499_glued">CVE-2026-43499 · Glued</string>
     <string name="backend_cve_2026_43284">CVE-2026-43284</string>
     <string name="backend_cve_2026_43284_summary">Page-cache write + LKM channel; requires Shizuku (shell domain)</string>
+    <string name="backend_cve_2026_43284_glued">CVE-2026-43284 · Glued</string>
+    <string name="backend_43499_profile_label">43499 profile</string>
+    <string name="backend_43499_profile_none">Select a profile</string>
+    <string name="backend_43499_profile_required">Select a valid built-in or imported profile before running</string>
+    <string name="backend_43499_imported_profile">Imported: %1$s</string>
+    <string name="backend_43499_import_profile">Import .conf</string>
+    <string name="backend_43499_import_profile_summary">Choose an external, self-contained HOCON profile</string>
+    <string name="backend_43499_profile_invalid">The profile is unreadable or does not match the current profile schema</string>
     <string name="combination_label">Execution combination</string>
     <string name="combination_planned">planned</string>
     <string name="combination_recommended">Recommended</string>
@@ -882,19 +893,14 @@
     <string name="run_rerun_title">Run again?</string>
     <string name="run_rerun_message">This starts the attack again. Continue?</string>
     <string name="run_backend_not_wired">Execution backend is not connected yet.</string>
-    <string name="backend_cve_2026_98260">CVE-2026-98260</string>
-    <string name="backend_status_cve98260_not_ready">Not ready: environment unverified</string>
-    <string name="backend_readiness_cve98260_payload">Exploit payload missing/invalid in APK (nativeLibraryDir)</string>
-    <string name="backend_readiness_cve98260_profile_missing">Kernel profile missing (only debug builds ship the 98260 profile)</string>
-    <string name="backend_readiness_cve98260_profile_release">Kernel release does not match the profile</string>
-    <string name="backend_readiness_cve98260_must_reboot">Must reboot before another run</string>
-    <string name="backend_readiness_cve98260_boot_id">Boot id unavailable</string>
-    <string name="backend_readiness_cve98260_not_probed">Environment not probed yet</string>
     <string name="backend_row_requires">Requires</string>
     <string name="backend_row_payload">Payload</string>
     <string name="backend_row_channel">Channel</string>
     <string name="run_restart_required">MUST REBOOT: the exploit is parked (fake cred page held); reboot is the only cleanup</string>
-    <string name="run_abort_disabled_cve98260">Abort disabled: after trigger nothing may kill/timeout the payload; reboot is the only cleanup</string>
+    <string name="run_abort_disabled">Abort disabled: after trigger nothing may kill/timeout the payload; reboot is the only cleanup</string>
     <string name="backend_run_uid_requirement">Executor uid does not satisfy this backend\'s declared requirement</string>
     <string name="backend_run_executor_unavailable">Executor is not available or not granted; authorize Shizuku or switch to App</string>
+    <string name="backend_debug_probe_title">Debug Probe</string>
+    <string name="backend_debug_probe_name">Debug Probe (debug only)</string>
+    <string name="backend_debug_probe_disabled">Debug probe is available in debug builds only</string>
 </resources>

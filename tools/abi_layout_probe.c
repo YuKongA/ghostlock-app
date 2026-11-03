@@ -5,7 +5,7 @@
  * @note 用途：与 `docs/plan/43499-r1-freeze-abi.md`（R2 重出版）的 sizeof 矩阵
  *       对拍；矩阵漂移即 R2 门禁 FAIL。只读公共头，不链接 core 源文件。
  * @note 编译/运行（host，系统 clang）：
- *       clang -std=c11 -I app/src/main/cpp/gl43499/core \
+ *       clang -std=c11 -I app/src/main/cpp/backends/43499/core \
  *             tools/abi_layout_probe.c -o /tmp/abi_layout_probe && /tmp/abi_layout_probe
  * @note 输出键为结构名与代表字段 offset；C11 `_Static_assert` 已在头内先行拦截漂移。
  * @note 阶段：R2b（43499 Native 全参数化）。

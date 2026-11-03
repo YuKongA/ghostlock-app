@@ -14,8 +14,8 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-HEADER = ROOT / "app/src/main/cpp/gl43499/core/victim_protocol.h"
-HELPER = ROOT / "app/src/main/cpp/gl43499/core/victim_helper/victim_helper.c"
+HEADER = ROOT / "app/src/main/cpp/backends/43499/core/victim_protocol.h"
+HELPER = ROOT / "app/src/main/cpp/backends/43499/core/victim_helper/victim_helper.c"
 KOTLIN_PROTOCOL = ROOT / "app/src/main/kotlin/com/ghostlock/app/core/victim/VictimProtocol.kt"
 KOTLIN_CAPABILITY = ROOT / "app/src/main/kotlin/com/ghostlock/app/core/victim/VictimCapability.kt"
 OPCODES = {"PROBE_STATUS": 6, "PROBE_COMM_SET": 7, "PROBE_COMM": 8}

@@ -418,6 +418,7 @@ fun SegmentedSwitchItem(
     )
 }
 
+/** Dropdown list item with optional per-row enablement for disabled backend entries. */
 @Composable
 fun SegmentedDropdownItem(
     icon: ImageVector? = null,
@@ -426,6 +427,8 @@ fun SegmentedDropdownItem(
     items: List<String>,
     colors: ListItemColors = defaultSegmentedColors(),
     enabled: Boolean = true,
+    /** Returns whether the row at an index can be selected. */
+    itemEnabled: (Int) -> Boolean = { true },
     onClick: (() -> Unit)? = null,
     selectedIndex: Int,
     onItemSelected: (Int) -> Unit,
@@ -476,10 +479,20 @@ fun SegmentedDropdownItem(
         ) {
             items.forEachIndexed { index, text ->
                 SelectableDropdownMenuItem(
-                    text = { Text(text) },
+                    text = {
+                        Text(
+                            text = text,
+                            color = if (itemEnabled(index)) {
+                                colorScheme.onSurface
+                            } else {
+                                colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+                            },
+                        )
+                    },
                     selected = index == safeIndex,
+                    enabled = itemEnabled(index),
                     onClick = {
-                        if (index in items.indices) {
+                        if (index in items.indices && itemEnabled(index)) {
                             haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
                             onItemSelected(index)
                         }

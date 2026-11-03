@@ -2,7 +2,7 @@
 """43499 Native PI 窗口禁日志静态 gate（task-101）。
 
 规则：
-1. `app/src/main/cpp/gl43499/core/**`（actor/page/carrier/perf/placement/victim 机制）
+1. `app/src/main/cpp/backends/43499/core/**`（actor/page/carrier/perf/placement/victim 机制）
    出现 `gl_log` / `__android_log_print` / `gl_log_write` ⇒ FAIL；
 2. `jni43499.c` 只允许在 JNI 边界函数内使用 `gl_log` 宏（info/warn/error），
    不得 `__android_log_print`；
@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 CALL_RE = re.compile(r"(gl_log\w*\s*\(|__android_log_print\s*\(|\b(info|warn|error|debug|verbose)\s*\()")
-JNI_FILE = "app/src/main/cpp/gl43499/jni43499.c"
+JNI_FILE = "app/src/main/cpp/backends/43499/jni43499.c"
 
 
 def validate(core_sources: dict[str, str], jni_text: str) -> list[str]:
@@ -32,7 +32,7 @@ def validate(core_sources: dict[str, str], jni_text: str) -> list[str]:
 
 def read_sources(root: Path) -> tuple[dict[str, str], str]:
     core: dict[str, str] = {}
-    core_root = root / "app/src/main/cpp/gl43499/core"
+    core_root = root / "app/src/main/cpp/backends/43499/core"
     for path in core_root.rglob("*"):
         if path.suffix in (".c", ".h", ".cc", ".cpp"):
             core[str(path)] = path.read_text(encoding="utf-8", errors="replace")

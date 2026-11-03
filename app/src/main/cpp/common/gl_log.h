@@ -1,16 +1,16 @@
 #ifndef GHOSTLOCK_GL_LOG_H
 #define GHOSTLOCK_GL_LOG_H
 /**
- *  @file supporal/gl_log.h
+ *  @file common/gl_log.h
  *  最小的日志系统（2026-10-18 用户裁定：**纯 C**）：printf 语义 + 三条去处。
  *
- *  - logcat（目标侧）：`file:line 正文`，`__android_log_print`；
- *  - 应用打开的 fd（目标侧）：`[级别符号 HH:mm:ss.mmm] 正文`，一行一次 write(2)；
- *  - stderr（宿主侧）：同上 `file:line 正文`。
+ *  - logcat（目标侧）：`file:line 正文`，priority 与 V/D/I/W/E 一一对应；
+ *  - 导出 fd（目标侧）：`[级别/启动毫秒] 正文`，ASCII 单行且每条最多一次 write(2)；
+ *  - stderr（宿主侧）：同一等级/时间格式，并包含 `file:line`。
  *
  *  用法：info("open path=%s role=%d", path, role);
- *  @note 只允许 ASCII 格式串；printf 语义（%s/%d/%u/%zu/%p/%02x …）。
- *  @note 状态按 **DSO** 各一份：实现编进静态库后分别链进三个 JNI 库，各自持有自己的 fd。
+ *  @note 控制字节折叠为空格、非 ASCII 字节替换为 '?'; printf 语义（%s/%d/%u/%zu/%p/%02x …）。
+ *  @note 状态按 DSO/可执行文件各一份；该库分别被 JNI DSO 与 standalone executable 链接。
  */
 #include <stdarg.h>
 #include <stddef.h>
@@ -40,21 +40,21 @@ typedef enum gl_log_level {
 } gl_log_level;
 
 /**
- *  注册导出 fd（由各库的 JNI 入口调用）。
+ *  注册导出 fd（由 JNI 入口或 standalone executable 初始化）。
  *
  *  @param fd 应用以 O_APPEND 打开的追加写 fd；-1 表示注销（退回只走 logcat）。
  *  @return 上一次注册的 fd（-1＝之前没有）。
- *  @note 宿主侧是空操作（日志导出是设备上的事）。
+ *  @note 该 fd 不转移给 logger；传入 -1 只关闭导出通道，不影响 Android logcat。
  */
 int gl_log_set_export_fd(int fd);
 
 /**
- *  @brief Adopt a duplicate of the application log fd.
- *  @param fd Application O_APPEND fd; <0 disables file export.
- *  @param timestamps 0/1 timestamp switch.
+ *  @brief Adopt a duplicate of an append-only log fd.
+ *  @param fd Output fd; <0 disables file export.
+ *  @param timestamps Legacy compatibility value; records always include elapsed milliseconds.
  *  @param min_level Minimum level for all sinks.
  *  @return The owned duplicate fd, or -1 when disabled/dup failed.
- *  @note The previous owned fd is closed. The caller keeps its original fd.
+ *  @note The previous owned fd is closed. The caller keeps its original fd; output failures are ignored.
  */
 int gl_log_attach_fd(int fd, int timestamps, gl_log_level min_level);
 
@@ -68,10 +68,10 @@ void gl_log_set_min_level(gl_log_level level);
 gl_log_level gl_log_min_level(void);
 
 /**
- *  时间戳开关（2026-10-18 用户裁定：debug 构建显示“启动后毫秒数”，release 不显示）。
+ *  Legacy timestamp controls retained for source compatibility; elapsed milliseconds are always emitted.
  *
- *  @param enabled 非 0 = 行里带 `1234ms`；0 = 不带。默认开启（宿主调试方便）。
- *  @note 由 Kotlin 在注册日志 fd 时按 BuildConfig.DEBUG 传入（见 NativeLogBridge）。
+ *  @param enabled Ignored compatibility argument.
+ *  @note Output format always follows the project's `[level/elapsed-ms]` rule.
  */
 void gl_log_set_timestamps(int enabled);
 int gl_log_timestamps(void);
@@ -85,10 +85,11 @@ gl_log_level gl_log_level_from_name(const char *name);
 /**
  *  写一行（printf 语义）。
  *
- *  @param level 级别；高于阈值直接返回（不格式化、不写任何去处）。
+ *  @param level 级别；低于阈值直接返回（不格式化、不写任何去处）。
  *  @param file  调用点文件（宏传 __FILE__）。
  *  @param line  调用点行号（宏传 __LINE__）。
- *  @param fmt   ASCII 格式串。
+ *  @param fmt   printf 格式串；输出端规整为单行 ASCII。
+ *  @note Sink 失败、partial write 与 EINTR 均丢弃；每个 fd sink 最多调用一次 write(2)。
  */
 void gl_log_write(gl_log_level level, const char *file, int line, const char *fmt, ...);
 

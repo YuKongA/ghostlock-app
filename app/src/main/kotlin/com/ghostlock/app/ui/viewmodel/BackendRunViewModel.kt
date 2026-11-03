@@ -12,9 +12,9 @@ import com.ghostlock.app.ui.backend.ReadinessReason
 import com.ghostlock.app.ui.backend.RunDecision
 import com.ghostlock.app.ui.backend.RunPageContext
 import com.ghostlock.app.ui.backend.currentAttackExecutorState
-import com.ghostlock.app.ui.screen.module.backends.BackendSelection
-import com.ghostlock.app.ui.screen.module.backends.BackendSpec
-import com.ghostlock.app.ui.screen.module.backends.Backends
+import com.ghostlock.app.backend.declarations.BackendSelection
+import com.ghostlock.app.backend.declarations.BackendSpec
+import com.ghostlock.app.backend.registry.Backends
 
 /**
  * 执行页（RunPage）的**纯 UI 状态 holder**（task-32 分层收敛）。
