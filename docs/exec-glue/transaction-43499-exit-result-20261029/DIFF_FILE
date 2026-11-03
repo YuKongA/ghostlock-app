@@ -1,0 +1,117 @@
+--- a/app/src/main/kotlin/com/ghostlock/app/backend/43499glued/Flow43499Glued.kt
++++ b/app/src/main/kotlin/com/ghostlock/app/backend/43499glued/Flow43499Glued.kt
+@@ -2,6 +2,7 @@
+ 
+ import android.content.Context
+ import com.ghostlock.app.core.flow.FlowRequest
++import com.ghostlock.app.core.flow.FlowResult
+ import com.ghostlock.app.core.flow.FlowStep
+ import com.ghostlock.app.core.flow.SequentialFlow
+ import com.ghostlock.app.core.flow.StepResult
+@@ -23,7 +24,7 @@
+                 return@FlowStep StepResult.Failed("profile-invalid:" + profileResult.exceptionOrNull()?.message.orEmpty())
+             }
+             val profile = profileResult.getOrThrow()
+-            when (val state = ExecutableBackendProcess.run(
++            val state = ExecutableBackendProcess.run(
+                 context = request.context,
+                 backendKey = "43499-Glued",
+                 binaryName = "lib43499-Glued.so",
+@@ -31,20 +32,31 @@
+                 stdin = profile.binary,
+                 files = mapOf("profile.conf" to profile.sourceText.toByteArray(), "profile.bin" to profile.binary),
+                 onLine = request.onLine,
+-            )) {
+-                is BackendRunUiState.Finished -> {
+-                    if (state.result is com.ghostlock.app.core.flow.FlowResult.Ok) {
+-                        StepResult.Done(mapOf("exit" to "0", "profile" to profile.release))
+-                    } else {
+-                        StepResult.Failed("exec-failed", mapOf("profile" to profile.release))
+-                    }
+-                }
+-                is BackendRunUiState.Refused -> StepResult.Failed(state.reasons.joinToString(","))
+-                else -> StepResult.Failed("exec-state-not-finished")
+-            }
++            )
++            map43499ExecutableState(state, profile.release)
+         },
+     )
+ }
++
++/** Maps the executable's terminal result without losing process evidence or profile identity.
++ *
++ * @param state completed or pre-start executable state returned by the selected launcher.
++ * @param profileRelease release identifier of the profile supplied to this run.
++ * @return `Done` only for a successful executable result; failures retain their original reason.
++ * @note The executable host exit status remains the single terminal authority for this step.
++ */
++internal fun map43499ExecutableState(state: BackendRunUiState, profileRelease: String): StepResult =
++    when (state) {
++        is BackendRunUiState.Finished -> when (val result = state.result) {
++            is FlowResult.Ok -> StepResult.Done(result.evidence + ("profile" to profileRelease))
++            is FlowResult.Failed -> StepResult.Failed(
++                result.reason,
++                result.evidence + ("profile" to profileRelease),
++            )
++        }
++        is BackendRunUiState.Refused -> StepResult.Failed(state.reasons.joinToString(","))
++        else -> StepResult.Failed("exec-state-not-finished")
++    }
+ 
+ /** Builds the spec-owned runner that creates one fresh 43499 SequentialFlow per invocation. */
+ internal fun flow43499GluedRunner(): com.ghostlock.app.ui.backend.BackendFlowRunner =
+--- /dev/null
++++ b/app/src/test/kotlin/com/ghostlock/app/backend/cve43499glued/Flow43499GluedResultTest.kt
+@@ -0,0 +1,52 @@
++package com.ghostlock.app.backend.cve43499glued
++
++import com.ghostlock.app.core.flow.FlowResult
++import com.ghostlock.app.core.flow.StepResult
++import com.ghostlock.app.ui.backend.BackendRunUiState
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++/** Verifies that 43499 propagates the executable terminal result and selected profile identity. */
++class Flow43499GluedResultTest {
++    @Test
++    fun exitZeroPreservesExecutableEvidenceAndSelectedProfile() {
++        val evidence = mapOf("backend" to "43499-Glued", "exit" to "0", "runDir" to "fixture")
++
++        val result = map43499ExecutableState(
++            BackendRunUiState.Finished(FlowResult.Ok(emptyList(), evidence)),
++            "6.6.30-profile",
++        )
++
++        assertEquals(
++            StepResult.Done(evidence + ("profile" to "6.6.30-profile")),
++            result,
++        )
++    }
++
++    @Test
++    fun nonzeroExitPreservesFailureReasonAndExecutableEvidence() {
++        val evidence = mapOf("backend" to "43499-Glued", "exit" to "13", "runDir" to "fixture")
++
++        val result = map43499ExecutableState(
++            BackendRunUiState.Finished(
++                FlowResult.Failed("exec-exit:13", "exec", emptyList(), evidence),
++            ),
++            "6.6.30-profile",
++        )
++
++        assertEquals(
++            StepResult.Failed("exec-exit:13", evidence + ("profile" to "6.6.30-profile")),
++            result,
++        )
++    }
++
++    @Test
++    fun refusalAndNonterminalStatesRemainFailures() {
++        assertEquals(
++            StepResult.Failed("missing,unauthorized"),
++            map43499ExecutableState(BackendRunUiState.Refused(listOf("missing", "unauthorized")), "profile"),
++        )
++        assertTrue(map43499ExecutableState(BackendRunUiState.Running, "profile") is StepResult.Failed)
++    }
++}

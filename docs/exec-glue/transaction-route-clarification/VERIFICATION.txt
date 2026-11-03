@@ -1,0 +1,39 @@
+TRANSACTION: exec-glue rev3 route clarification
+Changed field: Glued backend process-launch selection. App remains the only Flow authority. If the Shizuku binder is reachable and permission is granted, the exec step uses the Shizuku process launcher; otherwise it uses the App process launcher. The Glued route ignores manual ExecutorPreference. After choosing Shizuku, bind/prepare/start failure stays a Shizuku failure and must not spawn an App child. Existing non-Glued backend routing is unchanged.
+
+Artifacts (reopened and hash-checked):
+BASELINE_FILE: docs/exec-glue/transaction-route-clarification/BASELINE_FILE
+MODIFIED_FILE: docs/exec-glue/transaction-route-clarification/MODIFIED_FILE
+DIFF_FILE: docs/exec-glue/transaction-route-clarification/DIFF_FILE.patch
+VERIFICATION.txt: docs/exec-glue/transaction-route-clarification/VERIFICATION.txt
+ROLLBACK.sh: docs/exec-glue/transaction-route-clarification/ROLLBACK.sh (executable)
+Active plan: docs/plan/exec-glue-plan.md
+
+BASELINE
+Command: ./gradlew :app:testDebugUnitTest --tests com.ghostlock.app.ui.backend.FlowLaunchParentTest --no-daemon --console=plain
+Input: existing workspace sources before the route clarification; test selector com.ghostlock.app.ui.backend.FlowLaunchParentTest.
+Literal output excerpt: e: file:///Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/app/src/test/kotlin/com/ghostlock/app/backend/cve43499/debug/A301SoDebugConfigTest.kt:23:52 Unresolved reference 'Cve43499RequestBuild'.
+Literal output summary: BUILD FAILED in 7s
+Exit status: 1
+
+MODIFIED
+Command: ./gradlew :app:testDebugUnitTest --tests com.ghostlock.app.ui.backend.FlowLaunchParentTest --no-daemon --console=plain
+Input: same existing workspace sources after the route clarification; same test selector.
+Literal output:
+e: file:///Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/app/src/test/kotlin/com/ghostlock/app/backend/cve43499/debug/A301SoDebugConfigTest.kt:23:52 Unresolved reference 'Cve43499RequestBuild'.
+e: file:///Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/app/src/test/kotlin/com/ghostlock/app/backend/cve43499/debug/A301SoDebugConfigTest.kt:24:52 Unresolved reference 'Cve43499RequestFactory'.
+e: file:///Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/app/src/test/kotlin/com/ghostlock/app/backend/cve43499/debug/A301SoDebugConfigTest.kt:169:22 Unresolved reference 'Cve43499RequestFactory'.
+e: file:///Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/app/src/test/kotlin/com/ghostlock/app/backend/cve43499/debug/A301SoDebugConfigTest.kt:177:30 Unresolved reference 'Cve43499RequestBuild'.
+e: file:///Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/app/src/test/kotlin/com/ghostlock/app/backend/cve43499/debug/A301SoDebugConfigTest.kt:178:37 Unresolved reference 'Cve43499RequestBuild'.
+BUILD FAILED in 4s
+Exit status: 1
+
+ROLLBACK TEST (another copy; active plan left modified)
+Command: docs/exec-glue/transaction-route-clarification/ROLLBACK.sh /tmp/route-clarification-rollback-test.md
+Input: /tmp/route-clarification-rollback-test.md initially had MODIFIED_FILE bytes, SHA-256 5be29fd54af81595920066a37dc47cd61b4e0b304f3724b2b90b6f3773a10e7b.
+Literal output: ROLLBACK_APPLIED
+Exit status: 0
+Restored behavior/status: restored copy is byte-equal to BASELINE_FILE, SHA-256 67f684a9984f4251c59e393763649d39917eb2651d12d82b731e7bc16b8aa573. Active plan remains byte-equal to MODIFIED_FILE, SHA-256 5be29fd54af81595920066a37dc47cd61b4e0b304f3724b2b90b6f3773a10e7b.
+
+BASELINE_FILE SHA-256: 67f684a9984f4251c59e393763649d39917eb2651d12d82b731e7bc16b8aa573
+MODIFIED_FILE SHA-256: 5be29fd54af81595920066a37dc47cd61b4e0b304f3724b2b90b6f3773a10e7b

@@ -1,0 +1,24 @@
+ITERATION 1
+
+com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest:..
+
+Time: 4.635
+
+OK (2 tests)
+APP_RESULT=PASS
+ITERATION 2
+
+com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest:..
+
+Time: 4.587
+
+OK (2 tests)
+APP_RESULT=PASS
+ITERATION 3
+
+com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest:..
+
+Time: 4.658
+
+OK (2 tests)
+APP_RESULT=PASS

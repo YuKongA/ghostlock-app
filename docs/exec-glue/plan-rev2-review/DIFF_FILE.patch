@@ -1,0 +1,40 @@
+--- docs/plan/exec-glue-plan.md (baseline)
++++ docs/plan/exec-glue-plan.md (modified)
+@@ -136,3 +136,37 @@
+ ### 批次门
+ 
+ L 级设计须 design-critic 复核、阻断清零并获用户认可后才改生产源；之后单 writer 串行构建。当前 rev2 状态：待 design-critic 复核与用户批准；部署链未完成。
++
++
++### 复核落实与来源对拍（2026-10-28）
++
++#### 新 Glued 身份与原版 backend 边界
++
++design-critic 复核原始用户要求后确认：“新增临时后端”且为“新 app/shizuku 进程启动器 + flow 执行入口点”足以说明两个 Glued 是独立新 backend 身份，可在 Shizuku JVM 执行；这不迁移原版 43499/43284。边界固定如下：
++
++| 身份 | 执行身份与保留 | 允许复用 | 禁止复用/改变 |
++|---|---|---|---|
++| 原版 43499 / 43284 | 原版 backend 保持既有 App 域语义；本工作树 UI 禁用；原版 CMake target 暂停 | 不增加新依赖 | 不迁移到 Shizuku；不改变 W3、JNI、session/route 与生命周期 |
++| 43499-Glued / 43284Glued | 独立 stable ID；各自一个 SequentialFlow exec step；可由 App 或共用 Shizuku UserService 执行 | 只复用 FlowSymbolInvocation / stable symbol 入口、共用服务与日志通道 | 不借用原版 JNI、session、route 或攻击生命周期；不增加 BackendExecGlue 继承层 |
++
++#### 上游 profile/converter 字节对拍
++
++以 origin/main 的 437b3b257462e17d395cfd2cd8fb81536d6c6358 为基线，对 kernel_profiles 目录 85 个资产（84 个 .conf profile + index.conf）及 LegacyProfileConverter.kt 共 86 个文件逐字节比较：86 检查、0 缺失、0 不同。index.conf SHA-256：1f0efc66a8613aaec037ea427af261e9e685d0f69172327679076f6a595f8791；LegacyProfileConverter.kt SHA-256：947c2024ff8a6e0f4986301bed18460dcc0b62e5eb41425f9d071cbfb903465c。路径卡片由 Glued43499ProfileCodec 从 kernel_profiles/index.conf 加载 built-in，并通过 ACTION_OPEN_DOCUMENT 读取导入 URI；不读取旧 assets/profile/43499。
++
++#### Finish 脚本等价性仍为阻断
++
++只读对照 app/src/main/cpp/43499glued/attack/ops.cpp:226-431 与 app/src/main/kotlin/com/ghostlock/app/core/finish/FinishScript.kt:17-65 后，common FinishScript 不是上游 write_root_script 的等价实现：上游包含 root uid gate、ksud 多路径查找与 fallback、iomem 原子缓存、debug dump、checkreqprot、KMI 解析、安全模式停用模块、SELinux policy 修复/重试、KernelSU late-load 与模块状态等待；当前 common script 不包含上述链路。上游以 O_TRUNC 写 root script；运行目录中预写/禁止写的桥接行为及失败后是否继续 exec 也尚未由测试证明。故不能以当前 common script 替换上游最终脚本；该阻断保留至逐项覆盖与桥接测试通过。
++
++#### 当前部署阻断的代码物证
++
++- app/src/main/kotlin/com/ghostlock/app/ui/backend/FlowLaunchParent.kt:112 仍返回 flow-launcher:shizuku-remote-pending。
++- app/src/main/kotlin/com/ghostlock/app/shizuku/GhostlockUserService.kt:63 调用 host registry；当前 registry 仅注册 98260，两个 Glued stable ID 尚无 host adapter。
++- app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableBackendProcess.kt:51 仍在 App 进程中 ProcessBuilder.start()。
++- 43284Glued 的 Flow 仍提交空 argv；尚无按上游 parser 生成的参数与 IpSecRuntime 生命周期。
++
++本次复核关闭 Shizuku 新身份歧义，并补齐 profile 来源证据；Finish 行为等价、Shizuku host/Flow 接线、43284 参数与资源生命周期仍是部署前阻断。实现仍按 rev2 进入设计批准门后再开始。
++
++
++### 设计评审状态更正（2026-10-28）
++
++上一节“待 design-critic 复核与用户批准”是复核前状态。design-critic 对 HEAD b119085915748a940740d7ce919b5a30ed8e9346、计划快照 SHA-256 d6291ade5ff88480e0c7acad7b6cf8230f551cc7627bd3f62025268c3c2f0e34 的最终只读复核已完成：A12/new-Glued 身份冲突关闭，边界表充分，profile parity 关闭。rev2 现在进入用户批准门；五项实现阻断仍须按计划解决，尚未部署。

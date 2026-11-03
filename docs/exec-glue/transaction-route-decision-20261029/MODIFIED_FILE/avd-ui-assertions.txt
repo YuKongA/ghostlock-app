@@ -1,0 +1,8 @@
+CVE-2026-43284: text_enabled=true; row_enabled=false
+CVE-2026-98260: text_enabled=true; row_enabled=false
+CVE-2026-43499: text_enabled=true; row_enabled=false
+Custom: text_enabled=true; row_enabled=false
+selected_label_after_disabled_tap=CVE-2026-43499 · Glued
+popup_remained_open=true
+source_apk_equals_avd_base_apk=true
+source_and_avd_sha256=0335002fd69cb215e861794ac40568fc637ce1731a0e6868b4c8f9c3bc4b5213

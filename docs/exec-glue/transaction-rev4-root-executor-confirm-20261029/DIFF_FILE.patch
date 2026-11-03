@@ -1,0 +1,34 @@
+--- BASELINE_FILE/exec-glue-plan.md
++++ MODIFIED_FILE/exec-glue-plan.md
+@@ -29,9 +29,9 @@
+ 
+ ### 43284Glued
+ 
+-Flow 将 common finish.sh 与 payload 写入 launcher 自有 runDir。上游 ELF/DFRoot bootstrap 完成并达到 direct-child terminal 后，先关闭本次 IpSecRuntime，再独立执行 RootFinishHandoff；DFRoot 原有 late-load 不重复。root Finish 脚本先核验 uid=0，再执行 non-RootManager payload/finish，并写带 runId/status 的 terminal marker。不能把 ELF exit=0 当成 Finish 成功。
++Flow 将 common finish.sh 与 payload 写入 launcher 自有 runDir。上游 ELF/DFRoot bootstrap 完成并达到 direct-child terminal 后，先关闭本次 IpSecRuntime，再独立执行 RootFinishHandoff；DFRoot 原有 late-load 不重复。root Finish 脚本先执行 id -u 校验，非 root 立即非零退出且不写成功 marker；root gate 通过后才写 running marker、执行 non-RootManager payload/finish 并写 runId/status terminal marker。43284 的 RootManagerPayload 必须 no-op，命令审计确认不会重复触发 manager bootstrap。不能把 ELF exit=0 当成 Finish 成功。
+ 
+-RootFinishHandoff 使用新 backend-specific adapter；不得复用已 Deprecated 的 FinishExecution。用户已确认按所选 RootManager 的固定 su -c 接口执行。冻结映射为当前每个 RootManagerSpec 均声明固定 command token su 与 argv 前缀 [su, -c]；RootManager 仅提供授权/批准，不触发候选路径扫描。ProcessBuilder 只启动一次；-c 的单一命令参数只含 /system/bin/sh 与经过字符集校验、shell-quoted 的固定 runDir/finish.sh 路径，脚本内容与 payload 不拼入 argv。新脚本第一步校验 id -u == 0 并写带 runId/status 的 terminal marker；su 缺失/授权拒绝、非 root、启动失败或非零退出均 fail-closed，保留 runDir/log。若某 RootManagerSpec 的 su -c 不可用，该 manager 在 Glued43284 readiness 中 fail-closed。
++RootFinishHandoff 使用新 backend-specific adapter；不得复用已 Deprecated 的 FinishExecution。用户已确认按所选 RootManager 的固定 su -c 接口执行。冻结映射为当前每个 RootManagerSpec 均声明固定 command token su 与 argv 前缀 [su, -c]；RootManager 仅提供授权/批准，不触发候选路径扫描。ProcessBuilder 只启动一次；-c 的单一命令参数只含 /system/bin/sh 与经过字符集校验、shell-quoted 的固定 runDir/finish.sh 路径，脚本内容与 payload 不拼入 argv。脚本标记顺序严格遵守上段：先 id -u/root gate，非 root 不写成功 marker；仅 root gate 通过后写 running marker，运行 payload/finish，最后写 terminal marker。su 缺失/授权拒绝、非 root、启动失败或非零退出均 fail-closed，保留 runDir/log。若某 RootManagerSpec 的 su -c 不可用，该 manager 在 Glued43284 readiness 中 fail-closed。
+ 
+ ### 共用终态与资源
+ 
+@@ -46,7 +46,7 @@
+ 
+ ## 5. 设计与实现门
+ 
+-1. 用户已确认固定 su -c 接口；计划冻结现有每个 RootManagerSpec 使用 token su、前缀 [su, -c]，无 path search/fallback。design-critic 需确认映射、argv shell quoting、单次 handoff、uid=0 gate、marker 与拒绝语义；运行时 su 缺失/授权拒绝即 fail-closed。
++1. 用户已确认固定 su -c 接口；计划冻结现有每个 RootManagerSpec 使用 token su、前缀 [su, -c]，无 path search/fallback。固定 argv snapshot 验证参数顺序与 quoting；测试 uid=0 gate→running marker→payload→terminal marker，非 root 不写成功 marker，43284 RootManagerPayload 命令计数为零；覆盖 handoff reject/cancel/binder death/EOF 缺失。
+ 2. design-critic 复核最终压缩计划；阻断项为零且用户批准后才改生产源码。A3 已压缩达标；43499 direct-path 仍须实现并证明 ABI/权限/SELinux 可达。
+ 3. 分批实施：先 43499 bridge，关闭单 late-load、script parity、staging identity 与 detached terminal 门；再 43284 root handoff，关闭 IpSec/status/marker/cancel 门。每批更新 UML、测试和记录，不合并跳门。
+ 4. host：针对性测试、完整 testDebugUnitTest、assembleDebug、assembleDebugAndroidTest、上游源 SHA 对拍、APK/ELF ABI/entrypoint 校验。
+@@ -54,7 +54,8 @@
+ 
+ ## 6. 当前阻断与证据
+ 
+-- 用户已确认：43284 root Finish 使用所选 RootManager 的固定 su -c 接口；缺失/拒绝 fail-closed。活动计划当前冻结为 token su、前缀 [su, -c]；需 design-critic 复核后再进入用户批准 gate。
++- 用户已确认：43284 root Finish 使用所选 RootManager 的固定 su -c 接口；缺失/拒绝 fail-closed。最终 design-critic 复核无新增阻断、A3 通过；当前仅等待用户批准进入生产实现 gate。
+ - 43499：方案顺序已闭合为 common RootManager 单次 direct-path late-load；实际 libksud 身份/ABI、双 launcher 可达性、FolkPatch readiness 与失败转移仍是实现/设备门。
+ - AVD 当前 UI/selector 与 2.0.12 APK、profile source、已有 safe fixture 结果见上述归档详版与 docs/exec-glue/ 下对应 transaction。最近 adb devices -l：emulator-5554 online；未运行生产 Glued ELF。
+-- 设计复核记录：2026-10-29 · 输入计划 SHA-256 c4c244a03850577da54b48c61a5697dcb76a8452947bb83af59d9843ae0b980d · A3 通过（6603 B）；用户已关闭 executor 接口确认项。最终 adapter 映射与 shell quoting 待本轮 design-critic 复核。43499 direct-path、脚本 parity 与真机验证均未完成。
++- 设计复核记录：2026-10-29 · 输入计划 SHA-256 a6f8946935f19801884f4accbd9b5372c7de66c26cccb7927386716a3f9633da · 总判“可进入 user-approval gate”· A3 通过（7631 B）；用户已关闭 executor 确认项。复核建议已补入 marker 顺序、43284 RootManager no-op 与命令计数测试。43499 direct-path、脚本 parity 与真机验证均未完成。
++- 最终复核记录：2026-10-29 · 输入计划 SHA-256 4fad3678a614c8cd2eda3c391fc7250b03fe83937d7be8ee7c04799914d9a219 · 7965 B · A3 通过、无新增阻断、可请求用户批准进入生产实现；实现及真机验证均未执行。

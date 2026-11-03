@@ -1,0 +1,57 @@
+A301SO 43284 marker gate — rev11b/M0
+
+Identity:
+- Worktree: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app
+- HEAD: b119085915748a940740d7ce919b5a30ed8e9346, detached; version target 2.0.12/code 1342.
+- Device: QV770MFGJ1 / A301SO / Android 15 API 35; kernel 5.15.189-android13-8-00016-g51bba4309aac-ab14546557; SELinux Enforcing.
+- User authorized one reboot and marker-only gate; reboot already performed before this continuation. Current uptime at pre-gate check: 5867.01 seconds.
+
+Modified field: M0 KO vermagic/KMI target, from .202-dirty to the exact A301SO .189 release. No Payload/Finish execution is included in the fixture.
+
+Artifacts:
+- MODIFIED_FILE: docs/exec-glue/transaction-m0-kmi189-20261029/MODIFIED_FILE
+- DIFF_FILE: docs/exec-glue/transaction-m0-kmi189-20261029/DIFF_FILE
+- VERIFICATION.txt: docs/exec-glue/transaction-m0-kmi189-20261029/VERIFICATION.txt
+- ROLLBACK.sh: docs/exec-glue/transaction-m0-kmi189-20261029/ROLLBACK.sh
+
+BASELINE:
+Command: ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+Input: pre-M0 2.0.12 source, before temporary M0 overlay.
+Literal result: BUILD SUCCESSFUL in 40s; 69 XML files; 424 tests, 0 failures, 0 errors, 0 skipped.
+Exit: 0 (recorded in docs/analysis/device-gates/20261029-a301so-43284-m0-marker-gate.md).
+
+MODIFIED (host build/test):
+Command: podman machine start podman-machine-default >/dev/null 2>&1 || true; ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest -Pm0Marker=true --no-daemon --console=plain
+Input: temporary M0 fixture overlay; exact target .189 KO copied into build/app/m0/fixture/43284glued/ko/dfroot-android13-5.15.ko. Source preimages and rollback are captured in PREIMAGE_HASHES.json and TEST_PREIMAGE.kt.
+Literal result: BUILD SUCCESSFUL in 40s; 85 actionable tasks: 13 executed, 72 up-to-date; 424 tests passed.
+Exit: 0.
+APK: build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk sha256=fd6f506e2f238b6c0f2d1dea197a6bf7d346bff15ec702c8f20aa0ea0aceda3d; signer SHA-256=b92a1aa56ccf72c789057722af1fe850d71fa067deafc71e985c4d7b3f3badca. Instrumentation APK sha256=2c5f7a33145ce74c78e0d717cd9e0983afd9b9ed4cd844a1d64cef15dfecac0d. KO build output byte-identical to MODIFIED_FILE.
+KMI: module imports 10/10 match common ABI CRCs; module_layout=0x0222dd63; ELF64/AArch64; vermagic equals device uname -r plus target config flags.
+
+MODIFIED (device marker test):
+Command: adb -s QV770MFGJ1 shell am instrument -w -e class 'com.ghostlock.app.backend.cve43284glued.M0MarkerGateTest#appLauncherCompletesRootReadyAndSingleReleaseMarkers' com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner
+Input: A301SO Android 15, exact .189 KO above, App-owned runDir /data/user/0/com.ghostlock.app/cache/m0-marker/84b15e55bd9f49509ecaefd26b515626; app and instrumentation APK signed by the existing debug cert.
+Literal result: JUnit reported `M0 ELF exit expected:<0> but was:<3>`; `Tests run: 1, Failures: 1`. ELF log ended `read_vendor at 0x1ac70 got 0 bytes: open vendor file failed or read returned < 16 bytes`, `patch: /vendor/lib64/libbinderdebug.so patch failed: -1`, `M0_PATCH_FAILED=1`. Shell command exit was 0 despite JUnit failure; test result is FAIL.
+Exit/result: gate FAIL before DFRoot KO insertion, UMH, ROOT_READY, or RELEASE_FINISH.
+Inputs/observable state: payload and finish canaries both remained SHA-256 `225605bf0081aafea14e916f861e8baf6a56d8a49732c83bf9060abe55e4bf3f`; ROOT_READY, RELEASE_FINISH, and sentinel were absent; no m0-worker process remained. The test preserved its runDir and `run.log`.
+Shizuku service was not running at preflight, so only App launcher route ran. No Payload/Finish script ran.
+
+Recovery reboot (user-approved after the M0 failure):
+Command: adb -s QV770MFGJ1 reboot
+Input: A301SO QV770MFGJ1, after the failed marker-only attempt; no Payload/Finish had run.
+Literal result: adb reboot returned successfully (exit 0); subsequent device query reported boot=1, uptime=89.43s, kernel=5.15.189-android13-8-00016-g51bba4309aac-ab14546557, selinux=Enforcing.
+Recovery verification command: adb -s QV770MFGJ1 shell 'sha256sum /apex/com.android.runtime/bin/crash_dump64 /system/apex/com.android.runtime.apex'
+Literal result: active crash_dump64 SHA-256 15288efc30e073dbb29a4b357d70e8b33c8136fa442c2def91a599fef85de066; system APEX SHA-256 75e6e6e6109ebb9c460a0820104a91cfd0688c809a6b96b55e9ef17900961671. The active file is byte-identical to the saved pristine payload member build/deployment-audit/a301so-kmi-189/pristine-crash_dump64 (482904 bytes, same SHA-256); POST_RECOVERY_MATCHES_PRISTINE=True.
+APK verification command: adb -s QV770MFGJ1 shell pm path com.ghostlock.app; adb -s QV770MFGJ1 pull <reported base.apk> build/deployment-audit/a301so-kmi-189/post-recovery-installed.apk; Python SHA-256 comparison against pre-gate APK.
+Literal result: pulled 28999754 bytes; POST_RECOVERY_INSTALLED_APK_SHA256=37756ac1a4b7df5cbc4ed8734178fd12b1b131e4bf4bae7184d2b7e40ecdce92, equal to pre-gate APK; versionName=2.0.12/versionCode=1342. Test package and M0 worker process were absent. Recovery check exit: 0.
+Restored behavior/status: system crash_dump64 page-cache contents now match the pristine APEX payload; app/source/default ELF remain rolled back. The M0 attempt remains FAIL before KO insertion/UMH with no ROOT_READY/RELEASE_FINISH; no marker test was rerun, and Payload/Finish remain unexecuted.
+
+ROLLBACK:
+Command: docs/exec-glue/transaction-m0-kmi189-20261029/ROLLBACK.sh
+Input: saved pre-gate APK SHA-256 `37756ac1a4b7df5cbc4ed8734178fd12b1b131e4bf4bae7184d2b7e40ecdce92`; fixture APK hashes `fd6f506e2f238b6c0f2d1dea197a6bf7d346bff15ec702c8f20aa0ea0aceda3d` / `2c5f7a33145ce74c78e0d717cd9e0983afd9b9ed4cd844a1d64cef15dfecac0d`.
+Literal result: `RESTORED_INSTALLED_APK_SHA256=37756ac1a4b7df5cbc4ed8734178fd12b1b131e4bf4bae7184d2b7e40ecdce92`; `SOURCE_PREIMAGES_RESTORED=7`; `BUILD SUCCESSFUL in 3s`; default assemble `BUILD SUCCESSFUL in 21s`; `RESTORED_DEFAULT_ELF_SHA256=42ee0ffc5581451720588c0349adb6ed5e26457ebc03e95572c4d610bc5d8079`; `RESTORED_DEFAULT_BEHAVIOR=default 43284 ELF without M0 marker code`; package versionName=2.0.12/versionCode=1342; `ROLLBACK_RESULT=device app + source + default ELF restored`.
+Exit: 0 (verified by terminal completion and independent source/APK/hash checks).
+Separate-copy rollback test: `ROLLBACK_TEST_OUTPUT.txt`; rollback returned 0 and restored all 7 preimages.
+
+
+Current recheck is recorded in the Recovery reboot section above; the active crash_dump64 matches the pristine payload and the installed APK matches the saved pre-gate APK. No new M0 attempt was made.

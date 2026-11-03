@@ -1,0 +1,43 @@
+TARGET: A301SO deployment of GhostLock 2.0.12 (versionCode 1342, Android 15).
+CHANGED BRANCH/FIELD: installed APK after restoring the 43284 Glued C source to pinned DFRoot bytes; no exploit executable was launched.
+
+ARTIFACT PATHS
+MODIFIED_FILE: docs/exec-glue/transaction-a301so-43284-upstreamfix/MODIFIED_FILE/
+DIFF_FILE: docs/exec-glue/transaction-a301so-43284-upstreamfix/DIFF_FILE.patch
+VERIFICATION.txt: docs/exec-glue/transaction-a301so-43284-upstreamfix/VERIFICATION.txt
+ROLLBACK.sh: docs/exec-glue/transaction-a301so-43284-upstreamfix/ROLLBACK.sh
+
+BASELINE
+Baseline capture commands:
+`adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp shell pm path com.ghostlock.app`
+Literal output: `package:/data/app/~~uxV8py3uJrFLz8rFyLx71g==/com.ghostlock.app-9cuZFpRKabUcZBQ_dAlVkg==/base.apk`
+`adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp exec-out cat /data/app/~~uxV8py3uJrFLz8rFyLx71g==/com.ghostlock.app-9cuZFpRKabUcZBQ_dAlVkg==/base.apk`
+Literal output: binary stream captured; 29,269,887 bytes; SHA-256 a4b49a419ef3513661d3b2f9a98c71cf9c8dbe8a73698be578c1ce803991b7c2.
+Exit status: 0 for both commands.
+
+MODIFIED
+Install command: adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp install -r build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk
+Literal output: Performing Streamed Install / Success.
+Exit status: 0.
+Installed version: versionName=2.0.12, versionCode=1342, lastUpdateTime=2026-10-29 00:06:24. MainActivity was started and verified as ResumedActivity. Installed base.apk SHA-256 82f117e974217587d769009cce0f54eb542e4536625e320a9d963394035559b7, exact byte match to local APK.
+43284 runtime command: adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp shell am instrument -w -e class com.ghostlock.app.backend.cve43284glued.AndroidIpSecRuntimeSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner
+Literal output:
+com.ghostlock.app.backend.cve43284glued.AndroidIpSecRuntimeSmokeTest:.
+Time: 0.026
+OK (1 test)
+Exit status: 0. It only created/checked/closed App-domain IpSec runtime, not an ELF.
+Shizuku probe command: adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp shell am instrument -w -e class com.ghostlock.app.backend.core.ShizukuRouteProbeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner
+Literal result:
+com.ghostlock.app.backend.core.ShizukuRouteProbeTest:..
+Time: 1.824
+OK (2 tests)
+Log: binder=true permission=true route=SHIZUKU preflight=[] no_spawn=true. The second test bound the shared UserService, sent an empty Bundle, observed the exact host reason exec:host:argv-missing, and disconnected with remove=true; it did not start a child.
+Exit status: 0. Test APK SHA-256 cf3e857c4d96ef250db874ec21287fdd58e963c08ca52ff0c1bc1219f724a124 (454,243 bytes) was installed for the probe and uninstalled successfully; com.ghostlock.app.test is absent. `ps -A` has no lib43499-Glued.so, lib43284Glued.so or dfroot process match.
+
+ROLLBACK
+Command: ADB_BIN=/Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-a301so-43284-upstreamfix/rollback-test/fake_adb.py ADB_STATE=/Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-a301so-43284-upstreamfix/rollback-test/state docs/exec-glue/transaction-a301so-43284-upstreamfix/ROLLBACK.sh adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp
+Literal output:
+Success
+ROLLBACK_VERIFY=PASS sha256=a4b49a419ef3513661d3b2f9a98c71cf9c8dbe8a73698be578c1ce803991b7c2
+Exit status: 0.
+Restored behavior/status: isolated fake-device copy restored prior APK byte-for-byte; active A301SO remains on modified APK. Route probe confirms current app chooses Shizuku and can bind the shared UserService/AIDL; it deliberately rejected an invalid request before spawning. Deployment and route preflight are verified, end-to-end executable launch/terminal/reap remain pending.

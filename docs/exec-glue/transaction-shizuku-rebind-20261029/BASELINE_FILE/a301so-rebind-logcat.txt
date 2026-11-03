@@ -1,0 +1,223 @@
+10-29 01:35:34.407 D/ActivityThread( 4174): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.407 D/ActivityThread( 4163): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.407 D/ActivityThread( 7837): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.408 D/ActivityThread( 4110): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.408 D/ActivityThread( 4117): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.408 D/ActivityThread( 4113): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.409 D/ActivityThread( 4107): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.409 D/ActivityThread( 4076): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.409 D/ActivityThread( 4062): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.412 D/ActivityThread(18564): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.415 D/ActivityThread(18564): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.417 D/ActivityThread(15232): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.421 D/ActivityThread(15232): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.426 D/ShortcutService( 1987): replacing package: com.ghostlock.app userId0
+10-29 01:35:34.426 D/ShortcutService( 1987): handlePackageUpdateFinished: com.ghostlock.app user=0
+10-29 01:35:34.426 D/ActivityThread( 4309): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.426 D/ShortcutService( 1987): rescanPackageIfNeeded 0@com.ghostlock.app, forceRescan=true , isNewApp=true
+10-29 01:35:34.427 D/ActivityThread( 4309): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.427 D/ShortcutService( 1987): Package com.ghostlock.app has 0 manifest shortcut(s), and 0 share target(s)
+10-29 01:35:34.427 D/CarrierSvcBindHelper( 4309): onPackageUpdateFinished: com.ghostlock.app
+10-29 01:35:34.428 I/SdkSandboxManager( 1987): No SDKs used. Skipping SDK data reconcilation for CallingInfo{mUid=10673, mPackageName='com.ghostlock.app, mAppProcessToken='null'}
+10-29 01:35:34.428 W/emon.flowerfree( 7879): ApkAssets: Deleting an ApkAssets object '<empty> and /data/app/~~ybe08A_y8MJR6cVFQ1wvpQ==/com.ghostlock.app-BJMRjwzPzLJ_xmwS9st0iQ==/base.apk' with 1 weak references
+10-29 01:35:34.429 I/SdkSandboxManager( 1987): No SDKs used. Skipping SDK data reconcilation for CallingInfo{mUid=10673, mPackageName='com.ghostlock.app, mAppProcessToken='null'}
+10-29 01:35:34.429 D/CarrierSvcBindHelper( 4309): onPackageModified: com.ghostlock.app
+10-29 01:35:34.433 I/SafetyLabelChangedBroadcastReceiver( 6007): received broadcast packageName: com.ghostlock.app, current user: UserHandle{0}, packageChangeEvent: UPDATE, intent user: UserHandle{0}
+10-29 01:35:34.449 D/ActivityThread( 4755): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.451 I/Telecom ( 1987): CarModeTracker: Package com.ghostlock.app is not tracked.: SSH.oR@A5w
+10-29 01:35:34.455 D/ActivityThread( 1987): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.455 D/ActivityThread( 1987): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.466 D/ActivityThread( 4755): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.497 W/AlarmManager( 1987): Package com.ghostlock.app, uid 10673 lost permission to set exact alarms!
+10-29 01:35:34.510 D/ActivityThread(32423): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.511 D/ActivityThread(32423): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.529 D/ImsResolver( 4309): maybeAddedImsService, packageName: com.ghostlock.app
+10-29 01:35:34.588 I/DrawerRepository( 7879): insertApp: updating id DrawerItem(id=137, parentId=null, label=GhostLock, labelNormalized=ghostlock, pegiLevel=null, categoryId=settings, active=false, hidden=false, timestampInstallation=1792337385071, counterDrawerPanel=23, counterSearchPanel=0, position=125, flags=4, packageName=com.ghostlock.app, activityName=com.ghostlock.app.ui.MainActivity, userId=0, intent=null, deepShortcutId=null, dominantColor=-986896, folderColor=null, customIconProps=null, showBadge=false) with DrawerItem(id=137, parentId=null, label=GhostLock, labelNormalized=ghostlock, pegiLevel=null, categoryId=settings, active=true, hidden=false, timestampInstallation=1792337385071, counterDrawerPanel=23, counterSearchPanel=0, position=125, flags=4, packageName=com.ghostlock.app, activityName=com.ghostlock.app.ui.MainActivity, userId=0, intent=null, deepShortcutId=null, dominantColor=-986896, folderColor=null, customIconProps=null, showBadge=false)
+10-29 01:35:34.767 D/ActivityThread(10297): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.768 D/ActivityThread(10297): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.845 I/Finsky  (22962): [2] AIM: AppInfoCacheUpdater -> invalidating apps: [com.ghostlock.app]
+10-29 01:35:34.846 I/Finsky  (22962): [72] AIM: AppInfoManager-Perf > OnDeviceAppInfo > cacheHitCount=0, cacheMissCount=1. Missed  in cache (limit 10) : [com.ghostlock.app]
+10-29 01:35:34.856 W/SQLiteLog( 7596): (28) double-quoted string literal: "com.ghostlock.app"
+10-29 01:35:34.864 I/artd    (20154): GetBestInfo: /data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk has no usable artifacts
+10-29 01:35:34.871 I/Finsky:background( 9493): [55] IQ:PSL: skipping onPackageRemoved(replacing=true) for untracked package=com.ghostlock.app
+10-29 01:35:34.877 D/ActivityThread(12326): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.883 D/ActivityThread(12326): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:34.895 W/SQLiteLog( 7596): (28) double-quoted string literal: "com.ghostlock.app"
+10-29 01:35:34.896 I/Finsky  (22962): [757] Asset module broadcast after update successful for package com.ghostlock.app.
+10-29 01:35:34.897 I/artd    (20154): GetBestInfo: /data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk has no usable artifacts
+10-29 01:35:34.904 I/Finsky  (22962): [2] AIM: AppInfoCacheUpdater -> invalidating apps: [com.ghostlock.app]
+10-29 01:35:34.906 I/Finsky  (22962): [71] AIM: AppInfoManager-Perf > OnDeviceAppInfo > cacheHitCount=0, cacheMissCount=1. Missed  in cache (limit 10) : [com.ghostlock.app]
+10-29 01:35:34.928 I/artd    (20154): GetBestInfo: /data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk has no usable artifacts
+10-29 01:35:34.982 I/ProximityAuth(27553): [RecentAppsMediator] Package added: (user=UserHandle{0}) com.ghostlock.app
+10-29 01:35:34.985 W/SQLiteLog(27553): (28) double-quoted string literal: "com.ghostlock.app"
+10-29 01:35:35.115 W/system_server( 1987): ApkAssets: Deleting an ApkAssets object '<empty> and /data/app/~~ybe08A_y8MJR6cVFQ1wvpQ==/com.ghostlock.app-BJMRjwzPzLJ_xmwS9st0iQ==/base.apk' with 12 weak references
+10-29 01:35:35.151 W/system_server( 1987): ApkAssets: Deleting an ApkAssets object '<empty> and /data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk' with 143 weak references
+10-29 01:35:35.247 V/BackupManagerService( 1987): [UserID:0] restoreAtInstall pkg=com.ghostlock.app.test token=37 restoreSet=0
+10-29 01:35:35.266 D/CarrierSvcBindHelper( 4309): onPackageAdded: com.ghostlock.app.test
+10-29 01:35:35.271 I/SdkSandboxManager( 1987): No SDKs used. Skipping SDK data reconcilation for CallingInfo{mUid=10682, mPackageName='com.ghostlock.app.test, mAppProcessToken='null'}
+10-29 01:35:35.272 D/ShortcutService( 1987): adding package: com.ghostlock.app.test userId0
+10-29 01:35:35.273 D/ShortcutService( 1987): handlePackageAdded: com.ghostlock.app.test user=0
+10-29 01:35:35.275 D/ShortcutService( 1987): rescanPackageIfNeeded 0@com.ghostlock.app.test, forceRescan=true , isNewApp=true
+10-29 01:35:35.287 D/ShortcutService( 1987): Package com.ghostlock.app.test has 0 manifest shortcut(s), and 0 share target(s)
+10-29 01:35:35.296 I/adbd    ( 2581): adbd service requested 'shell,v2,TERM=dumb,raw:dumpsys package com.ghostlock.app | grep -m2 -E "versionName=|versionCode="; pm path com.ghostlock.app.test'
+10-29 01:35:35.311 I/SafetyLabelChangedBroadcastReceiver( 6007): received broadcast packageName: com.ghostlock.app.test, current user: UserHandle{0}, packageChangeEvent: NEW_INSTALL, intent user: UserHandle{0}
+10-29 01:35:35.336 D/ImsResolver( 4309): maybeAddedImsService, packageName: com.ghostlock.app.test
+10-29 01:35:35.372 D/CarrierSvcBindHelper( 4309): onPackageModified: com.ghostlock.app.test
+10-29 01:35:35.374 D/ShortcutService( 1987): changing package: com.ghostlock.app.test userId0
+10-29 01:35:35.374 D/ShortcutService( 1987): handlePackageChanged: com.ghostlock.app.test user=0
+10-29 01:35:35.375 D/ShortcutService( 1987): rescanPackageIfNeeded 0@com.ghostlock.app.test, forceRescan=true , isNewApp=true
+10-29 01:35:35.375 D/ShortcutService( 1987): Package com.ghostlock.app.test has 0 manifest shortcut(s), and 0 share target(s)
+10-29 01:35:35.387 I/artd    (20154): GetBestInfo: /data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk has no usable artifacts
+10-29 01:35:35.403 D/ImsResolver( 4309): maybeAddedImsService, packageName: com.ghostlock.app.test
+10-29 01:35:35.508 E/GameEnhancer( 7327): [PlayStoreUtil.kt:49  ] org.jsoup.HttpStatusException: HTTP error fetching URL. Status=404, URL=[https://play.google.com/store/apps/details?id=com.ghostlock.app&hl=en]
+10-29 01:35:35.790 D/ActivityThread(22506): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:35.799 D/ActivityThread(22506): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:35.818 I/Finsky  (22962): [2] AIM: AppInfoCacheUpdater -> invalidating apps: [com.ghostlock.app.test]
+10-29 01:35:35.823 I/Finsky  (22962): [73] AIM: AppInfoManager-Perf > OnDeviceAppInfo > cacheHitCount=0, cacheMissCount=1. Missed  in cache (limit 10) : [com.ghostlock.app.test]
+10-29 01:35:35.824 I/artd    (20154): GetBestInfo: /data/app/~~QNCiVbpu0k2iFGnSM77ZjQ==/com.ghostlock.app.test-wYfxmy-svYrtUnXTeRI7yg==/base.apk has no usable artifacts
+10-29 01:35:35.836 I/Finsky  (22962): [71] AIM: AppInfoManager-Perf > OnDeviceAppInfo > cacheHitCount=0, cacheMissCount=1. Missed  in cache (limit 10) : [com.ghostlock.app.test]
+10-29 01:35:35.839 I/Finsky  (22962): [2] AIM: AppInfoCacheUpdater -> invalidating apps: [com.ghostlock.app.test]
+10-29 01:35:35.844 I/Finsky  (22962): [73] AIM: AppInfoManager-Perf > OnDeviceAppInfo > cacheHitCount=0, cacheMissCount=1. Missed  in cache (limit 10) : [com.ghostlock.app.test]
+10-29 01:35:35.845 I/artd    (20154): GetBestInfo: /data/app/~~QNCiVbpu0k2iFGnSM77ZjQ==/com.ghostlock.app.test-wYfxmy-svYrtUnXTeRI7yg==/base.apk has no usable artifacts
+10-29 01:35:35.857 I/Finsky  (22962): [73] AIM: AppInfoManager-Perf > OnDeviceAppInfo > cacheHitCount=0, cacheMissCount=1. Missed  in cache (limit 10) : [com.ghostlock.app.test]
+10-29 01:35:35.925 I/ProximityAuth(27553): [RecentAppsMediator] Package added: (user=UserHandle{0}) com.ghostlock.app.test
+10-29 01:35:35.944 W/SQLiteLog( 7596): (28) double-quoted string literal: "com.ghostlock.app.test"
+10-29 01:35:35.944 I/artd    (20154): GetBestInfo: /data/app/~~QNCiVbpu0k2iFGnSM77ZjQ==/com.ghostlock.app.test-wYfxmy-svYrtUnXTeRI7yg==/base.apk has no usable artifacts
+10-29 01:35:35.973 I/Finsky  (22962): [2] Received an install/uninstall event for package com.ghostlock.app.test
+10-29 01:35:36.515 E/GameEnhancer( 7327): [PlayStoreUtil.kt:49  ] org.jsoup.HttpStatusException: HTTP error fetching URL. Status=404, URL=[https://play.google.com/store/apps/details?id=com.ghostlock.app.test&hl=en]
+10-29 01:35:40.278 I/BreventServer( 7650): add package com.ghostlock.app.test
+10-29 01:35:40.284 D/ActivityThread(20787): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:40.285 D/ActivityThread(20787): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:40.286 D/ActivityThread(20787): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:40.287 D/ActivityThread(20787): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:40.287 D/ActivityThread(20787): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:40.287 D/ActivityThread(20787): Package [com.ghostlock.app] reported as REPLACED, but missing application info. Assuming REMOVED.
+10-29 01:35:40.813 I/adbd    ( 2581): adbd service requested 'shell,v2,TERM=dumb,raw:am instrument -w -e expected_route SHIZUKU -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner'
+10-29 01:35:41.046 I/ActivityManager( 1987): Force stopping com.ghostlock.app appid=10673 user=0: start instr
+10-29 01:35:41.050 E/AppHibernationService( 1987): Package com.ghostlock.app is not installed for any user
+10-29 01:35:41.053 V/Service ( 5885): Add 0:com.ghostlock.app to power save temp whitelist for 30s
+10-29 01:35:41.055 E/AppHibernationService( 1987): Package com.ghostlock.app is not installed for any user
+10-29 01:35:41.057 I/ActivityManager( 1987): Start proc 17529:com.ghostlock.app/u0a673 for added application com.ghostlock.app
+10-29 01:35:41.067 I/m.ghostlock.app(17529): Late-enabling -Xcheck:jni
+10-29 01:35:41.079 I/m.ghostlock.app(17529): Using generational CollectorTypeCMC GC.
+10-29 01:35:41.125 W/ActivityThread(17529): Package uses different ABI(s) than its instrumentation: package[com.ghostlock.app]: arm64-v8a, null instrumentation[com.ghostlock.app.test]: null, null
+10-29 01:35:41.489 D/nativeloader(17529): Configuring clns-7 for other apk /data/app/~~QNCiVbpu0k2iFGnSM77ZjQ==/com.ghostlock.app.test-wYfxmy-svYrtUnXTeRI7yg==/base.apk:/data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk. target_sdk_version=37, uses_libraries=, library_path=/data/app/~~QNCiVbpu0k2iFGnSM77ZjQ==/com.ghostlock.app.test-wYfxmy-svYrtUnXTeRI7yg==/lib/arm64:/data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/lib/arm64:/data/app/~~QNCiVbpu0k2iFGnSM77ZjQ==/com.ghostlock.app.test-wYfxmy-svYrtUnXTeRI7yg==/base.apk!/lib/arm64-v8a:/data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand:/data/user/0/com.ghostlock.app
+10-29 01:35:41.823 I/AndroidJUnitRunner(17529): newApplication com.ghostlock.app.GhostLockApp
+10-29 01:35:41.834 I/m.ghostlock.app(17529): hiddenapi: Accessing hidden method Landroid/os/ServiceManager;->getService(Ljava/lang/String;)Landroid/os/IBinder; (runtime_flags=0, domain=platform, api=unsupported) from Lrikka/shizuku/SystemServiceHelper; (domain=app, TargetSdkVersion=37) using reflection: allowed
+10-29 01:35:41.846 I/Service ( 5885): send binder to user app com.ghostlock.app in user 0
+10-29 01:35:41.872 D/nativeloader(17529): Load libghostlock_jni.so using class loader ns clns-7 (caller=/data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk!classes8.dex): dlopen failed: library "libghostlock_jni.so" not found
+10-29 01:35:41.872 D/nativeloader(17529): Load libghostlock43499.so using class loader ns clns-7 (caller=/data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk!classes8.dex): dlopen failed: library "libghostlock43499.so" not found
+10-29 01:35:41.873 D/nativeloader(17529): Load libghostlock43284.so using class loader ns clns-7 (caller=/data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk!classes8.dex): dlopen failed: library "libghostlock43284.so" not found
+10-29 01:35:41.874 I/Ghostlock(17529): native: attach fd=144 ghostlock_jni=UnsatisfiedLinkError ghostlock43499=UnsatisfiedLinkError ghostlock43284=UnsatisfiedLinkError path=/data/user/0/com.ghostlock.app/files/ghostlock-run.log
+10-29 01:35:41.910 I/TestRunner(17529): run started: 2 tests
+10-29 01:35:41.911 I/TestRunner(17529): started: dispatches43284FlowThroughTheSelectedLauncherAndClosesRuntime(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:35:41.922 I/GluedExecFixtureSmoke(17529): fixture-check backend=43284Glued path=/data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/lib/arm64/lib43284Glued.so exists=true can-execute=true bytes=7184
+10-29 01:35:41.972 I/UserServiceManager( 5885): New service record com.ghostlock.app:ghostlock-host (595d2a1d-e4a0-43a5-ae57-ef27a58cc52a-1793252141971): version=1342, daemon=false, apk=/data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk
+10-29 01:35:41.972 V/UserServiceRecord( 5885): Set starting timeout for service record 595d2a1d-e4a0-43a5-ae57-ef27a58cc52a-1793252141971: 30000
+10-29 01:35:41.972 V/UserServiceManager( 5885): Starting process for service record com.ghostlock.app:ghostlock-host (595d2a1d-e4a0-43a5-ae57-ef27a58cc52a-1793252141971)...
+10-29 01:35:42.081 I/com.ghostlock.app:shell(17580): MMAP_TRYLOCK is supported in uffd errno:2 addr:0x7b4e90f000 size:4096
+10-29 01:35:42.083 I/com.ghostlock.app:shell(17580): Core platform API enforcement reporting only by runtime option
+10-29 01:35:42.083 I/com.ghostlock.app:shell(17580): Using generational CollectorTypeCMC GC.
+10-29 01:35:42.114 D/com.ghostlock.app:shell(17580): u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/8/icu") succeeded. 
+10-29 01:35:42.114 D/com.ghostlock.app:shell(17580): I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt75l.dat
+10-29 01:35:42.115 I/com.ghostlock.app:shell(17580): Priority-to-niceness mapping: 19, 16, 13, 10, 0, -2, -4, -5, -6, -8
+10-29 01:35:42.131 I/ShizukuServiceStarter(17580): starting service com.ghostlock.app/com.ghostlock.app.shizuku.GhostlockUserService...
+10-29 01:35:42.152 W/com.ghostlock.app:shell(17580): unable to execute idmap2: Permission denied
+10-29 01:35:42.160 D/nativeloader(17580): Configuring clns-1 for other apk /system_ext/framework/androidx.window.extensions.jar. target_sdk_version=37, uses_libraries=ALL, library_path=/data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/lib/arm64:/data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand
+10-29 01:35:42.161 D/nativeloader(17580): Configuring clns-2 for other apk /system_ext/framework/androidx.window.sidecar.jar. target_sdk_version=37, uses_libraries=ALL, library_path=/data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/lib/arm64:/data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand
+10-29 01:35:42.487 D/nativeloader(17580): Configuring clns-3 for other apk /data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk. target_sdk_version=37, uses_libraries=, library_path=/data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/lib/arm64:/data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand
+10-29 01:35:42.567 V/UserServiceManager( 5885): Received binder for service record 595d2a1d-e4a0-43a5-ae57-ef27a58cc52a-1793252141971
+10-29 01:35:42.567 V/UserServiceRecord( 5885): Binder received for service record 595d2a1d-e4a0-43a5-ae57-ef27a58cc52a-1793252141971
+10-29 01:35:42.567 V/UserServiceRecord( 5885): Broadcast binder received for service record 595d2a1d-e4a0-43a5-ae57-ef27a58cc52a-1793252141971
+10-29 01:35:42.569 I/m.ghostlock.app(17529): hiddenapi: Accessing hidden field Ljava/io/FileDescriptor;->descriptor:I (runtime_flags=CorePlatformApi, domain=core-platform, api=unsupported) from Lcom/ghostlock/app/shizuku/ShizukuBackendClient; (domain=app, TargetSdkVersion=37) using reflection: allowed
+10-29 01:35:42.570 W/ActivityManager( 1987): pid 17529 com.ghostlock.app sent binder code 12 with flags 2 to frozen apps and got error -2147483646
+10-29 01:35:42.578 I/ShizukuServiceStarter(17580): send binder to moe.shizuku.privileged.api in user 0
+10-29 01:35:42.711 I/GluedExecFixtureSmoke(17529): backend=43284Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43284Glued|argv_count=8|stdin_bytes=0
+10-29 01:35:42.712 I/TestRunner(17529): finished: dispatches43284FlowThroughTheSelectedLauncherAndClosesRuntime(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:35:42.714 I/TestRunner(17529): started: dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:35:42.831 I/GluedExecFixtureSmoke(17529): fixture-check backend=43499-Glued path=/data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/lib/arm64/lib43499-Glued.so exists=true can-execute=true bytes=7184
+10-29 01:35:42.914 E/m.ghostlock.app(17529): hiddenapi: Accessing hidden method Ljava/lang/Process;->pid()J (runtime_flags=0, domain=core-platform, api=blocked) from /data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk!classes6.dex (domain=app, TargetSdkVersion=37) using linking: denied
+10-29 01:35:42.915 E/m.ghostlock.app(17529): hiddenapi: Accessing hidden method Ljava/lang/Process;->pid()J (runtime_flags=0, domain=core-platform, api=blocked) from /data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk!classes6.dex (domain=app, TargetSdkVersion=37) using linking: denied
+10-29 01:35:42.916 I/UserServiceManager( 5885): New service record com.ghostlock.app:ghostlock-host (4d781f1a-26b7-4741-883b-cf99d61100df-1793252142916): version=1342, daemon=false, apk=/data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk
+10-29 01:35:42.916 V/UserServiceRecord( 5885): Set starting timeout for service record 4d781f1a-26b7-4741-883b-cf99d61100df-1793252142916: 30000
+10-29 01:35:42.916 V/UserServiceManager( 5885): Starting process for service record com.ghostlock.app:ghostlock-host (4d781f1a-26b7-4741-883b-cf99d61100df-1793252142916)...
+10-29 01:35:43.025 I/com.ghostlock.app:shell(17616): MMAP_TRYLOCK is supported in uffd errno:2 addr:0x742fbd8000 size:4096
+10-29 01:35:43.026 I/com.ghostlock.app:shell(17616): Core platform API enforcement reporting only by runtime option
+10-29 01:35:43.027 I/com.ghostlock.app:shell(17616): Using generational CollectorTypeCMC GC.
+10-29 01:35:43.058 D/com.ghostlock.app:shell(17616): u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/8/icu") succeeded. 
+10-29 01:35:43.058 D/com.ghostlock.app:shell(17616): I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt75l.dat
+10-29 01:35:43.060 I/com.ghostlock.app:shell(17616): Priority-to-niceness mapping: 19, 16, 13, 10, 0, -2, -4, -5, -6, -8
+10-29 01:35:43.075 I/ShizukuServiceStarter(17616): starting service com.ghostlock.app/com.ghostlock.app.shizuku.GhostlockUserService...
+10-29 01:35:43.093 I/com.ghostlock.app:shell(17580): System.exit called, status: 0
+10-29 01:35:43.096 W/com.ghostlock.app:shell(17616): unable to execute idmap2: Permission denied
+10-29 01:35:43.105 D/nativeloader(17616): Configuring clns-1 for other apk /system_ext/framework/androidx.window.extensions.jar. target_sdk_version=37, uses_libraries=ALL, library_path=/data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/lib/arm64:/data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand
+10-29 01:35:43.106 D/nativeloader(17616): Configuring clns-2 for other apk /system_ext/framework/androidx.window.sidecar.jar. target_sdk_version=37, uses_libraries=ALL, library_path=/data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/lib/arm64:/data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand
+10-29 01:35:43.417 D/nativeloader(17616): Configuring clns-3 for other apk /data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk. target_sdk_version=37, uses_libraries=, library_path=/data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/lib/arm64:/data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand
+10-29 01:35:43.422 V/UserServiceManager( 5885): Received binder for service record 4d781f1a-26b7-4741-883b-cf99d61100df-1793252142916
+10-29 01:35:43.422 V/UserServiceRecord( 5885): Binder received for service record 4d781f1a-26b7-4741-883b-cf99d61100df-1793252142916
+10-29 01:35:43.422 V/UserServiceRecord( 5885): Broadcast binder received for service record 4d781f1a-26b7-4741-883b-cf99d61100df-1793252142916
+10-29 01:35:43.429 I/ShizukuServiceStarter(17616): send binder to moe.shizuku.privileged.api in user 0
+10-29 01:35:46.438 I/AppsFilter( 1987): interaction: PackageSetting{f48b6b6 com.ghostlock.app.test/10682} -> PackageSetting{656fb7 com.instagram.android/10472} BLOCKED
+10-29 01:35:47.157 D/ProfileInstaller(17529): Installing profile for com.ghostlock.app
+10-29 01:35:47.920 I/UserServiceManager( 5885): Found existing service record com.ghostlock.app:ghostlock-host (4d781f1a-26b7-4741-883b-cf99d61100df-1793252142916)
+10-29 01:35:47.920 V/UserServiceRecord( 5885): Broadcast binder received for service record 4d781f1a-26b7-4741-883b-cf99d61100df-1793252142916
+10-29 01:35:47.925 I/com.ghostlock.app:shell(17616): System.exit called, status: 0
+10-29 01:35:47.931 E/TestRunner(17529): failed: dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:35:47.937 E/TestRunner(17529): ----- begin exception -----
+10-29 01:35:47.937 E/TestRunner(17529): java.lang.AssertionError: fixture did not exit successfully: Failed(reason=exec:shizuku:prepare:-8, failedStep=exec, steps=[FlowStepRun(name=exec, attempts=1, elapsedMs=5078, result=Failed(reason=exec:shizuku:prepare:-8, evidence={}))], evidence={})
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.Assert.fail(Assert.java:89)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.Assert.assertTrue(Assert.java:42)
+10-29 01:35:47.937 E/TestRunner(17529): 	at com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest.assertFixtureFlow(GluedExecFixtureSmokeTest.kt:129)
+10-29 01:35:47.937 E/TestRunner(17529): 	at com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest.access$assertFixtureFlow(GluedExecFixtureSmokeTest.kt:33)
+10-29 01:35:47.937 E/TestRunner(17529): 	at com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest$assertFixtureFlow$1.invokeSuspend(GluedExecFixtureSmokeTest.kt:18)
+10-29 01:35:47.937 E/TestRunner(17529): 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+10-29 01:35:47.937 E/TestRunner(17529): 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:101)
+10-29 01:35:47.937 E/TestRunner(17529): 	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+10-29 01:35:47.937 E/TestRunner(17529): 	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+10-29 01:35:47.937 E/TestRunner(17529): 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+10-29 01:35:47.937 E/TestRunner(17529): 	at kotlinx.coroutines.BuildersKt.runBlocking(dex-id-455fc753f705e8e8fdc2f37f52de6fc14eca1d68:1)
+10-29 01:35:47.937 E/TestRunner(17529): 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:47)
+10-29 01:35:47.937 E/TestRunner(17529): 	at kotlinx.coroutines.BuildersKt.runBlocking$default(dex-id-455fc753f705e8e8fdc2f37f52de6fc14eca1d68:1)
+10-29 01:35:47.937 E/TestRunner(17529): 	at com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest.dispatches43499FlowThroughTheSelectedLauncher(GluedExecFixtureSmokeTest.kt:36)
+10-29 01:35:47.937 E/TestRunner(17529): 	at java.lang.reflect.Method.invoke(Native Method)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+10-29 01:35:47.937 E/TestRunner(17529): 	at androidx.test.ext.junit.runners.AndroidJUnit4.run(AndroidJUnit4.java:162)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.Suite.runChild(Suite.java:128)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.Suite.runChild(Suite.java:27)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runner.JUnitCore.run(JUnitCore.java:137)
+10-29 01:35:47.937 E/TestRunner(17529): 	at org.junit.runner.JUnitCore.run(JUnitCore.java:115)
+10-29 01:35:47.937 E/TestRunner(17529): 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:68)
+10-29 01:35:47.937 E/TestRunner(17529): 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:59)
+10-29 01:35:47.937 E/TestRunner(17529): 	at androidx.test.runner.AndroidJUnitRunner.onStart(AndroidJUnitRunner.java:467)
+10-29 01:35:47.937 E/TestRunner(17529): 	at android.app.Instrumentation$InstrumentationThread.run(Instrumentation.java:2600)
+10-29 01:35:47.937 E/TestRunner(17529): ----- end exception -----
+10-29 01:35:47.939 I/TestRunner(17529): finished: dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:35:47.942 I/TestRunner(17529): run finished: 2 tests, 1 failed, 0 ignored
+10-29 01:35:47.951 I/ActivityManager( 1987): Force stopping com.ghostlock.app appid=10673 user=0: finished inst
+10-29 01:35:47.952 I/ActivityManager( 1987): Killing 17529:com.ghostlock.app/u0a673 (adj 0): stop com.ghostlock.app due to finished inst
+10-29 01:35:48.026 V/ActivityManager( 1987): Got obituary of 17529:com.ghostlock.app
+10-29 01:35:55.765 I/adbd    ( 2581): adbd service requested 'shell,v2,TERM=dumb,raw:ps -A | grep -E "shizuku|ghostlock.*shell|app_process"'
+10-29 01:37:28.475 I/artd    (20154): GetBestInfo: /data/app/~~QNCiVbpu0k2iFGnSM77ZjQ==/com.ghostlock.app.test-wYfxmy-svYrtUnXTeRI7yg==/base.apk has no usable artifacts
+10-29 01:37:29.603 I/artd    (20154): GetBestInfo: /data/app/~~ugcGzHwox03KdklZbABfMQ==/com.ghostlock.app-vI1CQ5h1_7oHf7N4UANAZA==/base.apk has no usable artifacts

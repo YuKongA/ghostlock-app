@@ -1,0 +1,10 @@
+10-29 00:37:27.666  8948  8962 I GluedExecFixtureSmoke: fixture-check backend=43284Glued path=/data/app/~~fbWH6pu3xlR1-iYnsxiwkQ==/com.ghostlock.app-GNbOVARhjIarHRx76oEyrg==/lib/arm64/lib43284Glued.so exists=true can-execute=true bytes=7184
+10-29 00:37:27.698  8948  8962 I GluedExecFixtureSmoke: backend=43284Glued route=APP terminal=exit-0 output-lines=4 fixture=true
+10-29 00:41:49.980  9028  9103 I GluedExecFixtureSmoke: fixture-check backend=43499-Glued path=/data/app/~~2D4EAWkaomD44ITLHJE2HQ==/com.ghostlock.app-gueK155ydOPhWSqIC0qORg==/lib/arm64/lib43499-Glued.so exists=true can-execute=true bytes=7184
+10-29 00:41:50.005  9028  9103 I GluedExecFixtureSmoke: backend=43499-Glued route=APP terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43499-Glued|argv_count=1|stdin_bytes=1884
+10-29 00:41:50.751  9128  9141 I GluedExecFixtureSmoke: fixture-check backend=43284Glued path=/data/app/~~2D4EAWkaomD44ITLHJE2HQ==/com.ghostlock.app-gueK155ydOPhWSqIC0qORg==/lib/arm64/lib43284Glued.so exists=true can-execute=true bytes=7184
+10-29 00:41:50.780  9128  9141 I GluedExecFixtureSmoke: backend=43284Glued route=APP terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43284Glued|argv_count=8|stdin_bytes=0
+10-29 00:49:33.101  9954 10033 I GluedExecFixtureSmoke: fixture-check backend=43284Glued path=/data/app/~~uiZlP3qdfnWONwKE1ArbvQ==/com.ghostlock.app-kb2Q-HJd8OToarFJLqcyYQ==/lib/arm64/lib43284Glued.so exists=true can-execute=true bytes=7184
+10-29 00:49:33.132  9954 10033 I GluedExecFixtureSmoke: backend=43284Glued route=APP terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43284Glued|argv_count=8|stdin_bytes=0
+10-29 00:49:33.180  9954 10033 I GluedExecFixtureSmoke: fixture-check backend=43499-Glued path=/data/app/~~uiZlP3qdfnWONwKE1ArbvQ==/com.ghostlock.app-kb2Q-HJd8OToarFJLqcyYQ==/lib/arm64/lib43499-Glued.so exists=true can-execute=true bytes=7184
+10-29 00:49:33.197  9954 10033 I GluedExecFixtureSmoke: backend=43499-Glued route=APP terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43499-Glued|argv_count=1|stdin_bytes=1884

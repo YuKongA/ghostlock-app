@@ -1,0 +1,31 @@
+Changed branch/decision: rev3 dual process launcher routing; Glued Flow remains App-owned; Shizuku is selected only when binder is reachable and permission is granted; otherwise App launcher is selected. Added the current working-tree audit and remaining 43284/43499 Finish design gates to the active plan.
+
+Artifacts:
+- MODIFIED_FILE: docs/exec-glue/transaction-rev3-route-audit-20261029/MODIFIED_FILE/exec-glue-plan.md
+- DIFF_FILE: docs/exec-glue/transaction-rev3-route-audit-20261029/DIFF_FILE.patch
+- VERIFICATION.txt: docs/exec-glue/transaction-rev3-route-audit-20261029/VERIFICATION.txt
+- executable rollback: docs/exec-glue/transaction-rev3-route-audit-20261029/ROLLBACK.sh
+- Active plan: docs/plan/exec-glue-plan.md
+
+BASELINE
+Command: python3 - <<'PY' (baseline plan assertions; see session command log)
+Input: docs/exec-glue/transaction-rev3-route-audit-20261029/BASELINE_FILE/exec-glue-plan.md
+Literal output: BASELINE_PLAN_GATE: PASS
+Exit status: 0
+SHA-256: 28fc640908d6d831480a505dd772c87322e5d0e86a6d7451d54a77d5e79d3985
+
+MODIFIED
+Command: python3 - <<'PY' (modified plan assertions; see session command log)
+Input: docs/plan/exec-glue-plan.md and MODIFIED_FILE/exec-glue-plan.md
+Literal output: MODIFIED_PLAN_GATE: PASS; ARTIFACT_REOPEN_GATE: PASS; GIT_DIFF_CHECK: PASS
+Exit status: 0
+SHA-256: 6d9fe3f2c150961da501cd9aca8ac63de5f16b3d0bc3366c0219ebc84cc1fd26
+
+ROLLBACK
+Command: docs/exec-glue/transaction-rev3-route-audit-20261029/ROLLBACK.sh docs/exec-glue/transaction-rev3-route-audit-20261029/ROLLBACK_TEST/exec-glue-plan.md docs/exec-glue/transaction-rev3-route-audit-20261029/BASELINE_FILE/exec-glue-plan.md
+Input: a separate MODIFIED copy and the preserved BASELINE plan
+Literal output: ROLLBACK_RESTORED: 28fc640908d6d831480a505dd772c87322e5d0e86a6d7451d54a77d5e79d3985; ROLLBACK_TEST: restored baseline; active plan remains modified
+Exit status: 0
+Restored behavior/status: rollback-test copy is byte-identical to BASELINE (hash 28fc640908d6d831480a505dd772c87322e5d0e86a6d7451d54a77d5e79d3985); active docs/plan/exec-glue-plan.md remains MODIFIED (hash 6d9fe3f2c150961da501cd9aca8ac63de5f16b3d0bc3366c0219ebc84cc1fd26).
+
+Additional result: sh -n ROLLBACK.sh -> PASS, exit 0. No production source or upstream C/C++ file changed in this documentation batch.

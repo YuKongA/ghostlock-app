@@ -1,0 +1,180 @@
+--- BASELINE_FILE/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableBackendProcess.kt
++++ WORKTREE/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableBackendProcess.kt
+@@ -366,7 +366,9 @@
+         runCatching { logFile.writeBytes(ByteArray(0)) }
+         val startedAt = System.nanoTime()
+         val process = try {
+-            ProcessBuilder(command).directory(runDir).redirectErrorStream(true).start()
++            val builder = ProcessBuilder(command).directory(runDir).redirectErrorStream(true)
++            builder.environment().putAll(ExecutableRunEnvironment.variables(backendKey, runDir))
++            builder.start()
+         } catch (problem: Exception) {
+             command.clear()
+             return@withContext BackendRunUiState.Refused(
+--- BASELINE_FILE/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableShizukuHost.kt
++++ WORKTREE/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableShizukuHost.kt
+@@ -134,10 +134,12 @@
+             addAll(arguments)
+         }
+         val child = try {
+-            ProcessBuilder(command)
++            val builder = ProcessBuilder(command)
+                 .directory(directory)
+                 .redirectErrorStream(true)
+-                .start()
++            val backendKey = if (binaryName == "lib43499-Glued.so") "43499-Glued" else "43284Glued"
++            builder.environment().putAll(ExecutableRunEnvironment.variables(backendKey, directory))
++            builder.start()
+         } catch (problem: Exception) {
+             command.clear()
+             arguments = emptyList()
+--- BASELINE_FILE/docs/development/full-process-uml.md
++++ WORKTREE/docs/development/full-process-uml.md
+@@ -1027,6 +1027,7 @@
+   F->>E: one exec step, fixed ELF/argv/stdin/run files
+   alt Shizuku binder reachable and permission granted
+     E->>Z: prepare fixed ID + bounded data, then start/poll
++    Z->>Z: 43499 child gets three path envs from shell-owned runDir; 43284 gets none
+     opt backend is 43284Glued
+       Z->>R: acquire transform/SPI/socket; build fixed argv
+       R-->>Z: live args + resource owner
+@@ -1040,6 +1041,7 @@
+       R-->>E: live args + resource owner
+     end
+     E->>A: ProcessBuilder fixed ELF/argv
++    A->>A: 43499 child gets three path envs from App-private runDir; 43284 gets none
+     A-->>E: terminal exit/log facts
+   end
+   R->>R: release transform → SPI → encapsulation socket after child terminal
+@@ -1047,6 +1049,7 @@
+ ```
+ 
+ Shizuku 路由被选定后，prepare/start/连接失败不会启动第二个 App child。本图不宣称 Shizuku-host execution 或 a301so 真机验证完成；这些需单独提供运行与设备证据。
++43499 的两个 ProcessBuilder 只注入 `GHOSTLOCK_HOME`、`TMPDIR`、`GHOSTLOCK_KSU_LOG`；HOME/TMPDIR 指向当前 launcher-owned runDir，KSU log 与 stdout/stderr `run.log` 分离。43284 不注入这些 43499 path overrides。
+ Shizuku `remove=true` 后，客户端等待 binder-disconnected 回调及其所在主线程队列轮次退出，再允许同 tag 的下一次 bind；该等待只串行化 UserService 销毁，不改变 launcher 选择规则。
+ 
+ ### 11.8 Glued executable native build and APK packaging
+--- BASELINE_FILE/docs/plan/exec-glue-plan.md
++++ WORKTREE/docs/plan/exec-glue-plan.md
+@@ -30,7 +30,7 @@
+ - 两个 Glued backend 各自直接声明 `BackendSpec`；通用可执行进程实现位于 `backend/core/ExecutableBackendProcess.kt`。
+ - 43499 card 从上游 `kernel_profiles/index.conf` 选择内置 `.conf`，或通过 SAF 导入自包含 `.conf`。输入经 HOCON 解析、`LegacyProfileConverter`、`ProfileResolver` 校验后由 `Profile` 编码为 GLK1；Flow 以原版 `--ghostlock-app-call` 将 GLK1 二进制写入 stdin，不再把文本 conf 当成 stdin。
+ - 运行前就绪性以 profile 已选择且成功校验为准；空/损坏/失效配置 fail-closed。
+-- 本次主机 Kotlin 编译不等于 Shizuku exec 接线或真机部署证据；它们仍是独立验证项。当前未完成项：执行器仍用 app `ProcessBuilder`，未接 Shizuku UserService；43284 上游 CLI 参数尚未映射（Flow 当前传空参数）；因此不得标记已部署/可用版本。
++- 基线快照（计划初始状态，已被下方 2026-10-29 launcher 批次更新）：当时主机 Kotlin 编译不等于 Shizuku exec 接线或真机部署；执行器仍为 App `ProcessBuilder`、43284 argv 为空。后续是否已完成必须以新 batch record 和设备/测试证据为准，不沿用此旧快照作为当前状态。
+ 
+ ## 选择器与配置纠偏（2026-10-29）
+ 
+@@ -44,13 +44,13 @@
+ 
+ ### 现状与目标
+ 
+-当前 APK 虽已打包并安装到 A301SO，但 `ExecutableBackendProcess` 仍在 app UID 直接 `ProcessBuilder.start()`；`ShizukuHostFlowExecutor` 仍返回 `remote-pending`；43284 Flow 仍传空 argv。安装成功不等于启动链完成。本批把 Flow 的单一 exec step 接到已有共用 Shizuku UserService，并把 43284 所需 IPsec 参数在运行时创建和释放。
++当前工作树已具备双 launcher 执行骨架。本批路由规则为：每次运行在创建子进程前检查 Shizuku binder 与授权；两者都可用时只选 Shizuku UserService，否则只选 App 自身进程权限启动。若选定 launcher 的启动/连接结果不确定，不尝试另一个 launcher，以免产生重复 ELF。43284 所需 IPsec 参数由选定 launcher 的运行时创建和释放。
+ 
+ ### 选定数据流
+ 
+-`App Flow (SequentialFlow, one exec step)` → `ExecutableBackendProcess`（本地 run artifact/log 落盘）→ `ShizukuBackendClient.prepare(Bundle,payload)/start/state/readLog/verify` → 现有 `GhostlockUserService` → `ShizukuBackendHosts` registry → Glued process host → `ProcessBuilder` 在 shell UserService 中 exec 原版 ELF。App 进程不再启动攻击 ELF，不配置隐式 App UID 回退。
+-
+-- 43499：App 保存所选 `.conf` 和 profile binary 到本地 run 目录；Bundle 传 ELF 名称、固定 argv、文件清单及 `.conf` 字节；payload 传 profile binary；host 只把已校验的 built-in/import profile 和 binary 写入独立 `/data/local/tmp/ghostlock-app/<run-id>`，随后以 `--ghostlock-app-call` exec，并按原版无长度帧 stdin 约定写 binary。上游 `main.cpp` 与 C/C++ 文件保持不变。
++`App Flow (SequentialFlow, one exec step)` → `ExecutableBackendProcess`（先选唯一 launcher）→ (Shizuku 已授权：`ShizukuBackendClient` → 现有 `GhostlockUserService` → `ShizukuBackendHosts` → shell UserService `ProcessBuilder.exec` 原版 ELF；否则：App-private nativeLibraryDir → App `ProcessBuilder.exec` 原版 ELF)。两种 launcher 各自拥有 runDir、输入和日志，不能跨进程传用绝对路径；不确定的 Shizuku 启动结果不会回退并启动第二个 child。
++
++- 43499：选定 launcher 把本次 profile 输入写入其独立 runDir；Shizuku Bundle 仅传 ELF 名称、固定 argv、文件清单及 `.conf` 字节，profile binary 经 payload 传递；host/App launcher 均直接 `exec` 同名原版参数约定的 ELF，并按原版无长度帧 stdin 约定写 binary。两路 runDir 分别为 shell-owned `/data/local/tmp/ghostlock-glue/<backend>/<run-id>` 与 App-private `filesDir/ghostlock-glue/<backend>/<run-id>`。上游 `main.cpp` 与 C/C++ 文件保持不变。
+ - 43284：App Flow 只选后端并提交空 payload；host 使用 UserService `Context` 创建 DFRoot `IpSecManager` runtime，按原版 `exp.c` 的 CLI 解析器生成 `--encap-port/--sender-port/--spi/--aes-key` argv，在 ELF 退出、准备失败或 host destroy 时关闭 transform、SPI 与 encapsulation socket。密钥只在内存参数中存活，不写入日志/配置/文档。
+ - host stdout/stderr 重定向到 run log 文件；共用 UserService 日志泵按偏移回传，避免 pipe 读取在 native 时序窗口造成 backpressure。app 收到的行同时写入 app 私有 run log。terminal evidence 由 exit status/verify 产生。
+ - `destroy()` 不增加 kill/signal AIDL；Flow 只在 terminal 后 `disconnect(remove=true)`。失败、binder disconnect、取消和 destroy 的资源终结顺序纳入实现与 fake-host 测试。
+@@ -58,7 +58,7 @@
+ ### 改动范围与保留
+ 
+ - 修改：`ExecutableBackendProcess.kt`、`FlowLaunchParent.kt`、`GhostlockUserService.kt`、`ShizukuBackendHost.kt`、`ShizukuBackendClient.kt`；在 `43499glued/`、`43284glued/` 增加后端 host adapter/runtime；增加共享 Shizuku host stable IDs；新增 Flow/host contract JVM tests；同步本计划与 `full-process-uml.md` exec 流程图。
+-- 保留：`SequentialFlow` 各一个 exec step；backend 选择 allowlist；43499 card/上游 profile 与转换器；通用 Finish/Payload 文件业务；上游 C/C++ 原文与 ELF entrypoint；原版后端和 Lua disabled；无 App 进程回退、无第二个 UserService/AIDL、无新 native route。
++- 保留：`SequentialFlow` 各一个 exec step；backend 选择 allowlist；43499 card/上游 profile 与转换器；通用 Finish/Payload 文件业务；上游 C/C++ 原文与 ELF entrypoint；原版后端和 Lua disabled；按本次 availability snapshot 只选一个 App 或 Shizuku launcher；无远端失败后的第二 child、无第二个 UserService/AIDL、无新 native route。
+ - 回滚：用本批 `DIFF_FILE.patch` + `ROLLBACK.sh` 在复制树逆转；不对实际工作树运行回滚。构建/安装产物保留于实际 `build/`。
+ 
+ ### 验证矩阵
+@@ -92,7 +92,7 @@
+ 
+ - 复用共用 AIDL 生命周期 `prepare(backendId, Bundle config, byte[] payload) → start → getState/readLog/verify → terminal/destroy`。固定 schema version、`flow_symbol`、canonical UUID `run_id` 和 codec key allowlist；ELF 名由 backend ID 映射为常量，禁止调用方传 executable path、cwd、任意 argv、shell fragment 或 app-private path。
+ - `Bundle + byte[]` 总序列化预算 ≤512 KiB（Binder 1 MiB 上限留至少 512 KiB）；超限由 App 在 Binder 前拒绝、host 再复核。字段缺失、未知/重复 key、backend-symbol 不匹配、负/越界值、UUID 路径穿越、绝对路径均 fail-closed。测量所有内置 profile、Finish/Payload 最大尺寸；任一真实输入超过预算则改用 PFD 分片协议，不提高事务预算。
+-- host 写入 shell-owned `/data/local/tmp/ghostlock-app/<UUID>/` 下固定文件名；`GHOSTLOCK_HOME` 指向本次 run dir。仅使用声明过的环境键：`GHOSTLOCK_HOME`、`TMPDIR`、`GHOSTLOCK_KSU_LOG`、`GHOSTLOCK_KSUD`。App-side SAF URI 不传 host；所选 conf 与脚本内容由 App 读取后放入受限 invocation。
++- Shizuku host 写入 shell-owned `/data/local/tmp/ghostlock-glue/<backend>/<UUID>/` 下固定文件名；App launcher 使用 App-private `filesDir/ghostlock-glue/<backend>/<UUID>/`。`GHOSTLOCK_HOME` 指向本次 run dir。launcher 只注入三个路径键：`GHOSTLOCK_HOME`、`TMPDIR`、`GHOSTLOCK_KSU_LOG`；其中前两者指向该 launcher 的 runDir，KSU log 与 `run.log` 分开。`GHOSTLOCK_KSUD` 不由 launcher 注入，保留 upstream search/fallback。App-side SAF URI 不传 host；所选 conf 与脚本内容由 App 读取后放入受限 invocation。
+ - owner：host Flow/launcher 唯一拥有 executable child、run dir、log source、43284 `IpSecRuntime`；状态 `IDLE → PREPARED → RUNNING → TERMINAL → DESTROYED`。Prepare/start/exec failure、cancel、binder death、service destroy、重复 destroy 都要先停止并 wait child、再 close runtime/fd、最后清 run files。UserService `System.exit(0)` 只能发生在 host terminal 且 child 已 reaped 后；无 active child orphan。需核对上游 exec 与进程树并在实现测试固定 child-descendant 语义。
+ 
+ ### 有界日志
+@@ -437,3 +437,12 @@
+ - **文件身份：** staging 必须使用固定 basename、拒绝 symlink/non-regular file、以 0444 seal `.ghostlock_root.sh`，记录 stage 后的 SHA-256/dev/inode/owner/mode；`O_TRUNC` 失败 fixture 与 victim 同路径 `O_RDONLY`/exec fixture 对拍同一对象。App/Shizuku runDir 分别检查 owner/mode，并以第二次替换/空文件/截断/partial-write 测试覆盖拒绝路径。
+ - **逐文件候选与验证：** `Glued43499ProfileCodec.kt` 暴露解析后 `safeMode`；`Flow43499Glued.kt` 从现有 `FinishConfig.state` 构造 per-run Finish/Payload 内容；`FinishScript.kt`/`PayloadRequests.kt` 添加 Glue 专用 bootstrap/tail 生成入口且保持 legacy 默认行为；`ExecutableBackendProcess.kt`/`ExecutableShizukuHost.kt` 增加双路隔离 staging、三个允许环境键与 finish-log terminal 等待；相关 JVM/Android tests 逐项对照 `ops.cpp:226-431`、App/Shizuku 同字节、失败状态、单 late-load、脚本对象身份、cancel/binder death/EOF/清理。`ops.cpp`、`victim_process.cpp`、43284 C/KO 及既有 LKM 代码保持 byte-identical。
+ - **43284 非本批隐式扩展：** DFRoot `bootstrap.c:196-234` 不读取 `GHOSTLOCK_HOME`/common Finish，且由其固定 prefs/KSUD 路径决定自身 bootstrap；launcher 的 App/shell UID 不能替代 rooted Finish。此问题等待单独裁定，不因 43499 的 Glue-only staging 授权而自动批准 43284 post-exit root handoff。
++
++### 2026-10-29 双 launcher 环境与 AVD UI 批次结果
++
++- 用户裁定：Shizuku 不是必需前提；每次 run 在创建 child 前检查 binder 可达性与授权，两者都满足时只选 Shizuku，否则只选 App 进程权限。选定 Shizuku 后若启动/连接结果不确定，不回退启动第二个 child。App-private 与 shell-owned runDir 分离。
++- `ExecutableRunEnvironment.variables()` 对 `43499-Glued` 只生成 `GHOSTLOCK_HOME`、`TMPDIR`、`GHOSTLOCK_KSU_LOG` 三项；对 `43284Glued` 返回空 map。App 与 Shizuku `ProcessBuilder` 共用映射，run.log 与 KSU log 分离。该批未执行生产 ELF。
++- 验证：`./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --console=plain` → `BUILD SUCCESSFUL in 41s`, 84 tasks (12 executed, 72 up-to-date); XML 总计 424 tests, 0 failures/errors/skipped。环境专测 2/0，路由专测 5/0。
++- 部署：APK `build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk` 已安装到 A301SO 与 `emulator-5554`；`com.ghostlock.app` 两端 `2.0.12 (1342)`，base.apk 与构建产物 SHA-256 均为 `720f7100b6bb3ee0a885a5fc13b8c78a6c731f1cc16cdb8ff4c2d78548b71672`。
++- AVD UI 证据在 `build/deployment-audit/AVD-backend-selector-20261029.png`、`AVD-43499-card-ui-20261029.png` 和 `AVD-paths-ui-20261029.png`：选择器显示两个 Glued backend 可选，三个原版后端与 Custom 灰显；43499 card 显示内置 profile 列表与 Import `.conf`，43284 card 无 profile/import 控件。
++- 当前不等于可用攻击版本：43499 Finish parity、safe_mode 单一权威、late-load owner、固定 `.ghostlock_root.sh` staging/seal 与 detached worker terminal/EOF/cleanup 仍未闭合；43284 common Finish/root handoff 仍待独立设计裁定。
+--- /dev/null
++++ WORKTREE/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableRunEnvironment.kt
+@@ -0,0 +1,28 @@
++package com.ghostlock.app.backend.core
++
++import java.io.File
++
++/** Builds the backend-scoped environment inherited by a direct Glued executable child.
++ *
++ * @param backendKey fixed identity selected before process creation.
++ * @param runDirectory launcher-owned directory for this single invocation.
++ * @return only the allowed 43499 path variables; other backends receive no additions.
++ * @note App and Shizuku launchers call the same mapper but retain separate run-directory owners.
++ */
++internal object ExecutableRunEnvironment {
++    /** Returns the allowlisted path variables for one backend invocation.
++     *
++     * @param backendKey fixed Glued identity.
++     * @param runDirectory path owned by the selected App or Shizuku launcher.
++     * @return three path variables for 43499-Glued, or an empty map for other backends.
++     */
++    fun variables(backendKey: String, runDirectory: File): Map<String, String> {
++        if (backendKey != "43499-Glued") return emptyMap()
++        val home = runDirectory.absolutePath
++        return mapOf(
++            "GHOSTLOCK_HOME" to home,
++            "TMPDIR" to home,
++            "GHOSTLOCK_KSU_LOG" to File(runDirectory, ".ghostlock_ksu.log").absolutePath,
++        )
++    }
++}
+--- /dev/null
++++ WORKTREE/app/src/test/kotlin/com/ghostlock/app/backend/core/ExecutableRunEnvironmentTest.kt
+@@ -0,0 +1,30 @@
++package com.ghostlock.app.backend.core
++
++import java.io.File
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++/** Verifies the exact 43499 launcher environment and keeps 43284's inherited environment unchanged. */
++class ExecutableRunEnvironmentTest {
++    @Test
++    fun cve43499ReceivesOnlyTheThreeRunDirectoryPaths() {
++        val directory = File("build/fixtures/43499-run").absoluteFile
++
++        val variables = ExecutableRunEnvironment.variables("43499-Glued", directory)
++
++        assertEquals(
++            setOf("GHOSTLOCK_HOME", "TMPDIR", "GHOSTLOCK_KSU_LOG"),
++            variables.keys,
++        )
++        assertEquals(directory.absolutePath, variables["GHOSTLOCK_HOME"])
++        assertEquals(directory.absolutePath, variables["TMPDIR"])
++        assertEquals(File(directory, ".ghostlock_ksu.log").absolutePath, variables["GHOSTLOCK_KSU_LOG"])
++        assertTrue(variables["GHOSTLOCK_KSU_LOG"] != File(directory, "run.log").absolutePath)
++    }
++
++    @Test
++    fun cve43284DoesNotReceive43499EnvironmentOverrides() {
++        assertTrue(ExecutableRunEnvironment.variables("43284Glued", File("build/fixtures/43284-run")).isEmpty())
++    }
++}

@@ -1,0 +1,10 @@
+{
+  "serial": "adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp",
+  "old_remote": "/data/app/~~uxV8py3uJrFLz8rFyLx71g==/com.ghostlock.app-9cuZFpRKabUcZBQ_dAlVkg==/base.apk",
+  "baseline_sha256": "a4b49a419ef3513661d3b2f9a98c71cf9c8dbe8a73698be578c1ce803991b7c2",
+  "baseline_bytes": 29269887,
+  "modified_sha256": "82f117e974217587d769009cce0f54eb542e4536625e320a9d963394035559b7",
+  "modified_bytes": 29269887,
+  "test_sha256": "cf3e857c4d96ef250db874ec21287fdd58e963c08ca52ff0c1bc1219f724a124",
+  "test_bytes": 454243
+}

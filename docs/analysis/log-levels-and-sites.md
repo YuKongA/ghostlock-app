@@ -336,3 +336,16 @@
 - V：write outcome i=…、carrier scan、retry …、bridge: …、splice_one: …、frame: …、hook slot、readback、journal:、block[i]、seq=。
 - D：write stage=region …、hook wrote=、module init=、patch1 wrote=、hook adopt=、write benchmark、resolve/plan/surface/esp、sentry_hook plan/payload。
 - I：拒绝原因（refused/失败/mismatch）与链的里程碑（SA、patch、hook applied、trigger、wait outcome、restore、KernelSU）。
+
+## 6 43284Glued / DFRoot logger（2026-10-29）
+
+本节只描述 `dev-nocpp` 的 43284 executable glue；旧 `gl_log.hpp`/JNI 说明不代表 DFRoot 进程边界。
+
+| 进程/来源 | 输出 | 级别/规则 |
+|---|---|---|
+| `lib43284Glued.so` executable（App 或 Shizuku launcher） | `gl_common` 写 stdout；`ExecutableBackendProcess`/Shizuku collector 将合并 stdout+stderr 逐行落入本 run `run.log`；同时输出 Android logcat | V/D/I/W/E 精确映射；Debug 阈值 D、Release 阈值 I；fd 格式 `[级别/启动毫秒] body`，控制字符折叠为空格、非 ASCII 替换为 `?`，每个 fd sink 最多一次 `write(2)`，失败丢弃 |
+| `libbootstrap.so` DFRoot system-root helper | 只写 Android logcat；原 `/dev/dfm*` marker 继续承担既有状态交接 | 同一 severity priority；没有 App stdout/run.log fd，避免混淆两个进程日志 |
+
+`exp.c` 的 57 个既有 `printf/fprintf` 调用中，56 个改用共享 logger；紧邻 `fork()` 的固定 `Triggering hook...` 原样保留直写 stdout，避免在 trigger 边界加 formatter/logcat 工作。SPI 数值改为“configured”提示；AES key 与 SU manager 名称不输出。`elf_parser.c` 的 26 个诊断点全部接入；bootstrap 另加 14 个阶段/失败点，不在 `late_load_running()` 轮询循环内写日志。逐点级别、参数字段、进程边界及敏感值审阅见 [`dfroot-log-callsite-audit-20261029.tsv`](dfroot-log-callsite-audit-20261029.tsv)。
+
+集成只证明源码/host test/native build；当前没有真机 logcat 或 run.log 样例，也未运行生产 ELF、Payload 或 Finish。M0 marker-only retry 不重跑。

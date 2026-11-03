@@ -1,0 +1,52 @@
+# A301SO 43284 M0 marker fixture manifest
+
+Status: M0 fixture built successfully; device gate BLOCKED before installation/execution by KO KMI/vermagic mismatch.
+Baseline: `b119085915748a940740d7ce919b5a30ed8e9346` (`2.0.12`, `dev-nocpp` contains HEAD).
+Device: A301SO / `QV770MFGJ1` / Android 15 API 35 / kernel `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`.
+Scope: one approved M0 batch, marker exchange only. No production Flow, payload, Finish, or success-state wiring.
+
+## Fixture components
+
+| Component | Isolated location / source | Expected identity |
+|---|---|---|
+| M0 native overlay | `app/src/main/cpp/43284glued/m0/` (temporary, deleted same batch) | Copy of `exp.c`, `libcxx.S`, `elf_parser.c`, headers, helper and original KO set; only embedded `android13-5.15` KO is the M0 KO. The original worktree source hashes remain unchanged. |
+| M0 kernel module | temporary Gradle task in `app/build.gradle.kts`; source `43284glued/m0/lkm/m0_dfroot.c`; output under `build/app/m0/fixture/43284glued/ko/dfroot-android13-5.15.ko` | DDK `ghcr.io/ylarod/ddk-min:android13-5.15-20260828`; single `glk_worker=` argument; fixed `/system/bin/sh -c` argv and system-root UMH; does not alter SELinux state/hooks, call `ksud`, or open/execute payload/finish. Built KO vermagic is 5.15.202, not A301SO's 5.15.189. |
+| M0 worker | M0 ELF's `exp.c` worker mode, copied into the runDir as executable `m0-worker` | Invoked as `m0-worker --m0-root-worker <runDir>`; validates `uid=euid=0`, `u:r:init:s0`, launcher UID, exact run ID, run-directory device/inode/owner/mode; creates ROOT_READY, consumes exactly one RELEASE_FINISH, and exits. It never opens `payload` or `finish.sh`. |
+| App fixture | temporary `app/src/androidTest/kotlin/com/ghostlock/app/backend/cve43284glued/M0MarkerGateTest.kt` | Direct ProcessBuilder launch under app UID, generated IPsec arguments, `GHOSTLOCK_HOME=<runDir>`; no production SequentialFlow/BackendRunDispatcher. Fresh App-private runDir, mode 0700. |
+| Shizuku fixture | same instrumentation test; temporary M0-only additions to `ExecutableShizukuHost.kt` and `ExecutableRunEnvironment.kt` | Direct Shizuku client prepare/start using existing generic AIDL host; host copies its packaged ELF to owner-executable `m0-worker`; no production Flow. Fresh `/data/local/tmp/ghostlock-glue/CVE_2026_43284_GLUED/<32-hex-run-id>`, mode 0700, UID 2000. |
+| CMake selection | temporary `GHOSTLOCK_M0_MARKER` branch in `app/src/main/cpp/43284glued/CMakeLists.txt`; temporary Gradle CMake argument in `app/build.gradle.kts` | Debug target `lib43284Glued.so` compiles only the overlay and omits bootstrap; default build path and production source remain unchanged after cleanup. |
+
+## Run-directory contents and protocol
+
+Each independent launcher run stages only `m0-worker`, `payload`, and `finish.sh` before launch. The two script files contain inert hash canaries and an execution sentinel path; no code path may open them. The M0 worker writes `ROOT_READY` with fixed ASCII v1/LF fields: version, run_id, launcher_uid, worker_pid, worker_starttime, run_dir_dev, run_dir_ino, worker_uid, worker_euid, worker_context, and run_dir_context. It uses exclusive no-follow creation, then fchown(launcher_uid), fchmod(0600), fsync(file), and fsync(directory). The launcher verifies exact fields and identity, then creates one `RELEASE_FINISH` with O_EXCL/O_NOFOLLOW and matching run identity. The worker validates owner/mode/regular-file/fields, unlinks and fsyncs the marker, then exits 0. Absence of RELEASE_FINISH plus worker exit is the consumption evidence; no post-Finish behavior exists because no Finish is run.
+
+The gate must begin and end with `getenforce=Enforcing`. M0 KO must not disable SELinux or patch AVC. Capture run-dir and marker SELinux labels, App/Shizuku launcher UID/context, init worker UID/context, marker owner/mode/hash, and kernel/App/Shizuku logs. Any SELinux denial is a gate failure, not grounds to weaken enforcement. Payload/Finish hashes and canaries must be unchanged; the execution sentinel must remain absent.
+
+## Source/output identity and build
+
+The start-state SHA-256 manifest is `BASELINE_FILE/source-hashes.tsv`; all original DFRoot C/ASM/KO sources remained byte-identical. Gradle built the M0 KO in the repository build root, then CMake compiled the isolated overlay through `:app:assembleDebug`; no original worktree C/ASM/KO bytes were overwritten. Fixture command: `podman machine start podman-machine-default && ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -Pm0Marker=true --no-daemon --console=plain` (exit 0). The APK was versionName 2.0.12/versionCode 1342, certificate fingerprint `b92a1aa56ccf72c789057722af1fe850d71fa067deafc71e985c4d7b3f3badca`, file SHA-256 `46e056c9eb6855b8376f2f05b6d208e704b40a62122ebdf8fe4917011d0465d1`; M0 ELF entry SHA-256 `1b393b73309930c98cd9882ce96ae53b13227372102da8dc8b4690da70ac5ee6`; Android test APK SHA-256 `4b6823cedfe12aec3124bb2a4c71dc3c20719a8139f70d916944d3007e4338fe`; M0 KO SHA-256 `7a49b8357bb228dc6c88d7bddd1a78e402a1cdd303477f64749c6add458b4206` (11,776 B). This APK was never installed.
+
+## Gate result — BLOCKED before device execution
+
+Device `adb -s QV770MFGJ1 shell uname -r` returned `5.15.189-android13-8-00016-g51bba4309aac-ab14546557` (exit 0). M0 KO inspection `strings build/app/m0/fixture/43284glued/ko/dfroot-android13-5.15.ko | grep '^vermagic='` returned `vermagic=5.15.202-android13-5.15.202_r00-dirty SMP preempt mod_unload modversions aarch64` (exit 0); the original embedded KO has the same vermagic. Since target release/KMI identity differs, the manifest's stop condition fired: **no M0 APK installation, no M0 ELF invocation, no KO insertion, no App/Shizuku marker run**. Marker/DAC/SELinux behavior therefore remains untested. The newly built M0 ELF contains the marker worker entrypoint and has no bootstrap target in its APK; build success is not device-gate success.
+
+The device remained `getenforce=Enforcing`, Android 15/API 35, package 2.0.12/versionCode 1342. A fresh `pm path` + `adb pull` of installed `base.apk` hashed to `37756ac1a4b7df5cbc4ed8734178fd12b1b131e4bf4bae7184d2b7e40ecdce92`, byte-equal to `/tmp/ghostlock-a301so-before-m0.apk`; no M0 worker process was listed. The next valid attempt requires a DDK/KO built for the exact A301SO kernel/KMI and independent verification of vermagic, config, modversions, and architecture before any device install or execution.
+
+## Retry steps after exact KMI gate passes (not executed)
+
+Do not perform these steps until a newly built KO matches the A301SO's exact kernel/KMI and passes the vermagic/config/modversions/architecture checks above.
+1. Require the pre-M0 APK backup `/tmp/ghostlock-a301so-before-m0.apk` SHA-256 `37756ac1a4b7df5cbc4ed8734178fd12b1b131e4bf4bae7184d2b7e40ecdce92`; verify package signer before replacement. Do not uninstall the package.
+2. Install fixture APK with `adb -s QV770MFGJ1 install -r <fixture-apk>` and verify `versionName=2.0.12`, `versionCode=1342`, APK signer, and APK hash.
+3. Run App and Shizuku methods separately via `adb -s QV770MFGJ1 shell am instrument -w -e class <exact-method> com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner`. The Shizuku method requires current binder+permission preflight; no fallback after its selection.
+4. Run methods serially (never concurrently). For each capture literal instrumentation output, `ROOT_READY`, launcher/worker IDs and contexts, `RELEASE_FINISH` consumption, unchanged canaries, SELinux state, worker PID exit (`/proc/<pid>` absent), host ELF child exit, and process-FD absence before removing any runDir. If any PID/FD is not observable or remains live, preserve that runDir and stop.
+5. App instrumentation removes only its exact App runDir after worker exit. Remove the exact Shizuku runDir with `adb shell rm -rf -- <reported-exact-path>` only after worker and host child exit; verify both paths absent and no `m0-worker` process remains. No wildcard cleanup.
+6. Restore the exact prior APK with `adb -s QV770MFGJ1 install -r /tmp/ghostlock-a301so-before-m0.apk`; verify installed version/code and pull/hash equality to the saved APK. Remove `com.ghostlock.app.test` if installed. Check no M0 files/processes remain, SELinux is Enforcing, and the UI opens.
+7. Delete all temporary source/Gradle/CMake/test changes and build the default path with `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --console=plain`. Compare the default APK's `lib43284Glued.so` entry byte-for-byte with the corresponding entry extracted from the saved APK; require no `m0-root-worker`/M0 marker strings and no M0 source/test/task references in the worktree diff. This proves the temporary flag cannot enter the default build.
+
+## Current rollback/default-build result
+
+The executable `ROLLBACK.sh` passed on a separate working copy containing the M0 source and both M0 CMake caches (exit 0; literal `ROLLBACK_RESULT=restored M0-only source delta; changed_paths=19`), then was applied to the active worktree (exit 0). Two exact M0 CMake cache directories from the first active rollback were also removed; literal result `M0_CACHE_DIRS_REMOVED=2`. All 24 paths in `BASELINE_FILE/source-hashes.tsv` match their pre-M0 SHA-256; the M0 source overlay, instrumentation test, CMake caches, build copy, and fixture APKs are absent. The default command `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --console=plain` returned `BUILD SUCCESSFUL in 5s`; source/build scan found no M0 build/test/branch references. Default APK `lib43284Glued.so` is byte-identical to the saved pre-gate APK entry (1,937,896 B; SHA-256 `42ee0ffc5581451720588c0349adb6ed5e26457ebc03e95572c4d610bc5d8079`); M0 marker strings and dex hits are absent. The A301SO still has the original installed APK SHA-256 and `getenforce=Enforcing`.
+
+## Stop conditions
+
+Stop before device execution if source hashes/signature differ, DDK/ELF/KMI identity is not verified, Shizuku permission is absent, APK version/ref is wrong, or the M0 binary contains any payload/Finish execution path. Stop the gate on device reboot/panic, changed SELinux state, failed kernel-file restoration, marker identity mismatch, worker/FD still live, or any canary/sentinel change. Preserve evidence and do not remove live/unknown runDirs. M0 result does not authorize production implementation or claim exploit support.

@@ -1,0 +1,34 @@
+TRANSACTION: exec-glue test compile repair
+Scope: test-only API/package alignment after current backend declarations and finish/payload models moved; removed obsolete request-factory tests for API no longer present; repointed the legacy JNI hygiene test to the actual disabled-by-default CMake invariant. No production source changed in this transaction.
+
+Changed test files: 12; see manifest.tsv for each preserved baseline and modified SHA-256.
+BASELINE_FILE directory: docs/exec-glue/transaction-test-compile/BASELINE_FILE
+MODIFIED_FILE directory: docs/exec-glue/transaction-test-compile/MODIFIED_FILE
+DIFF_FILE: docs/exec-glue/transaction-test-compile/DIFF_FILE.patch
+VERIFICATION.txt: docs/exec-glue/transaction-test-compile/VERIFICATION.txt
+ROLLBACK.sh: docs/exec-glue/transaction-test-compile/ROLLBACK.sh (executable)
+
+BASELINE
+Command: ./gradlew :app:testDebugUnitTest --tests com.ghostlock.app.ui.backend.FlowLaunchParentTest --no-daemon --console=plain
+Input: pre-repair working tree; selected FlowLaunchParentTest.
+Literal output excerpt: e: file:///Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/app/src/test/kotlin/com/ghostlock/app/backend/cve43499/debug/A301SoDebugConfigTest.kt:23:52 Unresolved reference 'Cve43499RequestBuild'.
+Exit status: 1; compileDebugUnitTestKotlin failed due stale imports/types across 11 test files.
+
+MODIFIED FOCUSED TEST
+Command: ./gradlew :app:testDebugUnitTest --tests com.ghostlock.app.ui.backend.FlowLaunchParentTest --no-daemon --console=plain
+Input: modified test sources.
+Literal output: BUILD SUCCESSFUL in 6s
+Exit status: 0.
+
+MODIFIED COMPLETE UNIT SUITE
+Command: ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+Input: all current app JVM tests.
+Literal output: BUILD SUCCESSFUL in 39s; 404 tests completed, 0 failures, 0 errors, 0 skipped.
+Exit status: 0.
+
+ROLLBACK TEST (isolated copy)
+Command: docs/exec-glue/transaction-test-compile/ROLLBACK.sh /tmp/ghostlock-test-repair-rollback-copy
+Input: copy containing the 12 MODIFIED_FILE versions.
+Literal output: ROLLBACK_APPLIED files=12
+Exit status: 0.
+Restored behavior/status: all 12 isolated files byte-equal BASELINE_FILE; active worktree all 12 remains byte-equal MODIFIED_FILE.

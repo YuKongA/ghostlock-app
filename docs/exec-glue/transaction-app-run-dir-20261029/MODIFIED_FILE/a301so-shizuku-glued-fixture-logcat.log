@@ -1,0 +1,5 @@
+--------- beginning of main
+10-29 02:16:40.340 22903 22932 I GluedExecFixtureSmoke: fixture-check backend=43284Glued path=/data/app/~~ENYgfqg3uF3zfrLKuc4Hhg==/com.ghostlock.app-OMsMV8PCB6ULfNM9TNLyzQ==/lib/arm64/lib43284Glued.so exists=true can-execute=true bytes=7184
+10-29 02:16:42.861 22903 22932 I GluedExecFixtureSmoke: backend=43284Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43284Glued|argv_count=8|stdin_bytes=0
+10-29 02:16:43.182 22903 22932 I GluedExecFixtureSmoke: fixture-check backend=43499-Glued path=/data/app/~~ENYgfqg3uF3zfrLKuc4Hhg==/com.ghostlock.app-OMsMV8PCB6ULfNM9TNLyzQ==/lib/arm64/lib43499-Glued.so exists=true can-execute=true bytes=7184
+10-29 02:16:45.751 22903 22932 I GluedExecFixtureSmoke: backend=43499-Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43499-Glued|argv_count=1|stdin_bytes=1884

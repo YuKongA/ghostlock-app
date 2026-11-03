@@ -1,0 +1,17 @@
+Binary APK deployment delta (not a source patch)
+BASELINE_FILE=BASELINE_FILE/base.apk
+BASELINE_SHA256=3ac14db4e097243acff9c26de1c77bae2b1117e704452c94546583c7241e3de3
+MODIFIED_FILE=MODIFIED_FILE/base.apk
+MODIFIED_SHA256=3423a23384792dbdbcb72a88662ec6fcf61eb588cf6127d811f91c6d824001b1
+ADDED_ENTRIES=0
+REMOVED_ENTRIES=0
+CHANGED_ENTRIES=8
+CHANGED_ENTRY_NAMES:
+classes10.dex
+classes11.dex
+classes12.dex
+classes13.dex
+classes4.dex
+classes6.dex
+classes7.dex
+classes9.dex

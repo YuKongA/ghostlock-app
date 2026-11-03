@@ -1,0 +1,38 @@
+Exec Glue rev6 plan transaction verification
+Workspace: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app
+Active plan: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/plan/exec-glue-plan.md
+BASELINE_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-rev6-43284-root-handoff-20261029/BASELINE_FILE/exec-glue-plan.md
+MODIFIED_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-rev6-43284-root-handoff-20261029/MODIFIED_FILE/exec-glue-plan.md
+DIFF_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-rev6-43284-root-handoff-20261029/DIFF_FILE.patch
+VERIFICATION.txt: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-rev6-43284-root-handoff-20261029/VERIFICATION.txt
+ROLLBACK.sh: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-rev6-43284-root-handoff-20261029/ROLLBACK.sh executable=0o755
+Baseline bytes=11613 sha256=d6397f5636f1ad90e05cfc9d05c0581f53b2242d09e85ae2069754509737c89c
+Modified bytes=13097 sha256=bb14895a776a9ed3ce90a1c190f36aeadc72a4c36c4ed6bbfd1b901a1727dc13
+Diff bytes=23708
+
+BASELINE command/input/output/exit:
+  $ python3 -c 'import hashlib,pathlib; p=pathlib.Path("docs/exec-glue/transaction-rev6-43284-root-handoff-20261029/BASELINE_FILE/exec-glue-plan.md"); b=p.read_bytes(); print("BASELINE_PLAN_GATE: PASS bytes=%d sha256=%s" % (len(b),hashlib.sha256(b).hexdigest()))'
+  input: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-rev6-43284-root-handoff-20261029/BASELINE_FILE/exec-glue-plan.md
+  output: BASELINE_PLAN_GATE: PASS bytes=11613 sha256=d6397f5636f1ad90e05cfc9d05c0581f53b2242d09e85ae2069754509737c89c
+  exit: 0
+
+MODIFIED command/input/output/exit:
+  $ python3 -c 'import hashlib,pathlib; p=pathlib.Path("docs/plan/exec-glue-plan.md"); b=p.read_bytes(); s=b.decode(); assert len(b)<=16384; assert "rev6" in s and "root-handoff" in s and "Finish 是最后业务执行体" in s and "design-critic 复核阻断" in s; print("MODIFIED_PLAN_GATE: PASS bytes=%d sha256=%s root-handoff=present finish-final=present critic-blockers=recorded size<=16384" % (len(b),hashlib.sha256(b).hexdigest()))'
+  input: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/plan/exec-glue-plan.md
+  output: MODIFIED_PLAN_GATE: PASS bytes=13097 sha256=bb14895a776a9ed3ce90a1c190f36aeadc72a4c36c4ed6bbfd1b901a1727dc13 root-handoff=present finish-final=present critic-blockers=recorded size<=16384
+  exit: 0
+
+ROLLBACK command/input/output/exit:
+  $ sh docs/exec-glue/transaction-rev6-43284-root-handoff-20261029/ROLLBACK.sh docs/exec-glue/transaction-rev6-43284-root-handoff-20261029/ROLLBACK_TEST/exec-glue-plan.md
+  input: baseline /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-rev6-43284-root-handoff-20261029/BASELINE_FILE/exec-glue-plan.md -> test copy /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-rev6-43284-root-handoff-20261029/ROLLBACK_TEST/exec-glue-plan.md
+  output: ROLLBACK_RESTORED: PASS path=docs/exec-glue/transaction-rev6-43284-root-handoff-20261029/ROLLBACK_TEST/exec-glue-plan.md
+  exit: 0
+  restored behavior/status: cmp baseline vs rollback-test PASS; restored sha256=d6397f5636f1ad90e05cfc9d05c0581f53b2242d09e85ae2069754509737c89c; active remains modified sha256=bb14895a776a9ed3ce90a1c190f36aeadc72a4c36c4ed6bbfd1b901a1727dc13
+  rollback syntax: sh -n docs/exec-glue/transaction-rev6-43284-root-handoff-20261029/ROLLBACK.sh -> PASS (exit 0)
+  diff gate: PASS; unified patch bytes=23708
+  implementation gate: NOT APPROVED; root handoff design has unresolved blockers.
+
+DESIGN_CRITIC_FINAL_REVIEW:
+  snapshot: docs/plan/exec-glue-plan.md sha256=bb14895a776a9ed3ce90a1c190f36aeadc72a4c36c4ed6bbfd1b901a1727dc13 bytes=13097
+  result: no new design conflict; 3 blockers, 3 important items, 1 suggestion are accurately recorded; do not enter user-approval or production-implementation gate until all 3 blockers close and are re-reviewed.
+  not verified: helper load/ABI/UMH callback, AF_UNIX/SELinux across App and Shizuku, ownership and pidfd/EOF, KO patch, production ELF, device gates.

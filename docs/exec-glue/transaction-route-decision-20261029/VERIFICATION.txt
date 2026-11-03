@@ -1,0 +1,28 @@
+# Verification — dual launcher route and AVD selector
+
+Changed branch/field: `ExecutableProcessRoute` selection and sole-launcher dispatch; no production source was changed in this turn.
+
+## BASELINE
+- Input: worktree source; `ExecutableBackendProcess.kt` SHA-256 `ebb351dc94f24a58e6bbb40507e6faf16083265658ae2ee426623fd051053211`.
+- Command: `./gradlew :app:testDebugUnitTest --no-daemon --console=plain`
+- Literal result: `BUILD SUCCESSFUL in 40s`; `33 actionable tasks: 6 executed, 27 up-to-date`; `Configuration cache entry reused.`
+- Exit status: `0`. XML: `416` tests, `0` failures, `0` errors, `0` skipped across `66` reports.
+
+## MODIFIED
+- Input: same source hash `ebb351dc94f24a58e6bbb40507e6faf16083265658ae2ee426623fd051053211`; added current execution/UI findings to `MODIFIED_FILE/route-decision.md` and captured AVD UI evidence.
+- Command: `./gradlew :app:testDebugUnitTest --no-daemon --console=plain`
+- Literal result: `BUILD SUCCESSFUL in 40s`; `33 actionable tasks: 6 executed, 27 up-to-date`; `Configuration cache entry reused.`
+- Exit status: `0`. XML: `416` tests, `0` failures, `0` errors, `0` skipped; `ExecutableProcessRoutingTest`: `5` tests, `0` failures, `0` errors, `0` skipped.
+- AVD UI command: `adb -s emulator-5554 shell input tap 500 1020; adb -s emulator-5554 shell uiautomator dump /sdcard/window.xml`. Literal assertion: `selected_label=CVE-2026-43499 · Glued`; disabled original 43499 tap left selector unchanged. Screenshot: `MODIFIED_FILE/avd-disabled-option-tap.png`; XML: `MODIFIED_FILE/avd-after-disabled-tap.xml`; disabled row assertions: `MODIFIED_FILE/avd-ui-assertions.txt`.
+- APK identity result: `versionCode=1342`; local APK and AVD-installed base.apk both SHA-256 `0335002fd69cb215e861794ac40568fc637ce1731a0e6868b4c8f9c3bc4b5213`; `byte_equal=True`.
+
+## ROLLBACK
+- Command: `sh docs/exec-glue/transaction-route-decision-20261029/ROLLBACK.sh docs/exec-glue/transaction-route-decision-20261029/ROLLBACK_TEST/route-decision.md docs/exec-glue/transaction-route-decision-20261029/BASELINE_FILE/route-decision.md`
+- Literal result: `rollback_copy_restored=True`; baseline and rollback-copy SHA-256 `c36b0752166b82f891dbdf23a1fa6af7361fad85bc292c30090996280552f78a`; `modified_still_changed=True`.
+- Exit status: `0`. Restored status: rollback test copy equals baseline; active modified evidence file remains changed; app/source remain unchanged, route decision and disabled-option behavior remain as measured.
+
+## Artifacts
+- `MODIFIED_FILE/route-decision.md` (plus AVD screenshot/XML assertions)
+- `DIFF_FILE.patch`
+- `VERIFICATION.txt`
+- executable `ROLLBACK.sh`

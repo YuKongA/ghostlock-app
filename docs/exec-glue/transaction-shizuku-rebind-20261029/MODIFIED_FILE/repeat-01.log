@@ -1,0 +1,43 @@
+
+com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest:.
+Error in dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest):
+java.lang.AssertionError: fixture did not exit successfully: Failed(reason=exec:shizuku:prepare:-8, failedStep=exec, steps=[FlowStepRun(name=exec, attempts=1, elapsedMs=5078, result=Failed(reason=exec:shizuku:prepare:-8, evidence={}))], evidence={})
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest.assertFixtureFlow(GluedExecFixtureSmokeTest.kt:129)
+	at com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest.access$assertFixtureFlow(GluedExecFixtureSmokeTest.kt:33)
+	at com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest$assertFixtureFlow$1.invokeSuspend(GluedExecFixtureSmokeTest.kt:18)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:101)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+	at kotlinx.coroutines.BuildersKt.runBlocking(dex-id-455fc753f705e8e8fdc2f37f52de6fc14eca1d68:1)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:47)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(dex-id-455fc753f705e8e8fdc2f37f52de6fc14eca1d68:1)
+	at com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest.dispatches43499FlowThroughTheSelectedLauncher(GluedExecFixtureSmokeTest.kt:36)
+
+
+Time: 6.031
+There was 1 failure:
+1) dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+java.lang.AssertionError: fixture did not exit successfully: Failed(reason=exec:shizuku:prepare:-8, failedStep=exec, steps=[FlowStepRun(name=exec, attempts=1, elapsedMs=5078, result=Failed(reason=exec:shizuku:prepare:-8, evidence={}))], evidence={})
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest.assertFixtureFlow(GluedExecFixtureSmokeTest.kt:129)
+	at com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest.access$assertFixtureFlow(GluedExecFixtureSmokeTest.kt:33)
+	at com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest$assertFixtureFlow$1.invokeSuspend(GluedExecFixtureSmokeTest.kt:18)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:101)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+	at kotlinx.coroutines.BuildersKt.runBlocking(dex-id-455fc753f705e8e8fdc2f37f52de6fc14eca1d68:1)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:47)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(dex-id-455fc753f705e8e8fdc2f37f52de6fc14eca1d68:1)
+	at com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest.dispatches43499FlowThroughTheSelectedLauncher(GluedExecFixtureSmokeTest.kt:36)
+
+FAILURES!!!
+Tests run: 2,  Failures: 1
+
+

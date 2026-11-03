@@ -1,0 +1,45 @@
+# Launcher route clarification transaction
+
+## Changed route/field
+
+`ExecutableProcessRouting.dispatch(route, app, shizuku)` is now the single branch point. `APP` invokes only `app`; `SHIZUKU` invokes only `shizuku`. Exceptions propagate, so uncertain Shizuku failure does not start a second App child. Route selection remains binder-reachable AND permission-granted => `SHIZUKU`; all other states => `APP`.
+
+## Four artifacts
+
+- `MODIFIED_FILE/` — modified source, test, UML and plan snapshots; also AVD screenshots/XML and build/test logs.
+- `DIFF_FILE.patch` — diff from the captured baseline.
+- `VERIFICATION.txt` — this record.
+- `ROLLBACK.sh` — executable rollback for an explicit target copy.
+
+## Baseline
+
+Command: `./gradlew :app:testDebugUnitTest --tests '*ExecutableProcessRoutingTest' --no-daemon --console=plain`
+Input: original route matrix (binder/permission combinations) and 43284 caller-argv validation; 2 test methods.
+Literal result: `BUILD SUCCESSFUL in 7s`; `33 actionable tasks: 6 executed, 27 up-to-date`; `BASELINE_EXIT_STATUS=0`. Full stdout: `BASELINE_FILE/baseline-test.log`.
+
+## Modified
+
+Command: `./gradlew :app:testDebugUnitTest --tests '*ExecutableProcessRoutingTest' --no-daemon --console=plain`
+Input: same route matrix plus APP-only dispatch and SHIZUKU exception/no-fallback assertion; 3 test methods.
+Literal result: `BUILD SUCCESSFUL in 5s`; `33 actionable tasks: 6 executed, 27 up-to-date`; `MODIFIED_TARGETED_EXIT_STATUS=0`. Full stdout: `MODIFIED_FILE/modified-targeted-test.log`.
+
+Command: `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --console=plain`
+Input: full app unit-test suite and debug/debug-androidTest packaging.
+Literal result: `BUILD SUCCESSFUL in 43s`; `86 actionable tasks: 12 executed, 74 up-to-date`; `MODIFIED_FULL_BUILD_EXIT_STATUS=0`. XML aggregate: 414 tests, 0 failures, 0 errors, 0 skipped. APK: `build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk`, SHA-256 `df6da45d3aff989e5375bc3fc172c99b45a49c7910240e4365b85777b412aad6`; AVD installed `base.apk` matched byte-for-byte. Full stdout: `MODIFIED_FILE/full-build-test.log`.
+
+A301SO deployment (no backend/ELF launched): command `adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp install -r 'build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk'`; input: the built 2.0.12/1342 APK; literal result: `Performing Streamed Install` / `Success`; exit 0. Device package reported `versionName=2.0.12`, `versionCode=1342`; pulled `base.apk` hash matched build APK (`df6da45d3aff989e5375bc3fc172c99b45a49c7910240e4365b85777b412aad6`). Full output: `MODIFIED_FILE/device-deploy-check.log`.
+
+AVD UI validation (no backend/ELF launched): installed that APK on `emulator-5554`; package reported `versionName=2.0.12`, `versionCode=1342`; Paths selector showed the two Glued entries in enabled styling and original 43284/98260/43499 plus Custom greyed. 43284Glued displayed `exec (upstream CLI)` without the profile/import controls; switching back restored 43499 profile and `Import .conf`. Evidence: `MODIFIED_FILE/avd-selector.png`, `avd-43284-card.png`, and the corresponding XML files.
+
+Final post-cleanup check: after removing the temporary old-branch reference, `./gradlew :app:testDebugUnitTest --tests '*ExecutableProcessRoutingTest' --no-daemon --console=plain` returned `BUILD SUCCESSFUL in 4s`, `33 actionable tasks: 6 executed, 27 up-to-date`, `FINAL_TARGETED_EXIT_STATUS=0`; temporary TODO/reference residue scan returned `none`; `git diff --check` returned exit 0. Full output: `MODIFIED_FILE/final-targeted-test.log`.
+
+## Rollback on another copy
+
+Command: `./docs/exec-glue/transaction-launcher-route/ROLLBACK.sh "$PWD/docs/exec-glue/transaction-launcher-route/ROLLBACK_TEST/target"`
+Input: the isolated `ROLLBACK_TEST/target` copy containing all four modified files; the active worktree is not the target.
+Literal result: `restored 4 paths`; a Python SHA-256 comparison reported `rollback_hashes_match_baseline=4/4`; `ROLLBACK_EXIT_STATUS=0`.
+Restored behavior/status: scratch copy exactly matches the pre-change hashes; its route implementation is the baseline direct `when` branch. Baseline route tests had passed with exit 0. Active worktree source remains modified and includes the tested single-dispatch branch.
+
+## Remaining deployment gates
+
+This batch does not close FinishScript parity/O_TRUNC bridge, upstream fork/setsid descendant cleanup, the previously observed unlocated A301SO `prepare:-8`, or real production ELF validation. No vulnerability ELF was launched in this batch.

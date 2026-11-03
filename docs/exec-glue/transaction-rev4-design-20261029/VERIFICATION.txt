@@ -1,0 +1,54 @@
+Changed field: the sole active document docs/plan/exec-glue-plan.md was compacted to rev4 scope/decisions/contracts/gates (6,824 bytes, SHA-256 3ede7f1444e246061914f1da034c889eae5844e8d39a32a34c92fd05c31c73f7). Historical rev1–rev4 detail was preserved in docs/archive/20261029-1025-exec-glue-plan-history.md; docs/archive/INDEX-plans.md now indexes it. Production source files and UML were not changed in this transaction.
+
+Four artifact paths:
+- MODIFIED_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-rev4-design-20261029/MODIFIED_FILE/exec-glue-plan.md
+- DIFF_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-rev4-design-20261029/DIFF_FILE.patch
+- VERIFICATION.txt: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-rev4-design-20261029/VERIFICATION.txt
+- executable ROLLBACK.sh: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-rev4-design-20261029/ROLLBACK.sh
+
+BASELINE
+Command:
+    python3 - <<'PY'
+    from pathlib import Path
+    p=Path('docs/exec-glue/transaction-rev4-design-20261029/BASELINE_FILE/exec-glue-plan.md')
+    limit=16384
+    n=p.stat().st_size
+    print(f'BASELINE_PLAN_GATE: FAIL bytes={n} limit={limit}' if n>limit else f'BASELINE_PLAN_GATE: PASS bytes={n} limit={limit}')
+    raise SystemExit(1 if n>limit else 0)
+    PY
+Input: BASELINE_FILE/exec-glue-plan.md (pre-compaction active plan).
+Literal output: BASELINE_PLAN_GATE: FAIL bytes=110763 limit=16384
+Exit status: 1 (expected; the prior active plan exceeded A3).
+Baseline SHA-256: d278ba5d496523ed5a43e0a9c4f65c28f77e2c991b0676bcebd781cc75ca3376.
+
+MODIFIED
+Command:
+    python3 - <<'PY'
+    from pathlib import Path
+    p=Path('docs/plan/exec-glue-plan.md')
+    b=p.read_bytes()
+    assert len(b)<=16384
+    s=b.decode()
+    for item in ('43499-Glued','43284Glued','effective profile','/system/bin/su -c','设计 gate','A301SO'):
+        assert item in s, item
+    assert '20261029-1025-exec-glue-plan-history.md' in s
+    print(f'MODIFIED_PLAN_GATE: PASS bytes={len(b)} limit=16384')
+    PY
+Input: active docs/plan/exec-glue-plan.md and archive link.
+Literal output: MODIFIED_PLAN_GATE: PASS bytes=6824 limit=16384
+Exit status: 0.
+Modified SHA-256: 3ede7f1444e246061914f1da034c889eae5844e8d39a32a34c92fd05c31c73f7.
+Additional output: DOC_WHITESPACE_GATE: PASS; INDEX_DIFF_CHECK_EXIT=0.
+
+ROLLBACK
+Command:
+    sh docs/exec-glue/transaction-rev4-design-20261029/ROLLBACK.sh "$PWD/docs/exec-glue/transaction-rev4-design-20261029/ROLLBACK_TEST/exec-glue-plan.md"
+Input: separate ROLLBACK_TEST/exec-glue-plan.md copy plus BASELINE_FILE/exec-glue-plan.md.
+Literal output: ROLLBACK_APPLIED
+Exit status: 0.
+Restored behavior/status: rollback-test copy SHA-256 d278ba5d496523ed5a43e0a9c4f65c28f77e2c991b0676bcebd781cc75ca3376 equals baseline; active plan remains modified at SHA-256 3ede7f1444e246061914f1da034c889eae5844e8d39a32a34c92fd05c31c73f7. ROLLBACK.sh syntax check: ROLLBACK_SYNTAX: PASS, exit 0.
+
+Design review:
+- Final content review snapshot: HEAD b119085915748a940740d7ce919b5a30ed8e9346, plan SHA c4c244a03850577da54b48c61a5697dcb76a8452947bb83af59d9843ae0b980d, 6,603 bytes; design-critic confirmed A3 compliance and retained rev4 contracts.
+- Overall production gate remains blocked until the user confirms the exact 43284 root executor (/system/bin/su -c). This is a design confirmation blocker, not implementation evidence.
+- No Gradle/native/ELF execution was performed; this documentation-only transaction does not validate code or device deployment.

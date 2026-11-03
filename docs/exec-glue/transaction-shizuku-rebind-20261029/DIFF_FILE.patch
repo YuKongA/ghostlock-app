@@ -1,0 +1,176 @@
+--- BASELINE_FILE/ShizukuBackendClient.kt
++++ MODIFIED_FILE/ShizukuBackendClient.kt
+@@ -4,7 +4,9 @@
+ import android.content.Context
+ import android.content.pm.PackageManager
+ import android.os.Bundle
++import android.os.Handler
+ import android.os.IBinder
++import android.os.Looper
+ import android.os.ParcelFileDescriptor
+ import com.ghostlock.app.BuildConfig
+ import com.ghostlock.app.log.LogFile
+@@ -38,10 +40,16 @@
+         .processNameSuffix(PROCESS_NAME_SUFFIX)
+ 
+     private val lock = Any()
++    private val mainHandler = Handler(Looper.getMainLooper())
+     private var latch = CountDownLatch(1)
++    private var removalCallbackBarrier: CountDownLatch? = null
++    private var awaitingRemovalCallback = false
+     private var service: IGhostlockUserService? = null
+     private var connected = false
+     private var disconnected = false
++
++    @Volatile
++    private var bindingFailureReason = ""
+ 
+     @Volatile
+     private var logAttached = false
+@@ -54,16 +62,27 @@
+                 service = binder?.let { IGhostlockUserService.Stub.asInterface(it) }
+                 connected = service != null
+                 disconnected = false
++                bindingFailureReason = ""
+             }
+             latch.countDown()
+         }
+ 
+         override fun onServiceDisconnected(name: ComponentName?) {
++            var completion: CountDownLatch? = null
+             synchronized(lock) {
+                 connected = false
+                 disconnected = true
+                 logAttached = false
+                 service = null
++                if (awaitingRemovalCallback) {
++                    completion = removalCallbackBarrier
++                } else {
++                    bindingFailureReason = "shizuku:service:disconnected"
++                }
++            }
++            completion?.let { barrier ->
++                /* The Shizuku API clears its tag cache after this callback returns on the same main queue. */
++                if (!mainHandler.post { barrier.countDown() }) barrier.countDown()
+             }
+         }
+     }
+@@ -152,7 +171,8 @@
+     }
+ 
+     internal suspend fun lastReason(): String = withContext(Dispatchers.IO) {
+-        val binder = ensureService() ?: return@withContext ""
++        bindingFailureReason.takeIf { it.isNotBlank() }?.let { return@withContext it }
++        val binder = ensureService() ?: return@withContext bindingFailureReason
+         runCatching { binder.lastReason() ?: "" }.getOrDefault("")
+     }
+ 
+@@ -161,13 +181,40 @@
+         runCatching { binder.bootId() ?: "" }.getOrDefault("")
+     }
+ 
++    /**
++     * Unbinds this client and, when removing the UserService, waits for Shizuku's queued death callback.
++     *
++     * @param remove true removes and destroys this UserService; false only unbinds this connection.
++     * @note The callback barrier runs after Shizuku clears its shared tag connection cache, preventing
++     *   the next run from reusing a stale ShizukuServiceConnection.
++     */
+     internal suspend fun disconnect(remove: Boolean) {
+         withContext(Dispatchers.IO) {
+-            synchronized(lock) { lineSink = null; logAttached = false }
+-            runCatching { Shizuku.unbindUserService(args, connection, remove) }
++            val barrier = synchronized(lock) {
++                lineSink = null
++                logAttached = false
++                if (remove && connected) {
++                    CountDownLatch(1).also {
++                        awaitingRemovalCallback = true
++                        removalCallbackBarrier = it
++                    }
++                } else {
++                    null
++                }
++            }
++            val unbound = runCatching { Shizuku.unbindUserService(args, connection, remove) }.isSuccess
++            if (!unbound) bindingFailureReason = "shizuku:unbind:failed"
++            if (unbound && barrier != null) {
++                val drained = runCatching {
++                    barrier.await(REMOVE_CALLBACK_TIMEOUT_MS, TimeUnit.MILLISECONDS)
++                }.getOrDefault(false)
++                if (!drained) bindingFailureReason = "shizuku:unbind:callback-timeout"
++            }
+             synchronized(lock) {
+                 service = null
+                 connected = false
++                awaitingRemovalCallback = false
++                removalCallbackBarrier = null
+             }
+         }
+     }
+@@ -197,22 +244,47 @@
+         ParcelFileDescriptor.dup(source)
+     }.getOrNull()
+ 
+-    /** 建立/复用绑定；失败 null。 */
++    /** 建立/复用绑定；失败时记录本地具名原因，避免 lastReason 再次隐式 bind。 */
+     private fun ensureService(): IGhostlockUserService? {
+         synchronized(lock) {
+-            service?.let { if (connected) return it }
+-        }
+-        if (runCatching { Shizuku.pingBinder() }.getOrDefault(false) != true) return null
++            service?.let {
++                if (connected) {
++                    bindingFailureReason = ""
++                    return it
++                }
++            }
++        }
++        if (runCatching { Shizuku.pingBinder() }.getOrDefault(false) != true) {
++            bindingFailureReason = "shizuku:bind:binder-unavailable"
++            return null
++        }
+         val granted = runCatching {
+             Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+         }.getOrDefault(false)
+-        if (!granted) return null
++        if (!granted) {
++            bindingFailureReason = "shizuku:bind:permission-denied"
++            return null
++        }
+         latch = CountDownLatch(1)
+-        runCatching { Shizuku.bindUserService(args, connection) }.getOrElse { return null }
++        runCatching { Shizuku.bindUserService(args, connection) }.getOrElse {
++            bindingFailureReason = "shizuku:bind:request-failed"
++            return null
++        }
+         val ok = runCatching { latch.await(CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS) }
+             .getOrDefault(false)
+-        if (!ok) return null
+-        return synchronized(lock) { if (connected) service else null }
++        if (!ok) {
++            bindingFailureReason = "shizuku:bind:timeout"
++            return null
++        }
++        return synchronized(lock) {
++            if (connected && service != null) {
++                bindingFailureReason = ""
++                service
++            } else {
++                bindingFailureReason = "shizuku:bind:service-unavailable"
++                null
++            }
++        }
+     }
+ 
+     private companion object {
+@@ -228,6 +300,9 @@
+         /** 绑定窗口（ms）。 */
+         private const val CONNECT_TIMEOUT_MS = 5000L
+ 
++        /** Shizuku binder-death callback and cache-clear window after remove=true. */
++        private const val REMOVE_CALLBACK_TIMEOUT_MS = 5000L
++
+         /** 通用 I/O 负码（与 `Cve98260ServicePort.Code.ERR_IO` 对齐；通用层不再定义 backend 码）。 */
+         private const val ERR_IO = 8
+     }

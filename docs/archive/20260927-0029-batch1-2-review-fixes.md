@@ -1,4 +1,4 @@
-> 恢复说明（2026-10-06）：原始路径 ��删除提交 ����；恢复来源 git show c50e3ef44735abd0ac4c54315c80063dea1dc39f^:docs/analysis/batch1-2-review-fixes.md；内容为删除前原文，未改动。
+> 恢复说明（2026-10-06）：原始路径 ��删除提交 ����；恢复来源 git show c50e3ef44735abd0ac4c54315c80063dea1dc39f^:docs/analysis/batch1-2-review-fixes.md；内容为删除前原文，未改动。
 
 # Batch 1/2 静态审查修复计划（2026-09-23）
 
@@ -121,7 +121,7 @@
   `ExploitSession` 标注该终结点未闭环；修复放到独立的“攻击路径加固”批次（与 Batch 4 或专批），
   带 `cmp_disasm` + 真机 gate 一起做。
 - **D-SINGLE-SOURCE（组件 ID / 字段校验表的跨语言单一来源）**：现在 `kFrontendRootChild` /
-  `kBackendCve202643499`（native）与 `FrontendRootChild` / `BackendCve202643499`（Kotlin）各自手写，
+  `kBackendCve202643499`（native）与 `FrontendRootChild` / `BackendCve43499`（Kotlin）各自手写，
   `validateMerged` 的字段列表也与 `NativeProfileDocument` 字段表并存。彻底单一来源应由生成或共享
   fixture 驱动；现在引入生成器会与 F9（typed 主链）重复一次迁移。**建议**：随 **Batch 2.5** 的
   typed/契约收敛一起做，在此之前用 agreement 测试兜底（已有 `route_catalog_test` +

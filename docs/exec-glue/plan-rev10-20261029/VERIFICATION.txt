@@ -1,0 +1,60 @@
+# Exec Glue plan rev10 verification
+
+Timestamp: 2026-10-29 21:16:39 UTC
+Workspace: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app
+HEAD: b119085915748a940740d7ce919b5a30ed8e9346 (2.0.12; detached worktree)
+Plan object: docs/plan/exec-glue-plan.md
+
+## State change
+
+The plan now selects DFRoot KO's system-root UMH as the 43284 root handoff route. Common Payload/Finish do not invoke manager `su` and the APK does not bundle `su`; the root worker must check uid=euid=0 before scripts. Shizuku remains optional only as a launcher. Finish is the final business action and may request a soft reboot. There is no shell terminal, Finish-after terminal state, marker, callback, status/log write, or cleanup. UI exposes HandoffRequested before release and does not report Finish success.
+
+No production source, APK, or exploit ELF was changed or run in this plan-only revision.
+
+## BASELINE
+
+Input: reconstructed rev9 frozen source at docs/exec-glue/plan-rev10-20261029/BASELINE_FILE/exec-glue-plan.md.
+Exact command:
+python3 -c 'from pathlib import Path; import hashlib; p=Path("docs/exec-glue/plan-rev10-20261029/BASELINE_FILE/exec-glue-plan.md"); h=hashlib.sha256(p.read_bytes()).hexdigest(); assert h=="aa3a273b074ca1c8e7e9d90f552a3d805ae521142d90ca7377a5b14541c3e886"; print(f"BASELINE_VERIFIED: PASS bytes={p.stat().st_size} sha256={h}")'
+Literal output:
+BASELINE_VERIFIED: PASS bytes=15443 sha256=aa3a273b074ca1c8e7e9d90f552a3d805ae521142d90ca7377a5b14541c3e886
+Exit: 0.
+
+## MODIFIED
+
+Input: docs/plan/exec-glue-plan.md.
+Exact command:
+python3 -c 'from pathlib import Path; import hashlib; p=Path("docs/plan/exec-glue-plan.md"); b=p.read_bytes(); h=hashlib.sha256(b).hexdigest(); s=b.decode(); assert h=="301b1117e371fdb3ff18f8edda0aefda82e2f9434ac1583096a22e1ddb2bb7a7" and len(b)<16384 and "system-root UMH" in s and "不设 shell terminal" in s and "Finish 可包含软重启" in s; print(f"MODIFIED_VERIFIED: PASS bytes={len(b)} sha256={h}")'
+Literal output:
+MODIFIED_VERIFIED: PASS bytes=15947 sha256=301b1117e371fdb3ff18f8edda0aefda82e2f9434ac1583096a22e1ddb2bb7a7
+Exit: 0.
+
+## ROLLBACK
+
+Input: an independent copy at ROLLBACK_TEST/exec-glue-plan.md; baseline at BASELINE_FILE/exec-glue-plan.md.
+Exact command:
+sh docs/exec-glue/plan-rev10-20261029/ROLLBACK.sh docs/exec-glue/plan-rev10-20261029/ROLLBACK_TEST/exec-glue-plan.md docs/exec-glue/plan-rev10-20261029/BASELINE_FILE/exec-glue-plan.md
+Literal output:
+ROLLBACK_VERIFIED: PASS sha256=aa3a273b074ca1c8e7e9d90f552a3d805ae521142d90ca7377a5b14541c3e886
+EXIT=0
+Restored copy hash equals baseline; the actual plan remains modified at rev10 hash 301b1117e371fdb3ff18f8edda0aefda82e2f9434ac1583096a22e1ddb2bb7a7.
+
+## Design review
+
+Frozen input: docs/plan/exec-glue-plan.md, SHA-256 301b1117e371fdb3ff18f8edda0aefda82e2f9434ac1583096a22e1ddb2bb7a7, 15,947 B, frozen 2026-10-29 21:10:31 UTC. Reviewer: design_critic_exec_glue; read-only.
+Result: BLOCKED, 3 blockers and 2 important items. Blockers: (1) module-parameter/insmod/UMH ABI, bounds, encoding, error propagation, and per-KMI artifacts; (2) AF_UNIX address/credentials/SELinux and App/Shizuku dual-domain reachability; (3) HandoffRequested propagation through dispatcher, ViewModel, both RunPage implementations, and tests without Finished/Ok. Important: exp cleanup and worker/socket/FD ownership; execve failure behavior and pinned KO provenance. Finish no-return/no-post-action semantics are consistent. The user's permission to modify upstream C/KO resolves scope only and is not production implementation approval.
+
+## Device snapshot
+
+At 2026-10-29 21:14 UTC, adb reported A301SO online. Device API 35 / Android 15. Installed com.ghostlock.app reports versionName=2.0.12, versionCode=1342, lastUpdateTime=2026-10-29 07:20:24. Pulled installed base.apk SHA-256: 6ffe0fe821b0f8c14c2b734143a188fba338e1a7c8edeb345b80c26455f0f7b0. This turn did not install a new APK; no production backend or ELF was run.
+
+## Reopened artifacts
+
+- BASELINE_FILE/exec-glue-plan.md — SHA-256 aa3a273b074ca1c8e7e9d90f552a3d805ae521142d90ca7377a5b14541c3e886.
+- MODIFIED_FILE/exec-glue-plan.md — SHA-256 301b1117e371fdb3ff18f8edda0aefda82e2f9434ac1583096a22e1ddb2bb7a7.
+- DIFF_FILE.patch — generated unified diff, 13,531 B.
+- ROLLBACK.sh — executable; tested on the independent ROLLBACK_TEST copy.
+
+## Later deployment addendum (2026-10-29 21:24 UTC)
+
+A301SO QV770MFGJ1 was updated with the rebuilt 2.0.12/code1342 APK; installed hash `37756ac1a4b7df5cbc4ed8734178fd12b1b131e4bf4bae7184d2b7e40ecdce92`. Rollback was tested on-device, then the candidate was reinstalled. Full details are in `../deployment-a301so-20261029/VERIFICATION.txt`. This does not change the rev10 design review verdict or prove root handoff/Finish.

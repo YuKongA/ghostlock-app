@@ -1,0 +1,10 @@
+{
+  "serial": "emulator-5554",
+  "old_remote": "/data/app/~~p1DlJdKu170RyvNHX020NQ==/com.ghostlock.app-zpW4CGFp9it2C_DRusY9-g==/base.apk",
+  "baseline_sha256": "3423a23384792dbdbcb72a88662ec6fcf61eb588cf6127d811f91c6d824001b1",
+  "baseline_bytes": 29261538,
+  "modified_sha256": "82f117e974217587d769009cce0f54eb542e4536625e320a9d963394035559b7",
+  "modified_bytes": 29269887,
+  "test_sha256": "cf3e857c4d96ef250db874ec21287fdd58e963c08ca52ff0c1bc1219f724a124",
+  "test_bytes": 454243
+}

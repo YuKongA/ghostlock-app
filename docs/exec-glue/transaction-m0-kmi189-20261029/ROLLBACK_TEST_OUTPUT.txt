@@ -1,0 +1,22 @@
+COMMAND=/Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-m0-marker-20261029/ROLLBACK.sh /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-m0-marker-20261029/ROLLBACK_TEST/kmi189-copy
+EXIT=0
+ROLLBACK_FILE=app/build.gradle.kts bytes=14242->14066 sha256=1f86baa8d87bb158d234d834b24ac9cf55e5c5a53521fc564fd7392925ec163d
+ROLLBACK_FILE=app/build.gradle.kts bytes=14066->12453 sha256=cb66ef89e11b115d941aabe436f66ba8b49acc6c6996fc34e700f11b20213bf3
+ROLLBACK_FILE=app/build.gradle.kts bytes=12453->12122 sha256=e7b5ceed6e6b2e4d8d8c30d7e4a1e2f4119e9c2163608aa2322aef48ef396b68
+ROLLBACK_FILE=app/build.gradle.kts bytes=12122->12041 sha256=b1c134e1378284ec55708a2c8281b08a0c58fb15f49984b5d7c2c4bf19850478
+ROLLBACK_FILE=app/build.gradle.kts bytes=12041->11842 sha256=599573c647fde54222ba7f92b00c81ba701fc92b2b3f37dc758590963ba1b2a9
+ROLLBACK_FILE=app/src/main/cpp/43284glued/CMakeLists.txt bytes=4256->2358 sha256=ca920d671a8af374f61edcc803b894982ed161302487a050b5b4744eb968a6b3
+ROLLBACK_FILE=app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableRunEnvironment.kt bytes=1394->1357 sha256=590bd0921ad13b80285dabbefcf0b575f8d2bd7c6647ef301ab3b893cc4e3a7e
+ROLLBACK_FILE=app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableRunEnvironment.kt bytes=1357->1354 sha256=5cf1fa21d2dcc2f3890a48e517f71b2545e3f99144c2aaa6cb33fdd55b3a1a55
+ROLLBACK_FILE=app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableRunEnvironment.kt bytes=1354->1346 sha256=fc15403b5a96aeecafbaf0aee99ba3c53b037e58be453e64e734fdc4ebd9e344
+ROLLBACK_FILE=app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableRunEnvironment.kt bytes=1346->1218 sha256=2ba1eaf3ee0e2f2904766675ac7cb24a03134ef5f0ecf194346fdad0d7c7d616
+ROLLBACK_FILE=app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableRunEnvironment.kt bytes=1218->1218 sha256=83b4264d409dc1a8cc7f89932c2ab896457fd85a67c6baf6378ee1b6566d4094
+ROLLBACK_FILE=app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableShizukuHost.kt bytes=17976->17939 sha256=391fca06b03dae4478d3ff2ddbde9b3046cda8b4cc622471e42627f5fa77754b
+ROLLBACK_FILE=app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableShizukuHost.kt bytes=17939->17908 sha256=5a14de669c89e738c845a9f617720fc643040d9127bdaacab85284337ec861e3
+ROLLBACK_FILE=app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableShizukuHost.kt bytes=17908->17796 sha256=3e2392c797b24d531d65437c0545b020ab8925b16b6b34a8afd01548bc40ecd0
+ROLLBACK_FILE=app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableShizukuHost.kt bytes=17796->16950 sha256=95dccada53a088c421bbe89394ef40be26b71c66a199fd192554113da567f5fc
+ROLLBACK_FILE=app/src/androidTest/kotlin/com/ghostlock/app/backend/43284glued/M0MarkerGateTest.kt bytes=-1->0 sha256=absent
+ROLLBACK_FILE=app/src/main/cpp/43284glued/m0 bytes=-1->0 sha256=absent
+ROLLBACK_RESULT=restored M0-only source delta; changed_paths=17
+ROLLBACK_COPY_PREIMAGES_RESTORED=7
+ROLLBACK_COPY_RESULT=passed

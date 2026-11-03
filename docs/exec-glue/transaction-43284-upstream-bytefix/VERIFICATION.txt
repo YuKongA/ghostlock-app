@@ -1,0 +1,58 @@
+TARGET: exec-glue-clean worktree (HEAD b119085915748a940740d7ce919b5a30ed8e9346)
+CHANGED BRANCH/FIELD: app/src/main/cpp/43284glued/exp.c restored byte-for-byte from DFRoot pinned commit 49e992ef3c9f7ec03c8efea6e3cf552f7ec6a347; 43284glued CMake source list no longer compiles the added df_log adapter. Finish behavior and launcher lifecycle remain separate open items.
+
+ARTIFACT PATHS
+MODIFIED_FILE: docs/exec-glue/transaction-43284-upstream-bytefix/MODIFIED_FILE/
+DIFF_FILE: docs/exec-glue/transaction-43284-upstream-bytefix/DIFF_FILE.patch
+VERIFICATION.txt: docs/exec-glue/transaction-43284-upstream-bytefix/VERIFICATION.txt
+ROLLBACK.sh: docs/exec-glue/transaction-43284-upstream-bytefix/ROLLBACK.sh
+
+BASELINE
+Command: ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+Input/state: pre-correction worktree with 43284 logging adaptation; no ELF run.
+Literal output:
+BUILD SUCCESSFUL in 39s
+33 actionable tasks: 6 executed, 27 up-to-date
+Configuration cache entry reused.
+Result: baseline suite recorded 410 tests, 0 failures, 0 errors, 0 skipped.
+Exit status: 0.
+
+MODIFIED
+Command: ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+Input/state: current Kotlin sources plus restored upstream exp.c; no ELF run.
+Literal output:
+BUILD SUCCESSFUL in 39s
+33 actionable tasks: 6 executed, 27 up-to-date
+Configuration cache entry reused.
+XML result: build/app/test-results contains 65 XML files; 410 tests, 0 failures, 0 errors, 0 skipped.
+Exit status: 0.
+
+BUILD
+Command: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --console=plain
+Literal output:
+BUILD SUCCESSFUL in 5s
+77 actionable tasks: 9 executed, 68 up-to-date
+Configuration cache entry reused.
+Exit status: 0.
+Artifact: build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk; SHA-256 82f117e974217587d769009cce0f54eb542e4536625e320a9d963394035559b7. Packaged lib43284Glued.so SHA-256 1a075b686507866c0336ebf5e8e3dda43f8afe96a45e5c0368fe4531bbe9ea86 matches the current CMake output. Source identity check: EXP_UPSTREAM_BYTE_IDENTICAL=True; exp.c SHA-256 afdd68cb6b07fa9b04f93c7d4bd9f8ce0333f4dd2265416959cf9c630d55ac39; 22,927 bytes.
+
+DEVICE CHECK
+A301SO command: adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp shell am instrument -w -e class com.ghostlock.app.backend.cve43284glued.AndroidIpSecRuntimeSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner
+Literal output:
+com.ghostlock.app.backend.cve43284glued.AndroidIpSecRuntimeSmokeTest:.
+
+Time: 0.026
+
+OK (1 test)
+Exit status: 0. Test only acquired, checked, and released App-domain IpSec runtime; it did not start an executable.
+
+ROLLBACK
+Command: docs/exec-glue/transaction-43284-upstream-bytefix/ROLLBACK.sh docs/exec-glue/transaction-43284-upstream-bytefix/rollback-test/tree
+Literal output:
+ROLLBACK_APPLIED restored=5 removed=0
+ROLLBACK_VERIFY=PASS restored=5 removed=0 errors=0
+ACTIVE_MODIFIED_RETAINED=True sha256=afdd68cb6b07fa9b04f93c7d4bd9f8ce0333f4dd2265416959cf9c630d55ac39
+Exit status: 0.
+Restored behavior/status: isolated rollback copy exactly matches all five pre-correction file hashes, including the former logger sources; active worktree remains modified to byte-identical upstream exp.c and current adapted CMake.
+
+OPEN UI/DEVICE NOTE: AVD screenshot confirms current Paths UI, but its Home XML still says “GhostLock is running with demo data; chain execution is not wired yet.” Shizuku is now observed running and authorized on A301SO; the route probe and remaining end-to-end limits are recorded in transaction-shizuku-route-probe and transaction-a301so-43284-upstreamfix. No vulnerable ELF was executed.

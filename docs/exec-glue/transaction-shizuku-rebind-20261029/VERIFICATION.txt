@@ -1,0 +1,91 @@
+Shizuku same-tag rebind fix and A301SO deployment verification
+Date: 2026-10-29 (America/Toronto)
+Workspace: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app
+
+Changed branch/field
+- `ShizukuBackendClient.disconnect(remove=true)` now waits for the `onServiceDisconnected` callback and a subsequent main-looper queue turn before a later run can bind the same stable tag. This lets Shizuku API 13.1.5 finish its asynchronous connection-cache cleanup.
+- `ensureService()` now preserves local named bind-failure reasons; `lastReason()` no longer performs an implicit second bind after a bind timeout.
+- The common service identity, per-run removal, app-owned Flow and single selected launcher are unchanged.
+
+Four required artifacts
+- MODIFIED_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-shizuku-rebind-20261029/MODIFIED_FILE/ShizukuBackendClient.kt
+- DIFF_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-shizuku-rebind-20261029/DIFF_FILE.patch
+- VERIFICATION.txt: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-shizuku-rebind-20261029/VERIFICATION.txt
+- executable ROLLBACK.sh: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-shizuku-rebind-20261029/ROLLBACK.sh
+
+BASELINE
+Command/input:
+  ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+Input: pre-change app source and current full unit-test suite.
+Literal result:
+  BUILD SUCCESSFUL in 42s
+  33 actionable tasks: 6 executed, 27 up-to-date
+  EXIT_STATUS=0
+  XML totals: 414 tests, 0 failures, 0 errors, 0 skipped
+Full output: BASELINE_FILE/unit-tests.log.
+Baseline `ShizukuBackendClient.kt` SHA-256: a43a08f7678797fc3305169922a2c197719fd49f42143a71fddece72be411370.
+
+MODIFIED
+Command/input:
+  ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+Input: final source after removing the temporary old-code reference block.
+Literal result:
+  BUILD SUCCESSFUL in 42s
+  33 actionable tasks: 6 executed, 27 up-to-date
+  EXIT_STATUS=0
+  XML totals: 414 tests, 0 failures, 0 errors, 0 skipped
+Full output: MODIFIED_FILE/final-unit-tests.log.
+Build command/input:
+  ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --console=plain
+Input: final source and instrumentation test APK.
+Literal result:
+  BUILD SUCCESSFUL in 6s
+  77 actionable tasks: 9 executed, 68 up-to-date
+  EXIT_STATUS=0
+Full output: MODIFIED_FILE/final-build.log.
+
+Device regression before fix (captured reproduction)
+Command/input:
+  adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp shell am instrument -w -e expected_route SHIZUKU -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner
+Input: pre-fix APK with safe fixed-output stubs replacing the two Glued ELF entries; Shizuku binder and permission present; full class runs 43284 before 43499.
+Literal result:
+  Error in dispatches43499FlowThroughTheSelectedLauncher(...): Failed(reason=exec:shizuku:prepare:-8, failedStep=exec, elapsedMs=5078)
+  FAILURES!!!
+  Tests run: 2, Failures: 1
+  SHELL_EXIT_STATUS=0
+The shell exit is 0 despite JUnit failure; this was treated as a test failure. Details: MODIFIED_FILE/repeat-01.log and BASELINE_FILE/a301so-rebind-logcat.txt.
+
+Modified A301SO fixture repeats
+Command/input, run 10 consecutive times:
+  adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp shell am instrument -w -e expected_route SHIZUKU -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner
+Input: final-source APK with only the two Glued `.so` entries replaced by 7,184-byte no-op stubs; every run required route=SHIZUKU.
+Literal aggregate result:
+  ITERATION=01 PASS SHELL_EXIT=0
+  ITERATION=02 PASS SHELL_EXIT=0
+  ITERATION=03 PASS SHELL_EXIT=0
+  ITERATION=04 PASS SHELL_EXIT=0
+  ITERATION=05 PASS SHELL_EXIT=0
+  ITERATION=06 PASS SHELL_EXIT=0
+  ITERATION=07 PASS SHELL_EXIT=0
+  ITERATION=08 PASS SHELL_EXIT=0
+  ITERATION=09 PASS SHELL_EXIT=0
+  ITERATION=10 PASS SHELL_EXIT=0
+  FINAL_REPEATS=10 FAILURES=0
+Each log contains `OK (2 tests)`. Files: MODIFIED_FILE/final-repeat-01.log through final-repeat-10.log. The latest captured device log has 18 `terminal=exit-0 fixture=true` events (9 per backend); no failure lines.
+
+A301SO deployment and AVD UI
+- A301SO installed `versionName=2.0.12`, `versionCode=1342`; installed APK SHA-256 50073e81341a1c4018240af39d75e7d678a23e319833f8f0c773130dd5cf080a, byte-identical to MODIFIED_FILE/GhostLock-source-final.apk.
+- The instrumentation package was uninstalled. Final process check found no Ghostlock UserService or fixture child; Shizuku server/manager remain.
+- AVD has the same final source APK hash. Direct Home/Paths/selector UI evidence: MODIFIED_FILE/avd-home.png, avd-paths.png, avd-selector.png and XML files; only the two Glued entries are enabled; original CVE entries and Custom are disabled; 43499 built-in profile/import card is present.
+- Fixture APK SHA-256: 89361ed79807e3087ceb6d12a39219a5004af3560e07ee102edfd037c472f193. ZIP comparison showed only `lib/arm64-v8a/lib43499-Glued.so` and `lib/arm64-v8a/lib43284Glued.so` differ from the same-build production APK.
+
+ROLLBACK on a separate copy
+Command/input:
+  ./docs/exec-glue/transaction-shizuku-rebind-20261029/ROLLBACK.sh "$PWD/docs/exec-glue/transaction-shizuku-rebind-20261029/ROLLBACK_TEST/ShizukuBackendClient.kt"
+Input: disposable copy initially byte-identical to MODIFIED_FILE/ShizukuBackendClient.kt.
+Literal output/result:
+  ROLLBACK_RESTORED=yes sha256=a43a08f7678797fc3305169922a2c197719fd49f42143a71fddece72be411370
+  EXIT_STATUS=0
+Restored behavior/status: rollback test copy byte-compares equal to BASELINE_FILE; MODIFIED_FILE and working-tree source remain modified; A301SO and AVD remain on the final production APK hash above.
+
+Scope of this batch: Shizuku bind lifecycle, no-op child and final APK/UI deployment only. Remaining overall deployment gates are 43499 Finish/upstream script parity and staging design, plus fork/setsid descendant completion/cancel/cleanup. No upstream vulnerability ELF was run.

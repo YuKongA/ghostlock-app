@@ -1,0 +1,67 @@
+Transaction: A301SO 43284 M0 marker-only gate (approved marker gate; no production implementation approval).
+Frozen base: HEAD b119085915748a940740d7ce919b5a30ed8e9346; GhostLock 2.0.12 / versionCode 1342.
+Changed branch/field: temporary GHOSTLOCK_M0_MARKER CMake selection, glk_worker= M0 KO argument, isolated ROOT_READY -> RELEASE_FINISH marker worker. All temporary source hooks were rolled back after the exact-KMI stop condition.
+
+Artifact paths:
+MODIFIED_FILE=/Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-m0-marker-20261029/MODIFIED_FILE/M0-FIXTURE-MANIFEST.md
+DIFF_FILE=/Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-m0-marker-20261029/DIFF_FILE.patch
+VERIFICATION.txt=/Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-m0-marker-20261029/VERIFICATION.txt
+ROLLBACK.sh=/Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-m0-marker-20261029/ROLLBACK.sh
+
+BASELINE TEST
+Command: ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+Input: start state at frozen HEAD b119085915748a940740d7ce919b5a30ed8e9346, before temporary M0 fixture edits.
+Literal result: BUILD SUCCESSFUL in 40s; 33 actionable tasks: 6 executed, 27 up-to-date. Parsed build/app/test-results/testDebugUnitTest/TEST-*.xml: 69 files, 424 tests, 0 failures, 0 errors, 0 skipped.
+Exit status: 0.
+
+MODIFIED TESTS
+Command: ./gradlew :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin --no-daemon --console=plain
+Input: temporary M0 test/launcher hooks compiled with the default property value (no device execution).
+Literal result: BUILD SUCCESSFUL in 5s.
+Exit status: 0.
+Command: ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+Input: temporary M0 source state; host unit tests only.
+Literal result: BUILD SUCCESSFUL in 42s; 33 actionable tasks: 7 executed, 1 from cache, 25 up-to-date. Parsed XML: 69 files, 424 tests, 0 failures, 0 errors, 0 skipped.
+Exit status: 0.
+
+M0 BUILD AND STOP CONDITION
+Command: podman machine start podman-machine-default && ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -Pm0Marker=true --no-daemon --console=plain
+Input: isolated M0 copy under build/app/m0/fixture/43284glued; DDK image ghcr.io/ylarod/ddk-min:android13-5.15-20260828.
+Literal result: BUILD SUCCESSFUL in 42s; 76 actionable tasks: 19 executed, 57 up-to-date. M0 KO SHA-256 7a49b8357bb228dc6c88d7bddd1a78e402a1cdd303477f64749c6add458b4206; M0 APK SHA-256 46e056c9eb6855b8376f2f05b6d208e704b40a62122ebdf8fe4917011d0465d; signer SHA-256 b92a1aa56ccf72c789057722af1fe850d71fa067deafc71e985c4d7b3f3badca.
+Exit status: 0.
+Command: strings build/app/m0/fixture/43284glued/ko/dfroot-android13-5.15.ko | grep '^vermagic='
+Input: newly built 11,776-byte M0 KO.
+Literal result: vermagic=5.15.202-android13-5.15.202_r00-dirty SMP preempt mod_unload modversions aarch64
+Exit status: 0.
+Command: adb -s QV770MFGJ1 shell uname -r
+Input: A301SO after the one user-authorized reboot.
+Literal result: 5.15.189-android13-8-00016-g51bba4309aac-ab14546557
+Exit status: 0.
+Result: target release/KMI mismatch. Stop condition fired; M0 APK not installed, M0 ELF/KO not run, no App/Shizuku marker test, no Payload/Finish. The gate result is BLOCKED before device execution; marker behavior is untested.
+
+ROLLBACK TEST ON ANOTHER COPY
+Command: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-m0-marker-20261029/ROLLBACK.sh /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-m0-marker-20261029/ROLLBACK_TEST/project-copy3
+Input: independent copy of temporary source files, both M0 CMake cache directories, and the source branch from DIFF_FILE.patch.
+Literal result: ROLLBACK_RESULT=restored M0-only source delta; changed_paths=19; 5 original Kotlin/Gradle/CMake file hashes matched their start-state hashes; both CMake caches, M0 source/test/build copy absent; ROLLBACK_TEST_RESULT=PASS.
+Exit status: 0. Full literal stdout: ROLLBACK_TEST/rollback-test-cache.stdout.txt; verification: ROLLBACK_TEST/rollback-test-result.txt.
+
+ROLLBACK ON ACTIVE WORKTREE
+Command: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-m0-marker-20261029/ROLLBACK.sh /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app
+Input: active worktree with temporary M0-only edits.
+Literal result: ROLLBACK_RESULT=restored M0-only source delta; changed_paths=20; all 24 paths in BASELINE_FILE/source-hashes.tsv match start-state hashes; 0 mismatches.
+Exit status: 0. Full literal stdout: ROLLBACK_TEST/rollback-live.stdout.txt.
+Follow-up exact generated-cache cleanup: Python removed `app/.cxx/Debug/5h1x94h2` and `build/app/intermediates/cxx/Debug/5h1x94h2`; literal result `M0_CACHE_DIRS_REMOVED=2`; exit status 0. The subsequent default build recreated only non-M0 CMake state.
+
+DEFAULT BUILD AFTER ROLLBACK
+Command: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --console=plain
+Input: original source state after targeted M0 rollback.
+Literal result: BUILD SUCCESSFUL in 5s; 75 actionable tasks: 9 executed, 66 up-to-date. M0 scan across app/src, app/build.gradle.kts, app/.cxx, and build/app: no matches. Default lib43284Glued.so entry SHA-256 42ee0ffc5581451720588c0349adb6ed5e26457ebc03e95572c4d610bc5d8079, 1,937,896 bytes; equals saved pre-gate APK entry byte-for-byte. M0 ELF marker strings and androidTest DEX hits absent.
+Exit status: 0.
+
+RESTORED DEVICE STATE
+Command: adb -s QV770MFGJ1 shell getenforce; adb -s QV770MFGJ1 shell uname -r; adb -s QV770MFGJ1 shell pm path com.ghostlock.app; adb pull <reported base.apk> /tmp/ghostlock-a301so-final-base.apk; cmp -s /tmp/ghostlock-a301so-final-base.apk /tmp/ghostlock-a301so-before-m0.apk
+Input: A301SO installed package and SELinux/kernel state after host rollback/default build.
+Literal result: getenforce=Enforcing; kernel=5.15.189-android13-8-00016-g51bba4309aac-ab14546557; package=2.0.12/code 1342; final installed base APK SHA-256 37756ac1a4b7df5cbc4ed8734178fd12b1b131e4bf4bae7184d2b7e40ecdce92; FINAL_APK_BYTE_EQUAL=0 (cmp success); m0_processes=(no matching process).
+Exit status: 0.
+
+Restored behavior/status: temporary M0 code/test/build artifacts are absent, all 24 start-state source hashes match, default 43284 ELF bytes equal the saved original, and the device remains on the exact pre-gate APK with SELinux Enforcing. Outstanding: obtain exact A301SO KMI/KO and rerun the marker-only device gate; no support or production implementation claim is made.

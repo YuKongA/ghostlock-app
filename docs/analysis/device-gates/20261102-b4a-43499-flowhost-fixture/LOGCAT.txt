@@ -1,0 +1,50 @@
+11-02 14:28:31.932 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:28:31.978 I/ActivityManager( 1881): Start proc 28170:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:28:33.821 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 28170) has died: vis FGS 
+11-02 14:28:33.823 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:28:33.852 I/ActivityManager( 1881): Start proc 28185:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:28:35.723 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 28185) has died: vis FGS 
+11-02 14:28:35.724 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:28:35.757 I/ActivityManager( 1881): Start proc 28202:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:28:37.485 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 28202) has died: vis FGS 
+11-02 14:28:37.487 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:29:10.141 I/ActivityManager( 1881): Start proc 28293:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:29:11.951 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 28293) has died: vis FGS 
+11-02 14:29:11.953 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:29:11.996 I/ActivityManager( 1881): Start proc 28312:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:29:13.812 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 28312) has died: vis FGS 
+11-02 14:29:13.813 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:29:13.841 I/ActivityManager( 1881): Start proc 28328:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:29:15.654 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 28328) has died: vis FGS 
+11-02 14:29:15.657 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:29:15.690 I/ActivityManager( 1881): Start proc 28344:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:29:17.400 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 28344) has died: vis FGS 
+11-02 14:29:17.403 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:41:54.029 I/TestRunner(30163): run started: 1 tests
+11-02 14:41:54.030 I/TestRunner(30163): started: gluedFlowRunsThroughNewProcessChannel(com.ghostlock.app.backend.core.Flow43499GluedHostSmokeTest)
+11-02 14:41:54.380 I/ActivityManager( 1881): Start proc 30183:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:41:54.404 I/ck.app:flowhost(30183): Late-enabling -Xcheck:jni
+11-02 14:41:54.432 I/ck.app:flowhost(30183): Using generational CollectorTypeCMC GC.
+11-02 14:41:56.317 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 30183) has died: vis FGS 
+11-02 14:41:56.320 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:41:56.434 I/ActivityManager( 1881): Start proc 30204:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:41:56.461 I/ck.app:flowhost(30204): Late-enabling -Xcheck:jni
+11-02 14:41:56.489 I/ck.app:flowhost(30204): Using generational CollectorTypeCMC GC.
+11-02 14:41:58.362 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 30204) has died: vis FGS 
+11-02 14:41:58.366 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:41:58.373 I/TestRunner(30163): finished: gluedFlowRunsThroughNewProcessChannel(com.ghostlock.app.backend.core.Flow43499GluedHostSmokeTest)
+11-02 14:41:58.379 I/TestRunner(30163): run finished: 1 tests, 0 failed, 0 ignored
+11-02 14:42:06.531 I/TestRunner(30280): run started: 1 tests
+11-02 14:42:06.533 I/TestRunner(30280): started: gluedFlowRunsThroughNewProcessChannel(com.ghostlock.app.backend.core.Flow43499GluedHostSmokeTest)
+11-02 14:42:06.837 I/ActivityManager( 1881): Start proc 30305:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:42:06.864 I/ck.app:flowhost(30305): Late-enabling -Xcheck:jni
+11-02 14:42:06.892 I/ck.app:flowhost(30305): Using generational CollectorTypeCMC GC.
+11-02 14:42:08.775 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 30305) has died: vis FGS 
+11-02 14:42:08.779 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:42:08.887 I/ActivityManager( 1881): Start proc 30325:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:42:08.906 I/ck.app:flowhost(30325): Late-enabling -Xcheck:jni
+11-02 14:42:08.933 I/ck.app:flowhost(30325): Using generational CollectorTypeCMC GC.
+11-02 14:42:10.821 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 30325) has died: vis FGS 
+11-02 14:42:10.823 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:42:10.827 I/TestRunner(30280): finished: gluedFlowRunsThroughNewProcessChannel(com.ghostlock.app.backend.core.Flow43499GluedHostSmokeTest)
+11-02 14:42:10.830 I/TestRunner(30280): run finished: 1 tests, 0 failed, 0 ignored

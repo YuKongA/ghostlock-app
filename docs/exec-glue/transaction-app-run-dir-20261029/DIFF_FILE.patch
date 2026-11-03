@@ -1,0 +1,88 @@
+--- a/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableBackendProcess.kt
++++ b/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableBackendProcess.kt
+@@ -18,6 +18,7 @@
+ import kotlinx.coroutines.withContext
+ import rikka.shizuku.Shizuku
+ import java.io.File
++import java.util.UUID
+ 
+ /** Route selected before any child is created; an execution failure never changes this value. */
+ internal enum class ExecutableProcessRoute { APP, SHIZUKU }
+@@ -61,6 +62,25 @@
+     private const val MAX_LOG_BYTES = 8 * 1024 * 1024
+     private const val MAX_LOG_LINE_CHARS = 8192
+     private const val MAX_REMOTE_LOG_CHUNK = 32 * 1024
++
++    /**
++     * Allocates one App-private artifact directory identity for a single executable run.
++     *
++     * @param filesDir App-private files root.
++     * @param backendKey validated stable Glued backend identity.
++     * @return a fresh, not-yet-created directory path isolated from prior runs.
++     * @throws IllegalArgumentException when the backend key is not one of the fixed Glued IDs.
++     * @note Call only after request validation; the UUID prevents per-run files and logs from
++     * overwriting a previous run's artifacts.
++     */
++    internal fun newAppRunDirectory(filesDir: File, backendKey: String): File {
++        val directoryName = when (backendKey) {
++            "43499-Glued" -> "43499-Glued"
++            "43284Glued" -> "43284Glued"
++            else -> throw IllegalArgumentException("unsupported Glued backend")
++        }
++        return File(File(filesDir, "ghostlock-glue/$directoryName"), UUID.randomUUID().toString())
++    }
+ 
+     /**
+      * Chooses one launcher before process creation; an authorized Shizuku failure is returned
+@@ -176,7 +196,7 @@
+         if (!binary.isFile || !binary.canExecute()) {
+             return BackendRunUiState.Refused(listOf("exec:binary-missing:$binaryName"))
+         }
+-        val runDir = File(context.filesDir, "ghostlock-glue/$backendKey")
++        val runDir = newAppRunDirectory(context.filesDir, backendKey)
+         if (!runDir.isDirectory && !runDir.mkdirs()) {
+             return BackendRunUiState.Refused(listOf("exec:run-directory-unavailable"))
+         }
+--- a/app/src/test/kotlin/com/ghostlock/app/backend/core/ExecutableProcessRoutingTest.kt
++++ b/app/src/test/kotlin/com/ghostlock/app/backend/core/ExecutableProcessRoutingTest.kt
+@@ -2,11 +2,40 @@
+ 
+ import kotlinx.coroutines.runBlocking
+ import org.junit.Assert.assertEquals
++import org.junit.Assert.assertNotEquals
++import org.junit.Assert.assertTrue
+ import org.junit.Test
++import java.io.File
++import java.util.UUID
+ 
+ /** The route is resolved before spawn and has exactly one launcher owner. */
+ class ExecutableProcessRoutingTest {
++    /** Verifies each App launcher run gets a private per-run artifact directory. */
+     @Test
++    fun appRunsReceiveDistinctDirectoriesUnderTheirBackendRoot() {
++        val filesDir = File("/app-private/files")
++        for (backendKey in listOf("43499-Glued", "43284Glued")) {
++            val first = ExecutableBackendProcess.newAppRunDirectory(filesDir, backendKey)
++            val second = ExecutableBackendProcess.newAppRunDirectory(filesDir, backendKey)
++
++            assertEquals(File(filesDir, "ghostlock-glue/$backendKey"), first.parentFile)
++            assertNotEquals(first, second)
++            assertTrue(runCatching { UUID.fromString(first.name) }.isSuccess)
++            assertTrue(runCatching { UUID.fromString(second.name) }.isSuccess)
++        }
++    }
++
++    /** Rejects caller-controlled directory segments before any path is composed. */
++    @Test
++    fun appRunDirectoryRejectsUnknownBackendIdentity() {
++        val failure = runCatching {
++            ExecutableBackendProcess.newAppRunDirectory(File("/app-private/files"), "../other")
++        }.exceptionOrNull()
++
++        assertTrue(failure is IllegalArgumentException)
++    }
++
++    @Test
+     fun usesShizukuOnlyWhenBinderAndPermissionAreBothPresent() {
+         assertEquals(
+             ExecutableProcessRoute.SHIZUKU,

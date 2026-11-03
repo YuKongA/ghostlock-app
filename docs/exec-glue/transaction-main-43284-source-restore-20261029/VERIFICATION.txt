@@ -1,0 +1,5 @@
+Transaction: restore production 43284 sources after temporary M0 fixture code leaked into the default source path.
+
+BASELINE: current contaminated exp.c and libcxx.S, preserved byte-for-byte under BASELINE_FILE.
+MODIFIED: verified pre-M0 production source preimages from transaction-m0-marker-20261029/BASELINE_FILE.
+

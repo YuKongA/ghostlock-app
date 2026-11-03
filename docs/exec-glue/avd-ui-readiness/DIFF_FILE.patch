@@ -1,0 +1,21 @@
+--- app/src/main/kotlin/com/ghostlock/app/backend/43499glued/Backend43499Glued.kt (baseline)
++++ app/src/main/kotlin/com/ghostlock/app/backend/43499glued/Backend43499Glued.kt (modified)
+@@ -57,6 +57,18 @@
+         BackendReadiness.NotReady(listOf(ReadinessReason(R.string.backend_43499_profile_required)))
+     }
+ 
++    /**
++     * Provides the readiness reason already declared by this backend to the home status card.
++     *
++     * @return Ready for a valid profile, otherwise the first declared profile requirement.
++     * @note Readiness remains the sole source of prerequisite state.
++     */
++    override fun statusTextRes(): Int = when (val current = readiness()) {
++        is BackendReadiness.Ready -> R.string.backend_readiness_ready
++        is BackendReadiness.NotReady -> current.reasons.firstOrNull()?.messageRes
++            ?: R.string.backend_readiness_undeclared
++    }
++
+     /** Loads the saved profile and validates it using the same codec as the exec input path. */
+     override fun restoreConfig(store: BackendConfigStore) {
+         val saved = store.getString(PROFILE_REFERENCE)

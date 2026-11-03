@@ -1,0 +1,38 @@
+VERIFICATION.txt
+Changed branch/field: ExecutableRunEnvironment.variables(backendKey, runDirectory) — 43499-Glued receives exactly GHOSTLOCK_HOME, TMPDIR, GHOSTLOCK_KSU_LOG; 43284Glued receives no overrides. Both App and Shizuku launchers use the map. The launcher route is chosen before spawn: authorized/reachable Shizuku, otherwise App; an uncertain selected-Shizuku result never creates a second child.
+
+Required artifacts:
+- MODIFIED_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-launcher-env-20261029/MODIFIED_FILE
+- DIFF_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-launcher-env-20261029/DIFF_FILE
+- VERIFICATION.txt: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-launcher-env-20261029/VERIFICATION.txt
+- executable ROLLBACK.sh: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-launcher-env-20261029/ROLLBACK.sh
+
+Baseline command/input/result/exit:
+- Command: ./gradlew :app:testDebugUnitTest --tests com.ghostlock.app.backend.core.ExecutableProcessRoutingTest --no-daemon --console=plain
+- Input: pre-change baseline source snapshots in BASELINE_FILE; 5 routing tests.
+- Literal result: BUILD SUCCESSFUL in 5s; 33 actionable tasks: 6 executed, 27 up-to-date. Exit status: 0.
+- Baseline SHA-256: ExecutableBackendProcess.kt=ebb351dc94f24a58e6bbb40507e6faf16083265658ae2ee426623fd051053211; ExecutableShizukuHost.kt=f06c4c68449df7918c244a80e46e7f2653ff44d4fa62b2f5861e7aff0d745977; full-process-uml.md=d68bf1af9e5122f6a613b4e4370904466005d12d4dcc478fcca41c9a9a37f4b3; exec-glue-plan.md=c07a0411004129bd668113342c5d05118e6b84f1ded4dba7650274c7d92fd126
+
+Modified focused command/input/result/exit:
+- Command: ./gradlew :app:testDebugUnitTest --tests com.ghostlock.app.backend.core.ExecutableRunEnvironmentTest --tests com.ghostlock.app.backend.core.ExecutableProcessRoutingTest --no-daemon --console=plain
+- Input: current launcher mapping; 7 tests (environment 2, routing 5).
+- Literal result: BUILD SUCCESSFUL in 8s; 33 actionable tasks: 6 executed, 27 up-to-date. Exit status: 0.
+
+Full modified build/test command/result/exit:
+- Command: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --console=plain
+- Input: current working tree; full JVM test suite plus debug APK and Android-test APK assembly.
+- Literal result: BUILD SUCCESSFUL in 41s; 84 actionable tasks: 12 executed, 72 up-to-date. XML aggregate: 424 tests, 0 failures, 0 errors, 0 skipped. Exit status: 0.
+
+Device deployment/UI result:
+- APK: build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk; package com.ghostlock.app, versionName 2.0.12, versionCode 1342.
+- Input: adb install -r of that APK to A301SO (adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp) and emulator-5554. Literal result: both Success.
+- SHA-256: build APK, A301SO base.apk, and AVD base.apk each 720f7100b6bb3ee0a885a5fc13b8c78a6c731f1cc16cdb8ff4c2d78548b71672.
+- AVD UI artifacts: build/deployment-audit/AVD-backend-selector-20261029.png; AVD-43499-card-ui-20261029.png; AVD-paths-ui-20261029.png. Selector shows two Glued entries and original backends/Custom gray; 43499 shows builtin profile and Import .conf; 43284 has no profile/import controls. No production ELF was run.
+
+Rollback test command/input/result/exit:
+- Command: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-launcher-env-20261029/ROLLBACK.sh /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-launcher-env-20261029/ROLLBACK_TEST_COPY
+- Input: isolated ROLLBACK_TEST_COPY populated with modified snapshots; the live checkout was not the target.
+- Literal result: ROLLBACK_OK restored=4 removed=2; verification: all four restored files byte-match BASELINE_FILE and both added files are absent. Exit status: 0.
+- Restored behavior/status: pre-change launcher/plan/UML bytes restored only in the isolated copy; the live worktree remains modified and the current implementation remains in place.
+
+Remaining gates: common 43499 Finish bootstrap parity/safe_mode authority/late-load ownership/fixed script staging and detached-worker terminal/EOF/cleanup; 43284 common-Finish handoff remains separately unresolved. Device deployment is not an attack-path gate and no exploit ELF was executed.

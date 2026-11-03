@@ -1,0 +1,31 @@
+# Marker preflight transaction verification
+
+Changed field: new report `gate_status=PRECHECK PASS / MARKER GATE PENDING`; its source statement is corrected to identify the actual `Flow43284Glued` route. No native/Kotlin source changed in this turn.
+
+MODIFIED_FILE: `docs/exec-glue/marker-preflight-20261029/MODIFIED_FILE/20261029-a301so-43284-marker-preflight.md`
+DIFF_FILE: `docs/exec-glue/marker-preflight-20261029/DIFF_FILE.patch`
+VERIFICATION.txt: `docs/exec-glue/marker-preflight-20261029/VERIFICATION.txt`
+ROLLBACK.sh: `docs/exec-glue/marker-preflight-20261029/ROLLBACK.sh`
+Gate record: `docs/analysis/device-gates/20261029-a301so-43284-marker-preflight.md`
+
+## BASELINE
+Command: `python3 -c "from pathlib import Path; p=Path('docs/exec-glue/marker-preflight-20261029/BASELINE_FILE/report.absent.txt'); assert p.read_text() == 'BASELINE=ABSENT\nTARGET=docs/analysis/device-gates/20261029-a301so-43284-marker-preflight.md\n'; print('BASELINE=ABSENT')"`
+Input: baseline sentinel; the report target was absent before this batch.
+Literal output: `BASELINE=ABSENT`
+Exit: `0`
+
+## MODIFIED
+Command: `python3 -c "from pathlib import Path; p=Path('docs/analysis/device-gates/20261029-a301so-43284-marker-preflight.md'); s=p.read_text(); assert 'Flow43284Glued.kt' in s and 'ExecutableBackendProcess' in s and 'ROOT_READY' in s and 'Payload/Finish 未运行' in s; print('MODIFIED=PRECHECK_ONLY; GLUED_FLOW=WIRED; PAYLOAD_FINISH=NOT_RUN')"`
+Input: corrected A301SO preflight report.
+Literal output: `MODIFIED=PRECHECK_ONLY; GLUED_FLOW=WIRED; PAYLOAD_FINISH=NOT_RUN`
+Exit: `0`
+SHA-256: `aa8acfd412ccfc6a86dfd7f84e26c1e1b1aec6b4e949b483f4cb53dd7d5d4626`
+
+## ROLLBACK
+Command: `docs/exec-glue/marker-preflight-20261029/ROLLBACK.sh docs/exec-glue/marker-preflight-20261029/ROLLBACK_TEST/report.md`
+Input: independent copy of MODIFIED_FILE; its baseline state is absent.
+Literal output: `ROLLBACK=ABSENT docs/exec-glue/marker-preflight-20261029/ROLLBACK_TEST/report.md`
+Exit: `0`
+Restored status: test copy is absent; MODIFIED_FILE and the gate record remain present and byte-identical.
+
+Reopen verification: report, MODIFIED_FILE, DIFF_FILE, VERIFICATION.txt, and executable ROLLBACK.sh exist; report hash matches MODIFIED_FILE.

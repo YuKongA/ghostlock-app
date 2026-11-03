@@ -1,0 +1,54 @@
+# A301SO deployment verification
+
+Date: 2026-10-29 (America/Toronto)
+Workspace: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app
+HEAD: b119085915748a940740d7ce919b5a30ed8e9346 (2.0.12; `dev-nocpp` contains HEAD; checkout detached)
+Package: com.ghostlock.app · versionName 2.0.12 · versionCode 1342 · ABI arm64-v8a
+Device: A301SO, serial QV770MFGJ1, Android 15/API 35
+
+## BASELINE
+
+Input: installed `/data/app/~~juX9SJ4orNGZJZlkx9qihQ==/com.ghostlock.app-FzbpASm8-GWTVl7Bscw_4g==/base.apk` pulled to `BASELINE_FILE/installed-base.apk` before replacement.
+Command: `adb -s QV770MFGJ1 pull /data/app/~~juX9SJ4orNGZJZlkx9qihQ==/com.ghostlock.app-FzbpASm8-GWTVl7Bscw_4g==/base.apk docs/exec-glue/deployment-a301so-20261029/BASELINE_FILE/installed-base.apk`
+Literal output: `/data/app/~~juX9SJ4orNGZJZlkx9qihQ==/com.ghostlock.app-FzbpASm8-GWTVl7Bscw_4g==/base.apk: 1 file pulled, 0 skipped. 38.0 MB/s (28999754 bytes in 0.728s)`
+SHA-256: `6ffe0fe821b0f8c14c2b734143a188fba338e1a7c8edeb345b80c26455f0f7b0`.
+Installed metadata before update: versionName=2.0.12, versionCode=1342, lastUpdateTime=2026-10-29 07:20:24.
+Exit: 0.
+
+## MODIFIED
+
+Build command:
+`./gradlew --no-daemon --no-parallel --max-workers=1 testDebugUnitTest assembleDebug assembleDebugAndroidTest --console=plain`
+Literal result: `BUILD SUCCESSFUL in 44s`; `84 actionable tasks: 12 executed, 72 up-to-date`.
+XML aggregate: 69 files, 424 tests, 0 failures, 0 errors, 0 skipped.
+Exit: 0. Full log: `MODIFIED_FILE/build.log`.
+
+APK source: `build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk`, copied to `MODIFIED_FILE/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk`.
+SHA-256: `37756ac1a4b7df5cbc4ed8734178fd12b1b131e4bf4bae7184d2b7e40ecdce92`; 28,999,754 bytes. `aapt dump badging`: package com.ghostlock.app, versionCode=1342, versionName=2.0.12. V2 certificate SHA-256: `b92a1aa56ccf72c789057722af1fe850d71fa067deafc71e985c4d7b3f3badca`, same as baseline.
+APK entry comparison: 398 entries, exactly one changed (`classes4.dex`: baseline SHA-256 `0ec6ecec2ddcc80b20ee87f0d6b10ee23ed9f6e1e331c6e37f7c2c67bd916795` → modified SHA-256 `d85536de8392f665da7016bb06eeb8a4bcff24aec6ed3b075ca95d5a5f842176`). See `DIFF_FILE.patch`.
+
+Install command: `adb -s QV770MFGJ1 install -r docs/exec-glue/deployment-a301so-20261029/MODIFIED_FILE/GhostLock-v2.0.12\(1342\)-arm64-v8a-debug.apk`
+Literal output:
+`Performing Streamed Install`
+`Success`
+Exit: 0.
+
+Post-install: pulled installed base APK to `MODIFIED_FILE/a301so-installed-final.apk`; 28,999,754 bytes; SHA-256 exactly matches candidate `37756ac1a4b7df5cbc4ed8734178fd12b1b131e4bf4bae7184d2b7e40ecdce92`. `dumpsys package` reported versionName=2.0.12, versionCode=1342, lastUpdateTime=2026-10-29 17:21:36. `am start -n com.ghostlock.app/.ui.MainActivity` returned `Starting: Intent { cmp=com.ghostlock.app/.ui.MainActivity }`; ActivityRecord showed MainActivity resumed. Current focus remained `NotificationShade` and `mFocusedApp=null`, so this physical screen session did not provide visual UI proof. Physical screen capture was not retained because the device was on the notification shade/lock screen. The same modified APK was installed on emulator-5554 for current-build UI verification: baseline installed hash d174452840f18336fafc507a13694126477f7e8d86b4f127cd20baf4cdc5273f; candidate installed hash 37756ac1a4b7df5cbc4ed8734178fd12b1b131e4bf4bae7184d2b7e40ecdce92; metadata remained 2.0.12/code1342.
+AVD install: `adb -s emulator-5554 install -r <modified APK>` returned `Performing Streamed Install` / `Success`; pulled final APK hash matched 37756ac1a4b7df5cbc4ed8734178fd12b1b131e4bf4bae7184d2b7e40ecdce92. First hierarchy dump during splash failed `ERROR: null root node returned by UiTestAutomationBridge.`; after 5 seconds it returned `UI hierchary dumped to: /sdcard/ghostlock-avd-window.xml` and the MainActivity hierarchy was pulled.
+AVD evidence: `MODIFIED_FILE/avd-current-home.png`, `avd-current-paths.png`, `avd-current-backend-selector.png`, `avd-disabled-entry-after.png`, `avd-current-43284-card.png` with XML dumps. Home still explicitly says its status cards use demo data. Paths shows 43499-Glued profile selection and Import .conf; switching to 43284-Glued shows no 43499 profile control. Original CVE-2026-43499 selector tap left the full selector XML byte-identical (SHA-256 7904757eee0930ba3567c30b8f31cd72f8ae82df52957395cb3bf9384f2413bb before and after); original CVE/Lua rows are gray in the selector. The 43284 card currently displays “Finish — No finish options”. No backend Run action or production ELF was launched.
+
+## ROLLBACK
+
+Exact command:
+`sh docs/exec-glue/deployment-a301so-20261029/ROLLBACK.sh QV770MFGJ1 docs/exec-glue/deployment-a301so-20261029/BASELINE_FILE/installed-base.apk 6ffe0fe821b0f8c14c2b734143a188fba338e1a7c8edeb345b80c26455f0f7b0`
+Literal result:
+`Performing Streamed Install`
+`Success`
+`/data/app/~~U8SyE1ZOEAP-H9MquH3nPQ==/com.ghostlock.app-BtNhVVeG0xjv3gziWE2g_Q==/base.apk: 1 file pulled, 0 skipped. 40.8 MB/s (28999754 bytes in 0.678s)`
+`ROLLBACK_VERIFIED: PASS device=QV770MFGJ1 sha256=6ffe0fe821b0f8c14c2b734143a188fba338e1a7c8edeb345b80c26455f0f7b0`
+`ROLLBACK_EXIT=0`
+The candidate was then reinstalled with `adb -s QV770MFGJ1 install -r docs/exec-glue/deployment-a301so-20261029/MODIFIED_FILE/GhostLock-v2.0.12\(1342\)-arm64-v8a-debug.apk`; literal output `Performing Streamed Install` / `Success`; exit 0. Final installed hash is the modified SHA above.
+
+## Scope state
+
+The rev10 plan remains design-blocked by the review recorded in `../plan-rev10-20261029/VERIFICATION.txt`; this app update deploys the already-built UI/package only. Root handoff, Payload/Finish execution, and production exploit behavior remain unverified and were not run on the device.

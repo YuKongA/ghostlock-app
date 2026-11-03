@@ -1,0 +1,36 @@
+# M0 JUnit test-signature repair verification
+
+Changed field: `shizukuLauncherCompletesRootReadyAndSingleReleaseMarkers()` now has a JVM-void test signature and invokes `runBlocking` in its body. No production backend, ELF, KO, Payload, or Finish source changed.
+
+Changed file: `app/src/androidTest/kotlin/com/ghostlock/app/backend/43284glued/M0MarkerGateTest.kt`
+Baseline SHA-256: `20bade0d54427e878aeab8d6eda5a8ab53879dbc58409cf5270f15a88427d206`
+Modified SHA-256: `00f2eaf92128c68b432c35a83e931f1a1b2c09beda4d1832d8e8bc3be4e0e92a`
+
+## BASELINE
+
+- Command: `./gradlew :app:testDebugUnitTest --no-daemon --console=plain`
+- Input: current baseline source snapshot from the previous M0 capacity transaction.
+- Literal result: `BUILD SUCCESSFUL in 44s`; `33 actionable tasks: 7 executed, 1 from cache, 25 up-to-date`.
+- Exit status: `0`.
+- Device attempt command: `adb -s QV770MFGJ1 shell am instrument -w -e class 'com.ghostlock.app.backend.cve43284glued.M0MarkerGateTest#appLauncherCompletesRootReadyAndSingleReleaseMarkers' com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner`
+- Literal result: `InvalidTestClassError: Method shizukuLauncherCompletesRootReadyAndSingleReleaseMarkers() should be void`; `Tests run: 1, Failures: 1`.
+- Host command exit status: `0`; instrumentation result: failed during JUnit class initialization before the selected test body or M0 ELF ran.
+- Device rollback result: original APK restored byte-identically (`37756ac1a4b7df5cbc4ed8734178fd12b1b131e4bf4bae7184d2b7e40ecdce92`); test package absent; APEX crash_dump hash remains `15288efc30e073dbb29a4b357d70e8b33c8136fa442c2def91a599fef85de066`.
+
+## MODIFIED
+
+- Host command: `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest -Pm0Marker=true --no-daemon --console=plain`.
+- Host input/result: modified JVM-void test method and pinned `.189` fixture; `BUILD SUCCESSFUL in 45s`, exit `0`. Both instrumentation methods compile with JVM descriptor `()V`.
+- Device command: `adb -s QV770MFGJ1 shell am instrument -w -e class 'com.ghostlock.app.backend.cve43284glued.M0MarkerGateTest#appLauncherCompletesRootReadyAndSingleReleaseMarkers' com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner`.
+- Device input/result: verified app/test APKs were installed; `RUNNING_UNLOCKED`; test body entered; assertion `M0 ELF exit expected:<0> but was:<4>`; `Tests run: 1, Failures: 1`; ELF log `M0_PREFLIGHT_FAIL=vendor-tail-read offset=12496 required_bytes=16 path=/vendor/lib64/libbinderdebug.so`.
+- Exit status: instrumentation shell `0`; JUnit test failed after the body ran. This confirms the repaired method is accepted by JUnit; the remaining failure is the fixture preflight, not test-class validation.
+
+## ROLLBACK
+
+- Command: `./ROLLBACK.sh --target-root ROLLBACK_TEST/project-copy-final`
+- Input: disposable copy whose test source equals `MODIFIED_FILE`.
+- Literal result: `ROLLBACK_RESULT=restored baseline; path=/Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-m0-junit-void-20261029/ROLLBACK_TEST/project-copy-gate-verification/app/src/androidTest/kotlin/com/ghostlock/app/backend/43284glued/M0MarkerGateTest.kt; sha256=20bade0d54427e878aeab8d6eda5a8ab53879dbc58409cf5270f15a88427d206`.
+- Exit status: `0`.
+- Restored behavior: the copy returned to the old expression-bodied non-void Shizuku test method; JUnit's earlier baseline result rejects it before the selected App test body. The live worktree remains on the JVM-void method.
+
+`MODIFIED_FILE/` contains the final changed source. `DIFF_FILE.patch` contains the exact one-file diff. `ROLLBACK.sh` refuses targets that do not match the modified source and never infers the live worktree path.

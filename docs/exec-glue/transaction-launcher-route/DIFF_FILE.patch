@@ -1,0 +1,138 @@
+--- a/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableBackendProcess.kt
++++ b/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableBackendProcess.kt
+@@ -34,6 +34,25 @@
+     fun select(binderReachable: Boolean, permissionGranted: Boolean): ExecutableProcessRoute =
+         if (binderReachable && permissionGranted) ExecutableProcessRoute.SHIZUKU
+         else ExecutableProcessRoute.APP
++
++    /**
++     * Invokes only the launcher selected before this run creates a child process.
++     *
++     * @param route launcher owner selected from the current Shizuku availability snapshot.
++     * @param app starts the executable in the App process and permission domain.
++     * @param shizuku starts the executable through the authorized Shizuku UserService.
++     * @return the selected launcher's result.
++     * @note Exceptions from the selected launcher propagate; this method never falls back or
++     * starts a second child after an uncertain remote result.
++     */
++    suspend fun <T> dispatch(
++        route: ExecutableProcessRoute,
++        app: suspend () -> T,
++        shizuku: suspend () -> T,
++    ): T = when (route) {
++        ExecutableProcessRoute.APP -> app()
++        ExecutableProcessRoute.SHIZUKU -> shizuku()
++    }
+ }
+ 
+ /** Runs one packaged upstream executable through exactly one selected process launcher. */
+@@ -73,14 +92,19 @@
+                 Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+             }.getOrDefault(false),
+         )
+-        when (route) {
+-            ExecutableProcessRoute.APP -> runApp(
+-                context.applicationContext, backendKey, binaryName, arguments, stdin, files, onLine,
+-            )
+-            ExecutableProcessRoute.SHIZUKU -> runShizuku(
+-                context.applicationContext, backendKey, arguments, stdin, files, onLine,
+-            )
+-        }
++        ExecutableProcessRouting.dispatch(
++            route = route,
++            app = {
++                runApp(
++                    context.applicationContext, backendKey, binaryName, arguments, stdin, files, onLine,
++                )
++            },
++            shizuku = {
++                runShizuku(
++                    context.applicationContext, backendKey, arguments, stdin, files, onLine,
++                )
++            },
++        )
+     }
+ 
+     /**
+--- a/app/src/test/kotlin/com/ghostlock/app/backend/core/ExecutableProcessRoutingTest.kt
++++ b/app/src/test/kotlin/com/ghostlock/app/backend/core/ExecutableProcessRoutingTest.kt
+@@ -1,5 +1,6 @@
+ package com.ghostlock.app.backend.core
+ 
++import kotlinx.coroutines.runBlocking
+ import org.junit.Assert.assertEquals
+ import org.junit.Test
+ 
+@@ -23,6 +24,36 @@
+             ExecutableProcessRoute.APP,
+             ExecutableProcessRouting.select(binderReachable = false, permissionGranted = false),
+         )
++    }
++
++    /** Confirms one selected launcher owns each run, including an uncertain Shizuku failure. */
++    @Test
++    fun selectedLauncherRunsAloneAndShizukuFailureDoesNotFallback() = runBlocking {
++        var appStarts = 0
++        var shizukuStarts = 0
++
++        val appResult = ExecutableProcessRouting.dispatch(
++            route = ExecutableProcessRoute.APP,
++            app = { appStarts += 1; "app-result" },
++            shizuku = { shizukuStarts += 1; "shizuku-result" },
++        )
++        assertEquals("app-result", appResult)
++        assertEquals(1, appStarts)
++        assertEquals(0, shizukuStarts)
++
++        val failure = runCatching {
++            ExecutableProcessRouting.dispatch(
++                route = ExecutableProcessRoute.SHIZUKU,
++                app = { appStarts += 1; "app-fallback" },
++                shizuku = {
++                    shizukuStarts += 1
++                    throw IllegalStateException("remote-start-uncertain")
++                },
++            )
++        }.exceptionOrNull()
++        assertEquals("remote-start-uncertain", failure?.message)
++        assertEquals(1, appStarts)
++        assertEquals(1, shizukuStarts)
+     }
+ 
+     @Test
+--- a/docs/development/full-process-uml.md
++++ b/docs/development/full-process-uml.md
+@@ -956,6 +956,10 @@
+   class ExecutableBackendProcess {
+     +run(context, backendKey, binaryName, arguments, stdin, files)
+   }
++  class ExecutableProcessRouting {
++    +select(binderReachable, permissionGranted)
++    +dispatch(route, appLauncher, shizukuLauncher)
++  }
+   class AndroidIpSecRuntime {
+     +create(selectedDomainContext)
+     +arguments List<String>
+@@ -989,6 +993,7 @@
+   Backend43284Glued --> Flow43284Glued
+   Flow43499Glued --> ExecutableBackendProcess
+   Flow43284Glued --> ExecutableBackendProcess
++  ExecutableBackendProcess --> ExecutableProcessRouting : one selected launcher owner
+   ExecutableBackendProcess --> AndroidIpSecRuntime : 43284 / App route only
+   AndroidIpSecRuntime --> IpSecCliArguments : fixed upstream argv
+   AndroidIpSecRuntime --> ReverseCloseScope : transform → SPI → encapsulation
+--- a/docs/plan/exec-glue-plan.md
++++ b/docs/plan/exec-glue-plan.md
+@@ -260,3 +260,12 @@
+ - 直接 UI 门：AVD Paths selector 有且仅有两个 Glued 项可选，原版 43284/98260/43499 与 Custom 的选项容器 `enabled=false`；43284 卡显示 `exec (upstream CLI)` 且不显示 profile 卡；43499 卡显示上游 built-in profile selector 与 `Import .conf`。实际从 Run 页分别启动两个无副作用 fixture，终端均显示对应 backend、fixture marker、`backend run: ok`、终态及 43499 profile id。层级与截图保存在 `docs/exec-glue/transaction-safe-exec-fixture/MODIFIED_FILE/`。
+ - 主机验证：改前 `:app:testDebugUnitTest` 410 tests / 0 failures / 0 errors / 0 skipped；修改后复跑 413 tests / 0 failures / 0 errors / 0 skipped；`:app:assembleDebug :app:assembleDebugAndroidTest` 成功。fixture APK 只替换两个 JNI-lib APK entry 为 safe stub；活动结束后，AVD/A301SO 均安装当前 source build 2.0.12 (1342)，base.apk SHA-256=`35e63d5409d62f94769416e1c782c5ca135f69e91a24d14aa96380388b3d6ccb`，不留 fixture APK/测试 APK。
+ - 仍未关闭：43499 FinishScript 对 upstream `ops.cpp` 的逐项等价与 O_TRUNC 桥接；上游 fork/setsid 后代的取消/断连清理；A301SO 连续 Shizuku run 曾有一次瞬时 `prepare:-8`，其后连续重跑 5/5 通过但尚未根因定位；真实生产 ELF 未运行，故不得将攻击路径标记为 supported。当前结果证明 UI 到固定 exec 子进程、日志和终态链路的无副作用验证，不代表漏洞利用成功或完成发布门禁。
++
++#### 批次 5：双 launcher 单所有者回归守卫（2026-10-29）
++
++- 依据 rev3 已批准路由：Shizuku binder 可达且权限已授予时只调用 Shizuku launcher；否则只调用 App launcher。此次不改变路由条件，仅把执行选择收敛到 `ExecutableProcessRouting.dispatch`，使“远端失败不启动第二个 App child”可由纯 JVM 测试直接证伪。
++- 改动：`ExecutableBackendProcess.kt`、`ExecutableProcessRoutingTest.kt`，并在本图增加 `ExecutableProcessRouting`；不改 backend ID、Flow、AIDL schema、上游 ELF/C/C++、Profile 或 UI。
++- 基线：改前针对 `ExecutableProcessRoutingTest` 的 Gradle 命令成功，原两项测试通过；修改后新增选中 launcher 独占与 Shizuku 异常不 fallback 测试，路由测试 3 项通过。完整 `:app:testDebugUnitTest` 为 414 tests / 0 failures / 0 errors / 0 skipped；`assembleDebug` 与 `assembleDebugAndroidTest` 均成功。
++- AVD UI：重装当前 source APK `2.0.12 (1342)` 后直接检查 Paths 页；selector 中两个 Glued 为可选样式，原版 43284/98260/43499 与 Custom 灰显；选择 43284Glued 时有 `exec (upstream CLI)`、无 43499 profile/import 控件；切回 43499-Glued 后 built-in profile 与 `Import .conf` 恢复。构建 APK 与 AVD `base.apk` 均为 SHA-256 `df6da45d3aff989e5375bc3fc172c99b45a49c7910240e4365b85777b412aad6`。截图/XML 留在 `docs/exec-glue/transaction-launcher-route/MODIFIED_FILE/`。此 UI 检查没有启动 backend/ELF。
++- A301SO 部署：同一 APK 已重新安装；设备 `base.apk` 与构建产物 SHA-256 一致，`versionName=2.0.12`、`versionCode=1342`。本批未以该设备的安装记录推断 UI 可视状态或执行链成功。
++- 未关闭项不变：FinishScript/upstream parity 与 `O_TRUNC` bridge、fork/setsid 后代取消/断连清理、A301SO 曾出现一次且未定位的 `prepare:-8`、真实生产 ELF 未执行；因此本批只证明 launcher 路由选择契约和 AVD UI，不宣告整体部署完成或漏洞路径 supported。

@@ -1,0 +1,8 @@
+
+com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest:.
+
+Time: 3.059
+
+OK (1 test)
+
+

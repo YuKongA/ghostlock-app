@@ -1,0 +1,64 @@
+M0 carrier-capacity repair transaction — host pass; A301SO marker test awaits unlock.
+Worktree: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app
+HEAD: b119085915748a940740d7ce919b5a30ed8e9346 (detached; version 2.0.12/code 1342)
+Changed behavior: app/src/main/cpp/43284glued/m0/exp.c exploit() now calls m0_preflight_ko_capacity() before patch_helper(); insufficient/unstatable carrier returns before crash_dump page-cache writes. lkm/Makefile strips debug sections. M0MarkerGateTest asserts/logs M0_PREFLIGHT_OK before deleting runDir.
+
+BASELINE
+Exact command: ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+Input: pre-change source in the current worktree.
+Literal output: BUILD SUCCESSFUL in 39s; 33 actionable tasks: 6 executed, 27 up-to-date.
+Exit status: 0.
+
+MODIFIED HOST TEST/BUILD
+Exact command: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest -Pm0Marker=true -x :app:buildM0MarkerKo --no-daemon --console=plain
+Input: M0 source/test changes and exact .189 KO staged in build/app/m0/fixture/43284glued/ko/dfroot-android13-5.15.ko; Gradle generic builder excluded to prevent stale/wrong-KMI overwrite.
+Literal output: BUILD SUCCESSFUL in 41s; 84 actionable tasks: 15 executed, 69 up-to-date.
+Exit status: 0.
+APK: build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk; 28,740,886 bytes; SHA-256 1ef59943e572c9d168726ef0087af1548d77001222d50c8b972cc3b743a533d4.
+APK identity: package com.ghostlock.app; versionName=2.0.12; versionCode=1342; signer SHA-256 b92a1aa56ccf72c789057722af1fe850d71fa067deafc71e985c4d7b3f3badca.
+Embedded exact KO: 12,512 bytes; SHA-256 4f56858dd02ec53f14f2f3ca1e9d8fd48f83be85d6f32eaecc339220b54e5c79; found at byte offset 517080 in lib/arm64-v8a/lib43284Glued.so (entry SHA-256 58962069468b08c8f97ff39adea0ef86e43bf23eea3d71a417e6f51cf8e47018).
+
+FAILED BUILD ATTEMPT AND CORRECTION
+Command: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest -Pm0Marker=true --no-daemon --console=plain
+Literal output: Makefile:15: *** missing separator. Stop.; BUILD FAILED in 5s.
+Exit status: 1. Cause was a new Makefile recipe line without a tab; fixed in the isolated M0 Makefile, then rerun above passed.
+
+EXACT .189 KO IDENTITY
+Command: podman run --rm --platform linux/amd64 -v a301so-kernel-common-189:/source:ro -v "$PWD/build/deployment-audit/a301so-kmi-189/m0-marker-189-rebuild/lkm:/work:rw" -e KDIR=/source/kernel-clean -e KBUILD_OUTPUT=/source/out -w /work ghcr.io/ylarod/ddk-min:android13-5.15-20260828 make -j2 all
+Literal output: MODPOST /work/Module.symvers; LD [M] /work/m0_dfroot.ko; `llvm-objcopy --strip-unneeded ...`; `llvm-objcopy --strip-debug m0_dfroot.ko`; make exited normally.
+Exit status: 0.
+Identity result: ELF64/AArch64; vermagic=5.15.189-android13-8-00016-g51bba4309aac-ab14546557 SMP preempt mod_unload modversions aarch64; no .debug_*; __versions=704 bytes and byte-identical to previously audited exact-.189 candidate; 10 imported CRCs match (module_layout 0x222dd63); executable/allocated code/data bytes equal apart from build-id/note metadata; 71 normalized relocations equal by offset/type/symbol/addend. Module-relevant config flags match device; full config is not byte-identical (KVM/compressor defaults differ; localversion set to the device release). Generic 11,776-byte Gradle KO had no __versions and was not packaged.
+Manifest: build/deployment-audit/a301so-kmi-189/m0-marker-189-rebuild/M0-KO-MANIFEST.json.
+
+DEVICE RECOVERY AND INSTALL
+Command: adb -s QV770MFGJ1 reboot
+Input: explicit user-approved recovery reboot.
+Literal result: REBOOT_COMMAND_EXIT=0; BOOT_COMPLETED=1; kernel=5.15.189-android13-8-00016-g51bba4309aac-ab14546557; Enforcing; crash_dump64 SHA-256=15288efc30e073dbb29a4b357d70e8b33c8136fa442c2def91a599fef85de066 (pristine).
+Exit status: 0.
+Pre-M0 installed app backup: build/deployment-audit/a301so-kmi-189/pre-marker-retry-installed.apk; 28,999,754 bytes; SHA-256 37756ac1a4b7df5cbc4ed8734178fd12b1b131e4bf4bae7184d2b7e40ecdce92.
+Install commands: adb -s QV770MFGJ1 install -r 'build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk'; adb -s QV770MFGJ1 install -r 'build/app/outputs/apk/androidTest/debug/GhostLock-v2.0.12(1342)-debug-androidTest.apk'.
+Literal output: Performing Streamed Install / Success; Performing Streamed Install / Success.
+Exit status: 0.
+
+DEVICE MARKER TEST ATTEMPT (NOT ENTERED)
+Command: adb -s QV770MFGJ1 shell am instrument -w -e class 'com.ghostlock.app.backend.cve43284glued.M0MarkerGateTest#appLauncherCompletesRootReadyAndSingleReleaseMarkers' com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner
+Device log literal: `ActivityManager: Failure starting process com.ghostlock.app`; `java.lang.SecurityException: Package com.ghostlock.app is not encryption aware!`; `dumpsys user` reports `State: RUNNING_LOCKED`.
+Host wrapper was interrupted after waiting: exit status 130. This is not an instrumentation/JUnit result; the test method did not start, so no M0 ELF/KO, page-cache patch, UMH, ROOT_READY, RELEASE_FINISH, Payload, or Finish ran.
+Post-attempt verification: boot=1; same .189 kernel; Enforcing; crash_dump64 SHA-256 remains pristine 15288efc30e073dbb29a4b357d70e8b33c8136fa442c2def91a599fef85de066; no KSU module or M0 worker. Fixture app and test APK remain installed pending device unlock; original APK backup is retained.
+
+ROLLBACK
+Exact command: ./docs/exec-glue/transaction-m0-carrier-capacity-20261029/ROLLBACK.sh "$PWD/docs/exec-glue/transaction-m0-carrier-capacity-20261029/ROLLBACK_TEST/project-copy-final"
+Input: disposable copy of all five changed paths (never the active worktree).
+Literal result: ROLLBACK_RESULT=restored pre-transaction bytes; changed_paths=5; each file hash matched BASELINE_FILE.
+Exit status: 0.
+Active MODIFIED_FILE sources/docs remain changed. Device rollback is pending because the marker test did not start; device currently retains only the installed test fixture, with crash_dump64 pristine.
+
+DEVICE ROLLBACK AFTER LOCKED-USER START FAILURE
+Commands: adb -s QV770MFGJ1 install -r build/deployment-audit/a301so-kmi-189/pre-marker-retry-installed.apk; adb -s QV770MFGJ1 uninstall com.ghostlock.app.test.
+Literal output: Performing Streamed Install / Success; Success.
+Exit status: 0.
+Restored behavior/status: pulled installed base.apk to build/deployment-audit/a301so-kmi-189/post-lock-recovery-installed.apk; 28,999,754 bytes; SHA-256 37756ac1a4b7df5cbc4ed8734178fd12b1b131e4bf4bae7184d2b7e40ecdce92, matching the pre-gate app. Test package path is absent. crash_dump64 remains pristine SHA 15288efc30e073dbb29a4b357d70e8b33c8136fa442c2def91a599fef85de066; SELinux Enforcing; no M0 worker. The M0 marker test was not run. Unlock user 0, then reinstall fixture/test APK and retry only the same App marker test.
+Final rollback-copy rerun after the last plan/device-record edits:
+Command: ./docs/exec-glue/transaction-m0-carrier-capacity-20261029/ROLLBACK.sh "$PWD/docs/exec-glue/transaction-m0-carrier-capacity-20261029/ROLLBACK_TEST/project-copy-final2"
+Literal output: ROLLBACK_RESULT=restored pre-transaction bytes; changed_paths=5; all five target hashes equal BASELINE_FILE.
+Exit status: 0.

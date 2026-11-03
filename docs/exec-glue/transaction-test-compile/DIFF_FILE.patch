@@ -1,0 +1,464 @@
+--- BASELINE_FILE/app/src/test/kotlin/com/ghostlock/app/data/cve43499/MondrianDebugConfigTest.kt
++++ MODIFIED_FILE/app/src/test/kotlin/com/ghostlock/app/data/cve43499/MondrianDebugConfigTest.kt
+@@ -1,17 +1,11 @@
+ package com.ghostlock.app.data.cve43499
+ 
+-import com.ghostlock.app.backend.cve43499.flow.Cve43499TargetAcquisition
+-import com.ghostlock.app.backend.cve43499.flow.Cve43499WriteTargetSource
+-import com.ghostlock.app.backend.cve43499.generator.Cve43499DebugWritePlanner
+ import com.ghostlock.app.backend.cve43499.generator.Cve43499GeneratorContext
+ import com.ghostlock.app.backend.cve43499.generator.Cve43499PselectInputGenerator
+ import com.ghostlock.app.backend.cve43499.generator.Cve43499RouteGeneratorFactory
+ import com.ghostlock.app.backend.cve43499.lifecycle.Cve43499PlacementFacts
+ import com.ghostlock.app.jni.Native43499PselectSpec
+-import com.ghostlock.app.backend.cve43499.finish.FinishHandoff
+ import com.ghostlock.app.backend.cve43499.flow.Cve43499WriteChainPolicy
+-import com.ghostlock.app.ui.screen.module.backends.Cve43499RequestBuild
+-import com.ghostlock.app.ui.screen.module.backends.Cve43499RequestFactory
+ import java.io.File
+ import org.junit.Assert.assertEquals
+ import org.junit.Assert.assertNotNull
+@@ -276,68 +270,6 @@
+         assertEquals(34L, execution.maxObjectsPerSlab)
+     }
+ 
+-    @Test
+-    fun `request factory builds floor placement for mondrian and unchanged a301so`() {
+-        val mondrian = A301SoDebugConfig.parse(readAsset(MONDRIAN_ASSET))
+-        val execution = A301SoDebugConfig.executionParameters(mondrian)
+-        val built = buildChain(mondrian, execution)
+-        val placement = built.request.runSpec!!.placement
+-        assertEquals(960L, placement.mmStructSize)
+-        assertEquals(34, placement.objectsPerSlab)
+-        assertEquals(34L * 8, placement.prepareObjectCount.toLong())
+-        assertEquals(34L * 6, placement.sprayObjectCount.toLong())
+-        assertEquals(33, placement.preObjectCount)
+-        assertEquals(34, placement.postObjectCount)
+-        assertTrue(placement.maxObjectsPerSlab >= 34L)
+-
+-        val a301so = A301SoDebugConfig.parse(readAsset(A301SO_ASSET))
+-        val oldExecution = A301SoDebugConfig.executionParameters(a301so)
+-        val oldBuilt = buildChain(a301so, oldExecution)
+-        val oldPlacement = oldBuilt.request.runSpec!!.placement
+-        assertEquals(1024L, oldPlacement.mmStructSize)
+-        assertEquals(32, oldPlacement.objectsPerSlab)
+-        assertEquals(256, oldPlacement.prepareObjectCount)
+-        assertEquals(192, oldPlacement.sprayObjectCount)
+-        assertEquals(31, oldPlacement.preObjectCount)
+-        assertEquals(32, oldPlacement.postObjectCount)
+-    }
+-
+-    /**
+-     * @param debug 已解析 debug 参数。
+-     * @param execution 设备相关执行参数。
+-     * @return 用 fake target source/planner 构造的多写链请求（Built）。
+-     */
+-    private fun buildChain(
+-        debug: A301SoDebugParameters,
+-        execution: DebugExecutionParameters,
+-    ): Cve43499RequestBuild.Built {
+-        val context = Cve43499GeneratorContext(debug, execution, 4242)
+-        val generator = Cve43499RouteGeneratorFactory.create(
+-            debug = debug,
+-            execution = execution,
+-            ghostPid = 4242,
+-        )
+-        val planner = Cve43499DebugWritePlanner(context)
+-        val handoff = requireNotNull(
+-            FinishHandoff.create("/tmp/mondrian-config-test.sh", byteArrayOf(1, 2, 3)),
+-        )
+-        val targetSource = Cve43499WriteTargetSource { Cve43499TargetAcquisition.Missing("test") }
+-        val result = Cve43499RequestFactory.buildFromDebug(
+-            debug = debug,
+-            execution = execution,
+-            handoff = handoff,
+-            payload = null,
+-            primitive = null,
+-            generator = generator,
+-            writeTargetSource = targetSource,
+-            writePlanner = planner,
+-            writeVerifier = com.ghostlock.app.backend.cve43499.flow.Cve43499UnsupportedWriteVerifier,
+-            debugWriteParameters = A301SoDebugConfig.writeChainParameters(),
+-        )
+-        assertTrue("mondrian request must build: $result", result is Cve43499RequestBuild.Built)
+-        return result as Cve43499RequestBuild.Built
+-    }
+-
+     /** @return 测试用设备身份。 */
+     private fun identity(
+         device: String,
+--- BASELINE_FILE/app/src/test/kotlin/com/ghostlock/app/backend/cve43499/NativeHygieneContractTest.kt
++++ MODIFIED_FILE/app/src/test/kotlin/com/ghostlock/app/backend/cve43499/NativeHygieneContractTest.kt
+@@ -41,16 +41,17 @@
+     }
+ 
+     @Test
+-    fun `B13 inflight wait is bounded and names carrier error`() {
+-        val source = readRepoFile("app/src/main/cpp/gl43499/core/carrier_multicast.c")
+-        val trigger = slice(source, "void glk43499_carrier_multicast_trigger(",
+-            "int32_t glk43499_carrier_multicast_disarm(")
+-        assertTrue(trigger.contains("inflight_spin"))
+-        assertTrue(trigger.contains("inflight_spin < multicast->disarm_spin_limit"))
+-        assertTrue(trigger.contains("GLK43499_CARRIER_STEP_INFLIGHT"))
+-        assertTrue(trigger.contains("EBUSY"))
+-        assertFalse("unbounded inflight yield must be gone",
+-            trigger.contains("while (atomic_load(&shared->consumer_inflight) != 0) {"))
++    fun `original 43499 JNI target is disabled by default`() {
++        val cmake = readRepoFile("app/src/main/cpp/CMakeLists.txt")
++        val option = cmake.indexOf("option(GHOSTLOCK_ENABLE_ORIGINAL_BACKENDS")
++        val enabledBlock = cmake.indexOf("if(GHOSTLOCK_ENABLE_ORIGINAL_BACKENDS)", option)
++        val target = cmake.indexOf("add_library(ghostlock43499 SHARED", enabledBlock)
++        val blockEnd = cmake.indexOf("endif()", target)
++        assertTrue(option >= 0)
++        assertTrue(enabledBlock > option)
++        assertTrue(target > enabledBlock)
++        assertTrue(blockEnd > target)
++        assertTrue(cmake.substring(option, enabledBlock).contains(" OFF)"))
+     }
+ 
+     @Test
+--- BASELINE_FILE/app/src/test/kotlin/com/ghostlock/app/backend/cve43499/debug/A301SoDebugConfigTest.kt
++++ MODIFIED_FILE/app/src/test/kotlin/com/ghostlock/app/backend/cve43499/debug/A301SoDebugConfigTest.kt
+@@ -5,23 +5,14 @@
+ import com.ghostlock.app.data.cve43499.DebugInjection
+ import com.ghostlock.app.data.cve43499.DebugPrimitiveKind
+ import com.ghostlock.app.data.cve43499.DebugVictimTransport
+-import com.ghostlock.app.backend.cve43499.generator.Cve43499DebugWritePlanner
+ import com.ghostlock.app.backend.cve43499.generator.Cve43499GeneratorContext
+ import com.ghostlock.app.backend.cve43499.generator.Cve43499GeneratorException
+-import com.ghostlock.app.backend.cve43499.generator.Cve43499MulticastInputGenerator
+-import com.ghostlock.app.backend.cve43499.generator.Cve43499PselectInputGenerator
+ import com.ghostlock.app.backend.cve43499.generator.Cve43499RouteGeneratorFactory
+-import com.ghostlock.app.backend.cve43499.generator.Cve43499TcpZerocopyInputGenerator
+-
+-import com.ghostlock.app.backend.cve43499.finish.FinishHandoff
++
+ import com.ghostlock.app.backend.cve43499.flow.Cve43499WriteChainPolicy
+-import com.ghostlock.app.backend.cve43499.flow.Cve43499WriteTargetSource
+-import com.ghostlock.app.backend.cve43499.flow.Cve43499TargetAcquisition
+ import com.ghostlock.app.jni.Native43499ActorSetup
+ import com.ghostlock.app.jni.Native43499MulticastSpec
+ import com.ghostlock.app.jni.Native43499PlacementRequest
+-import com.ghostlock.app.ui.screen.module.backends.Cve43499RequestBuild
+-import com.ghostlock.app.ui.screen.module.backends.Cve43499RequestFactory
+ import java.io.File
+ import org.junit.Assert.assertEquals
+ import org.junit.Assert.assertNull
+@@ -157,69 +148,6 @@
+     }
+ 
+     @Test
+-    fun `request factory enables write chain only with an injected target source`() {
+-        val debug = A301SoDebugConfig.parse(readDebugAsset())
+-        val execution = A301SoDebugConfig.executionParameters()
+-        val handoff = requireNotNull(FinishHandoff.create("/tmp/r3d-debug.sh", byteArrayOf(1, 2, 3)))
+-        val generator = Cve43499RouteGeneratorFactory.create(debug, execution, 42)
+-        val planner = Cve43499DebugWritePlanner(
+-            Cve43499GeneratorContext(debug, execution, 42),
+-        )
+-        /* 未注入 target source ⇒ 单 W1 兼容路径（writeChain=null）。 */
+-        val single = Cve43499RequestFactory.buildFromDebug(
+-            debug = debug,
+-            execution = execution,
+-            handoff = handoff,
+-            payload = null,
+-            primitive = null,
+-            generator = generator,
+-        )
+-        assertTrue(single is Cve43499RequestBuild.Built)
+-        val singleSpec = (single as Cve43499RequestBuild.Built).request.runSpec
+-        assertTrue(singleSpec != null && singleSpec.writeChain == null)
+-        assertTrue(singleSpec != null && singleSpec.writeGenerator != null)
+-
+-        /* 注入 target source + planner ⇒ 多写链启用（W2/W3 目标由 planner 派生）。 */
+-        val chained = Cve43499RequestFactory.buildFromDebug(
+-            debug = debug,
+-            execution = execution,
+-            handoff = handoff,
+-            payload = null,
+-            primitive = null,
+-            generator = generator,
+-            writeTargetSource = Cve43499WriteTargetSource { _ -> Cve43499TargetAcquisition.Missing("test") },
+-            writePlanner = planner,
+-        )
+-        assertTrue(chained is Cve43499RequestBuild.Built)
+-        val chainedSpec = (chained as Cve43499RequestBuild.Built).request.runSpec
+-        assertTrue(chainedSpec != null && chainedSpec.writeChain != null)
+-        assertEquals("multicast", chainedSpec?.writeChain?.primitiveToken)
+-        assertEquals(generator, chainedSpec?.writeGenerator)
+-    }
+-
+-    @Test
+-    fun `request factory refuses write chain without planner`() {
+-        val debug = A301SoDebugConfig.parse(readDebugAsset())
+-        val execution = A301SoDebugConfig.executionParameters()
+-        val handoff = requireNotNull(FinishHandoff.create("/tmp/r3d-debug-2.sh", byteArrayOf(1)))
+-        val result = Cve43499RequestFactory.buildFromDebug(
+-            debug = debug,
+-            execution = execution,
+-            handoff = handoff,
+-            payload = null,
+-            primitive = null,
+-            generator = Cve43499RouteGeneratorFactory.create(debug, execution, 42),
+-            writeTargetSource = Cve43499WriteTargetSource { _ -> Cve43499TargetAcquisition.Missing("test") },
+-        )
+-        assertTrue(result is Cve43499RequestBuild.Refused)
+-        assertTrue(
+-            (result as Cve43499RequestBuild.Refused).reasons.any {
+-                it == Cve43499RequestFactory.REASON_WRITE_CHAIN_PREFIX + "planner-missing"
+-            },
+-        )
+-    }
+-
+-    @Test
+     fun `missing generator key fails closed with named reason`() {
+         val text = readDebugAsset().replace("    frame_size = 264\n", "")
+         try {
+@@ -313,34 +241,6 @@
+     }
+ 
+     @Test
+-    fun `request factory opens all three routes with injected generators`() {
+-        val baseDebug = A301SoDebugConfig.parse(readDebugAsset())
+-        val execution = A301SoDebugConfig.executionParameters()
+-        val handoff = requireNotNull(FinishHandoff.create("/tmp/debug-finish.sh", byteArrayOf(1, 2, 3)))
+-        for (kind in DebugPrimitiveKind.values()) {
+-            val debug = baseDebug.copy(injection = DebugInjection(kind))
+-            val generator = Cve43499RouteGeneratorFactory.create(debug, execution, 42)
+-            val expectedClass = when (kind) {
+-                DebugPrimitiveKind.MULTICAST -> Cve43499MulticastInputGenerator::class.java
+-                DebugPrimitiveKind.PSELECT -> Cve43499PselectInputGenerator::class.java
+-                DebugPrimitiveKind.TCP_ZEROCOPY -> Cve43499TcpZerocopyInputGenerator::class.java
+-            }
+-            assertEquals(expectedClass, generator.javaClass)
+-            val result = Cve43499RequestFactory.buildFromDebug(
+-                debug = debug,
+-                execution = execution,
+-                handoff = handoff,
+-                payload = null,
+-                primitive = null,
+-                generator = generator,
+-            )
+-            assertTrue("route $kind must build: $result", result is Cve43499RequestBuild.Built)
+-            val spec = (result as Cve43499RequestBuild.Built).request.runSpec
+-            assertTrue(spec != null && spec.postPlacementGenerator === generator)
+-        }
+-    }
+-
+-    @Test
+     fun `route generator factory refuses invalid ghost pid`() {
+         val debug = A301SoDebugConfig.parse(readDebugAsset())
+         try {
+@@ -349,22 +249,6 @@
+         } catch (problem: Cve43499GeneratorException) {
+             assertEquals("multicast:ghost-pid", problem.reason)
+         }
+-    }
+-
+-    @Test
+-    fun `request factory refuses without generator seams`() {
+-        val debug = A301SoDebugConfig.parse(readDebugAsset())
+-        val handoff = requireNotNull(FinishHandoff.create("/tmp/debug-finish.sh", byteArrayOf(1, 2, 3)))
+-        val result = Cve43499RequestFactory.buildFromDebug(
+-            debug = debug,
+-            execution = A301SoDebugConfig.executionParameters(),
+-            handoff = handoff,
+-            payload = null,
+-            primitive = null,
+-        )
+-        assertTrue(result is Cve43499RequestBuild.Refused)
+-        val reasons = (result as Cve43499RequestBuild.Refused).reasons
+-        assertTrue(reasons.any { it == Cve43499RequestFactory.REASON_GENERATOR_PREFIX + "payload" })
+     }
+ 
+     @Test
+--- BASELINE_FILE/app/src/test/kotlin/com/ghostlock/app/ui/backend/BackendUidRequirementTest.kt
++++ MODIFIED_FILE/app/src/test/kotlin/com/ghostlock/app/ui/backend/BackendUidRequirementTest.kt
+@@ -1,8 +1,9 @@
+ package com.ghostlock.app.ui.backend
+ 
+ import com.ghostlock.app.R
+-import com.ghostlock.app.ui.screen.module.backends.BackendCve202643499
+-import com.ghostlock.app.ui.screen.module.backends.BackendCve202698260
++import com.ghostlock.app.backend.declarations.BackendCve202643499
++import com.ghostlock.app.backend.declarations.cve43499glued.Backend43499Glued
++import com.ghostlock.app.backend.declarations.BackendCve202698260
+ import org.junit.Assert.assertEquals
+ import org.junit.Assert.assertFalse
+ import org.junit.Assert.assertTrue
+@@ -53,7 +54,7 @@
+     fun anyUidBackendRunsFromBothAttackThreads() {
+         for (executor in listOf(app(), shizuku())) {
+             val decision = BackendRunGate.decide(
+-                spec = BackendCve202643499,
++                spec = Backend43499Glued,
+                 readiness = BackendReadiness.Ready(),
+                 context = RunPageContext(executor = executor),
+             )
+@@ -62,12 +63,14 @@
+     }
+ 
+     @Test
+-    fun shellBackendAllowedWhenShizukuAuthorized() {
++    fun disabledShellBackendStaysDisabledWhenShizukuAuthorized() {
+         val decision = BackendRunGate.decide(
+             spec = BackendCve202698260,
+             readiness = BackendReadiness.Ready(),
+             context = RunPageContext(executor = shizuku(authorized = true)),
+         )
+-        assertTrue(decision.allowed)
++        assertFalse(decision.allowed)
++        assertTrue(decision.reasons.any { it.messageRes == R.string.backend_run_backend_disabled })
++        assertFalse(decision.reasons.any { it.messageRes == R.string.backend_run_uid_requirement })
+     }
+ }
+--- BASELINE_FILE/app/src/test/kotlin/com/ghostlock/app/ui/backend/BackendFlowRunnerTest.kt
++++ MODIFIED_FILE/app/src/test/kotlin/com/ghostlock/app/ui/backend/BackendFlowRunnerTest.kt
+@@ -1,10 +1,12 @@
+ package com.ghostlock.app.ui.backend
+ 
+-import com.ghostlock.app.ui.screen.module.backends.BackendCustom
+-import com.ghostlock.app.ui.screen.module.backends.BackendCve202643284
+-import com.ghostlock.app.ui.screen.module.backends.BackendCve202643499
+-import com.ghostlock.app.ui.screen.module.backends.BackendCve202698260
+-import com.ghostlock.app.ui.screen.module.backends.Backends
++import com.ghostlock.app.backend.declarations.BackendCustom
++import com.ghostlock.app.backend.declarations.BackendCve202643284
++import com.ghostlock.app.backend.declarations.BackendCve202643499
++import com.ghostlock.app.backend.declarations.cve43499glued.Backend43499Glued
++import com.ghostlock.app.backend.declarations.cve43284glued.Backend43284Glued
++import com.ghostlock.app.backend.declarations.BackendCve202698260
++import com.ghostlock.app.backend.declarations.Backends
+ import org.junit.Assert.assertEquals
+ import org.junit.Assert.assertNotNull
+ import org.junit.Assert.assertNull
+@@ -46,8 +48,8 @@
+ 
+     @Test
+     fun flowBackendsPointAtTheirOwnRunner() {
+-        assertEquals(BackendCve202643499.key, BackendCve202643499.runner?.key)
+-        assertEquals(BackendCve202698260.key, BackendCve202698260.runner?.key)
++        assertEquals(Backend43499Glued.key, Backend43499Glued.runner?.key)
++        assertEquals(Backend43284Glued.key, Backend43284Glued.runner?.key)
+         assertEquals(2, Backends.all.count { it.runner != null })
+     }
+ }
+--- BASELINE_FILE/app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/PayloadRequestsTest.kt
++++ MODIFIED_FILE/app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/PayloadRequestsTest.kt
+@@ -1,4 +1,11 @@
+ package com.ghostlock.app.ui.screen.module.backends
++
++import com.ghostlock.app.core.finish.FinishState
++import com.ghostlock.app.core.finish.PayloadKind
++import com.ghostlock.app.core.finish.PayloadSlot
++import com.ghostlock.app.core.finish.isComplete
++import com.ghostlock.app.core.payload.PayloadContext
++import com.ghostlock.app.core.payload.payloadRequests
+ 
+ import org.junit.Assert.assertEquals
+ import org.junit.Assert.assertFalse
+--- BASELINE_FILE/app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/FinishScript43284Test.kt
++++ MODIFIED_FILE/app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/FinishScript43284Test.kt
+@@ -1,4 +1,9 @@
+ package com.ghostlock.app.ui.screen.module.backends
++
++import com.ghostlock.app.core.finish.FinishState
++import com.ghostlock.app.core.finish.PayloadKind
++import com.ghostlock.app.core.finish.PayloadSlot
++import com.ghostlock.app.core.finish.toRootScript
+ 
+ import org.junit.Assert.assertFalse
+ import org.junit.Assert.assertTrue
+--- BASELINE_FILE/app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/FolkPatchKoTest.kt
++++ MODIFIED_FILE/app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/FolkPatchKoTest.kt
+@@ -1,4 +1,6 @@
+ package com.ghostlock.app.ui.screen.module.backends
++
++import com.ghostlock.app.backend.declarations.FolkPatchKo
+ 
+ import org.junit.Assert.assertEquals
+ import org.junit.Assert.assertNull
+--- BASELINE_FILE/app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/ScriptRenderTest.kt
++++ MODIFIED_FILE/app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/ScriptRenderTest.kt
+@@ -1,4 +1,10 @@
+ package com.ghostlock.app.ui.screen.module.backends
++
++import com.ghostlock.app.core.finish.FinishState
++import com.ghostlock.app.core.finish.PayloadKind
++import com.ghostlock.app.core.finish.PayloadSlot
++import com.ghostlock.app.core.finish.shQuote
++import com.ghostlock.app.core.finish.toRootScript
+ 
+ import org.junit.Assert.assertFalse
+ import org.junit.Assert.assertTrue
+--- BASELINE_FILE/app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/BackendParameterSchemaTest.kt
++++ MODIFIED_FILE/app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/BackendParameterSchemaTest.kt
+@@ -1,5 +1,8 @@
+ package com.ghostlock.app.ui.screen.module.backends
+ 
++import com.ghostlock.app.backend.declarations.BackendCve202643284
++import com.ghostlock.app.backend.declarations.BackendCve202643499
++import com.ghostlock.app.backend.declarations.BackendCve202698260
+ import com.ghostlock.app.ui.backend.BackendParameterScope
+ import com.ghostlock.app.ui.backend.BackendParameterSource
+ import org.junit.Assert.assertEquals
+--- BASELINE_FILE/app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/PayloadEffectsTest.kt
++++ MODIFIED_FILE/app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/PayloadEffectsTest.kt
+@@ -1,4 +1,11 @@
+ package com.ghostlock.app.ui.screen.module.backends
++
++import com.ghostlock.app.core.finish.FinishState
++import com.ghostlock.app.core.finish.PayloadKind
++import com.ghostlock.app.core.finish.PayloadSlot
++import com.ghostlock.app.core.payload.EffectReport
++import com.ghostlock.app.core.payload.EffectState
++import com.ghostlock.app.core.payload.PayloadEffects
+ 
+ import org.junit.Assert.assertEquals
+ import org.junit.Test
+--- BASELINE_FILE/app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/BackendCve202698260Test.kt
++++ MODIFIED_FILE/app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/BackendCve202698260Test.kt
+@@ -2,6 +2,13 @@
+ 
+ import com.ghostlock.app.R
+ import com.ghostlock.app.backend.BackendId
++import com.ghostlock.app.backend.declarations.BackendCustom
++import com.ghostlock.app.backend.declarations.BackendCve202643284
++import com.ghostlock.app.backend.declarations.BackendCve202643499
++import com.ghostlock.app.backend.declarations.BackendCve202698260
++import com.ghostlock.app.backend.declarations.Backends
++import com.ghostlock.app.backend.declarations.cve43499glued.Backend43499Glued
++import com.ghostlock.app.backend.declarations.cve43284glued.Backend43284Glued
+ import com.ghostlock.app.backend.cve98260.flow.Flow98260Impl
+ import com.ghostlock.app.ui.backend.BackendReadiness
+ import com.ghostlock.app.ui.backend.BackendRunCapability
+@@ -21,11 +28,14 @@
+     @Test
+     fun registryOrderAndIdentityAreLocked() {
+         assertEquals(
+-            listOf(BackendId.CVE_43284, BackendId.CVE_98260, BackendId.CVE_43499, null),
+-            Backends.all.map { it.id },
++            listOf(
++                Backend43499Glued.key, Backend43284Glued.key, BackendCve202643284.key,
++                BackendCve202698260.key, BackendCve202643499.key, BackendCustom.key,
++            ),
++            Backends.all.map { it.key },
+         )
+         assertEquals("CVE-2026-98260", BackendCve202698260.cve)
+-        assertEquals("CVE-2026-98260", Backends.all[1].cve)
++        assertEquals(BackendCve202698260.key, Backends.all[3].key)
+         assertEquals(BackendId.CVE_98260, BackendId.CVE_98260)
+     }
+ 
+@@ -36,8 +46,9 @@
+     }
+ 
+     @Test
+-    fun specIsRunnableButNotAbortableAndNotReadyByDefault() {
+-        assertEquals(BackendRunCapability.FLOW_RUN, BackendCve202698260.runCapability)
++    fun specIsDisabledWithoutRunnerAndNotReadyByDefault() {
++        assertEquals(BackendRunCapability.NO_FLOW_RUN, BackendCve202698260.runCapability)
++        assertFalse(BackendCve202698260.selectable)
+         assertFalse(BackendCve202698260.abortable)
+         assertEquals(R.string.backend_cve_2026_98260, BackendCve202698260.titleRes)
+         val readiness = BackendCve202698260.readiness()

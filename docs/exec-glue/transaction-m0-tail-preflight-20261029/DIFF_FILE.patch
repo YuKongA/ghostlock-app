@@ -1,0 +1,136 @@
+--- a/app/src/main/cpp/43284glued/m0/exp.c
++++ b/app/src/main/cpp/43284glued/m0/exp.c
+@@ -488,13 +488,13 @@
+ }
+ 
+ /**
+- * Validate M0 carrier capacity before any crash_dump page-cache mutation.
++ * Validate that the selected A301SO carrier exposes the padded KO's final block.
+  *
+- * @return zero when the selected regular carrier fits the padded KO; otherwise -1.
+- * @note TODO(m0-carrier-preflight): prevent the prior out-of-range 16-byte read by
+- *       checking the complete padded image before patch_helper; remove after this
+- *       fixture-only repair has passed host and A301SO marker gates.
+- * @pre setup() has resolved libcxx_ko_target; no page-cache writes have occurred.
++ * @return zero when the fixed carrier returns exactly the required 16-byte tail; otherwise -1.
++ * @note TODO(m0-carrier-tail-preflight): App UID cannot stat the vendor path; use one
++ *       existing crash_dump read-helper probe before patch_helper, then remove this
++ *       fixture-only preflight after its host and A301SO marker gates pass.
++ * @pre setup() has resolved libcxx_ko_target; no exploit page-cache writes have occurred.
+  * @stage M0 preflight, before patch_helper().
+  */
+ static int m0_preflight_ko_capacity(void) {
+@@ -518,20 +518,61 @@
+         return -1;
+     }
+     size_t padded_length = (raw_length + 15U) & ~(size_t)15U;
+-    struct stat carrier_status;
+-    if (stat(libcxx_ko_target, &carrier_status) != 0) {
+-        printf("M0_PREFLIGHT_FAIL=carrier-stat path=%s error=%s\n",
+-               libcxx_ko_target, strerror(errno));
+-        return -1;
+-    }
+-    if (!S_ISREG(carrier_status.st_mode) || carrier_status.st_size < 0 ||
+-        (uintmax_t)carrier_status.st_size < (uintmax_t)padded_length) {
+-        printf("M0_PREFLIGHT_FAIL=carrier-too-small ko_padded=%zu carrier_bytes=%lld path=%s\n",
+-               padded_length, (long long)carrier_status.st_size, libcxx_ko_target);
+-        return -1;
+-    }
+-    printf("M0_PREFLIGHT_OK=ko_padded=%zu carrier_bytes=%lld path=%s\n",
+-           padded_length, (long long)carrier_status.st_size, libcxx_ko_target);
++
++    const char expected_carrier[] = "/vendor/lib64/libbinderdebug.so";
++    if (strcmp(libcxx_ko_target, expected_carrier) != 0) {
++        printf("M0_PREFLIGHT_FAIL=carrier-identity expected=%s path=%s\n",
++               expected_carrier, libcxx_ko_target);
++        return -1;
++    }
++    uint8_t tail[16] = {0};
++    if (padded_length < sizeof(tail)) {
++        printf("M0_PREFLIGHT_FAIL=ko-size-too-small ko_padded=%zu\n", padded_length);
++        return -1;
++    }
++    size_t tail_offset_size = padded_length - sizeof(tail);
++    if ((uintmax_t)tail_offset_size > (uintmax_t)INT64_MAX) {
++        printf("M0_PREFLIGHT_FAIL=offset-invalid ko_padded=%zu\n", padded_length);
++        return -1;
++    }
++    off_t tail_offset = (off_t)tail_offset_size;
++    if (tail_offset < 0 || (uintmax_t)tail_offset != (uintmax_t)tail_offset_size) {
++        printf("M0_PREFLIGHT_FAIL=offset-invalid ko_padded=%zu\n", padded_length);
++        return -1;
++    }
++
++    /*
++     * //TODO(m0-carrier-stat-reference): the prior direct App-UID stat check failed
++     * with EACCES on the read-only vendor carrier; remove this reference after the
++     * tail-probe gate is verified.
++     * struct stat carrier_status;
++     * if (stat(libcxx_ko_target, &carrier_status) != 0) {
++     *     printf("M0_PREFLIGHT_FAIL=carrier-stat path=%s error=%s\\n",
++     *            libcxx_ko_target, strerror(errno));
++     *     return -1;
++     * }
++     * if (!S_ISREG(carrier_status.st_mode) || carrier_status.st_size < 0 ||
++     *     (uintmax_t)carrier_status.st_size < (uintmax_t)padded_length) {
++     *     printf("M0_PREFLIGHT_FAIL=carrier-too-small ko_padded=%zu carrier_bytes=%lld\\n",
++     *            padded_length, (long long)carrier_status.st_size);
++     *     return -1;
++     * }
++     */
++
++    if (read_vendor_content(tail_offset, tail) != 0) {
++        printf("M0_PREFLIGHT_FAIL=vendor-tail-read offset=%lld required_bytes=%zu path=%s\n",
++               (long long)tail_offset, sizeof(tail), expected_carrier);
++        return -1;
++    }
++    static const char hex_digits[] = "0123456789abcdef";
++    char tail_hex[sizeof(tail) * 2U + 1U] = {0};
++    for (size_t i = 0; i < sizeof(tail); ++i) {
++        tail_hex[i * 2U] = hex_digits[(size_t)(tail[i] >> 4U)];
++        tail_hex[i * 2U + 1U] = hex_digits[(size_t)(tail[i] & 0x0fU)];
++    }
++    tail_hex[sizeof(tail) * 2U] = '\0';
++    printf("M0_PREFLIGHT_OK=ko_padded=%zu offset=%lld returned_bytes=%zu tail_hex=%s path=%s\n",
++           padded_length, (long long)tail_offset, sizeof(tail), tail_hex, expected_carrier);
+     return 0;
+ }
+ 
+--- a/app/src/androidTest/kotlin/com/ghostlock/app/backend/43284glued/M0MarkerGateTest.kt
++++ b/app/src/androidTest/kotlin/com/ghostlock/app/backend/43284glued/M0MarkerGateTest.kt
+@@ -81,6 +81,14 @@
+             val output = logFile.readText()
+             val preflightLine = output.lineSequence().firstOrNull { it.startsWith("M0_PREFLIGHT_OK=") }
+             assertTrue("M0 carrier-capacity preflight evidence missing", preflightLine != null)
++            val preflightEvidence = checkNotNull(preflightLine)
++            assertTrue("M0 padded KO length mismatch: $preflightEvidence", preflightEvidence.contains("ko_padded=12512"))
++            assertTrue("M0 tail offset mismatch: $preflightEvidence", preflightEvidence.contains("offset=12496"))
++            assertTrue("M0 tail read length mismatch: $preflightEvidence", preflightEvidence.contains("returned_bytes=16"))
++            assertTrue("M0 carrier identity mismatch: $preflightEvidence",
++                preflightEvidence.contains("path=/vendor/lib64/libbinderdebug.so"))
++            assertTrue("M0 tail fingerprint missing: $preflightEvidence",
++                Regex("(?:^|\\s)tail_hex=[0-9a-f]{32}(?:\\s|$)").containsMatchIn(preflightEvidence))
+             val readyFile = File(runDirectory, "ROOT_READY")
+             assertTrue("ROOT_READY missing; run retained", readyFile.isFile)
+             val readyText = readyFile.readText()
+--- a/docs/plan/exec-glue-plan.md
++++ b/docs/plan/exec-glue-plan.md
+@@ -1,6 +1,6 @@
+ # Exec Glue 部署计划（唯一活动版）
+ 
+-> 状态：rev11b/M0；生产实现仍阻断。M0 fixture-only 修复、exact-.189 host/APK 身份门和 reboot 基线已通过；instrumentation 因 A301SO `RUNNING_LOCKED` 未进入测试体，待用户解锁后重跑同一 App marker gate。目标 2.0.12。
++> 状态：rev11c/M0-debug；生产实现仍阻断。设备已进入 RUNNING_UNLOCKED；App marker 测试体曾启动，但 ELF 在修改页缓存前因 App UID 对 vendor carrier 的 `stat()` 返回 EACCES 而以 exit 4 终止。design-critic 复核通过单次只读尾块探测候选；fixture 修正后仅重试同一 App marker gate。目标 2.0.12。
+ > 取代关系：本文件是唯一活动计划；此前批次记录、设备证据与详版 rev1–rev4 见归档 docs/archive/20261029-1025-exec-glue-plan-history.md。
+ > 依据：docs/development/软件工程守则.md、design-philosophy.md、engineering-standards.md、design-review-principles.md。
+ 
+@@ -78,7 +78,7 @@
+ - Change A: keep the existing M0 objcopy strip and explicitly apply `llvm-objcopy --strip-debug`. Verified exact `.189` KO is ELF64/AArch64, 12,512 B, SHA `4f56858dd02ec53f14f2f3ca1e9d8fd48f83be85d6f32eaecc339220b54e5c79`, no `.debug_*`; 704-byte `__versions` equals the audited target candidate. Allocated code/data sections match except build-id/note metadata; all 71 normalized relocations match by offset/type/symbol/addend; ten imported CRCs match.
+ - KMI artifact: the normal Gradle `buildM0MarkerKo` path uses the generic DDK KDIR and emitted a 11,776 B KO with no `__versions`; it is not valid for this device gate and must not be packaged. The fresh target KO comes from the isolated copy of M0 LKM source built against Podman volume `a301so-kernel-common-189` (`/source/kernel-clean`, `/source/out`) and the pinned image. Record config/toolchain/source hashes, output hash, `.189` vermagic, 704-byte `__versions` equality and imported CRCs.
+ - Packaging: place only the verified fresh KO at `build/app/m0/fixture/43284glued/ko/dfroot-android13-5.15.ko`; record and check its hash before assembly. Invoke Gradle with `-Pm0Marker=true -x :app:buildM0MarkerKo` so the generic task cannot overwrite it; reject missing/stale fixture bytes, and compare the final APK entry hash/size to the KO input. All overrides stay under `build/`; no Gradle/product source change.
+-- Change B: add fail-closed `stat()` capacity preflight over the selected KO's 16-byte-padded length and selected regular-file carrier size. Call it in `exploit()` before `patch_helper()`; a stat error, malformed KO size, or undersized target must exit without any page-cache mutation. Emit `M0_PREFLIGHT_OK` or `M0_PREFLIGHT_FAIL` as explicit evidence.
++- Change B (design-critic reviewed after device evidence): replace App-UID `stat()` (A301SO returned EACCES) with a single fail-closed `read_vendor_content()` tail-block probe before `patch_helper()`. Require the exact fixture carrier path `/vendor/lib64/libbinderdebug.so`, a valid 16-byte-padded selected KO size and representable `padded_length - 16` offset; read exactly the final 16-byte block through the existing crash_dump read helper. A short read/helper error, carrier-path mismatch, malformed size or invalid offset exits before any patch/helper write; no fallback or second read. Log path, padded length, offset, exact byte count and the 16-byte tail fingerprint. This proves the selected read path can return the required final block; it is not a generic stat/regular-file identity proof. The read may affect page-cache residency/timing, so the retry must confirm it occurs once before `patch_helper()` and leaves source bytes/system baseline unchanged.
+ - Host gate: baseline `./gradlew :app:testDebugUnitTest --no-daemon --console=plain` → `BUILD SUCCESSFUL in 39s`, exit 0. Final `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest -Pm0Marker=true -x :app:buildM0MarkerKo --no-daemon --console=plain` → `BUILD SUCCESSFUL in 41s`, exit 0; APK entry contains exact target KO at offset 517080; app version/signature match installed baseline.
+-- Device gate preflight had boot=1, same A301SO `.189` kernel, Enforcing, pristine crash_dump64 SHA, no KSU module, and original installed APK hash `37756ac1…`. M0/test APK install succeeded, but instrumentation did not enter the test: user was `RUNNING_LOCKED`, and ActivityManager logged `SecurityException: Package com.ghostlock.app is not encryption aware!`. No M0 ELF/KO ran; crash_dump64 remains pristine. Cleanup restored the pre-gate app APK byte-for-byte and uninstalled the test package. Wait for user unlock, reinstall the M0 fixture, then run only the App marker test and verify markers/worker/canaries. No Payload/Finish, Shizuku, production Flow, or production ELF.
+-- Current state: design-critic approved; fixture source edits, exact `.189` KO/KMI identity, APK entry/version/signature, host tests/build, and pristine device baseline are verified. Device instrumentation was blocked before test entry by `RUNNING_LOCKED`; fixture APK/test package are restored, crash_dump64 remains pristine, and user unlock is pending before reinstall/retry. Production implementation remains blocked.
++- Device gate: after user unlock, `dumpsys user` reported `RUNNING_UNLOCKED`; the old test APK initially failed JUnit class validation because the Shizuku test method returned non-void. The test method was mechanically wrapped in a JVM-void body and the AndroidTest APK rebuilt. The App test then entered its body and exited with assertion `M0 ELF exit expected:<0> but was:<4>`; retained run log: `M0_PREFLIGHT_FAIL=carrier-stat path=/vendor/lib64/libbinderdebug.so error=Permission denied`. No marker, KO/UMH worker or Payload/Finish ran; the APEX crash_dump64 payload hash remains pristine (`15288efc30e073dbb29a4b357d70e8b33c8136fa442c2def91a599fef85de066`), SELinux is Enforcing, and no KSU module is loaded. Preserve the exact failed runDir until its log is archived, then remove only that fixture directory. Retry the same App marker test at most once after the reviewed preflight correction; stop and return to debug on another gate failure. Do not run Payload/Finish, Shizuku, production Flow, or production ELF.
++- Current state: design-critic approved the one-read tail-probe candidate; baseline host tests and modified AndroidTest build pass, and both JUnit methods now compile with `()V`. One actual App marker attempt failed before page-cache mutation because direct `stat()` is denied; device fixture/test APKs are presently installed and the failed runDir is retained. Production implementation remains blocked.

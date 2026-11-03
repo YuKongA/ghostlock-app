@@ -1,0 +1,1061 @@
+--- BASELINE_FILE/docs/plan/exec-glue-plan.md
++++ MODIFIED_FILE/docs/plan/exec-glue-plan.md
+@@ -209,4 +209,11 @@
+ 4. 43284 两路分别验证 parser 参数；只有具备所需 IpSec 权限时 App route 才 ready，权限缺失具名拒绝；Shizuku route 验证 IpSecRuntime acquire/close reverse order。
+ 5. A301SO smoke 在真实 Shizuku授权状态下分别验证 Shizuku 与 App 路由的无副作用 test fixture、版本/APK hash、日志/terminal；此批仍不运行漏洞 ELF。
+ 
+-rev3 保留 rev2 的结构约束、profile 来源和 C/C++ 上游原文；仅替换“Shizuku JVM 执行同一 Flow”与“禁止 App fallback”的执行路由决策。设计复核和用户批准后再改生产代码；旧的 5 个 deployment blockers 均继续跟踪，并增加 App-domain 43284 IpSec capability gate。
++rev3 保留 rev2 的结构约束、profile 来源和 C/C++ 上游原文；仅替换“Shizuku JVM 执行同一 Flow”与“禁止 App fallback”的执行路由决策。用户对审批问题明确裁定为“Shizuku 非必须；有授权走 Shizuku launcher，否则走 app launcher”后，按该双 launcher 决策进入实现；旧的 5 个 deployment blockers 均继续跟踪，并增加 App-domain 43284 IpSec capability gate。
++
++### 实施进度（2026-10-28；批次 1：双进程启动路由）
++
++- 已实现：Glued Flow 固定由 App 持有；运行门禁忽略手动 Shizuku 选择对这两个 backend 的阻断；每次 exec 在 spawn 前按 binder+permission 选择 Shizuku 或 App；选中 Shizuku 后出现 prepare/start/连接失败不转启第二个 App child。
++- 已接线：公用 UserService 固定注册两个 Glued ID；host 只允许映射后的 ELF、文件名 allowlist、结构化 argv 与 ≤512 KiB 输入；本地/远端日志保留上限为 8 MiB，远端 host 等待并在 destroy 时终结其直接 child。上游 fork/setsid 后代的取消/断连语义尚未完成验证，仍是部署门禁。
++- 验证：./gradlew :app:testDebugUnitTest --no-daemon --console=plain 成功（406 tests，0 failures/errors/skipped）；./gradlew :app:assembleDebug --no-daemon --console=plain 成功；2.0.12 (1342) APK 已安装到 AVD 并打开 Paths 页，selector 中仅两项 Glued 可选，原版 43499/43284/98260 与 Custom 显示为灰色。
++- 未完成：A301SO 尚未安装本批 APK；无副作用进程 fixture 的 Shizuku/App 双路真机 smoke 尚未完成；不执行漏洞 ELF；43499 FinishScript/O_TRUNC parity、43284 parser 参数与 IpSecRuntime 生命周期仍是部署阻断。
+--- BASELINE_FILE/docs/development/full-process-uml.md
++++ MODIFIED_FILE/docs/development/full-process-uml.md
+@@ -888,7 +888,7 @@
+   Refused --> Idle
+ ```
+ 
+-### 11.7 2026-10-28：exec-glue backend 选择与 43499 profile 输入
++### 11.7 2026-10-28：exec-glue backend 选择、43499 profile 与双 process launcher
+ 
+ 本节是临时 exec-glue app 路径的唯一结构图：enabled 选择列表由 `BackendSpec.selectable` 决定；43499 配置权威来自上游 `kernel_profiles/index.conf` 或用户导入的自包含 `.conf`，执行前转换成当前 GLK1 wire。
+ 
+@@ -908,8 +908,12 @@
+     VALIDATE --> WIRE[Profile.toBinary / GLK1]
+   end
+   WIRE --> FLOW[SequentialFlow: one exec step]
+-  FLOW --> EXEC[ExecutableBackendProcess]
+-  EXEC --> STDIN[upstream --ghostlock-app-call stdin]
++  FLOW --> EXEC[ExecutableBackendProcess: app-owned routing]
++  EXEC -->|Shizuku binder reachable + permission granted| REMOTE[shared UserService / shell ProcessBuilder]
++  EXEC -->|otherwise| LOCAL[app UID ProcessBuilder]
++  REMOTE --> HOST[fixed Glued ID + bounded AIDL input]
++  LOCAL --> STDIN[fixed ELF argv + stdin + run files]
++  HOST --> STDIN
+ ```
+ 
+ ```mermaid
+@@ -950,6 +954,15 @@
+   class ExecutableBackendProcess {
+     +run(context, backendKey, binaryName, arguments, stdin, files)
+   }
++  class ExecutableShizukuHost {
++    +prepare(config, stdin)
++    +start()
++    +state()
++    +readLog(offset, maxBytes)
++    +destroy()
++  }
++  class ShizukuBackendClient
++  class GhostlockUserService
+   Backend43499Glued ..|> BackendSpec
+   Backend43284Glued ..|> BackendSpec
+   BackendSelection --> BackendSpec : only selectable
+@@ -962,6 +975,9 @@
+   Backend43284Glued --> Flow43284Glued
+   Flow43499Glued --> ExecutableBackendProcess
+   Flow43284Glued --> ExecutableBackendProcess
++  ExecutableBackendProcess --> ShizukuBackendClient : authorized route only
++  ShizukuBackendClient --> GhostlockUserService : fixed Glued ID + bounded data
++  GhostlockUserService --> ExecutableShizukuHost : fixed backend allowlist
+ ```
+ 
+ ```mermaid
+@@ -973,6 +989,8 @@
+   participant H as HOCON + Legacy converter + ProfileResolver
+   participant F as SequentialFlow
+   participant E as ExecutableBackendProcess
++  participant A as App ProcessBuilder
++  participant Z as ShizukuBackendClient / UserService
+   U->>P: choose 43499-Glued
+   P->>S: select(key); disabled spec rejected
+   U->>C: select indexed built-in or import .conf
+@@ -982,8 +1000,15 @@
+   U->>F: Run
+   F->>H: resolve persisted reference and encode GLK1
+   H-->>F: profile.conf text + profile.bin
+-  F->>E: one exec step, --ghostlock-app-call, stdin=GLK1
++  F->>E: one exec step, fixed ELF/argv/stdin/run files
++  alt Shizuku binder reachable and permission granted
++    E->>Z: prepare fixed ID + bounded data, then start/poll
++    Z-->>E: terminal exit/log facts
++  else Shizuku unavailable or unauthorized
++    E->>A: ProcessBuilder fixed ELF/argv
++    A-->>E: terminal exit/log facts
++  end
+   E-->>U: logs + exit status
+ ```
+ 
+-本图不宣称 Shizuku-host execution 或 a301so 真机验证完成；这些需单独提供运行与设备证据。
++Shizuku 路由被选定后，prepare/start/连接失败不会启动第二个 App child。本图不宣称 Shizuku-host execution 或 a301so 真机验证完成；这些需单独提供运行与设备证据。
+--- BASELINE_FILE/app/src/main/aidl/com/ghostlock/app/shizuku/IGhostlockUserService.aidl
++++ MODIFIED_FILE/app/src/main/aidl/com/ghostlock/app/shizuku/IGhostlockUserService.aidl
+@@ -1,7 +1,7 @@
+ // GhostLock 公用 Shizuku UserService host（所有 backend 共用启动器）。
+ // - 一个 UserService 进程（shell 域）按 backendId 分发到注册的 ShizukuBackendHost；
+ // - app 侧 Flow 仍是唯一 run 权威；host 只回执幂等原语；
+-// - 无 kill/signal 方法；destroy() 事务码约定 = 16777114。
++// - 无独立 kill/signal 方法；destroy() 触发 backend-owned cleanup，事务码约定 = 16777114。
+ package com.ghostlock.app.shizuku;
+ 
+ import android.os.Bundle;
+@@ -48,6 +48,6 @@
+     /** 接上 app 日志 fd（项目 log 管线；host 接管 raw fd）。 */
+     void attachLog(in ParcelFileDescriptor logFd) = 11;
+ 
+-    /** Shizuku 保留 destroy 事务；host 清状态后 System.exit（不 kill payload）。 */
++    /** Shizuku 保留 destroy 事务；backend 清理自有资源后 UserService 退出， detached payload 策略由 backend 决定。 */
+     void destroy() = 16777114;
+ }
+--- BASELINE_FILE/app/src/main/kotlin/com/ghostlock/app/backend/core/BackendSpec.kt
++++ MODIFIED_FILE/app/src/main/kotlin/com/ghostlock/app/backend/core/BackendSpec.kt
+@@ -49,6 +49,15 @@
+         get() = BackendUidRequirement.ANY_UID
+ 
+     /**
++     * Whether this backend keeps Flow orchestration in the app and chooses its child-process
++     * launcher independently (Shizuku when authorized, app process otherwise).
++     *
++     * @note Glued backends set this true; legacy backends retain the user-selected executor route.
++     */
++    val appOwnedFlowWithAutomaticProcessLauncher: Boolean
++        get() = false
++
++    /**
+      * 动态 backend 的稳定唯一键（注册表/选择/runner 用）。
+      *
+      * @note 内置 backend 默认用 [cve]；Lua 等动态 spec 必须覆盖为脚本级唯一键
+--- BASELINE_FILE/app/src/main/kotlin/com/ghostlock/app/backend/43499glued/Backend43499Glued.kt
++++ MODIFIED_FILE/app/src/main/kotlin/com/ghostlock/app/backend/43499glued/Backend43499Glued.kt
+@@ -28,6 +28,7 @@
+     override val titleRes: Int = R.string.backend_cve_2026_43499
+     override val displayNameRes: Int = R.string.backend_cve_2026_43499_glued
+     override val selectable: Boolean = true
++    override val appOwnedFlowWithAutomaticProcessLauncher: Boolean = true
+     override val runner: BackendFlowRunner = flow43499GluedRunner()
+     override val configSchema: BackendConfigSchema = BackendConfigSchema(
+         listOf(BackendConfigKey(PROFILE_REFERENCE, BackendConfigType.STRING, "")),
+--- BASELINE_FILE/app/src/main/kotlin/com/ghostlock/app/backend/43284glued/Backend43284Glued.kt
++++ MODIFIED_FILE/app/src/main/kotlin/com/ghostlock/app/backend/43284glued/Backend43284Glued.kt
+@@ -14,6 +14,7 @@
+     override val titleRes: Int = R.string.backend_cve_2026_43284
+     override val displayNameRes: Int = R.string.backend_cve_2026_43284_glued
+     override val selectable: Boolean = true
++    override val appOwnedFlowWithAutomaticProcessLauncher: Boolean = true
+     override val runner: BackendFlowRunner = flow43284GluedRunner()
+ 
+     /** Reports the executable and route identity shown in the selected backend card. */
+--- BASELINE_FILE/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableBackendProcess.kt
++++ MODIFIED_FILE/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableBackendProcess.kt
+@@ -1,27 +1,58 @@
+ package com.ghostlock.app.backend.core
+ 
+ import android.content.Context
++import android.content.pm.PackageManager
++import android.os.Bundle
++import com.ghostlock.app.backend.cve43499glued.Glued43499ExecutableHost
+ import com.ghostlock.app.core.flow.FlowResult
+ import com.ghostlock.app.core.flow.FlowStepRun
+ import com.ghostlock.app.core.flow.StepResult
++import com.ghostlock.app.shizuku.ShizukuBackendClient
++import com.ghostlock.app.shizuku.host.ShizukuBackendHosts
+ import com.ghostlock.app.ui.backend.BackendRunUiState
++import kotlinx.coroutines.CancellationException
+ import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.NonCancellable
++import kotlinx.coroutines.delay
+ import kotlinx.coroutines.withContext
++import rikka.shizuku.Shizuku
+ import java.io.File
+ 
+-/** Runs one packaged native executable and captures its output as a Flow step result. */
++/** Route selected before any child is created; an execution failure never changes this value. */
++internal enum class ExecutableProcessRoute { APP, SHIZUKU }
++
++/** Pure route rule shared by production dispatch and JVM tests. */
++internal object ExecutableProcessRouting {
++    /**
++     * Chooses Shizuku only when its binder is reachable and permission is granted.
++     *
++     * @param binderReachable result of Shizuku.pingBinder().
++     * @param permissionGranted result of Shizuku.checkSelfPermission().
++     * @return the single owner that may create this run's child.
++     */
++    fun select(binderReachable: Boolean, permissionGranted: Boolean): ExecutableProcessRoute =
++        if (binderReachable && permissionGranted) ExecutableProcessRoute.SHIZUKU
++        else ExecutableProcessRoute.APP
++}
++
++/** Runs one packaged upstream executable through exactly one selected process launcher. */
+ internal object ExecutableBackendProcess {
++    private const val MAX_INPUT_BYTES = 512 * 1024
++    private const val MAX_LOG_BYTES = 8 * 1024 * 1024
++    private const val MAX_LOG_LINE_CHARS = 8192
++
+     /**
+-     * Starts the executable from the app's native-library directory.
++     * Chooses one launcher before process creation; an authorized Shizuku failure is returned
++     * as-is and never starts a second app child.
+      *
+-     * @param context application context for the executable and private run directory.
+-     * @param backendKey stable backend identity used to partition persisted logs and files.
+-     * @param binaryName packaged ELF filename.
+-     * @param arguments exact upstream command-line arguments.
+-     * @param stdin optional binary input; null closes stdin without writing bytes.
+-     * @param files auxiliary run files keyed by simple filenames, such as the selected conf.
+-     * @param onLine receives each stdout/stderr line in order.
+-     * @return finished Flow result or a named refusal if the executable cannot start.
++     * @param context application context for executable and private run directory.
++     * @param backendKey stable backend identity.
++     * @param binaryName packaged ELF filename; it must match the fixed backend mapping.
++     * @param arguments exact upstream arguments, never a shell command string.
++     * @param stdin optional bytes written to the child's stdin.
++     * @param files auxiliary files keyed by simple filenames.
++     * @param onLine receives output lines.
++     * @return terminal Flow state or a named pre-start refusal.
+      */
+     suspend fun run(
+         context: Context,
+@@ -32,59 +63,257 @@
+         files: Map<String, ByteArray> = emptyMap(),
+         onLine: (String) -> Unit = {},
+     ): BackendRunUiState = withContext(Dispatchers.IO) {
++        val validation = validateRequest(backendKey, binaryName, arguments, stdin, files)
++        if (validation != null) return@withContext BackendRunUiState.Refused(listOf(validation))
++        val route = ExecutableProcessRouting.select(
++            binderReachable = runCatching { Shizuku.pingBinder() }.getOrDefault(false),
++            permissionGranted = runCatching {
++                Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
++            }.getOrDefault(false),
++        )
++        when (route) {
++            ExecutableProcessRoute.APP -> runApp(
++                context.applicationContext, backendKey, binaryName, arguments, stdin, files, onLine,
++            )
++            ExecutableProcessRoute.SHIZUKU -> runShizuku(
++                context.applicationContext, backendKey, arguments, stdin, files, onLine,
++            )
++        }
++    }
++
++    /** @return null for valid fixed identity/input; otherwise a stable reason. */
++    private fun validateRequest(
++        backendKey: String,
++        binaryName: String,
++        arguments: List<String>,
++        stdin: ByteArray?,
++        files: Map<String, ByteArray>,
++    ): String? {
++        val expectedBinary = when (backendKey) {
++            "43499-Glued" -> "lib43499-Glued.so"
++            "43284Glued" -> "lib43284Glued.so"
++            else -> return "exec:backend-unsupported:$backendKey"
++        }
++        if (binaryName != expectedBinary) return "exec:binary-identity-mismatch"
++        if (arguments.size > 32 || arguments.any { it.indexOf('\u0000') >= 0 || it.length > 4096 }) {
++            return "exec:arguments-invalid"
++        }
++        val allowedFiles = when (backendKey) {
++            "43499-Glued" -> setOf("profile.conf", "profile.bin", "finish.sh", "payload")
++            "43284Glued" -> setOf("finish.sh", "payload")
++            else -> emptySet()
++        }
++        if (files.keys.any { it !in allowedFiles }) return "exec:file-name-invalid"
++        if (files.values.any { it.size > MAX_INPUT_BYTES }) return "exec:file-size-invalid"
++        val total = (stdin?.size ?: 0).toLong() + files.values.sumOf { it.size.toLong() }
++        if (total > MAX_INPUT_BYTES) return "exec:input-too-large"
++        return null
++    }
++
++    /** App-UID process launcher; this instance owns its process, streams, run directory and log. */
++    private suspend fun runApp(
++        context: Context,
++        backendKey: String,
++        binaryName: String,
++        arguments: List<String>,
++        stdin: ByteArray?,
++        files: Map<String, ByteArray>,
++        onLine: (String) -> Unit,
++    ): BackendRunUiState {
+         val binary = File(context.applicationInfo.nativeLibraryDir, binaryName)
+-        if (!binary.isFile) {
+-            return@withContext BackendRunUiState.Refused(listOf("exec:binary-missing:$binaryName"))
++        if (!binary.isFile || !binary.canExecute()) {
++            return BackendRunUiState.Refused(listOf("exec:binary-missing:$binaryName"))
+         }
+         val runDir = File(context.filesDir, "ghostlock-glue/$backendKey")
+         if (!runDir.isDirectory && !runDir.mkdirs()) {
+-            return@withContext BackendRunUiState.Refused(listOf("exec:run-directory-unavailable"))
+-        }
+-        for ((name, bytes) in files) {
+-            require(name.isNotBlank() && File(name).name == name) { "exec:invalid-run-filename" }
+-            File(runDir, name).writeBytes(bytes)
+-        }
+-
++            return BackendRunUiState.Refused(listOf("exec:run-directory-unavailable"))
++        }
++        for ((name, bytes) in files) File(runDir, name).writeBytes(bytes)
++        return runProcess(
++            command = listOf(binary.absolutePath) + arguments,
++            runDir = runDir,
++            backendKey = backendKey,
++            displayExecutable = binary.absolutePath,
++            stdin = stdin,
++            onLine = onLine,
++        )
++    }
++
++    /** Shizuku UserService launcher; the host receives only fixed IDs and bounded structured data. */
++    private suspend fun runShizuku(
++        context: Context,
++        backendKey: String,
++        arguments: List<String>,
++        stdin: ByteArray?,
++        files: Map<String, ByteArray>,
++        onLine: (String) -> Unit,
++    ): BackendRunUiState {
++        val backendId = when (backendKey) {
++            "43499-Glued" -> ShizukuBackendHosts.CVE_43499_GLUED
++            "43284Glued" -> ShizukuBackendHosts.CVE_43284_GLUED
++            else -> return BackendRunUiState.Refused(listOf("exec:backend-unsupported:$backendKey"))
++        }
++        val client = ShizukuBackendClient(context, backendId)
++        val config = Bundle().apply {
++            putStringArrayList(Glued43499ExecutableHost.KEY_ARGUMENTS, ArrayList(arguments))
++            putStringArrayList(Glued43499ExecutableHost.KEY_FILE_NAMES, ArrayList(files.keys))
++            files.forEach { (name, bytes) -> putByteArray(Glued43499ExecutableHost.fileKey(name), bytes) }
++        }
++        val startedAt = System.nanoTime()
++        var terminal = false
++        try {
++            val unavailable = client.availabilityReasons()
++            if (unavailable.isNotEmpty()) {
++                return BackendRunUiState.Refused(unavailable)
++            }
++            val prepared = client.prepare(config, stdin ?: ByteArray(0), onLine)
++            if (prepared != 0) {
++                val reason = client.lastReason()
++                return BackendRunUiState.Refused(
++                    listOf(reason.ifBlank { "exec:shizuku:prepare:$prepared" }),
++                )
++            }
++            val pid = client.start()
++            if (pid <= 0) {
++                val reason = client.lastReason()
++                return BackendRunUiState.Refused(
++                    listOf(reason.ifBlank { "exec:shizuku:start:$pid" }),
++                )
++            }
++            while (true) {
++                val state = client.state()
++                if (state == Glued43499ExecutableHost.STATE_TERMINAL) {
++                    terminal = true
++                    val facts = client.verify().toString(Charsets.UTF_8).lineSequence()
++                        .mapNotNull { line ->
++                            line.split('=', limit = 2).takeIf { it.size == 2 }?.let { it[0] to it[1] }
++                        }.toMap()
++                    val exit = facts["exit"]?.toIntOrNull()
++                        ?: return BackendRunUiState.Refused(listOf("exec:shizuku:exit-unknown"))
++                    return finished(
++                        backendKey = backendKey,
++                        executable = facts["executable"] ?: "shizuku:$backendId",
++                        exit = exit,
++                        elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L,
++                        runDir = facts["run_dir"] ?: "shizuku:$backendId",
++                    )
++                }
++                if (state != Glued43499ExecutableHost.STATE_RUNNING) {
++                    val reason = client.lastReason()
++                    return BackendRunUiState.Refused(
++                        listOf(reason.ifBlank { "exec:shizuku:state:$state" }),
++                    )
++                }
++                delay(100)
++            }
++        } catch (cancelled: CancellationException) {
++            throw cancelled
++        } catch (problem: Exception) {
++            return BackendRunUiState.Refused(
++                listOf("exec:shizuku:failed:" + problem::class.java.simpleName),
++            )
++        } finally {
++            withContext(NonCancellable + Dispatchers.IO) {
++                /* Stop/reap any uncertain child before removing the shared host service. */
++                client.disconnect(remove = true)
++                if (!terminal) onLine("exec:shizuku:launcher-ended-without-terminal-result")
++            }
++        }
++    }
++
++    /** Direct ProcessBuilder invocation; stdout is drained while stdin is written. */
++    private suspend fun runProcess(
++        command: List<String>,
++        runDir: File,
++        backendKey: String,
++        displayExecutable: String,
++        stdin: ByteArray?,
++        onLine: (String) -> Unit,
++    ): BackendRunUiState = withContext(Dispatchers.IO) {
+         val logFile = File(runDir, "run.log")
+-        val started = System.nanoTime()
++        runCatching { logFile.writeBytes(ByteArray(0)) }
++        val startedAt = System.nanoTime()
+         val process = try {
+-            ProcessBuilder(listOf(binary.absolutePath) + arguments)
+-                .directory(runDir)
+-                .redirectErrorStream(true)
+-                .start()
++            ProcessBuilder(command).directory(runDir).redirectErrorStream(true).start()
+         } catch (problem: Exception) {
+             return@withContext BackendRunUiState.Refused(
+                 listOf("exec:start-failed:" + problem::class.java.simpleName),
+             )
+         }
+-        process.outputStream.use { output -> stdin?.let(output::write) }
+-        logFile.bufferedWriter().use { writer ->
++        val reader = Thread({
++            val logState = LocalLogState()
+             process.inputStream.bufferedReader().useLines { lines ->
+                 lines.forEach { line ->
+-                    writer.appendLine(line)
++                    appendLocalLog(logFile, logState, line)
+                     onLine(line)
+                 }
+             }
+-        }
+-        val exit = process.waitFor()
+-        val elapsed = (System.nanoTime() - started) / 1_000_000L
++        }, "glued-exec-log").apply { isDaemon = true; start() }
++        try {
++            process.outputStream.use { output -> stdin?.let(output::write) }
++            val exit = process.waitFor()
++            reader.join()
++            val elapsed = (System.nanoTime() - startedAt) / 1_000_000L
++            finished(backendKey, displayExecutable, exit, elapsed, runDir.absolutePath)
++        } catch (cancelled: CancellationException) {
++            process.destroyForcibly()
++            runCatching { process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS) }
++            runCatching { reader.join(1000) }
++            throw cancelled
++        } catch (problem: Exception) {
++            process.destroyForcibly()
++            runCatching { process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS) }
++            runCatching { reader.join(1000) }
++            BackendRunUiState.Refused(listOf("exec:process-failed:" + problem::class.java.simpleName))
++        }
++    }
++
++    /** App-side bounded log writer; child output continues draining after the retained cap. */
++    private fun appendLocalLog(file: File, state: LocalLogState, line: String) {
++        val bytes = (line.take(MAX_LOG_LINE_CHARS) + "\n").toByteArray(Charsets.UTF_8)
++        synchronized(state) {
++            if (state.bytes + bytes.size <= MAX_LOG_BYTES) {
++                runCatching { file.appendBytes(bytes) }
++                state.bytes += bytes.size
++            } else if (!state.truncated) {
++                state.truncated = true
++                val marker = "GHOSTLOCK_LOG_TRUNCATED\n".toByteArray(Charsets.UTF_8)
++                if (state.bytes + marker.size <= MAX_LOG_BYTES) {
++                    runCatching { file.appendBytes(marker) }
++                    state.bytes += marker.size
++                }
++            }
++        }
++    }
++
++    /** Mutable accounting scoped to the one app-launched process and output-drain thread. */
++    private class LocalLogState {
++        var bytes: Long = 0L
++        var truncated: Boolean = false
++    }
++
++    /** Converts one upstream process exit into the app Flow result shape. */
++    private fun finished(
++        backendKey: String,
++        executable: String,
++        exit: Int,
++        elapsedMs: Long,
++        runDir: String,
++    ): BackendRunUiState {
+         val evidence = mapOf(
+             "backend" to backendKey,
+-            "exec" to binary.absolutePath,
++            "exec" to executable,
+             "exit" to exit.toString(),
+-            "run_dir" to runDir.absolutePath,
++            "run_dir" to runDir,
+         )
+         val step = FlowStepRun(
+             name = "exec",
+             attempts = 1,
+-            elapsedMs = elapsed,
++            elapsedMs = elapsedMs,
+             result = if (exit == 0) StepResult.Done(evidence) else StepResult.Failed("exec-exit:$exit", evidence),
+         )
+-        val result = if (exit == 0) {
+-            FlowResult.Ok(listOf(step), evidence)
+-        } else {
+-            FlowResult.Failed("exec-exit:$exit", "exec", listOf(step), evidence)
+-        }
+-        BackendRunUiState.Finished(result)
++        val result = if (exit == 0) FlowResult.Ok(listOf(step), evidence)
++        else FlowResult.Failed("exec-exit:$exit", "exec", listOf(step), evidence)
++        return BackendRunUiState.Finished(result)
+     }
+ }
+--- BASELINE_FILE/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableHostProtocol.kt
++++ MODIFIED_FILE/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableHostProtocol.kt
+@@ -0,0 +1,16 @@
++package com.ghostlock.app.backend.core
++
++/** Fixed AIDL payload keys and bounded process-state values for the two Glued executable hosts. */
++internal object ExecutableHostProtocol {
++    const val KEY_ARGUMENTS = "exec.argv"
++    const val KEY_FILE_NAMES = "exec.file_names"
++    const val FILE_PREFIX = "exec.file."
++    const val STATE_IDLE = 0
++    const val STATE_PREPARED = 1
++    const val STATE_RUNNING = 2
++    const val STATE_TERMINAL = 3
++    const val STATE_UNKNOWN = 4
++
++    /** @param name previously allowlisted simple filename. */
++    fun fileKey(name: String): String = FILE_PREFIX + name
++}
+--- BASELINE_FILE/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableShizukuHost.kt
++++ MODIFIED_FILE/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableShizukuHost.kt
+@@ -0,0 +1,301 @@
++package com.ghostlock.app.backend.core
++
++import android.content.Context
++import android.os.Bundle
++import com.ghostlock.app.shizuku.host.ShizukuBackendHost
++import java.io.File
++import java.io.FileOutputStream
++import java.io.RandomAccessFile
++import java.util.UUID
++
++/**
++ * Owns one shell-domain upstream executable child and its per-run inputs/log.
++ *
++ * @param context UserService package context used only to locate the packaged native library.
++ * @param backendId fixed AIDL identity.
++ * @param binaryName fixed packaged ELF basename.
++ * @param allowedFiles exact auxiliary file allowlist for this backend.
++ * @note State, child, threads, run directory and log offset belong exclusively to this host.
++ */
++internal open class ExecutableShizukuHost(
++    private val context: Context,
++    final override val backendId: String,
++    private val binaryName: String,
++    private val allowedFiles: Set<String>,
++) : ShizukuBackendHost {
++    private var state: Int = ExecutableHostProtocol.STATE_IDLE
++    private var reason: String = ""
++    private var runDirectory: File? = null
++    private var logFile: File? = null
++    private var process: Process? = null
++    private var stdinBytes: ByteArray = ByteArray(0)
++    private var exitCode: Int? = null
++    private var outputThread: Thread? = null
++    private var inputThread: Thread? = null
++    private var waitThread: Thread? = null
++    private var logTruncated = false
++    private var binary: File? = null
++    private var arguments: List<String> = emptyList()
++
++    @Synchronized
++    override fun prepare(config: Bundle, payload: ByteArray): Int {
++        if (state != ExecutableHostProtocol.STATE_IDLE) {
++            reason = "exec:host:prepare-state:" + state
++            return ERR_STATE
++        }
++        if (payload.size > MAX_INPUT_BYTES) {
++            reason = "exec:host:stdin-size"
++            return ERR_ARGS
++        }
++        val argv = config.getStringArrayList(ExecutableHostProtocol.KEY_ARGUMENTS)
++            ?: return reject("exec:host:argv-missing", ERR_ARGS)
++        val names = config.getStringArrayList(ExecutableHostProtocol.KEY_FILE_NAMES)
++            ?: return reject("exec:host:files-missing", ERR_ARGS)
++        if (argv.size > MAX_ARGS || argv.any { it.length > MAX_ARG_LENGTH || it.indexOf('\u0000') >= 0 }) {
++            return reject("exec:host:argv-invalid", ERR_ARGS)
++        }
++        if (names.size > allowedFiles.size || names.toSet().size != names.size ||
++            names.any { it !in allowedFiles || it.isBlank() || File(it).name != it }
++        ) {
++            return reject("exec:host:files-invalid", ERR_ARGS)
++        }
++        var totalBytes = payload.size.toLong()
++        val files = LinkedHashMap<String, ByteArray>()
++        for (name in names) {
++            val bytes = config.getByteArray(ExecutableHostProtocol.fileKey(name))
++                ?: return reject("exec:host:file-missing:" + name, ERR_ARGS)
++            totalBytes += bytes.size
++            if (totalBytes > MAX_INPUT_BYTES) return reject("exec:host:input-too-large", ERR_ARGS)
++            files[name] = bytes
++        }
++        val stagedBinary = packagedBinary() ?: return reject("exec:host:binary-unavailable", ERR_BINARY)
++        val root = File("/data/local/tmp/ghostlock-glue/" + backendId)
++        val directory = File(root, UUID.randomUUID().toString())
++        if (!directory.mkdirs()) return reject("exec:host:run-dir-unavailable", ERR_IO)
++        directory.setReadable(false, false)
++        directory.setWritable(false, false)
++        directory.setExecutable(false, false)
++        directory.setReadable(true, true)
++        directory.setWritable(true, true)
++        directory.setExecutable(true, true)
++        try {
++            files.forEach { (name, bytes) ->
++                val target = File(directory, name)
++                target.writeBytes(bytes)
++                target.setReadable(true, true)
++                target.setWritable(true, true)
++            }
++        } catch (problem: Exception) {
++            runCatching { directory.deleteRecursively() }
++            reason = "exec:host:stage:" + problem::class.java.simpleName
++            return ERR_IO
++        }
++        binary = stagedBinary
++        arguments = argv.toList()
++        stdinBytes = payload.copyOf()
++        runDirectory = directory
++        logFile = File(directory, "run.log")
++        exitCode = null
++        logTruncated = false
++        reason = ""
++        state = ExecutableHostProtocol.STATE_PREPARED
++        return OK
++    }
++
++    @Synchronized
++    override fun start(): Int {
++        if (state == ExecutableHostProtocol.STATE_RUNNING) {
++            return process?.let { runCatching { it.pid().toInt() }.getOrDefault(-ERR_STATE) } ?: -ERR_STATE
++        }
++        if (state != ExecutableHostProtocol.STATE_PREPARED) {
++            return reject("exec:host:start-state:" + state, -ERR_STATE)
++        }
++        val executable = binary ?: return reject("exec:host:binary-missing", -ERR_BINARY)
++        val directory = runDirectory ?: return reject("exec:host:run-dir-missing", -ERR_STATE)
++        val child = try {
++            ProcessBuilder(listOf(executable.absolutePath) + arguments)
++                .directory(directory)
++                .redirectErrorStream(true)
++                .start()
++        } catch (problem: Exception) {
++            state = ExecutableHostProtocol.STATE_UNKNOWN
++            reason = "exec:host:start:" + problem::class.java.simpleName
++            return -ERR_SPAWN
++        }
++        process = child
++        state = ExecutableHostProtocol.STATE_RUNNING
++        outputThread = Thread({ drain(child) }, "glued-shell-exec-log").apply {
++            isDaemon = true
++            start()
++        }
++        inputThread = Thread({ writeStdin(child) }, "glued-shell-exec-stdin").apply {
++            isDaemon = true
++            start()
++        }
++        waitThread = Thread({ reap(child) }, "glued-shell-exec-wait").apply {
++            isDaemon = true
++            start()
++        }
++        return runCatching { child.pid().toInt() }.getOrElse {
++            reason = "exec:host:pid-unavailable"
++            -ERR_STATE
++        }
++    }
++
++    @Synchronized
++    override fun state(): Int = state
++
++    @Synchronized
++    override fun readLog(offset: Long, maxBytes: Int): ByteArray {
++        if (offset < 0 || maxBytes <= 0 || maxBytes > MAX_LOG_CHUNK) return ByteArray(0)
++        val file = logFile ?: return ByteArray(0)
++        if (!file.isFile) return ByteArray(0)
++        return runCatching {
++            RandomAccessFile(file, "r").use { input ->
++                if (offset >= input.length()) return@use ByteArray(0)
++                val size = minOf((input.length() - offset).toInt(), maxBytes)
++                ByteArray(size).also { bytes ->
++                    input.seek(offset)
++                    input.readFully(bytes)
++                }
++            }
++        }.getOrDefault(ByteArray(0))
++    }
++
++    @Synchronized
++    override fun verify(): ByteArray = listOf(
++        "state=" + state,
++        "exit=" + (exitCode?.toString() ?: "unknown"),
++        "executable=" + (binary?.absolutePath ?: ""),
++        "run_dir=" + (runDirectory?.absolutePath ?: ""),
++        "log_truncated=" + if (logTruncated) "1" else "0",
++    ).joinToString("\n").toByteArray(Charsets.UTF_8)
++
++    @Synchronized
++    override fun lastReason(): String = reason
++
++    override fun bootId(): String = runCatching {
++        File("/proc/sys/kernel/random/boot_id").readText().trim().take(128)
++    }.getOrDefault("")
++
++    override fun attachLogFd(rawFd: Int): Boolean {
++        /* false leaves raw fd ownership with GhostlockUserService's generic adapter. */
++        return false
++    }
++
++    override fun logLine(level: Int, line: String) = Unit
++
++    override fun destroy() {
++        val child = synchronized(this) { process }
++        if (child != null && child.isAlive) {
++            runCatching { child.destroy() }
++            runCatching {
++                if (!child.waitFor(DESTROY_WAIT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)) {
++                    child.destroyForcibly()
++                    child.waitFor(DESTROY_WAIT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
++                }
++            }
++        }
++        listOf(outputThread, inputThread, waitThread).forEach { thread ->
++            if (thread != null && thread !== Thread.currentThread()) {
++                runCatching { thread.join(THREAD_JOIN_MS) }
++            }
++        }
++        runCatching { child?.inputStream?.close() }
++        runCatching { child?.outputStream?.close() }
++        runCatching { child?.errorStream?.close() }
++        synchronized(this) {
++            if (child?.isAlive != true) process = null
++            state = if (exitCode != null) ExecutableHostProtocol.STATE_TERMINAL
++            else ExecutableHostProtocol.STATE_UNKNOWN
++        }
++    }
++
++    private fun packagedBinary(): File? {
++        val libraryDirectory = File(context.applicationInfo.nativeLibraryDir).canonicalFile
++        val candidate = File(libraryDirectory, binaryName).canonicalFile
++        if (candidate.parentFile != libraryDirectory || !candidate.isFile || !candidate.canExecute()) return null
++        return candidate
++    }
++
++    private fun writeStdin(child: Process) {
++        try {
++            child.outputStream.use { output -> output.write(stdinBytes) }
++        } catch (problem: Exception) {
++            synchronized(this) {
++                if (reason.isBlank()) reason = "exec:host:stdin:" + problem::class.java.simpleName
++            }
++        } finally {
++            stdinBytes.fill(0)
++        }
++    }
++
++    private fun drain(child: Process) {
++        try {
++            child.inputStream.bufferedReader().useLines { lines ->
++                lines.forEach(::appendLogLine)
++            }
++        } catch (problem: Exception) {
++            synchronized(this) {
++                if (reason.isBlank()) reason = "exec:host:log:" + problem::class.java.simpleName
++            }
++        }
++    }
++
++    private fun appendLogLine(line: String) {
++        val file = logFile ?: return
++        val bytes = (line.take(MAX_LINE_CHARS) + "\n").toByteArray(Charsets.UTF_8)
++        synchronized(this) {
++            val currentSize = file.length()
++            if (currentSize + bytes.size <= MAX_LOG_BYTES) {
++                runCatching { FileOutputStream(file, true).use { it.write(bytes) } }
++            } else if (!logTruncated) {
++                logTruncated = true
++                val marker = "GHOSTLOCK_LOG_TRUNCATED\n".toByteArray(Charsets.UTF_8)
++                if (currentSize + marker.size <= MAX_LOG_BYTES) {
++                    runCatching { FileOutputStream(file, true).use { it.write(marker) } }
++                }
++            }
++        }
++    }
++
++    private fun reap(child: Process) {
++        try {
++            val exit = child.waitFor()
++            inputThread?.join(THREAD_JOIN_MS)
++            outputThread?.join(THREAD_JOIN_MS)
++            synchronized(this) {
++                exitCode = exit
++                if (exit != 0 && reason.isBlank()) reason = "exec-exit:" + exit
++                state = ExecutableHostProtocol.STATE_TERMINAL
++            }
++        } catch (problem: Exception) {
++            synchronized(this) {
++                reason = "exec:host:wait:" + problem::class.java.simpleName
++                state = ExecutableHostProtocol.STATE_UNKNOWN
++            }
++        }
++    }
++
++    private fun reject(message: String, code: Int): Int {
++        reason = message
++        return code
++    }
++
++    private companion object {
++        private const val OK = 0
++        private const val ERR_ARGS = 1
++        private const val ERR_BINARY = 2
++        private const val ERR_STATE = 7
++        private const val ERR_IO = 8
++        private const val ERR_SPAWN = 6
++        private const val MAX_ARGS = 32
++        private const val MAX_ARG_LENGTH = 4096
++        private const val MAX_INPUT_BYTES = 512 * 1024
++        private const val MAX_LOG_BYTES = 8 * 1024 * 1024
++        private const val MAX_LOG_CHUNK = 32 * 1024
++        private const val MAX_LINE_CHARS = 8192
++        private const val DESTROY_WAIT_MS = 1000L
++        private const val THREAD_JOIN_MS = 1000L
++    }
++}
+--- BASELINE_FILE/app/src/main/kotlin/com/ghostlock/app/backend/43499glued/Glued43499ExecutableHost.kt
++++ MODIFIED_FILE/app/src/main/kotlin/com/ghostlock/app/backend/43499glued/Glued43499ExecutableHost.kt
+@@ -0,0 +1,24 @@
++package com.ghostlock.app.backend.cve43499glued
++
++import android.content.Context
++import com.ghostlock.app.backend.core.ExecutableHostProtocol
++import com.ghostlock.app.backend.core.ExecutableShizukuHost
++import com.ghostlock.app.shizuku.host.ShizukuBackendHosts
++
++/** Shizuku peer adapter for the fixed 43499 Glued executable and input files. */
++internal class Glued43499ExecutableHost(context: Context) : ExecutableShizukuHost(
++    context = context,
++    backendId = ShizukuBackendHosts.CVE_43499_GLUED,
++    binaryName = "lib43499-Glued.so",
++    allowedFiles = setOf("profile.conf", "profile.bin", "finish.sh", "payload"),
++) {
++    internal companion object {
++        const val KEY_ARGUMENTS = ExecutableHostProtocol.KEY_ARGUMENTS
++        const val KEY_FILE_NAMES = ExecutableHostProtocol.KEY_FILE_NAMES
++        const val STATE_RUNNING = ExecutableHostProtocol.STATE_RUNNING
++        const val STATE_TERMINAL = ExecutableHostProtocol.STATE_TERMINAL
++
++        /** @param name allowlisted basename from the file-name field. */
++        fun fileKey(name: String): String = ExecutableHostProtocol.fileKey(name)
++    }
++}
+--- BASELINE_FILE/app/src/main/kotlin/com/ghostlock/app/backend/43284glued/Glued43284ExecutableHost.kt
++++ MODIFIED_FILE/app/src/main/kotlin/com/ghostlock/app/backend/43284glued/Glued43284ExecutableHost.kt
+@@ -0,0 +1,13 @@
++package com.ghostlock.app.backend.cve43284glued
++
++import android.content.Context
++import com.ghostlock.app.backend.core.ExecutableShizukuHost
++import com.ghostlock.app.shizuku.host.ShizukuBackendHosts
++
++/** Shizuku peer adapter for the fixed 43284 Glued executable and input files. */
++internal class Glued43284ExecutableHost(context: Context) : ExecutableShizukuHost(
++    context = context,
++    backendId = ShizukuBackendHosts.CVE_43284_GLUED,
++    binaryName = "lib43284Glued.so",
++    allowedFiles = setOf("finish.sh", "payload"),
++)
+--- BASELINE_FILE/app/src/main/kotlin/com/ghostlock/app/shizuku/GhostlockUserService.kt
++++ MODIFIED_FILE/app/src/main/kotlin/com/ghostlock/app/shizuku/GhostlockUserService.kt
+@@ -21,6 +21,9 @@
+  */
+ class GhostlockUserService : IGhostlockUserService.Stub {
+ 
++    @Volatile
++    private var userServiceContext: Context? = null
++
+     private val pumping = AtomicBoolean(false)
+     private val consumed = AtomicLong(0L)
+     private var pumpThread: Thread? = null
+@@ -41,7 +44,7 @@
+      */
+     @Keep
+     constructor(context: Context) {
+-        /* 通用层当前不依赖 Context；保留构造器以满足 Shizuku v13 约定。 */
++        userServiceContext = context
+     }
+ 
+     override fun setCallback(cb: IGhostlockCallback?) {
+@@ -60,7 +63,8 @@
+         if (active != null && active.state() != HOST_STATE_IDLE) {
+             return GENERIC_ERR_BUSY
+         }
+-        val created = ShizukuBackendHosts.create(backendId) ?: return GENERIC_ERR_UNSUPPORTED
++        val created = ShizukuBackendHosts.create(backendId, userServiceContext)
++            ?: return GENERIC_ERR_UNSUPPORTED
+         host = created
+         return created.prepare(config, payload)
+     }
+@@ -88,7 +92,7 @@
+     override fun attachLog(logFd: ParcelFileDescriptor?) {
+         if (logFd == null) return
+         val raw = runCatching { logFd.detachFd() }.getOrElse { return }
+-        /* host 必须接管并关闭 raw fd（无论成败）；不支持时通用层直接丢弃（回退 AIDL onLog）。 */
++        /* true means the host owns raw; false leaves ownership here for close (AIDL onLog remains). */
+         val attached = host?.attachLogFd(raw) ?: false
+         if (!attached) {
+             runCatching { android.os.ParcelFileDescriptor.adoptFd(raw).close() }
+--- BASELINE_FILE/app/src/main/kotlin/com/ghostlock/app/shizuku/host/ShizukuBackendHost.kt
++++ MODIFIED_FILE/app/src/main/kotlin/com/ghostlock/app/shizuku/host/ShizukuBackendHost.kt
+@@ -1,5 +1,6 @@
+ package com.ghostlock.app.shizuku.host
+ 
++import android.content.Context
+ import android.os.Bundle
+ 
+ /**
+@@ -45,8 +46,8 @@
+     /**
+      * 接上 app 日志 fd。
+      *
+-     * @param rawFd detached raw fd（**实现必须接管并关闭**，无论成功与否）。
+-     * @return true=已接上（native 日志管线）；false=不支持（general 层回退 AIDL onLog）。
++     * @param rawFd detached raw fd.
++     * @return true=host 接管并关闭 fd；false=通用层关闭 fd 并回退 AIDL onLog。
+      */
+     fun attachLogFd(rawFd: Int): Boolean
+ 
+@@ -58,7 +59,12 @@
+      */
+     fun logLine(level: Int, line: String)
+ 
+-    /** 清 host 状态（**不 kill payload**；由 Shizuku destroy 约定调用）。 */
++    /**
++     * 释放该 host 自己拥有的资源，由 Shizuku destroy 约定调用。
++     *
++     * @note Detached payload policy is backend-specific: 98260 preserves its detached payload;
++     *   executable hosts stop/reap their direct foreground child before service exit.
++     */
+     fun destroy()
+ }
+ 
+@@ -70,13 +76,23 @@
+ internal object ShizukuBackendHosts {
+     /** CVE-2026-98260 的稳定 wire id（app/service 两侧必须一致）。 */
+     const val CVE_98260: String = "CVE_2026_98260"
++    /** 43499 Glued executable wire identity. */
++    const val CVE_43499_GLUED: String = "CVE_2026_43499_GLUED"
++    /** 43284 Glued executable wire identity. */
++    const val CVE_43284_GLUED: String = "CVE_2026_43284_GLUED"
+ 
+     /**
+      * @param backendId 稳定 wire id。
+      * @return 新 host 实例；未知 id 返回 null（fail-closed）。
+      */
+-    fun create(backendId: String): ShizukuBackendHost? = when (backendId) {
++    fun create(backendId: String, context: Context? = null): ShizukuBackendHost? = when (backendId) {
+         CVE_98260 -> com.ghostlock.app.backend.cve98260.service.Cve98260ShizukuHost()
++        CVE_43499_GLUED -> context?.let {
++            com.ghostlock.app.backend.cve43499glued.Glued43499ExecutableHost(it)
++        }
++        CVE_43284_GLUED -> context?.let {
++            com.ghostlock.app.backend.cve43284glued.Glued43284ExecutableHost(it)
++        }
+         else -> null
+     }
+ }
+--- BASELINE_FILE/app/src/main/kotlin/com/ghostlock/app/ui/backend/BackendRunGate.kt
++++ MODIFIED_FILE/app/src/main/kotlin/com/ghostlock/app/ui/backend/BackendRunGate.kt
+@@ -79,7 +79,7 @@
+             reasons += readiness.reasons
+         }
+         /* UI 只读 backend 的 uid 需求声明并拒绝；backend 不自检。 */
+-        if (spec != null) {
++        if (spec != null && !spec.appOwnedFlowWithAutomaticProcessLauncher) {
+             if (context.executor.kind == AttackExecutorKind.SHIZUKU && !context.executor.authorized) {
+                 reasons += ReadinessReason(R.string.backend_run_executor_unavailable)
+             } else if (!spec.uidRequirement.satisfiedBy(context.executor.kind)) {
+@@ -153,9 +153,14 @@
+         return try {
+             /* 唯一入口：UI → dispatcher → FlowLaunchParent（多态执行体）→ symbol 解析 → Flow。 */
+             val invocation = FlowSymbolInvocation(symbol = spec.key)
++            val selectedExecutor = if (spec.appOwnedFlowWithAutomaticProcessLauncher) {
++                AttackExecutorState(AttackExecutorKind.APP, authorized = true)
++            } else {
++                currentAttackExecutorState()
++            }
+             val state = FlowLaunchParent.launch(
+                 context = context.applicationContext,
+-                executor = currentAttackExecutorState(),
++                executor = selectedExecutor,
+                 invocation = invocation,
+                 onLine = onLine,
+             )
+--- BASELINE_FILE/app/src/test/kotlin/com/ghostlock/app/ui/backend/BackendUidRequirementTest.kt
++++ MODIFIED_FILE/app/src/test/kotlin/com/ghostlock/app/ui/backend/BackendUidRequirementTest.kt
+@@ -3,6 +3,7 @@
+ import com.ghostlock.app.R
+ import com.ghostlock.app.backend.declarations.BackendCve202643499
+ import com.ghostlock.app.backend.declarations.cve43499glued.Backend43499Glued
++import com.ghostlock.app.backend.declarations.cve43284glued.Backend43284Glued
+ import com.ghostlock.app.backend.declarations.BackendCve202698260
+ import org.junit.Assert.assertEquals
+ import org.junit.Assert.assertFalse
+@@ -63,6 +64,19 @@
+     }
+ 
+     @Test
++    fun gluedBackendsKeepAppFlowRunnableWhenManualShizukuChoiceIsUnavailable() {
++        for (spec in listOf(Backend43499Glued, Backend43284Glued)) {
++            val decision = BackendRunGate.decide(
++                spec = spec,
++                readiness = BackendReadiness.Ready(),
++                context = RunPageContext(executor = shizuku(authorized = false)),
++            )
++            assertTrue(spec.key, decision.allowed)
++            assertTrue(spec.appOwnedFlowWithAutomaticProcessLauncher)
++        }
++    }
++
++    @Test
+     fun disabledShellBackendStaysDisabledWhenShizukuAuthorized() {
+         val decision = BackendRunGate.decide(
+             spec = BackendCve202698260,
+--- BASELINE_FILE/app/src/test/kotlin/com/ghostlock/app/backend/core/ExecutableProcessRoutingTest.kt
++++ MODIFIED_FILE/app/src/test/kotlin/com/ghostlock/app/backend/core/ExecutableProcessRoutingTest.kt
+@@ -0,0 +1,27 @@
++package com.ghostlock.app.backend.core
++
++import org.junit.Assert.assertEquals
++import org.junit.Test
++
++/** The route is resolved before spawn and has exactly one launcher owner. */
++class ExecutableProcessRoutingTest {
++    @Test
++    fun usesShizukuOnlyWhenBinderAndPermissionAreBothPresent() {
++        assertEquals(
++            ExecutableProcessRoute.SHIZUKU,
++            ExecutableProcessRouting.select(binderReachable = true, permissionGranted = true),
++        )
++        assertEquals(
++            ExecutableProcessRoute.APP,
++            ExecutableProcessRouting.select(binderReachable = false, permissionGranted = true),
++        )
++        assertEquals(
++            ExecutableProcessRoute.APP,
++            ExecutableProcessRouting.select(binderReachable = true, permissionGranted = false),
++        )
++        assertEquals(
++            ExecutableProcessRoute.APP,
++            ExecutableProcessRouting.select(binderReachable = false, permissionGranted = false),
++        )
++    }
++}

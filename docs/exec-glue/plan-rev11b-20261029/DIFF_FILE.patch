@@ -1,0 +1,30 @@
+--- BASELINE_FILE/exec-glue-plan.md
++++ MODIFIED_FILE/exec-glue-plan.md
+@@ -1,6 +1,6 @@
+ # Exec Glue 部署计划（唯一活动版）
+ 
+-> 状态：rev11a 纳入 review1 回应并记录仍未关闭的实现/设备门；设计复核未通过，生产代码门关闭。目标版本：2.0.12。
++> 状态：rev11b/M0；生产实现仍阻断；M0 已批、计划通过，待实施。目标 2.0.12。
+ > 取代关系：本文件是唯一活动计划；此前批次记录、设备证据与详版 rev1–rev4 见归档 docs/archive/20261029-1025-exec-glue-plan-history.md。
+ > 依据：docs/development/软件工程守则.md、design-philosophy.md、engineering-standards.md、design-review-principles.md。
+ 
+@@ -53,7 +53,7 @@
+ ## 5. 设计与实现门
+ 1. rev4 的 manager su -c 与 Finish 后标记方案作废。rev11 以目录文件控制帧替换 AF_UNIX；design-critic 复核参数 ABI、UMH 固定 argv、SELinux gate、marker 权限/身份和双 launcher 可达性、cleanup 所有权、HandoffRequested 与单次 release。
+ 2. Finish 是最后动作：执行前备齐日志与资源；成功 exec 后不等待、不观察、不追加状态/日志/标记/cleanup，也不报告 Finish 完成。UI 仅保留交接前 HandoffRequested（43284 在 RELEASE_FINISH 前；43499 在 ELF spawn 前），Flow/UI 不映射为 Finished/Ok。任何 pre-release 错误都不运行 Finish；旧 runDir 只在下一次 preflight 证明执行者退出且身份吻合后回收，否则保留并按配额拒绝新 run。
+-3. 本 rev11 design-critic 无阻断且用户明确批准前，不改生产源码。计划 ≤16 KiB；43499 direct-path/parity 是独立实现门。
++3. M0：隔离 fixture ABI/KO/ELF/worker，测 A301SO init→App/Shizuku runDir DAC/SELinux 与 ROOT_READY/RELEASE_FINISH 单次消费；不复用生产 Flow、不读/执行 Payload/Finish、不报 backend success。worker 退出后同批删 APK/KO/worker/runDir/入口并验 absence；不批准生产实现。43499 parity 另门。
+ 4. 分批实施：先 43499 root-victim bridge；43284 单独实现 root handoff 与 Payload→Finish exec；先跑无副作用 fixture，再按攻击路径门禁逐项关闭。每批更新 UML、所有权/生命周期表、测试和记录。
+ 5. Host：定向测试、testDebugUnitTest、assembleDebug、assembleDebugAndroidTest、上游源 SHA 对拍、APK/ELF ABI/entrypoint 与 KO patch/hash 校验。
+ 6. 设备：AVD emulator-5554 与 A301SO 均在线（本轮 adb devices -l）。先在 AVD 验证 UI 和无副作用 fixture；再以 A301SO 验证 APK 身份、launcher uid/context、worker uid/context、文件交接、log 与 staging。未经单独真机门禁不运行生产漏洞 ELF；不以 AVD/fixture 宣称 supported。
+--- BASELINE_FILE/architecture-review-log.md
++++ MODIFIED_FILE/architecture-review-log.md
+@@ -278,3 +278,8 @@
+ - 2026-10-29: Exec Glue rev10 plan review (frozen SHA-256 301b1117e371fdb3ff18f8edda0aefda82e2f9434ac1583096a22e1ddb2bb7a7, 15,947 B) = BLOCKED (3 blockers: module-param/UMH ABI+KMI artifacts; AF_UNIX/SELinux/App-Shizuku reachability; HandoffRequested UI/Flow propagation; 2 important: exp cleanup ownership; execve-failure/KO provenance). Finish no-return approved as a design semantic only. User authorizes minimal 43284 C/KO root-handoff changes; implementation remains unapproved.
+ - 2026-10-29 21:49 UTC: Exec Glue rev11 计划复核（冻结 SHA-256 1dc5ad14e0a478431db3781c48eb5a7587ccc97d49861ba066ace0deab6f251a，15,208 B）= BLOCKED（3 阻断：init↔App/Shizuku runDir 的 DAC/SELinux 可达性、module-param/insmod/KO/UMH ABI 与 KMI 产物、marker 跨 UID 身份/重放；3 重要：exp.c cleanup 结果、HandoffRequested 全链路、FD/exec 失败验证；1 建议：marker schema 纳入 manifest/golden）。Finish no-return 与状态时序一致；该评审不批准生产实现。
+ - 2026-10-29 21:52 UTC: Exec Glue rev11a 计划复核（冻结 SHA-256 61912b4313150869ef4a3aa0e1a23a2d1a475618409226693bb40cdd80b99925，15,869 B）= BLOCKED（1 阻断：init domain 对 App-private/Shizuku runDir 的 DAC/SELinux 实际可达性；3 重要：逐 KMI ABI/KO hash、exp.c cleanup 返回值、HandoffRequested 全链路；1 建议：root-owned 脚本 FD inheritance/exec fixture）。ROOT_READY/RELEASE_FINISH 防重放与 Finish no-return 合同已收敛；未批准生产实现。
++- 2026-10-29 22:05 UTC: rev11a M0 marker-only gate design review（冻结计划 SHA-256 61912b4313150869ef4a3aa0e1a23a2d1a475618409226693bb40cdd80b99925）= BLOCKED（2 阻断：生产 Flow/ELF/KO 当前无 marker-only handoff；缺隔离 fixture 方案与该批精确批准；3 重要：双 launcher runDir 身份/DAC/SELinux、marker replay/替换竞态测试、同批清理与恢复证据）。本轮仅设备预检，Payload/Finish 未运行；要求将 M0 独立批次写入活动计划并复核。
++- 2026-10-29 22:08 UTC: Exec Glue rev11b M0 设计复核（冻结草案 SHA-256 87e5c36b6dcc28831e816a91d3cca68cce8b6502e723e295a70f803547ef8940，16,237 B）= BLOCKED（2 阻断：计划超过 A3 16,000 B 配额；A301SO init↔App/Shizuku DAC/SELinux 与 marker 消费仍未实测；2 重要：fixture 文件/hash/安装清理命令需固定、fixture ABI 与生产 KMI 门分离；1 建议：删除前确认 worker/FD 已退出）。隔离 fixture 可作为 M0；不批准生产实现。
++- 2026-10-29 22:11 UTC: Exec Glue rev11b 紧缩版 M0 计划复核（冻结 SHA-256 1b232874a756463ab529c34161bdbac37314a2a23fe06571fd9ac52960fa2ff0，15,997 B）= M0 可进入用户已批准的 fixture 实现批次（计划阻断 0；重要 1：实现前固定 fixture 清单/hash/安装清理命令/absence 输出；建议 1：删前核 worker/FD 退出）。实证门未关闭；不批准生产实现。
++- 2026-10-29 22:11 UTC: rev11b 复核证据更正：此前把 legacy `cve43284/flow/Flow43284Impl.kt` 当作 Glued production Flow 不准确；实际 `backend/43284glued/Flow43284Glued.kt` 为单 exec step，调用 `ExecutableBackendProcess`，Shizuku host 在 `Glued43284ExecutableHost.kt`。修正后 M0 判决不变：仍需隔离 fixture 实测 init↔双 runDir marker/DAC/SELinux。
++- 2026-10-29 22:12 UTC: 43284 M0 review evidence addendum: `Flow43284Glued.kt` is wired as one `ExecutableBackendProcess` step and `Glued43284ExecutableHost` supplies Shizuku runtime arguments; the earlier reference to legacy `Flow43284Impl` as the Glued route is corrected. M0 still requires an isolated marker fixture; no change to the production gate verdict.

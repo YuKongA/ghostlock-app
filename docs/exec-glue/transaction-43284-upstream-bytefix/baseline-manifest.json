@@ -1,0 +1,32 @@
+[
+  {
+    "kind": "baseline",
+    "path": "app/src/main/cpp/43284glued/CMakeLists.txt",
+    "sha256": "c5b964f4c4084c56b862ee337cbb637227d40c5fa381cb3c77f4b6c909f7590d",
+    "bytes": 2085
+  },
+  {
+    "kind": "baseline",
+    "path": "app/src/main/cpp/43284glued/exp.c",
+    "sha256": "22a905982819e94b908b298f930aa821c60d98bad97425e534cb9c9ebef631ef",
+    "bytes": 23524
+  },
+  {
+    "kind": "baseline",
+    "path": "app/src/main/cpp/43284glued/df_log.c",
+    "sha256": "8d74c5062ca23e7997e5c1e34e30d0a7c1c2eb864960da215f65d46d2061ec16",
+    "bytes": 579
+  },
+  {
+    "kind": "baseline",
+    "path": "app/src/main/cpp/43284glued/df_log.h",
+    "sha256": "3cbdc59f5d54d7bbcdef1492d3b744b935b3b4d16b9a7b350ed9a5e5d594aeb9",
+    "bytes": 809
+  },
+  {
+    "kind": "baseline",
+    "path": "docs/plan/exec-glue-plan.md",
+    "sha256": "d8dba9ac629ed22c2950986aad7452f96e2dd2b195fbc1484c3b1017909ac291",
+    "bytes": 32762
+  }
+]

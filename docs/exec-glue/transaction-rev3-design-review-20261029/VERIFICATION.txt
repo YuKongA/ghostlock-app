@@ -1,0 +1,33 @@
+Changed branch: `docs/plan/exec-glue-plan.md` gained the frozen design-critic result; production source remains unchanged.
+
+Four artifact paths:
+- MODIFIED_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-rev3-design-review-20261029/MODIFIED_FILE/exec-glue-plan.md
+- DIFF_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-rev3-design-review-20261029/DIFF_FILE.patch
+- VERIFICATION.txt: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-rev3-design-review-20261029/VERIFICATION.txt
+- executable ROLLBACK.sh: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-rev3-design-review-20261029/ROLLBACK.sh
+Active plan: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/plan/exec-glue-plan.md
+
+BASELINE
+Command: python3 -c "from pathlib import Path; s=Path('docs/exec-glue/transaction-rev3-design-review-20261029/BASELINE_FILE/exec-glue-plan.md').read_text(); assert '43284 接入边界' in s; print('BASELINE_PLAN_GATE: PASS')"
+Input: `BASELINE_FILE/exec-glue-plan.md`
+Literal output: BASELINE_PLAN_GATE: PASS
+Exit status: 0
+SHA-256: 6d9fe3f2c150961da501cd9aca8ac63de5f16b3d0bc3366c0219ebc84cc1fd26
+
+MODIFIED
+Command: python3 -c "from pathlib import Path; s=Path('docs/plan/exec-glue-plan.md').read_text(); assert 'rev3 当前实现复核结论（design-critic，2026-10-29）' in s and '43284 post-exit finish 权限/结果语义' in s and '生产ELF finish/payload' in s; print('MODIFIED_PLAN_GATE: PASS')"
+Input: active `docs/plan/exec-glue-plan.md`
+Literal output: MODIFIED_PLAN_GATE: PASS
+Exit status: 0
+SHA-256: dbd16e189415fbd6d51444bea6b0445c3c1b3df98bb4a3cb173eb149f2370079
+Additional command: `git diff --check -- docs/plan/exec-glue-plan.md && printf '%s\n' 'GIT_DIFF_CHECK: PASS'`
+Literal output: GIT_DIFF_CHECK: PASS
+Exit status: 0
+
+ROLLBACK
+Command: `/Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-rev3-design-review-20261029/ROLLBACK.sh /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-rev3-design-review-20261029/ROLLBACK_TEST/exec-glue-plan.md /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-rev3-design-review-20261029/BASELINE_FILE/exec-glue-plan.md`
+Input: separate modified plan copy and preserved baseline plan
+Literal output: ROLLBACK_RESTORED: 6d9fe3f2c150961da501cd9aca8ac63de5f16b3d0bc3366c0219ebc84cc1fd26; ROLLBACK_TEST: restored baseline; active plan remains modified
+Exit status: 0
+Restored behavior/status: rollback-test copy is byte-identical to baseline (hash `6d9fe3f2c150961da501cd9aca8ac63de5f16b3d0bc3366c0219ebc84cc1fd26`); active plan remains modified (hash `dbd16e189415fbd6d51444bea6b0445c3c1b3df98bb4a3cb173eb149f2370079`).
+Additional: `sh -n ROLLBACK.sh` => PASS, exit 0.

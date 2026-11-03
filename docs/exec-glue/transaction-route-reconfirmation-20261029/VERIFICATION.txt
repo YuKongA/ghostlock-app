@@ -1,0 +1,76 @@
+执行器路由再次确认与验证
+日期：2026-10-29
+工作树：/Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app
+
+Changed branch/field
+- 执行器选择：`ExecutableProcessRouting.select(binderReachable, permissionGranted)` 在 Shizuku binder 可达且授权时选 SHIZUKU；否则选 APP。Flow 始终由 App 持有；选择在创建 child 前发生；已选 SHIZUKU 后的失败不启动第二个 App child。
+- 本轮没有改动生产 Kotlin/C/C++。原计划已实现上述分支；仅在 MODIFIED_FILE 中留存本轮用户确认的计划副本。
+
+Artifacts
+- MODIFIED_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-route-reconfirmation-20261029/MODIFIED_FILE/exec-glue-plan.md
+- DIFF_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-route-reconfirmation-20261029/DIFF_FILE.patch
+- VERIFICATION.txt: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-route-reconfirmation-20261029/VERIFICATION.txt
+- executable ROLLBACK.sh: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-route-reconfirmation-20261029/ROLLBACK.sh
+- Baseline plan copy: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-route-reconfirmation-20261029/BASELINE_FILE/exec-glue-plan.md
+
+Baseline
+Command/input:
+  ./gradlew :app:testDebugUnitTest --tests com.ghostlock.app.backend.core.ExecutableProcessRoutingTest --no-daemon --console=plain
+Input: current pre-confirmation application source and the three routing tests.
+Literal result:
+  BUILD SUCCESSFUL in 6s
+  33 actionable tasks: 6 executed, 27 up-to-date
+  EXIT_STATUS=0
+  JUnit XML: tests=3, failures=0, errors=0, skipped=0
+Full output: BASELINE_FILE/test.log.
+Source plan SHA-256: 7c6d436be67fcee9e21cdc8d0165273f58db34370781bb0184eb6edcaf2f40a0.
+
+Modified
+Changed copy/input: MODIFIED_FILE/exec-glue-plan.md adds the explicit user's Shizuku-optional route confirmation; production source remains unchanged.
+Command/input:
+  ./gradlew :app:testDebugUnitTest --tests com.ghostlock.app.backend.core.ExecutableProcessRoutingTest --no-daemon --console=plain
+Literal result:
+  BUILD SUCCESSFUL in 6s
+  33 actionable tasks: 6 executed, 27 up-to-date
+  EXIT_STATUS=0
+  JUnit XML: tests=3, failures=0, errors=0, skipped=0
+Full output: MODIFIED_FILE/test.log.
+Modified copy SHA-256: bdc7423c8948898c8bb6c3ff7eeed7cfce7d22b3cd62b139b4589d30e1453ef5.
+
+Rollback on another copy
+Command/input:
+  ./docs/exec-glue/transaction-route-reconfirmation-20261029/ROLLBACK.sh "$PWD/docs/exec-glue/transaction-route-reconfirmation-20261029/ROLLBACK_TEST/exec-glue-plan.md"
+Literal output/result:
+  ROLLBACK_RESTORED=yes sha256=7c6d436be67fcee9e21cdc8d0165273f58db34370781bb0184eb6edcaf2f40a0
+  EXIT_STATUS=0
+Restored behavior/status: ROLLBACK_TEST/exec-glue-plan.md byte-compares equal to BASELINE_FILE; MODIFIED_FILE remains changed; production source and route behavior remain unchanged.
+
+Continuation recheck (2026-10-29)
+Changed branch/field: the Shizuku-vs-App process launcher route for 43499-Glued and 43284Glued; no production source changed in this confirmation turn. App remains the sole Flow owner; the exec route selects Shizuku only when its binder is reachable and permission is granted, and otherwise selects App. A failure after selecting Shizuku does not start a second App child.
+
+MODIFIED test recheck
+Command/input:
+  ./gradlew :app:testDebugUnitTest --tests com.ghostlock.app.backend.core.ExecutableProcessRoutingTest --no-daemon --console=plain; rc=$?; printf 'EXIT_STATUS=%s\n' "$rc"; exit "$rc"
+Input: current Glued process route source and ExecutableProcessRoutingTest.
+Literal output:
+  BUILD SUCCESSFUL in 5s
+  33 actionable tasks: 6 executed, 27 up-to-date
+  EXIT_STATUS=0
+  JUnit XML: tests=5, failures=0, errors=0, skipped=0
+Exit status: 0.
+
+Direct AVD UI recheck
+Commands/input:
+  adb -s emulator-5554 shell am start -W -n com.ghostlock.app/.ui.MainActivity
+  adb -s emulator-5554 shell input tap 500 550
+  adb -s emulator-5554 shell uiautomator dump /sdcard/window.xml
+  adb -s emulator-5554 exec-out screencap -p > build/deployment-audit/continuation-20261029/avd-selector-current.png
+Literal result: Paths selector renders exactly two enabled Glued entries; original CVE-2026-43284, CVE-2026-98260, CVE-2026-43499, and Custom rows have `enabled=false`. App reports versionName=2.0.12, versionCode=1342. Pulled installed base.apk SHA-256 equals local APK SHA-256 `8cdb0e127871bb271af3850a378e4860fd3db00ea8ef9225bd575811440562ea` (`BYTE_IDENTICAL=True`). Screenshot: `/Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/build/deployment-audit/continuation-20261029/avd-selector-current.png`.
+Exit status: 0 for the activity launch, hierarchy dump, and screenshot capture.
+
+Rollback recheck on a fresh temporary copy
+Command:
+  /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-route-reconfirmation-20261029/ROLLBACK.sh /private/var/folders/4r/3kzkcr7d6773msn42l9t90n40000gn/T/ghostlock-route-reconfirmation-rollback-2gt5186_/exec-glue-plan.md
+Input: temporary copy of MODIFIED_FILE SHA-256 `bdc7423c8948898c8bb6c3ff7eeed7cfce7d22b3cd62b139b4589d30e1453ef5`.
+Literal output: `ROLLBACK_RESTORED=yes sha256=7c6d436be67fcee9e21cdc8d0165273f58db34370781bb0184eb6edcaf2f40a0`.
+Exit status: 0. Restored behavior/status: temporary copy matches BASELINE_FILE byte-for-byte; active MODIFIED_FILE remains changed; production source and AVD install remain untouched.

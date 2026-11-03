@@ -1,0 +1,9 @@
+ROLLBACK_TEST=another-copy-of-temporary-M0-source-and-CMake-cache
+COMMAND: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-m0-marker-20261029/ROLLBACK.sh /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-m0-marker-20261029/ROLLBACK_TEST/project-copy3
+EXIT_STATUS=0
+LITERAL_RESULT: ROLLBACK_RESULT=restored M0-only source delta; changed_paths=19
+BASELINE_HASHES: app/build.gradle.kts, 43284glued/CMakeLists.txt, ExecutableRunEnvironment.kt, ExecutableShizukuHost.kt, and Glued43284ExecutableHost.kt matched their start-state source hashes; 0 mismatches.
+ABSENCE_RESULT: M0 test, M0 source overlay, both M0 CMake cache directories, M0 build copy, fixture app APK, and fixture androidTest APK absent in the copied project.
+RESTORED_BEHAVIOR: original 43284 production ELF bytes and host wiring are restored by targeted inverse edits; M0-only test/task/branch/worker entrypoints are removed.
+
+The complete literal script output is `rollback-test-cache.stdout.txt`; the M0-only source patch was applied from `DIFF_FILE.patch`. The copied project was deleted after verification; the active MODIFIED_FILE was not modified by this rollback test.

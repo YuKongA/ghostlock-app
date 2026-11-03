@@ -1,0 +1,42 @@
+Launcher route clarification verification
+Date: 2026-10-29
+Working tree: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app
+Checkout: detached HEAD based on dev-nocpp (HEAD b119085915748a940740d7ce919b5a30ed8e9346)
+Changed branch/field: documentation only; active exec-glue plan now records Shizuku/App as peer, mutually exclusive per-run launcher choices. Shizuku is selected only when binder is reachable and permission is granted; otherwise App launcher. A selected uncertain Shizuku start never retries by starting a second App child.
+
+Artifact paths:
+MODIFIED_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-launcher-route-confirm-20261029/MODIFIED_FILE/exec-glue-plan.md
+DIFF_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-launcher-route-confirm-20261029/DIFF_FILE
+VERIFICATION.txt: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-launcher-route-confirm-20261029/VERIFICATION.txt
+ROLLBACK.sh: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-launcher-route-confirm-20261029/ROLLBACK.sh
+
+Baseline source-copy identity:
+Path: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-launcher-route-confirm-20261029/BASELINE_FILE/exec-glue-plan.md
+Bytes: 88821
+SHA-256: c1a0e365c582f4742b48caf11ed01b38afeee66a0e875175d694c8e0e834a09f
+
+BASELINE test
+Exact command: ./gradlew :app:testDebugUnitTest --tests 'com.ghostlock.app.backend.core.ExecutableProcessRoutingTest' --no-daemon --console=plain
+Input: binderReachable/permissionGranted routing truth table; one selected launcher; selected Shizuku failure does not start an App child.
+Literal output/result: BUILD SUCCESSFUL in 5s; 33 actionable tasks: 6 executed, 27 up-to-date.
+Result XML: tests=5, failures=0, errors=0, skipped=0.
+Exit status: 0.
+
+MODIFIED test
+Exact command: ./gradlew :app:testDebugUnitTest --tests 'com.ghostlock.app.backend.core.ExecutableProcessRoutingTest' --no-daemon --console=plain
+Input: same routing truth table and one-launcher/no-fallback cases; plan-only clarification does not alter production Kotlin.
+Literal output/result: BUILD SUCCESSFUL in 5s; 33 actionable tasks: 6 executed, 27 up-to-date.
+Result XML: tests=5, failures=0, errors=0, skipped=0.
+Exit status: 0.
+MODIFIED_FILE bytes: 89477
+MODIFIED_FILE SHA-256: cc9c8ff31d252a6d65f2409d4b85d31b4ca092c295fe0509c195772f980da86d
+Live plan equals MODIFIED_FILE: true.
+
+ROLLBACK test on a separate copy
+Exact command: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-launcher-route-confirm-20261029/ROLLBACK.sh /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-launcher-route-confirm-20261029/ROLLBACK_TEST_COPY/exec-glue-plan.md /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-launcher-route-confirm-20261029/BASELINE_FILE/exec-glue-plan.md
+Input: MODIFIED_FILE copy restored from BASELINE_FILE copy.
+Literal output/result: ROLLBACK_OK bytes=88821 sha256=c1a0e365c582f4742b48caf11ed01b38afeee66a0e875175d694c8e0e834a09f
+Exit status: 0.
+Restored behavior/status: rollback test copy is byte-identical to baseline; SHA-256 c1a0e365c582f4742b48caf11ed01b38afeee66a0e875175d694c8e0e834a09f. The live plan and MODIFIED_FILE remain changed at SHA-256 cc9c8ff31d252a6d65f2409d4b85d31b4ca092c295fe0509c195772f980da86d.
+
+Reopen checks: BASELINE_FILE, MODIFIED_FILE, DIFF_FILE, VERIFICATION.txt, ROLLBACK.sh, and ROLLBACK_TEST_COPY all exist; rollback script is executable; DIFF_FILE contains only the appended route clarification; test XML confirms 5/0/0/0; git diff --check exit 0.

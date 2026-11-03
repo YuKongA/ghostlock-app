@@ -1,0 +1,6 @@
+APK archive entry comparison (installed baseline -> rebuilt candidate)
+baseline=docs/exec-glue/deployment-a301so-20261029/BASELINE_FILE/installed-base.apk
+modified=docs/exec-glue/deployment-a301so-20261029/MODIFIED_FILE/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk
+entry_count=398
+changed_entries=1
+classes4.dex: 0ec6ecec2ddcc80b20ee87f0d6b10ee23ed9f6e1e331c6e37f7c2c67bd916795 -> d85536de8392f665da7016bb06eeb8a4bcff24aec6ed3b075ca95d5a5f842176

@@ -1,0 +1,57 @@
+package com.ghostlock.app.backend.cve43499glued
+
+import android.content.Context
+import com.ghostlock.app.core.flow.FlowRequest
+import com.ghostlock.app.core.flow.FlowStep
+import com.ghostlock.app.core.flow.SequentialFlow
+import com.ghostlock.app.core.flow.StepResult
+import com.ghostlock.app.backend.core.ExecutableBackendProcess
+import com.ghostlock.app.backend.declarations.cve43499glued.Backend43499Glued
+import com.ghostlock.app.ui.backend.BackendRunUiState
+import com.ghostlock.app.backend.cve43499glued.Glued43499ProfileCodec
+
+/** 43499 exec request containing the app context and the output-line sink. */
+internal data class Flow43499GluedRequest(val context: Context, val onLine: (String) -> Unit) : FlowRequest
+
+/** Production 43499 glue flow: one ordered exec step. */
+internal class Flow43499Glued : SequentialFlow<Flow43499GluedRequest>(Flow43499Glued::class) {
+    override fun steps(request: Flow43499GluedRequest): List<FlowStep> = listOf(
+        FlowStep("exec") {
+            val selected = Backend43499Glued.profileReference
+            val profileResult = runCatching { Glued43499ProfileCodec.resolve(request.context, selected) }
+            if (profileResult.isFailure) {
+                return@FlowStep StepResult.Failed("profile-invalid:" + profileResult.exceptionOrNull()?.message.orEmpty())
+            }
+            val profile = profileResult.getOrThrow()
+            when (val state = ExecutableBackendProcess.run(
+                context = request.context,
+                backendKey = "43499-Glued",
+                binaryName = "lib43499-Glued.so",
+                arguments = listOf("--ghostlock-app-call"),
+                stdin = profile.binary,
+                files = mapOf("profile.conf" to profile.sourceText.toByteArray(), "profile.bin" to profile.binary),
+                onLine = request.onLine,
+            )) {
+                is BackendRunUiState.Finished -> {
+                    if (state.result is com.ghostlock.app.core.flow.FlowResult.Ok) {
+                        StepResult.Done(mapOf("exit" to "0", "profile" to profile.release))
+                    } else {
+                        StepResult.Failed("exec-failed", mapOf("profile" to profile.release))
+                    }
+                }
+                is BackendRunUiState.Refused -> StepResult.Failed(state.reasons.joinToString(","))
+                else -> StepResult.Failed("exec-state-not-finished")
+            }
+        },
+    )
+}
+
+/** Builds the spec-owned runner that creates one fresh 43499 SequentialFlow per invocation. */
+internal fun flow43499GluedRunner(): com.ghostlock.app.ui.backend.BackendFlowRunner =
+    object : com.ghostlock.app.ui.backend.BackendFlowRunner {
+        override val key: String = "43499-Glued"
+        override suspend fun run(context: Context, onLine: (String) -> Unit) =
+            com.ghostlock.app.ui.backend.BackendRunUiState.Finished(
+                Flow43499Glued().run(Flow43499GluedRequest(context, onLine)),
+            )
+    }

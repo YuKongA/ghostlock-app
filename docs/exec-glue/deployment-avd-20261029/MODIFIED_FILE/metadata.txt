@@ -1,0 +1,11 @@
+package=com.ghostlock.app
+versionName=2.0.12
+versionCode=1342
+platform=AVD emulator-5554
+source_head=b119085915748a940740d7ce919b5a30ed8e9346
+source_branch=detached at dev-nocpp base
+current_apk_bytes=28999754
+current_apk_sha256=d174452840f18336fafc507a13694126477f7e8d86b4f127cd20baf4cdc5273f
+signer_sha256=b92a1aa56ccf72c789057722af1fe850d71fa067deafc71e985c4d7b3f3badca
+unit_tests=424 pass; full modified worktree
+native_exploit_execution=not performed

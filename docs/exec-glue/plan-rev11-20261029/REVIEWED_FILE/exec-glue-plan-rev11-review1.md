@@ -1,0 +1,70 @@
+# Exec Glue 部署计划（唯一活动版）
+
+> 状态：rev11 纳入用户允许修改 43284 上游 C/KO 增加 root handoff 的裁定，并以目录文件交接替换 socket 候选；设计待复核，生产代码门关闭。目标版本：2.0.12。
+> 取代关系：本文件是唯一活动计划；此前批次记录、设备证据与详版 rev1–rev4 见归档 docs/archive/20261029-1025-exec-glue-plan-history.md。
+> 依据：docs/development/软件工程守则.md、design-philosophy.md、engineering-standards.md、design-review-principles.md。
+
+## 1. 目标与边界
+
+以 dev-nocpp 基线 commit b119085915748a940740d7ce919b5a30ed8e9346（2.0.12）交付同级 Glued 后端 43499-Glued 与 43284Glued。App 的 SequentialFlow 各只有一个 exec step；Shizuku 是可选 launcher：授权且可达时只选 Shizuku，否则选 App；已选 launcher 的启动结果不确定时不得再启动第二个 child。现有 UI 页面和控件保留，原版 CVE 后端与 Custom Lua 灰显不可选，原版 native targets 不构建。43499 上游 C/C++ 保持不变；43284 上游 C/KO 仅允许为 root handoff 作最小、可追溯的改动；不 commit/push。
+
+本次只修订 root 执行权与 Finish 终止语义，不改攻击原语、profile schema 或既有 UI 布局。生产批次须先经设计 gate 和用户批准，再单批实现、验证。
+
+## 2. 已确认的用户决策
+- Safe mode 开关生成本次运行唯一 effective profile；43499 GLK1 meta.safe_mode 与 root script 使用同一值。
+- Root Manager 不增加 Glued 专属候选搜索/优先级；common Payload/Finish 不依赖 manager su，也不打包 su。
+- 用户 2026-10-29 明确允许最小、可追溯地修改 43284 上游 C/KO，仅为 root handoff；DFRoot system-root UMH 是候选，不调用 manager su。Shizuku 可选；授权且可达时用 Shizuku，否则用 App launcher，launcher 本身不授予 root。此项授权修改范围，不等于批准生产实现。
+- Finish 可包含软重启；Finish 是最后业务动作。成功 exec 后无后续等待、观察、状态/日志/标记、清理或回调。
+- 不增加额外命令行或 Finish 后状态/完成标记；UI 在交接前进入 HandoffRequested，之后不报告成功。
+
+## 3. rev11 设计候选
+
+### 43499-Glued
+Profile 先解析，再按 Safe mode 开关派生本次唯一 effective profile；源 conf 不改，GLK1 与脚本用同一值。Flow 为每次 run 创建固定 allowlist 与 UUID runDir；root script 预置在 native 预期路径，为 regular 0444 文件。native O_TRUNC 写失败后仍由 rooted victim 按同路径只读打开并 exec；用无副作用 fixture 核验 inode、owner、mode、hash。
+
+脚本镜像 ops.cpp:236-431 的 root gate、iomem/debug、policy fixup、KMI、safe-mode、module wait 与失败分支。移除 KSUD 搜索/fallback；唯一 RootManagerSpec package 的 nativeLibraryDir/libksud.so 在执行前核验绝对路径、regular、执行位、ABI 与 App/Shizuku victim 可达性，失败即拒绝，不枚举、不 fallback。FolkPatch 仅走 common launch-only/LKM 语义，前置条件不成立即拒绝。
+
+顺序：profile/root gate → SELinux policy fixup → common RootManager direct-path late-load（一次）→ KernelSU module wait/restore → 其它 payload/状态操作 → common Finish。Manager binary 只做 late-load，不为 Payload/Finish 提权。launcher 先完成 staging 并把 stdout/stderr 直连磁盘日志，再将 UI/Flow 置为 HandoffRequested 并只启动一次 ELF；返回值不是 Done/Ok。子进程启动成功后不 wait、不读退出码/管道、不注册完成回调；只有尚未成功 spawn 时允许报告启动错误。root script 完成所有 Finish 前操作，清除可能在 shell 退出时运行的 trap，最后以 exec /system/bin/sh <absolute-finish-path> 替换自身。exec 成功后任何进程都不等待、观察、写标记/日志/状态或 cleanup。仅 ELF 尚未启动或 Finish exec 失败时可报启动失败；43499 上游 C++ 不改。
+
+### 43284Glued
+Flow 保持一个 SequentialFlow exec step；Shizuku 获授权且可达时作为 launcher，否则用 App launcher，两者都不授予 root。libcxx.S 先检查 uid/tid，再经 insmod 进入 DFRoot KO。现有 bootstrap.c 只读 DFRoot prefs、调用 ksud late-load，并可能软重启，不作为本次 common Payload/Finish 入口。exp.c 在 exploit 返回后调用 cleanup；发起 Finish handoff 前必须确认 native hook 恢复成功。
+
+**system-root 与参数 ABI 候选：** DFRoot v4.7 commit 49e992ef3c9f7ec03c8efea6e3cf552f7ec6a347 的 lkm/dfroot.c:55–61,161–183 以 /system/bin/sh 调 call_usermodehelper_setup/exec(..., UMH_WAIT_EXEC)，设置 init exec-context 后执行 DFRoot 私有 bootstrap；该 bootstrap 不会自动成为 GhostLock worker，也不写入 DFRoot 私有目录。新增 Glue 专用 root_worker.c executable（暂名 lib43284GluedRootWorker.so），连同 payload/finish/log 放进 launcher 自己的 runDir。候选 KO 参数：glk_worker、glk_run_dir 为绝对路径，仅允许 ASCII 字母、数字、斜杠、点、下划线、连字符且拒绝 .. 路径分量，各 1–255 字节（缓冲区 256）；glk_run_id 恰为 32 个小写 hex（缓冲区 33）；glk_launcher_uid 为 0–4294967295 十进制（缓冲区 11）。Flow argv → exp.c → libcxx.S insmod argv → KO module_param_string → UMH argv，逐层校验长度/NUL/字符；每个 KMI 实测 insmod 接收和 KO 解码。UMH 仅执行固定 /system/bin/sh -c 文本并以位置参数传 worker/runDir/runId/uid，禁止将动态值拼入 shell 文本。worker 先核验 uid=euid=0、init context、自身及脚本身份。
+
+**SELinux 硬门：** DFRoot 先尝试将 selinux_state 置 false；若读回仍 enforcing，必须确认 avc_has_perm 与 avc_has_perm_noaudit 都已有效 patch，否则在启动 worker 前 fail-closed。当前上游代码对缺失 hook 只记日志并继续，不能直接满足本合同。worker 还核验 u:r:init:s0、runDir owner/mode、无 symlink 与文件 hash；任何权限/context/身份不符都不接收 release。AVD 的库抽取属性不证明 UMH 可访问 App 私有目录或 Shizuku staging。
+
+**目录文件交接（替换 rev10 AF_UNIX 候选）：** App 与 Shizuku 各自建立唯一 runDir（launcher uid、0700、无 symlink），预先落盘 worker/payload/finish/log 与固定 run manifest（version、runId、launcher uid、各文件 SHA/size）并核 hash。root worker 以 O_CREAT|O_EXCL|O_NOFOLLOW 建 ROOT_READY，写 version/runId/pid+starttime/uid/euid 与 worker/payload/finish hash，chown 给 launcher uid、chmod 0600，并 fsync 文件和目录；launcher 核对全部身份字段。exp.c 只有在 hook 恢复成功后才让 ELF 返回 0；launcher 随后关闭 IpSecRuntime，Flow/ViewModel/RunPage 先进入 HandoffRequested（非 Finished/Ok），再用同目录临时文件、fsync、原子 rename 生成一次性 RELEASE_FINISH，内容绑定 runId、worker pid、payload/finish hash。worker 用 no-follow 打开并核 owner/mode/inode/content/hash，拒绝缺失、重复、陈旧、替换或身份不符；将 payload 与 finish 流式复制到新建 root-owned O_EXCL 文件，核对复制内容 SHA 与 release 中摘要，保持只读 FD。worker 将 root-owned 副本 fchmod 0400，payload/finish FD 均用 O_NOFOLLOW 打开并按摘要复核；payload FD 清除 FD_CLOEXEC、lseek 到 0 后传给 /system/bin/sh /proc/self/fd/<payloadFD>，等待 Payload 返回，非零则不运行 Finish。Payload 成功后关闭控制及 payload FD，只保留 finish FD，清除 FD_CLOEXEC、lseek 到 0，再 execve /system/bin/sh /proc/self/fd/<finishFD> 替换自身，避免同 UID 路径替换影响脚本内容。exec 成功后任何层不等待、观察、回调、清理、写状态/标记/日志；UI 留在 HandoffRequested。释放前发生错误、超时、断连或 cleanup 失败时不发 release、不运行 Finish，保留现场。runDir 只由后续独立 preflight 在证明执行者已退出且身份吻合时回收。
+
+**文件 vs socket 的 CBN：** AF_UNIX 需维护一个 listener/peer-credential 状态机及 connectto 域规则；目录方案增加两个原子 marker 文件和 fsync/rename，但复用现有每 run staging，并避免跨 App/Shizuku 的 socket connectto 与 peer-credential 路径。选择目录方案；若 A301SO 的 SELinux/DAC 实测不能证明两种 launcher 与 init worker 的必要读写，或 marker 身份/重放测试失败，则退回设计复核，不以降级校验继续执行。
+
+实现前须闭合：逐 KMI 参数 ABI/insmod→KO→UMH 实测；worker/runDir DAC、SELinux、namespace 和双 launcher 可达性；SELinux gate；exp.c cleanup 结果与 worker 等待/释放所有权；HandoffRequested 全链路先于 release；exec 成功无后续动作和失败分支；每个 KO 原 SHA、patch 与变体产物 hash。Host fixture 不替代 A301SO 证据。
+
+### 执行结束与资源
+Finish 是最后业务执行体。日志目标、脚本、fd、锁、IpSecRuntime 与 staging 检查均在交接前完成；Finish stdout/stderr 可写入预先打开的日志目标。成功 exec 前关闭控制 fd、锁、IpSecRuntime 与非继承 fd；exec 成功后不等待、不观察、不回调、不追加状态/日志/标记/cleanup/命令。软重启也是 Finish 自己的最后操作。仅 exec 失败且 Finish 未启动时可报告启动失败。
+
+runDir/log 由本次流程保留；后续独立 preflight 仅在确认执行者已结束、runId 与文件身份吻合时回收，否则保留并按配额拒绝新 run。preflight 早于 runDir 创建/staging/launcher 启动；同一 launcher root 并发处理串行化，不能取得唯一处理权即拒绝。不得仅凭年龄或 marker 删除 Unknown/活跃目录。43284 的 IpSecRuntime 必须在写 RELEASE_FINISH 前关闭；App 与 Shizuku 使用独立 staging，并核 regular/no-symlink、owner、mode、hash。
+
+## 4. 允许修改范围
+- 43499：profile codec/Flow、backend-specific root-script generator、common FinishScript/PayloadRequests strict-path 接口、run-file stager/process/host。
+- 43284：允许最小、可追溯修改上游 lkm/dfroot.c（KO）、exp.c（argv/cleanup 结果）、必要的 libcxx.S，以及新增 Glue root-worker；允许对应 CMake、provenance manifest、Flow/host/stager。
+- 对应 JVM/Android tests；状态变更涉及 BackendRunUiState、BackendRunGate、BackendRunViewModel 与 Material/Miuix 两处 RunPage；同批更新 full-process-uml.md exec/Finish sequence 与资源生命周期图。
+- 保留 UI 布局、原版 backend、43499 上游 C/C++、LegacyProfileConverter 转换语义、现有 LKM Finish 路径；43284 pristine upstream 与原始 manifest 哈希保留，Glued 改动不得覆盖来源副本。
+
+## 5. 设计与实现门
+1. rev4 的 manager su -c 与 Finish 后标记方案作废。rev11 以目录文件控制帧替换 AF_UNIX；design-critic 复核参数 ABI、UMH 固定 argv、SELinux gate、marker 权限/身份和双 launcher 可达性、cleanup 所有权、HandoffRequested 与单次 release。
+2. Finish 是最后动作：执行前备齐日志与资源；成功 exec 后不等待、不观察、不追加状态/日志/标记/cleanup，也不报告 Finish 完成。UI 仅保留交接前 HandoffRequested（43284 在 RELEASE_FINISH 前；43499 在 ELF spawn 前），Flow/UI 不映射为 Finished/Ok。任何 pre-release 错误都不运行 Finish；旧 runDir 只在下一次 preflight 证明执行者退出且身份吻合后回收，否则保留并按配额拒绝新 run。
+3. 本 rev11 design-critic 无阻断且用户明确批准前，不改生产源码。计划 ≤16 KiB；43499 direct-path/parity 是独立实现门。
+4. 分批实施：先 43499 root-victim bridge；43284 单独实现 root handoff 与 Payload→Finish exec；先跑无副作用 fixture，再按攻击路径门禁逐项关闭。每批更新 UML、所有权/生命周期表、测试和记录。
+5. Host：定向测试、testDebugUnitTest、assembleDebug、assembleDebugAndroidTest、上游源 SHA 对拍、APK/ELF ABI/entrypoint 与 KO patch/hash 校验。
+6. 设备：AVD emulator-5554 与 A301SO 均在线（本轮 adb devices -l）。先在 AVD 验证 UI 和无副作用 fixture；再以 A301SO 验证 APK 身份、launcher uid/context、worker uid/context、文件交接、log 与 staging。未经单独真机门禁不运行生产漏洞 ELF；不以 AVD/fixture 宣称 supported。
+
+## 6. 当前阻断与证据
+
+- 用户裁定与 Shizuku/Finish 语义见 §2；该许可是修改边界授权，不等于生产实现批准。rev11 替换 rev10 socket 候选，待复核。
+- DFRoot 上游证据：`/tmp/DFRoot-upstream-inspect` pinned HEAD/tag `49e992ef3c9f7ec03c8efea6e3cf552f7ec6a347 v4.7`；`lkm/dfroot.c` SHA-256 `fc1cdb216b3364bd408acd76bb7943bcb6f5f257ec134962df96ac97b6b460be`。`bootstrap.c` SHA-256 `5b19bfe9d4c632794d52de71a513d1bac2820e0fbd474ce19813913782111ce9`，当前 Glued `exp.c` SHA-256 `afdd68cb6b07fa9b04f93c7d4bd9f8ce0333f4dd2265416959cf9c630d55ac39` 与 pinned commit 逐字节一致；upstream CMake SHA-256 `e004a88b1b9a383ac8e092f22a6dfbb2e60404f4dafdcca3cde84afd7e00f2b6`，当前 Glued CMake SHA-256 `ca920d671a8af374f61edcc803b894982ed161302487a050b5b4744eb968a6b3` 是构建适配，不能以其与上游不同判定 C 原文失配。旧 `SOURCE-MANIFEST.json` 的 CMake/exp 期望 hash 分别为 `c5b964f4c4084c56b862ee337cbb637227d40c5fa381cb3c77f4b6c909f7590d` / `22a905982819e94b908b298f930aa821c60d98bad97425e534cb9c9ebef631ef`，均不匹配 pinned v4.7；`df_log.c/.h` 不是该 upstream commit 文件。保留旧 manifest 原字节，另建准确的 pristine provenance manifest，并复制 pinned 上游文件供后续逐文件 patch 对拍。
+- KO 来源证据：8 个当前 KO 文件与 `/Users/nickji/Documents/Program/Analysis/DFRoot` v4.6 checkout 的忽略构建产物逐字节一致；上游 `lkm/Makefile` 与 `.github/workflows/build.yml` 显示 KMI matrix 和 DDK image `20260828`。尚未从可复核的 pinned workflow artifact 对拍这些 KO，也未为新增 KO patch 生成替代字节及逐变体 hash。
+- 当前源码：43284glued/CMakeLists.txt 将上游 bootstrap.c 编成 libbootstrap.so；libcxx.S insmod argv 无 module 参数；exp.c 仅接 IPsec 参数并改写 KO 路径；cleanup() 忽略恢复返回值；BackendRunUiState 无 handoff 状态，RunPage 将 FlowResult.Ok 显示为成功。AVD 包属性不证明 UMH/SELinux/文件交接可用。
+- 43499：方案顺序已闭合为 common RootManager 单次 direct-path late-load；实际 libksud 身份/ABI、双 launcher 可达性、FolkPatch readiness 与失败转移仍是实现/设备门。
+- AVD 当前 UI/selector 与 2.0.12 APK、profile source、已有 safe fixture 结果见归档详版与 docs/exec-glue/ 下对应 transaction；最近 adb devices -l 见 emulator-5554 online；未运行生产 Glued ELF。
+- rev8/rev9 critic 是历史阻断，不覆盖 rev11：参数/UMH ABI、SELinux/launcher 可达性、Flow 状态、cleanup 与 KO provenance 尚未闭合。
+- rev11 仅为设计候选，尚未由 design-critic 评审；未执行生产 Glued ELF，也未开始生产实现。

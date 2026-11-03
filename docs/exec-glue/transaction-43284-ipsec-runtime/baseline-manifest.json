@@ -1,0 +1,56 @@
+[
+  {
+    "kind": "baseline",
+    "path": "app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableBackendProcess.kt",
+    "sha256": "17a75a9c4016c0d6748b856f1e29d9b49c3d28b5e12fa97967e6407f9f76abad",
+    "bytes": 14156
+  },
+  {
+    "kind": "baseline",
+    "path": "app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableShizukuHost.kt",
+    "sha256": "9548831ec2d5ac9d74c7d9e3eadf7b70bf40f73404bdc83a3b6922578ebcaa67",
+    "bytes": 12044
+  },
+  {
+    "kind": "baseline",
+    "path": "app/src/main/kotlin/com/ghostlock/app/backend/43284glued/Glued43284ExecutableHost.kt",
+    "sha256": "39e16a72dc92bc0f6cfc0c6528941ea0be3278d0558cf4e2978d9ac6dc37331a",
+    "bytes": 529
+  },
+  {
+    "kind": "baseline",
+    "path": "app/src/test/kotlin/com/ghostlock/app/backend/core/ExecutableProcessRoutingTest.kt",
+    "sha256": "56feeffcaa15a440c2e917a296a4690f93de7a7f84605b0a6f1fe257845c989f",
+    "bytes": 974
+  },
+  {
+    "kind": "baseline",
+    "path": "docs/development/full-process-uml.md",
+    "sha256": "572cf22fcbabc435a1ea352822fc30415a25ac4eced417f40b828aa8c4c5d7dc",
+    "bytes": 48363
+  },
+  {
+    "kind": "baseline",
+    "path": "docs/plan/exec-glue-plan.md",
+    "sha256": "fd9383d14af8b378640d8f9d9dae98f4dca82dc91538fc85e98a33dda6666175",
+    "bytes": 29582
+  },
+  {
+    "kind": "added",
+    "path": "app/src/main/kotlin/com/ghostlock/app/backend/43284glued/AndroidIpSecRuntime.kt",
+    "sha256": "2a22e12860156353b107b0eeb5a06ec83c2d90ac7b182bf90a03630c57c0c09f",
+    "bytes": 7368
+  },
+  {
+    "kind": "added",
+    "path": "app/src/test/kotlin/com/ghostlock/app/backend/43284glued/IpSecCliArgumentsTest.kt",
+    "sha256": "02f000dbef6db9d813b2f9a340b12e2f4f2a011349aeb285afa9fc937fb13270",
+    "bytes": 2323
+  },
+  {
+    "kind": "added",
+    "path": "app/src/androidTest/kotlin/com/ghostlock/app/backend/43284glued/AndroidIpSecRuntimeSmokeTest.kt",
+    "sha256": "d001fe77ee81e49a9f36d84c32bea751453febe5ec86302c70dfb0cc7c390d06",
+    "bytes": 1344
+  }
+]

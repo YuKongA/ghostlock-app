@@ -1,0 +1,57 @@
+TRANSACTION: exec-glue dual process launcher route (implementation batch 1)
+Workspace: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app
+Changed branch/field: BackendSpec.appOwnedFlowWithAutomaticProcessLauncher; ExecutableProcessRouting.select(binderReachable, permissionGranted) selects exactly one owner before child start.
+User route: Flow stays in App; if Shizuku binder is reachable and permission is granted, start through the shared Shizuku UserService; otherwise start through the App ProcessBuilder. A failure after selecting Shizuku remains a Shizuku result and does not start an App child.
+
+Artifacts:
+BASELINE_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-auto-process-launcher/BASELINE_FILE
+MODIFIED_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-auto-process-launcher/MODIFIED_FILE
+DIFF_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-auto-process-launcher/DIFF_FILE.patch
+VERIFICATION.txt: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-auto-process-launcher/VERIFICATION.txt
+ROLLBACK.sh: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-auto-process-launcher/ROLLBACK.sh (executable)
+AVD screenshot: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-auto-process-launcher/avd-backend-selector.png
+Manifest: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-auto-process-launcher/manifest.tsv
+Changed paths: 16 (11 existing files restored by rollback; 5 additions removed).
+Plan baseline SHA-256: 5be29fd54af81595920066a37dc47cd61b4e0b304f3724b2b90b6f3773a10e7b
+Plan modified SHA-256: fd9383d14af8b378640d8f9d9dae98f4dca82dc91538fc85e98a33dda6666175
+APK: build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk
+APK SHA-256: 3423a23384792dbdbcb72a88662ec6fcf61eb588cf6127d811f91c6d824001b1
+APK identity: package com.ghostlock.app; versionName 2.0.12; versionCode 1342; ABI arm64-v8a.
+
+BASELINE
+Command: ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+Input: pre-launcher implementation tree and its full app unit suite.
+Literal output: BUILD SUCCESSFUL in 39s; 33 actionable tasks: 6 executed, 27 up-to-date.
+Observed baseline test count: 404 tests, 0 failures, 0 errors, 0 skipped.
+Exit status: 0.
+
+MODIFIED
+Command: ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+Input: dual-process route, Shizuku host adapters, gate/declaration updates, tests, UML and plan changes.
+Literal output: BUILD SUCCESSFUL in 40s; 33 actionable tasks: 8 executed, 25 up-to-date; TEST_EXIT=0.
+Test XML: tests=406, failures=0, errors=0, skipped=0.
+Exit status: 0.
+
+Build
+Command: ./gradlew :app:assembleDebug --no-daemon --console=plain
+Input: version 2.0.12 debug APK, arm64-v8a native executable packaging and app source.
+Literal output: BUILD SUCCESSFUL in 5s; 44 actionable tasks: 7 executed, 37 up-to-date; BUILD_EXIT=0.
+Exit status: 0.
+
+AVD UI verification
+Command: adb -s emulator-5554 install -r build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk && adb -s emulator-5554 shell am start -W -n com.ghostlock.app/.ui.MainActivity
+Input: built APK SHA-256 3423a23384792dbdbcb72a88662ec6fcf61eb588cf6127d811f91c6d824001b1.
+Literal output: Performing Streamed Install / Success; Status: ok; LaunchState: COLD; Activity: com.ghostlock.app/.ui.MainActivity; TotalTime: 1341; WaitTime: 1343; Complete.
+Exit status: 0. Paths selector displayed enabled 43499-Glued and 43284Glued; original 43499, original 43284, original 98260 and Custom appeared disabled/grey. 43499 built-in profile selector and Import .conf remained visible. Screenshot: avd-backend-selector.png.
+No backend executable was run during this UI check. The AVD result is not an A301SO or process-route smoke result.
+
+ROLLBACK TEST (isolated copy)
+Command: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-auto-process-launcher/ROLLBACK.sh /var/folders/4r/3kzkcr7d6773msn42l9t90n40000gn/T/ghostlock-auto-launcher-rollback-_9stjcp1
+Input: isolated copy of all 16 MODIFIED_FILE paths at /var/folders/4r/3kzkcr7d6773msn42l9t90n40000gn/T/ghostlock-auto-launcher-rollback-_9stjcp1; no rollback was run against the active workspace.
+Literal output: ROLLBACK_FIXTURE_READY files=16; ROLLBACK_APPLIED files=11 removed=5; ROLLBACK_VERIFY restored=11 removed=5 active_modified_matches=16; RESTORED_BEHAVIOR=all baseline bytes restored; all additions absent in isolated copy; ROLLBACK_TEST_EXIT=0.
+Exit status: 0.
+Restored behavior/status: isolated target's 11 pre-existing paths were byte-identical to BASELINE_FILE; all 5 new paths were absent. Active workspace remains changed and all 16 paths match MODIFIED_FILE.
+
+Source text check: PASS (all 16 changed source/doc files have final newlines and no trailing whitespace).
+git diff --check: no output; exit status 0.
+Deployment status: not deployed to A301SO. Remaining gates: harmless process fixture on both routes/device; upstream 43499 FinishScript/O_TRUNC parity; 43284 CLI arguments and IpSecRuntime ownership; child-descendant cancel/disconnect semantics. No vulnerability ELF was executed.

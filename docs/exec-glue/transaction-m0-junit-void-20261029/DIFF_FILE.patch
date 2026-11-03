@@ -1,0 +1,161 @@
+--- a/app/src/androidTest/kotlin/com/ghostlock/app/backend/43284glued/M0MarkerGateTest.kt
++++ b/app/src/androidTest/kotlin/com/ghostlock/app/backend/43284glued/M0MarkerGateTest.kt
+@@ -124,80 +124,86 @@
+         }
+     }
+ 
+-    /** Runs through the common Shizuku UserService and leaves its exact runDir for host audit. */
++    /**
++     * Runs through the common Shizuku UserService and leaves its exact runDir for host audit.
++     *
++     * @note Mechanical change: JUnit requires this blocking test method to return JVM void.
++     */
+     @Test
+-    fun shizukuLauncherCompletesRootReadyAndSingleReleaseMarkers() = runBlocking {
+-        val context = InstrumentationRegistry.getInstrumentation().targetContext
+-        assertTrue("M0 fixture build flag is absent", BuildConfig.M0_MARKER)
+-        val binderReachable = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
+-        val permissionGranted = binderReachable && runCatching {
+-            Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+-        }.getOrDefault(false)
+-        val reasons = ShizukuBackendClient(
+-            context,
+-            ShizukuBackendHosts.CVE_43284_GLUED,
+-        ).availabilityReasons()
+-        assertTrue("Shizuku preflight failed: $reasons", binderReachable && permissionGranted && reasons.isEmpty())
+-        assertEquals("Shizuku UID", 2000, Shizuku.getUid())
+-        assertTrue("Shizuku context is not shell: ${Shizuku.getSELinuxContext()}",
+-            Shizuku.getSELinuxContext()?.contains("u:r:shell:s0") == true)
+-
+-        val binary = packagedBinary(context)
+-        val canary = "#!/system/bin/sh\nprintf executed > ./m0-execution-sentinel\n".toByteArray()
+-        val client = ShizukuBackendClient(context, ShizukuBackendHosts.CVE_43284_GLUED)
+-        val config = Bundle().apply {
+-            putStringArrayList(ExecutableHostProtocol.KEY_ARGUMENTS, arrayListOf())
+-            putStringArrayList(ExecutableHostProtocol.KEY_FILE_NAMES, arrayListOf("payload", "finish.sh"))
+-            putByteArray(ExecutableHostProtocol.fileKey("payload"), canary)
+-            putByteArray(ExecutableHostProtocol.fileKey("finish.sh"), canary)
+-        }
+-        var runDirectory = ""
+-        var disconnected = false
+-        try {
+-            assertEquals("Shizuku host prepare", 0, client.prepare(config, ByteArray(0)) {})
+-            val hostPid = client.start()
+-            assertTrue("Shizuku host did not return child PID: $hostPid", hostPid > 0)
+-            val output = ByteArrayOutputStream()
+-            var offset = 0L
+-            val deadline = SystemClock.elapsedRealtime() + 75_000L
+-            var state = ExecutableHostProtocol.STATE_RUNNING
+-            while (state == ExecutableHostProtocol.STATE_RUNNING && SystemClock.elapsedRealtime() < deadline) {
+-                val chunk = client.readLog(offset, 32 * 1024)
+-                if (chunk.isNotEmpty()) {
+-                    output.write(chunk)
+-                    offset += chunk.size.toLong()
++    fun shizukuLauncherCompletesRootReadyAndSingleReleaseMarkers() {
++        runBlocking {
++            val context = InstrumentationRegistry.getInstrumentation().targetContext
++            assertTrue("M0 fixture build flag is absent", BuildConfig.M0_MARKER)
++            val binderReachable = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
++            val permissionGranted = binderReachable && runCatching {
++                Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
++            }.getOrDefault(false)
++            val reasons = ShizukuBackendClient(
++                context,
++                ShizukuBackendHosts.CVE_43284_GLUED,
++            ).availabilityReasons()
++            assertTrue("Shizuku preflight failed: $reasons", binderReachable && permissionGranted && reasons.isEmpty())
++            assertEquals("Shizuku UID", 2000, Shizuku.getUid())
++            assertTrue("Shizuku context is not shell: ${Shizuku.getSELinuxContext()}",
++                Shizuku.getSELinuxContext()?.contains("u:r:shell:s0") == true)
++
++            val binary = packagedBinary(context)
++            val canary = "#!/system/bin/sh\nprintf executed > ./m0-execution-sentinel\n".toByteArray()
++            val client = ShizukuBackendClient(context, ShizukuBackendHosts.CVE_43284_GLUED)
++            val config = Bundle().apply {
++                putStringArrayList(ExecutableHostProtocol.KEY_ARGUMENTS, arrayListOf())
++                putStringArrayList(ExecutableHostProtocol.KEY_FILE_NAMES, arrayListOf("payload", "finish.sh"))
++                putByteArray(ExecutableHostProtocol.fileKey("payload"), canary)
++                putByteArray(ExecutableHostProtocol.fileKey("finish.sh"), canary)
++            }
++            var runDirectory = ""
++            var disconnected = false
++            try {
++                assertEquals("Shizuku host prepare", 0, client.prepare(config, ByteArray(0)) {})
++                val hostPid = client.start()
++                assertTrue("Shizuku host did not return child PID: $hostPid", hostPid > 0)
++                val output = ByteArrayOutputStream()
++                var offset = 0L
++                val deadline = SystemClock.elapsedRealtime() + 75_000L
++                var state = ExecutableHostProtocol.STATE_RUNNING
++                while (state == ExecutableHostProtocol.STATE_RUNNING && SystemClock.elapsedRealtime() < deadline) {
++                    val chunk = client.readLog(offset, 32 * 1024)
++                    if (chunk.isNotEmpty()) {
++                        output.write(chunk)
++                        offset += chunk.size.toLong()
++                    }
++                    state = client.state()
++                    if (state == ExecutableHostProtocol.STATE_RUNNING) delay(200L)
+                 }
+-                state = client.state()
+-                if (state == ExecutableHostProtocol.STATE_RUNNING) delay(200L)
+-            }
+-            assertEquals("M0 host terminal state", ExecutableHostProtocol.STATE_TERMINAL, state)
+-            val finalChunk = client.readLog(offset, 32 * 1024)
+-            if (finalChunk.isNotEmpty()) output.write(finalChunk)
+-            val hostEvidence = String(client.verify(), Charsets.UTF_8)
+-            runDirectory = Regex("(?m)^run_dir=(.+)$").find(hostEvidence)?.groupValues?.get(1).orEmpty()
+-            assertTrue("Shizuku run directory missing: $hostEvidence", runDirectory.isNotBlank())
+-            val log = output.toString(Charsets.UTF_8.name())
+-            assertTrue("M0 ROOT_READY evidence missing: $log", log.contains("M0_ROOT_READY=run:"))
+-            assertTrue("M0 release evidence missing: $log", log.contains("M0_RELEASE_FINISH_CONSUMED=1"))
+-            assertTrue("M0 worker exit evidence missing: $log", log.contains("M0_WORKER_EXITED=1"))
+-            assertTrue("SELinux mutation evidence missing: $log", log.contains("M0_SELINUX_CHANGED=0"))
+-            assertTrue("M0 host exit is not zero: $hostEvidence", hostEvidence.contains("exit=0"))
+-            assertTrue("Shizuku run id is not 32 lowercase hex: $runDirectory",
+-                runDirectory.substringAfterLast('/').matches(Regex("[0-9a-f]{32}")))
+-            Log.i(
+-                TAG,
+-                "route=SHIZUKU launcher_uid=${Shizuku.getUid()} launcher_context=${Shizuku.getSELinuxContext()} " +
+-                    "run_dir=$runDirectory elf_sha256=${sha256(binary.readBytes())} host_pid=$hostPid " +
+-                    "host_evidence=${hostEvidence.replace('\n', '|')} log=${log.replace('\n', '|')} " +
+-                    "canary_sha256=${sha256(canary)} release_consumed=true worker_exited=true",
+-            )
+-        } finally {
+-            client.disconnect(remove = true)
+-            disconnected = true
+-            if (runDirectory.isNotBlank()) {
+-                Log.i(TAG, "M0_SHIZUKU_RUN_DIR_RETAINED_FOR_AUDIT=$runDirectory")
+-            }
+-            assertTrue("Shizuku UserService removal callback did not complete", disconnected)
++                assertEquals("M0 host terminal state", ExecutableHostProtocol.STATE_TERMINAL, state)
++                val finalChunk = client.readLog(offset, 32 * 1024)
++                if (finalChunk.isNotEmpty()) output.write(finalChunk)
++                val hostEvidence = String(client.verify(), Charsets.UTF_8)
++                runDirectory = Regex("(?m)^run_dir=(.+)$").find(hostEvidence)?.groupValues?.get(1).orEmpty()
++                assertTrue("Shizuku run directory missing: $hostEvidence", runDirectory.isNotBlank())
++                val log = output.toString(Charsets.UTF_8.name())
++                assertTrue("M0 ROOT_READY evidence missing: $log", log.contains("M0_ROOT_READY=run:"))
++                assertTrue("M0 release evidence missing: $log", log.contains("M0_RELEASE_FINISH_CONSUMED=1"))
++                assertTrue("M0 worker exit evidence missing: $log", log.contains("M0_WORKER_EXITED=1"))
++                assertTrue("SELinux mutation evidence missing: $log", log.contains("M0_SELINUX_CHANGED=0"))
++                assertTrue("M0 host exit is not zero: $hostEvidence", hostEvidence.contains("exit=0"))
++                assertTrue("Shizuku run id is not 32 lowercase hex: $runDirectory",
++                    runDirectory.substringAfterLast('/').matches(Regex("[0-9a-f]{32}")))
++                Log.i(
++                    TAG,
++                    "route=SHIZUKU launcher_uid=${Shizuku.getUid()} launcher_context=${Shizuku.getSELinuxContext()} " +
++                        "run_dir=$runDirectory elf_sha256=${sha256(binary.readBytes())} host_pid=$hostPid " +
++                        "host_evidence=${hostEvidence.replace('\n', '|')} log=${log.replace('\n', '|')} " +
++                        "canary_sha256=${sha256(canary)} release_consumed=true worker_exited=true",
++                )
++            } finally {
++                client.disconnect(remove = true)
++                disconnected = true
++                if (runDirectory.isNotBlank()) {
++                    Log.i(TAG, "M0_SHIZUKU_RUN_DIR_RETAINED_FOR_AUDIT=$runDirectory")
++                }
++                assertTrue("Shizuku UserService removal callback did not complete", disconnected)
++            }
+         }
+     }
+ 

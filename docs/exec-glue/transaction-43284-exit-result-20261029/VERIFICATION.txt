@@ -1,0 +1,75 @@
+GhostLock exec-glue deployment and 43284 exit-result verification
+Date: 2026-10-29
+Workspace: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app
+
+Changed branch/field
+- Branch: `Flow43284Glued.steps` terminal-result mapping.
+- Field: `BackendRunUiState.Finished.result` (`FlowResult.Ok` / `FlowResult.Failed`).
+- Before: every `Finished` became `StepResult.Done({"exit":"finished"})`, discarding upstream nonzero-exit failure.
+- After: `FlowResult.Ok` maps to `Done(evidence)`; `FlowResult.Failed` maps to `Failed(reason, evidence)`; refused/nonterminal states remain failures.
+- The AVD/App route matrix also retains the user decision: Shizuku is optional; use Shizuku only when binder and authorization are both present, otherwise App launcher. A selected launcher is exclusive for that run.
+
+Four transaction artifact paths
+- MODIFIED_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-43284-exit-result-20261029/MODIFIED_FILE
+- DIFF_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-43284-exit-result-20261029/DIFF_FILE
+- VERIFICATION.txt: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-43284-exit-result-20261029/VERIFICATION.txt
+- Executable ROLLBACK.sh: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-43284-exit-result-20261029/ROLLBACK.sh
+- Baseline source SHA-256: `18fa8d3af00357442be52298c213a137a687511dc4a93dd217a9e6488e409c10`
+- Modified source SHA-256: `6b4b8b9bae823f586b69b4b5a0fa34b9e5ce82fced339a1b6ead01ad7b8b874c`
+
+BASELINE
+Command: `./gradlew :app:testDebugUnitTest --tests com.ghostlock.app.backend.cve43284glued.IpSecCliArgumentsTest --no-daemon --console=plain`
+Input: `IpSecCliArgumentsTest` parser vector (encapPort=4500, senderPort=49152, spi=0xFEDCBA98, AES key bytes 0..31); invalid port/SPI/key-length vectors; reverse-close fixture with `transform` close throwing.
+Literal stdout result (captured final lines):
+```
+BUILD SUCCESSFUL in 5s
+33 actionable tasks: 6 executed, 27 up-to-date
+Configuration cache entry reused.
+```
+Exit status: `0`. Result: `3` tests passed; `0` failures/errors.
+
+MODIFIED
+Command: `./gradlew :app:testDebugUnitTest --tests com.ghostlock.app.backend.cve43284glued.Flow43284GluedResultTest --no-daemon --console=plain`
+Input: `exit=0` with evidence `{backend=43284Glued, exit=0}`; `exit=1` with reason `exec-exit:1` and evidence `{backend=43284Glued, exit=1}`; refusal reasons `missing,unauthorized`; running state.
+Literal stdout result (captured final lines):
+```
+BUILD SUCCESSFUL in 5s
+33 actionable tasks: 6 executed, 27 up-to-date
+Configuration cache entry reused.
+```
+Exit status: `0`. XML: `build/app/test-results/testDebugUnitTest/TEST-com.ghostlock.app.backend.cve43284glued.Flow43284GluedResultTest.xml`, `tests=3 failures=0 errors=0 skipped=0`; all three named cases passed.
+
+Full build and suite
+Command: `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --console=plain`
+Input: full `testDebugUnitTest` suite, debug APK and Android-test APK.
+Literal stdout result (captured final lines):
+```
+BUILD SUCCESSFUL in 41s
+84 actionable tasks: 12 executed, 72 up-to-date
+Configuration cache entry reused.
+```
+Exit status: `0`. XML aggregate: `tests=419 failures=0 errors=0 skipped=0`; `ExecutableProcessRoutingTest` has 5/5 passing cases, including Shizuku selection only when both binder and permission are present and no second launcher after a selected Shizuku failure.
+
+ROLLBACK
+Command: `./docs/exec-glue/transaction-43284-exit-result-20261029/ROLLBACK.sh docs/exec-glue/transaction-43284-exit-result-20261029/ROLLBACK_TEST_COPY`
+Input: `ROLLBACK_TEST_COPY` contains the modified source and added result test; the live worktree is not passed to the rollback script.
+Literal stdout result:
+```
+RESTORED source_sha256=18fa8d3af00357442be52298c213a137a687511dc4a93dd217a9e6488e409c10 test_removed=True
+```
+Exit status: `0`. Independent restored-copy comparison output:
+```
+baseline_sha256=18fa8d3af00357442be52298c213a137a687511dc4a93dd217a9e6488e409c10
+target_sha256=18fa8d3af00357442be52298c213a137a687511dc4a93dd217a9e6488e409c10
+test_file_exists=False
+result=RESTORED
+```
+Exit status: `0`. Restored behavior/status: rollback copy exactly matches baseline source bytes and has no new result test; live `MODIFIED_FILE` and production source remain changed.
+
+AVD UI verification
+- Installed APK: `build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk`; SHA-256 `6ef7f65fc8c74e8293001547bd643f0e1d531934fff6a26974e3fded98633fc1`. Installed `/data/app/.../base.apk` hash on AVD and A301SO matches this exact APK.
+- AVD command: `adb -s emulator-5554 install -r 'build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk'`; literal result `Performing Streamed Install\nSuccess`; exit `0`. Launch: `adb -s emulator-5554 shell am start -n com.ghostlock.app/.ui.MainActivity`; literal result `Starting: Intent { cmp=com.ghostlock.app/.ui.MainActivity }`; exit `0`. Package reports `versionName=2.0.12`, `versionCode=1342`.
+- A301SO command: `adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp install -r 'build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk'`; literal result `Performing Streamed Install\nSuccess`; exit `0`. Package reports `versionName=2.0.12`, `versionCode=1342`.
+- UI observations: backend selector displays exactly two Glued entries in selectable style. CVE-2026-43284, CVE-2026-98260, CVE-2026-43499, and Custom render grey; tapping the disabled original CVE-2026-43499 and Custom leaves the selected value at CVE-2026-43499 · Glued and the menu open. Selecting CVE-2026-43284 · Glued removes 43499 profile/import controls. Selecting CVE-2026-43499 · Glued shows a built-in profile list and `Import .conf`.
+- Reopened UI evidence: `avd-home.png`, `avd-paths.png`, `avd-backend-menu.png`, `avd-paths-43284.png`, `avd-profile-menu.png`, plus matching `avd-*.xml` files in `/Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-43284-exit-result-20261029/`. The AVD showed `com.ghostlock.app/.ui.MainActivity` resumed.
+- This is UI/install verification only: no upstream production Glued ELF was run. It does not close Finish parity, rooted staging identity, or lifecycle/descendant-cleanup implementation gates.

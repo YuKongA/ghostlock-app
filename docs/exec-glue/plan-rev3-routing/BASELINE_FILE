@@ -1,0 +1,172 @@
+# Exec Glue 临时后端计划
+
+## 目标
+
+本工作树基于 `dev-nocpp`（2.0.12），新增临时后端 `43499-Glued` 与 `43284Glued`。两者均由新 app/Shizuku 启动器通过 `exec` 启动独立可执行文件；不把上游 C 代码改造成 JNI。
+
+## 范围
+
+- 上游源代码保存在 `src/upstream/`，以 manifest 校验完整性。
+- Flow 只保留一个 exec step；通用日志、payload 与 finish 脚本写入运行目录并由可执行文件/finish 链读取。
+- 43499 配置由 backend card 从内置 profile/conf 列表选择并写入运行目录。
+- 43284 使用运行时参数文件，不引入新的 profile 格式。
+- 既有 43499、43284、98260 原版后端在 UI 中显示为禁用，CMake 暂时不构建原版 target。
+
+## 实施顺序
+
+1. 建立 exec 后端身份、Flow 入口和 Shizuku AIDL 参数。
+2. 接入可执行文件打包与 nativeLibraryDir 启动。
+3. 接入 43499 profile 选择、payload/finish 脚本和日志目录。
+4. 禁用原版 UI/native target。
+5. 运行 Kotlin 编译、原版源完整性校验、exec ELF 检查和 APK 内容校验。
+
+## 约束
+
+本批不修改 `src/upstream/` 内上游 C 文件；任何适配仅通过 wrapper、参数文件、启动器和脚本完成。
+
+## 纠偏记录（2026-10-28）
+
+- Material 与 Miuix 选择器都显示全部 backend；只有 `43499-Glued` 与 `43284Glued` 可选，原版 43499/43284/98260 和动态 Lua 在菜单项内灰显且不可选，运行 Gate 与会话恢复同样拒绝 disabled spec。
+- 两个 Glued backend 各自直接声明 `BackendSpec`；通用可执行进程实现位于 `backend/core/ExecutableBackendProcess.kt`。
+- 43499 card 从上游 `kernel_profiles/index.conf` 选择内置 `.conf`，或通过 SAF 导入自包含 `.conf`。输入经 HOCON 解析、`LegacyProfileConverter`、`ProfileResolver` 校验后由 `Profile` 编码为 GLK1；Flow 以原版 `--ghostlock-app-call` 将 GLK1 二进制写入 stdin，不再把文本 conf 当成 stdin。
+- 运行前就绪性以 profile 已选择且成功校验为准；空/损坏/失效配置 fail-closed。
+- 本次主机 Kotlin 编译不等于 Shizuku exec 接线或真机部署证据；它们仍是独立验证项。当前未完成项：执行器仍用 app `ProcessBuilder`，未接 Shizuku UserService；43284 上游 CLI 参数尚未映射（Flow 当前传空参数）；因此不得标记已部署/可用版本。
+
+## 选择器与配置纠偏（2026-10-29）
+
+- 根因：旧 `ExecGlueSpec` 把 43499 的 `titleRes` 和 `Ready` 继承给两个 Glued backend，导致 43284 也显示成 43499；旧 `BackendSelection` 不校验 disabled 状态，因而旧 43499、两个 Glued backend 和 43284 均可选。现已移除该抽象。
+- 选择权收敛到 `Backends.isSelectable(spec)`：通过 `===` 只接受 `Backend43499Glued` 与 `Backend43284Glued` 两个 singleton，且二者显式声明 `selectable=true`。不依赖 `equals/hashCode`，避免动态 Lua spec 冒充内置对象。Material、Miuix、PathViewModel、会话恢复与 BackendRunGate 共用该判据；原版 43499/43284/98260、内置 Custom Lua 与动态 Lua 即使误声明 `true` 仍保持灰显/不可选。
+- `43499-Glued` 的 backend readiness 只依赖 card 选择并验证通过的 profile；运行入口不会再把原版 JNI 43499 的“物理输入未接入”原因冒充为 Glued 的配置要求。profile card 从 `kernel_profiles/index.conf` 提供内置列表并支持 SAF 导入 `.conf`。
+- 目标 profile 索引、profile 资产和 `LegacyProfileConverter.kt` 均核对为当前 `origin/main`（`437b3b257462e17d395cfd2cd8fb81536d6c6358`）的逐字节副本；当前工作树中旧 `app/src/main/assets/profile/` 有 146 个删除项，主资产配置唯一来源为 `kernel_profiles/`。debug source set 的实验配置仍独立保留，Glued 43499 不读取它。
+- 代码库中仅保留两个 backend 的直接声明与 `ExecutableBackendProcess` 公共执行助手，不另设 Glued 继承层。
+
+## 最终部署批次设计 rev1（已被 rev2 取代；2026-10-28）
+
+### 现状与目标
+
+当前 APK 虽已打包并安装到 A301SO，但 `ExecutableBackendProcess` 仍在 app UID 直接 `ProcessBuilder.start()`；`ShizukuHostFlowExecutor` 仍返回 `remote-pending`；43284 Flow 仍传空 argv。安装成功不等于启动链完成。本批把 Flow 的单一 exec step 接到已有共用 Shizuku UserService，并把 43284 所需 IPsec 参数在运行时创建和释放。
+
+### 选定数据流
+
+`App Flow (SequentialFlow, one exec step)` → `ExecutableBackendProcess`（本地 run artifact/log 落盘）→ `ShizukuBackendClient.prepare(Bundle,payload)/start/state/readLog/verify` → 现有 `GhostlockUserService` → `ShizukuBackendHosts` registry → Glued process host → `ProcessBuilder` 在 shell UserService 中 exec 原版 ELF。App 进程不再启动攻击 ELF，不配置隐式 App UID 回退。
+
+- 43499：App 保存所选 `.conf` 和 profile binary 到本地 run 目录；Bundle 传 ELF 名称、固定 argv、文件清单及 `.conf` 字节；payload 传 profile binary；host 只把已校验的 built-in/import profile 和 binary 写入独立 `/data/local/tmp/ghostlock-app/<run-id>`，随后以 `--ghostlock-app-call` exec，并按原版无长度帧 stdin 约定写 binary。上游 `main.cpp` 与 C/C++ 文件保持不变。
+- 43284：App Flow 只选后端并提交空 payload；host 使用 UserService `Context` 创建 DFRoot `IpSecManager` runtime，按原版 `exp.c` 的 CLI 解析器生成 `--encap-port/--sender-port/--spi/--aes-key` argv，在 ELF 退出、准备失败或 host destroy 时关闭 transform、SPI 与 encapsulation socket。密钥只在内存参数中存活，不写入日志/配置/文档。
+- host stdout/stderr 重定向到 run log 文件；共用 UserService 日志泵按偏移回传，避免 pipe 读取在 native 时序窗口造成 backpressure。app 收到的行同时写入 app 私有 run log。terminal evidence 由 exit status/verify 产生。
+- `destroy()` 不增加 kill/signal AIDL；Flow 只在 terminal 后 `disconnect(remove=true)`。失败、binder disconnect、取消和 destroy 的资源终结顺序纳入实现与 fake-host 测试。
+
+### 改动范围与保留
+
+- 修改：`ExecutableBackendProcess.kt`、`FlowLaunchParent.kt`、`GhostlockUserService.kt`、`ShizukuBackendHost.kt`、`ShizukuBackendClient.kt`；在 `43499glued/`、`43284glued/` 增加后端 host adapter/runtime；增加共享 Shizuku host stable IDs；新增 Flow/host contract JVM tests；同步本计划与 `full-process-uml.md` exec 流程图。
+- 保留：`SequentialFlow` 各一个 exec step；backend 选择 allowlist；43499 card/上游 profile 与转换器；通用 Finish/Payload 文件业务；上游 C/C++ 原文与 ELF entrypoint；原版后端和 Lua disabled；无 App 进程回退、无第二个 UserService/AIDL、无新 native route。
+- 回滚：用本批 `DIFF_FILE.patch` + `ROLLBACK.sh` 在复制树逆转；不对实际工作树运行回滚。构建/安装产物保留于实际 `build/`。
+
+### 验证矩阵
+
+1. fake Shizuku port 测试：绑定失败/无授权、prepare 非零、start 非正、日志分块、terminal exit 0/非 0、disconnect；断言无 app ProcessBuilder 回退。
+2. 43499 输入：无 profile 在 Gate 拒绝；有效内置/导入 profile 到 host 的 stdin 字节逐字节等于 `Profile.toBinary()`；conf/bin 落盘；CLI 单一 `--ghostlock-app-call`。
+3. 43284 输入：host argv 与原版 parser 所需选项闭包一致；IPsec runtime 参数只来自当前 run；runtime 在 terminal/failure/destroy 均 close。
+4. 主机：`./gradlew :app:assembleDebug`、针对性单测、`git diff --check`、profile 与 upstream manifest/hash 对拍；APK zip/DEX 及两 ELF arch/entrypoint 核验。
+5. A301SO：先验证 Shizuku 服务连接/uid/context/权限，再安装并核 APK hash、versionName/versionCode、selector/profile card 与普通 Shizuku ping。此批部署验证不执行漏洞 ELF；只有用户另行要求时才进入攻击路径真机门禁与归档。
+
+### 批次边界
+
+本设计触及 exec/AIDL/进程资源生命周期，属于 L 级；design-critic 阻断项关闭后再实现。首批只打通两个 Glued exec 后端与共用 Shizuku host，不改上游源码、JNI 后端、攻击原语或 kernel profile schema。
+
+## 最终部署批次设计 rev2（2026-10-29；取代 rev1，待复核/用户批准）
+
+### 活跃计划关系
+
+- `98260-user-requirements-summary.md` §0/A12 禁止迁移的是**原版** 43499/43284，并未禁止新增不同身份的 Glued backend；原版保留且禁用，Glued 用新 ID。`98260-backend-plan-delta-userservice.md` §2.1 的共用 `FlowSymbolInvocation`/Shizuku UserService 执行同一 Flow 仍为执行架构权威。因此无冲突，本计划只扩展两个新 backend。
+- rev1 的「App Flow + Shizuku 只运行 ELF」与共用 symbol/Flow 方案冲突，**由 rev2 取代**。本计划是本工作树唯一 Glued 计划，不再创建并行计划。
+
+### 执行图与单一权威
+
+`UI → BackendRunDispatcher → FlowLaunchParent(symbol + bounded invocation)`。App 模式在 App JVM 用 `LocalThreadFlowExecutor` 执行该 runner；Shizuku 模式由唯一 `GhostlockUserService` 按同一 stable symbol 在 shell JVM 解出同一个 `BackendSpec.runner`。两个 Flow 都是 `SequentialFlow` 且各只有一个 `exec` step；该 step 调用共享 `ExecutableBackendProcess` 直接启动固定 ELF 路径及 argv 列表，禁止 shell 字符串拼接和 app UID 静默回退。
+
+stable backend IDs：`43499_GLUED`、`43284_GLUED`；对应 Flow symbols 必须严格为 `43499-Glued`、`43284Glued`。Service 端 identity/symbol 双重校验；原版 CVE、Lua、任意未知 symbol 拒绝。两个 backend declaration 分属 peer 文件，不建 `BackendExecGlue` 继承类；`ExecutableBackendProcess` 是共享 launcher，不是 backend spec。
+
+### Wire、临时文件与进程状态
+
+- 复用共用 AIDL 生命周期 `prepare(backendId, Bundle config, byte[] payload) → start → getState/readLog/verify → terminal/destroy`。固定 schema version、`flow_symbol`、canonical UUID `run_id` 和 codec key allowlist；ELF 名由 backend ID 映射为常量，禁止调用方传 executable path、cwd、任意 argv、shell fragment 或 app-private path。
+- `Bundle + byte[]` 总序列化预算 ≤512 KiB（Binder 1 MiB 上限留至少 512 KiB）；超限由 App 在 Binder 前拒绝、host 再复核。字段缺失、未知/重复 key、backend-symbol 不匹配、负/越界值、UUID 路径穿越、绝对路径均 fail-closed。测量所有内置 profile、Finish/Payload 最大尺寸；任一真实输入超过预算则改用 PFD 分片协议，不提高事务预算。
+- host 写入 shell-owned `/data/local/tmp/ghostlock-app/<UUID>/` 下固定文件名；`GHOSTLOCK_HOME` 指向本次 run dir。仅使用声明过的环境键：`GHOSTLOCK_HOME`、`TMPDIR`、`GHOSTLOCK_KSU_LOG`、`GHOSTLOCK_KSUD`。App-side SAF URI 不传 host；所选 conf 与脚本内容由 App 读取后放入受限 invocation。
+- owner：host Flow/launcher 唯一拥有 executable child、run dir、log source、43284 `IpSecRuntime`；状态 `IDLE → PREPARED → RUNNING → TERMINAL → DESTROYED`。Prepare/start/exec failure、cancel、binder death、service destroy、重复 destroy 都要先停止并 wait child、再 close runtime/fd、最后清 run files。UserService `System.exit(0)` 只能发生在 host terminal 且 child 已 reaped 后；无 active child orphan。需核对上游 exec 与进程树并在实现测试固定 child-descendant 语义。
+
+### 有界日志
+
+- child stdout/stderr 有专用 drain owner，UI/AIDL polling 不直接读 child pipe。单 run 最多保留 8 MiB，AIDL 单次 `readLog` ≤32 KiB；offset 非负、单一 reader 顺序推进，terminal 后 drain 至 EOF 后才 disconnect。上限溢出采用有界 ring/truncation marker 和 dropped-byte count，不允许无限增长。
+- bytes 跨 AIDL 回传，App 侧以状态化 UTF-8 decoder 拼接跨 chunk 字符；读失败/offset 越界/host log persistence failure 有具名结果。日志落盘故障不阻塞 child drain，也不回滚已发生的执行；不会把 partial UTF-8 替换成乱码。
+
+### 43499 配置、Finish/Payload 与上游脚本
+
+- 43499 card 从 `origin/main` 的 `kernel_profiles/index.conf` 列出 built-in `.conf`，支持外部自包含 HOCON 导入；只用上游 `LegacyProfileConverter.kt`。App 在 Flow invocation 中携带原 conf bytes、经 `ProfileResolver` 校验后的 GLK1 bytes 和通用 finish/payload 脚本 bytes；无效/未选 profile 由 readiness/Gate 拒绝，不 fallback 到旧本地配置。
+- **设计阻断项**：`app/core/finish/FinishScript.kt` 必须逐项覆盖 `app/src/main/cpp/43499glued/attack/ops.cpp:226-431` 原脚本行为（SELinux policy 修复/KMI 与 ksud late-load/safe mode/debug dump/失败路径等），否则不得让 common script 取代上游最终脚本。等价后，host 将 common script 以固定 `.ghostlock_root.sh` 写到 run dir、禁止写入，再设置 `GHOSTLOCK_HOME`；只有源码与测试证明原版 ELF 按既有路径尝试 `open(O_TRUNC)` 失败后仍继续至 victim exec，才接受该桥接。上游 C/C++ 文件保持逐字节未改；finish/payload 业务逻辑只在 `app/core/`，UI 仍在现有 UI 目录。
+
+### 43284 上游参数与资源状态机
+
+- 按 `src/upstream/43284/exp.c:507-538` 映射：`--encap-port`/`--sender-port` 为十进制 port；`--spi` 为 base-0 解析且落入 uint32；`--aes-key` 为 32-byte AES key 的 64 个 hex 字符。任何缺参、超界、长度/格式错都拒绝；单测逐 argv token 对拍 C parser。key 仅在 shell JVM 内存存在，不写 conf、Bundle、日志或 run files。
+- `IpSecRuntime` 只属于 43284 Flow：创建 UDP encapsulation socket → 分配 loopback SPI → 临时 `DatagramSocket` 取 sender port 后立即关闭 → build transform → exec ELF → terminal 后按 reverse acquisition close transform、release SPI、close encapsulation socket。对照 DFRoot `ExploitRunner.java` 上游实现，不调用上游未调用的 apply；失败/取消/重复 close 均走 idempotent state machine，每项资源恰好释放一次。上游 Java 来源固定为 DFRoot commit `49e992ef3c9f7ec03c8efea6e3cf552f7ec6a347`，C parser 以本地 manifest/file 为准。
+
+### CBN（成本权衡）
+
+| 决策点 | 备选 | 可量化收益 | 工程成本与边际扩展成本 | 翻转条件 | 结论 |
+|---|---|---|---|---|---|
+| Shizuku 执行位置 | A. UserService 按 symbol 执行同一 Flow；B. App Flow 只远程启动 ELF | A 维持 App/Shizuku 共用 1 个 Flow symbol/runner；两 backend 各 1 个 exec step。B 少 1 个 service Flow-dispatch seam | A 增 1 个共用 dispatcher/codec + 2 个 backend input codec；新增 backend 增 1 个 stable ID/codec/test。B 每 backend 要保持 app Flow 与 remote exec 两套参数/状态契约 | UserService 无法取得且 App 无法序列化必需输入时，暂停该 backend 并设计 PFD，不切成双权威 Flow | A；符合共用 Flow/UserService 架构 |
+| 配置文件传输 | A. bounded Bundle+byte[]；B. PFD/分片 | A 当前预计每 run 1 次 Binder prepare、0 个额外 fd owner；B 支持大文件 | A codec 每 backend 声明字段；B 每文件至少新增 open/write/close 三段生命周期与 offset/retry | 实测 profile+finish+payload 任一超过 512 KiB 时强制选 B | 先选 A，尺寸测量通过后实现 |
+| 子进程日志 | A. 有界 8 MiB ring + 32 KiB chunk；B. 直接写无上限文件 | A 每 run 硬上限 8 MiB、单 AIDL txn ≤32 KiB；B 无有限资源上界 | A 需一个 ring/offset owner，新增消费者复用；B 每 run 有磁盘增长风险且缺全局清理上界 | 任何验收必需日志超过保留量则改分段保留，总量仍须有界 | A；drain 与 UI 解耦 |
+
+### 改动边界与留证
+
+- 修改候选：`FlowLaunchParent.kt`、`BackendFlowRunner.kt`/Flow invocation codec、共用 AIDL/service/client/host registry、两个 peer Glued adapter/runtime、`ExecutableBackendProcess.kt`、`app/core/finish` 与 `app/core/payload`、相关 JVM/Android tests，以及 `docs/development/full-process-uml.md` 的同批 execution sequence/state diagram。
+- 保留：原版 CVE 与 Lua 在 UI 显示但禁用；CMake 原版 JNI targets 继续注释；`43499glued`/`43284glued` 为 peer，不建统一 glued/core 目录；SequentialFlow 单 exec；profile index/converter 与上游原文不改；无 per-backend UserService/AIDL、无第二个 Flow authority。
+- 新实现批使用独立事务 artifact；不覆盖当前 `docs/exec-glue/DIFF_FILE.patch`、`VERIFICATION.txt`、`ROLLBACK.sh`（它们记录前一批 UI/profile correction）。回滚只在独立副本测试，不对主工作树执行。
+
+### 验证矩阵（D1 黑箱、白箱、极值）
+
+1. 黑箱符号分发：APP 与 SHIZUKU 两路径解析同一两个 runner；未知 symbol、原版 ID、Lua ID、backend/symbol 不匹配均拒绝；每个 Flow 恰为一个 `exec` step。
+2. AIDL 极值：空配置、512 KiB、512 KiB+1；缺键/未知键/无效 UUID/路径穿越/任意 argv；两端拒绝一致且超限调用不进入 Binder。
+3. 白箱资源生命周期：prepare/start/exec/nonzero exit/cancel/binder death/repeated destroy；child wait/reap 一次，fd/runtime/run dir close 一次；无 orphan；terminal 前禁止 remove service。
+4. 日志：UTF-8 字符跨 chunk、offset 重复/越界/并发、8 MiB+1 截断、terminal tail drain、App 写盘失败；证明 child drain 不受 consumer 背压影响。
+5. 43499：85 个 upstream profile + converter 哈希；built-in/import parity；conf 与 GLK1 bytes 对拍；common finish 与 upstream 每项行为覆盖；`O_TRUNC` 失败后继续 exec 的源码/host 测试；source manifest 无变化。
+6. 43284：parser 每 token 有效/无效向量；key 在日志/磁盘扫描中缺席；resource failure state machine 每阶段与 repeated close 测试。
+7. 主机 APK：`assembleDebug`、针对性测试、`git diff --check`、manifest hash、两 ELF 的 `EM_AARCH64/ET_EXEC` 与 entrypoint、APK zip/DEX/resource/version 核验。
+8. A301SO：安装后核 version/hash；确认 Shizuku 授权/service UID/连接；经 test-only fixture 在同一 service/Flow/exec 通路启动无副作用 stub 并核 exit/log；43284 只验证 IpSec runtime create/close。本批不运行任何漏洞 ELF，也不宣称攻击路径 supported。
+
+### 批次门
+
+L 级设计须 design-critic 复核、阻断清零并获用户认可后才改生产源；之后单 writer 串行构建。当前 rev2 状态：待 design-critic 复核与用户批准；部署链未完成。
+
+
+### 复核落实与来源对拍（2026-10-28）
+
+#### 新 Glued 身份与原版 backend 边界
+
+design-critic 复核原始用户要求后确认：“新增临时后端”且为“新 app/shizuku 进程启动器 + flow 执行入口点”足以说明两个 Glued 是独立新 backend 身份，可在 Shizuku JVM 执行；这不迁移原版 43499/43284。边界固定如下：
+
+| 身份 | 执行身份与保留 | 允许复用 | 禁止复用/改变 |
+|---|---|---|---|
+| 原版 43499 / 43284 | 原版 backend 保持既有 App 域语义；本工作树 UI 禁用；原版 CMake target 暂停 | 不增加新依赖 | 不迁移到 Shizuku；不改变 W3、JNI、session/route 与生命周期 |
+| 43499-Glued / 43284Glued | 独立 stable ID；各自一个 SequentialFlow exec step；可由 App 或共用 Shizuku UserService 执行 | 只复用 FlowSymbolInvocation / stable symbol 入口、共用服务与日志通道 | 不借用原版 JNI、session、route 或攻击生命周期；不增加 BackendExecGlue 继承层 |
+
+#### 上游 profile/converter 字节对拍
+
+以 origin/main 的 437b3b257462e17d395cfd2cd8fb81536d6c6358 为基线，对 kernel_profiles 目录 85 个资产（84 个 .conf profile + index.conf）及 LegacyProfileConverter.kt 共 86 个文件逐字节比较：86 检查、0 缺失、0 不同。index.conf SHA-256：1f0efc66a8613aaec037ea427af261e9e685d0f69172327679076f6a595f8791；LegacyProfileConverter.kt SHA-256：947c2024ff8a6e0f4986301bed18460dcc0b62e5eb41425f9d071cbfb903465c。路径卡片由 Glued43499ProfileCodec 从 kernel_profiles/index.conf 加载 built-in，并通过 ACTION_OPEN_DOCUMENT 读取导入 URI；不读取旧 assets/profile/43499。
+
+#### Finish 脚本等价性仍为阻断
+
+只读对照 app/src/main/cpp/43499glued/attack/ops.cpp:226-431 与 app/src/main/kotlin/com/ghostlock/app/core/finish/FinishScript.kt:17-65 后，common FinishScript 不是上游 write_root_script 的等价实现：上游包含 root uid gate、ksud 多路径查找与 fallback、iomem 原子缓存、debug dump、checkreqprot、KMI 解析、安全模式停用模块、SELinux policy 修复/重试、KernelSU late-load 与模块状态等待；当前 common script 不包含上述链路。上游以 O_TRUNC 写 root script；运行目录中预写/禁止写的桥接行为及失败后是否继续 exec 也尚未由测试证明。故不能以当前 common script 替换上游最终脚本；该阻断保留至逐项覆盖与桥接测试通过。
+
+#### 当前部署阻断的代码物证
+
+- app/src/main/kotlin/com/ghostlock/app/ui/backend/FlowLaunchParent.kt:112 仍返回 flow-launcher:shizuku-remote-pending。
+- app/src/main/kotlin/com/ghostlock/app/shizuku/GhostlockUserService.kt:63 调用 host registry；当前 registry 仅注册 98260，两个 Glued stable ID 尚无 host adapter。
+- app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableBackendProcess.kt:51 仍在 App 进程中 ProcessBuilder.start()。
+- 43284Glued 的 Flow 仍提交空 argv；尚无按上游 parser 生成的参数与 IpSecRuntime 生命周期。
+
+本次复核关闭 Shizuku 新身份歧义，并补齐 profile 来源证据；Finish 行为等价、Shizuku host/Flow 接线、43284 参数与资源生命周期仍是部署前阻断。实现仍按 rev2 进入设计批准门后再开始。
+
+
+### 设计评审状态更正（2026-10-28）
+
+上一节“待 design-critic 复核与用户批准”是复核前状态。design-critic 对 HEAD b119085915748a940740d7ce919b5a30ed8e9346、计划快照 SHA-256 d6291ade5ff88480e0c7acad7b6cf8230f551cc7627bd3f62025268c3c2f0e34 的最终只读复核已完成：A12/new-Glued 身份冲突关闭，边界表充分，profile parity 关闭。rev2 现在进入用户批准门；五项实现阻断仍须按计划解决，尚未部署。

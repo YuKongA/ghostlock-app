@@ -1,0 +1,13 @@
+Changed field: vermagic / kernel release identity
+
+BASELINE (previous M0 .202 candidate):
+vermagic=5.15.202-android13-5.15.202_r00-dirty SMP preempt mod_unload modversions aarch64
+sha256=7a49b8357bb228dc6c88d7bddd1a78e402a1cdd303477f64749c6add458b4206
+
+MODIFIED_FILE (built for A301SO target .189):
+vermagic=5.15.189-android13-8-00016-g51bba4309aac-ab14546557 SMP preempt mod_unload modversions aarch64
+sha256=28bce76c49e7aed99d82a2a4c47c1e775378ace327d32933427010a9b5fe7b1f
+size=256240 bytes; ELF64 little-endian AArch64
+
+Inputs: device /proc/config.gz; official Android Common Kernel tag android13-5.15.189_r00 (commit f32b52534f1d4df1fc1a6afe6cf4639adebf8a63); pinned DDK image ghcr.io/ylarod/ddk-min:android13-5.15-20260828; isolated marker-only source build/deployment-audit/a301so-kmi-189/m0_dfroot.c.
+Imported symbols: 10/10 match the official common ABI XML CRCs; module_layout CRC was generated from the target config. CONFIG_MODULES=y, CONFIG_MODULE_UNLOAD=y, CONFIG_MODVERSIONS=y, CONFIG_MODULE_SIG=y, CONFIG_MODULE_SIG_FORCE unset, CONFIG_TRIM_UNUSED_KSYMS=y, CONFIG_LTO_CLANG=y, CONFIG_CFI_CLANG=y.

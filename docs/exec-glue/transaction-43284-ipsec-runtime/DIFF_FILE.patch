@@ -1,0 +1,760 @@
+--- BASELINE_FILE/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableBackendProcess.kt
++++ MODIFIED_FILE/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableBackendProcess.kt
+@@ -4,6 +4,7 @@
+ import android.content.pm.PackageManager
+ import android.os.Bundle
+ import com.ghostlock.app.backend.cve43499glued.Glued43499ExecutableHost
++import com.ghostlock.app.backend.cve43284glued.AndroidIpSecRuntime
+ import com.ghostlock.app.core.flow.FlowResult
+ import com.ghostlock.app.core.flow.FlowStepRun
+ import com.ghostlock.app.core.flow.StepResult
+@@ -81,8 +82,18 @@
+         }
+     }
+ 
+-    /** @return null for valid fixed identity/input; otherwise a stable reason. */
+-    private fun validateRequest(
++    /**
++     * Validates fixed backend identity, argv ownership, filenames, and the bounded input budget.
++     *
++     * @param backendKey stable Glued backend identity.
++     * @param binaryName caller's packaged ELF basename.
++     * @param arguments structured argv supplied by the backend Flow.
++     * @param stdin optional bytes written to the process standard input.
++     * @param files auxiliary bytes keyed by allowlisted simple filenames.
++     * @return null for valid input, otherwise a stable fail-closed reason.
++     * @note 43284 argv is generated only inside the selected launcher runtime.
++     */
++    internal fun validateRequest(
+         backendKey: String,
+         binaryName: String,
+         arguments: List<String>,
+@@ -95,6 +106,9 @@
+             else -> return "exec:backend-unsupported:$backendKey"
+         }
+         if (binaryName != expectedBinary) return "exec:binary-identity-mismatch"
++        if (backendKey == "43284Glued" && arguments.isNotEmpty()) {
++            return "exec:43284:caller-arguments-forbidden"
++        }
+         if (arguments.size > 32 || arguments.any { it.indexOf('\u0000') >= 0 || it.length > 4096 }) {
+             return "exec:arguments-invalid"
+         }
+@@ -110,7 +124,20 @@
+         return null
+     }
+ 
+-    /** App-UID process launcher; this instance owns its process, streams, run directory and log. */
++    /**
++     * Executes the fixed ELF in App UID and owns that process, streams, run directory and log.
++     *
++     * @param context application context used to locate the ELF and private run directory.
++     * @param backendKey fixed Glued backend identity.
++     * @param binaryName allowlisted packaged ELF name.
++     * @param arguments structured non-secret backend argv; 43284 values are generated below.
++     * @param stdin optional bounded standard-input bytes.
++     * @param files validated auxiliary run files.
++     * @param onLine output sink for the bounded local log.
++     * @return terminal process result or a named setup/start refusal.
++     * @throws CancellationException after terminating/reaping the direct child on cancellation.
++     * @note The 43284 runtime remains open until the foreground ELF returns.
++     */
+     private suspend fun runApp(
+         context: Context,
+         backendKey: String,
+@@ -129,14 +156,41 @@
+             return BackendRunUiState.Refused(listOf("exec:run-directory-unavailable"))
+         }
+         for ((name, bytes) in files) File(runDir, name).writeBytes(bytes)
+-        return runProcess(
+-            command = listOf(binary.absolutePath) + arguments,
+-            runDir = runDir,
+-            backendKey = backendKey,
+-            displayExecutable = binary.absolutePath,
+-            stdin = stdin,
+-            onLine = onLine,
+-        )
++        if (backendKey != "43284Glued") {
++            return runProcess(
++                command = processCommand(binary.absolutePath, arguments),
++                runDir = runDir,
++                backendKey = backendKey,
++                displayExecutable = binary.absolutePath,
++                stdin = stdin,
++                onLine = onLine,
++            )
++        }
++
++        val runtime = try {
++            AndroidIpSecRuntime.create(context)
++        } catch (problem: Exception) {
++            return BackendRunUiState.Refused(
++                listOf("exec:ipsec:setup:${problem::class.java.simpleName}"),
++            )
++        }
++        var closeFailure: Throwable? = null
++        val result = try {
++            runProcess(
++                command = processCommand(binary.absolutePath, arguments + runtime.arguments),
++                runDir = runDir,
++                backendKey = backendKey,
++                displayExecutable = binary.absolutePath,
++                stdin = stdin,
++                onLine = onLine,
++            )
++        } finally {
++            closeFailure = runCatching { runtime.close() }.exceptionOrNull()
++        }
++        if (closeFailure != null) {
++            return BackendRunUiState.Refused(listOf("exec:ipsec:cleanup-failed"))
++        }
++        return result
+     }
+ 
+     /** Shizuku UserService launcher; the host receives only fixed IDs and bounded structured data. */
+@@ -184,6 +238,10 @@
+                 val state = client.state()
+                 if (state == Glued43499ExecutableHost.STATE_TERMINAL) {
+                     terminal = true
++                    val hostReason = client.lastReason()
++                    if (hostReason.startsWith("exec:host:resource-close:")) {
++                        return BackendRunUiState.Refused(listOf(hostReason))
++                    }
+                     val facts = client.verify().toString(Charsets.UTF_8).lineSequence()
+                         .mapNotNull { line ->
+                             line.split('=', limit = 2).takeIf { it.size == 2 }?.let { it[0] to it[1] }
+@@ -221,9 +279,21 @@
+         }
+     }
+ 
+-    /** Direct ProcessBuilder invocation; stdout is drained while stdin is written. */
++    /**
++     * Starts one direct ProcessBuilder child and concurrently drains output and writes stdin.
++     *
++     * @param command mutable owner of the fixed argv list; cleared immediately after start.
++     * @param runDir backend-specific working and log directory.
++     * @param backendKey stable identity included in terminal evidence.
++     * @param displayExecutable safe executable identifier for terminal facts.
++     * @param stdin optional bytes written once, then the input stream is closed.
++     * @param onLine receives each drained output line.
++     * @return terminal process result or a named spawn/process refusal.
++     * @throws CancellationException after forcibly stopping and waiting for the direct child.
++     * @note This method never constructs a shell command string.
++     */
+     private suspend fun runProcess(
+-        command: List<String>,
++        command: ArrayList<String>,
+         runDir: File,
+         backendKey: String,
+         displayExecutable: String,
+@@ -236,10 +306,12 @@
+         val process = try {
+             ProcessBuilder(command).directory(runDir).redirectErrorStream(true).start()
+         } catch (problem: Exception) {
++            command.clear()
+             return@withContext BackendRunUiState.Refused(
+                 listOf("exec:start-failed:" + problem::class.java.simpleName),
+             )
+         }
++        command.clear()
+         val reader = Thread({
+             val logState = LocalLogState()
+             process.inputStream.bufferedReader().useLines { lines ->
+@@ -285,6 +357,20 @@
+             }
+         }
+     }
++
++    /**
++     * Builds one direct-exec argv owner and avoids shell parsing or a persisted command string.
++     *
++     * @param executable fixed packaged ELF path validated for this backend.
++     * @param arguments structured upstream argv tokens.
++     * @return mutable argv owner; [runProcess] clears it immediately after spawn.
++     * @note Used only during the executable launch phase.
++     */
++    private fun processCommand(executable: String, arguments: List<String>): ArrayList<String> =
++        ArrayList<String>(arguments.size + 1).apply {
++            add(executable)
++            addAll(arguments)
++        }
+ 
+     /** Mutable accounting scoped to the one app-launched process and output-drain thread. */
+     private class LocalLogState {
+--- BASELINE_FILE/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableShizukuHost.kt
++++ MODIFIED_FILE/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableShizukuHost.kt
+@@ -90,8 +90,25 @@
+             reason = "exec:host:stage:" + problem::class.java.simpleName
+             return ERR_IO
+         }
++        val preparedArguments = try {
++            prepareExecutableArguments(argv.toList())
++        } catch (problem: Exception) {
++            finishExecutableResources()
++            runCatching { directory.deleteRecursively() }
++            reason = "exec:host:prepare-arguments:" + problem::class.java.simpleName
++            return ERR_ARGS
++        }
++        if (preparedArguments.size > MAX_ARGS || preparedArguments.any {
++                it.length > MAX_ARG_LENGTH || it.indexOf('\u0000') >= 0
++            }
++        ) {
++            finishExecutableResources()
++            runCatching { directory.deleteRecursively() }
++            reason = "exec:host:prepared-argv-invalid"
++            return ERR_ARGS
++        }
+         binary = stagedBinary
+-        arguments = argv.toList()
++        arguments = preparedArguments
+         stdinBytes = payload.copyOf()
+         runDirectory = directory
+         logFile = File(directory, "run.log")
+@@ -112,16 +129,24 @@
+         }
+         val executable = binary ?: return reject("exec:host:binary-missing", -ERR_BINARY)
+         val directory = runDirectory ?: return reject("exec:host:run-dir-missing", -ERR_STATE)
++        val command = ArrayList<String>(arguments.size + 1).apply {
++            add(executable.absolutePath)
++            addAll(arguments)
++        }
+         val child = try {
+-            ProcessBuilder(listOf(executable.absolutePath) + arguments)
++            ProcessBuilder(command)
+                 .directory(directory)
+                 .redirectErrorStream(true)
+                 .start()
+         } catch (problem: Exception) {
++            command.clear()
++            arguments = emptyList()
+             state = ExecutableHostProtocol.STATE_UNKNOWN
+             reason = "exec:host:start:" + problem::class.java.simpleName
+             return -ERR_SPAWN
+         }
++        command.clear()
++        arguments = emptyList()
+         process = child
+         state = ExecutableHostProtocol.STATE_RUNNING
+         outputThread = Thread({ drain(child) }, "glued-shell-exec-log").apply {
+@@ -204,6 +229,7 @@
+         runCatching { child?.inputStream?.close() }
+         runCatching { child?.outputStream?.close() }
+         runCatching { child?.errorStream?.close() }
++        finishExecutableResources()
+         synchronized(this) {
+             if (child?.isAlive != true) process = null
+             state = if (exitCode != null) ExecutableHostProtocol.STATE_TERMINAL
+@@ -264,6 +290,7 @@
+             val exit = child.waitFor()
+             inputThread?.join(THREAD_JOIN_MS)
+             outputThread?.join(THREAD_JOIN_MS)
++            finishExecutableResources()
+             synchronized(this) {
+                 exitCode = exit
+                 if (exit != 0 && reason.isBlank()) reason = "exec-exit:" + exit
+@@ -280,6 +307,39 @@
+     private fun reject(message: String, code: Int): Int {
+         reason = message
+         return code
++    }
++
++    /**
++     * Prepares launcher-domain resources and the final structured argv after input validation.
++     *
++     * @param arguments validated caller-supplied arguments; backend adapters may require empty.
++     * @return process arguments after launcher-owned runtime parameters are appended.
++     * @throws Exception when the selected host-domain setup cannot be prepared.
++     * @note Implementations that acquire resources must release them from
++     * [finishExecutableRun], including prepare failure and destroy paths.
++     */
++    protected open fun prepareExecutableArguments(arguments: List<String>): List<String> = arguments
++
++    /**
++     * Releases resources acquired by [prepareExecutableArguments] after child exit or teardown.
++     *
++     * @throws Exception when an owned resource fails to close; the host preserves a named reason.
++     */
++    protected open fun finishExecutableRun() = Unit
++
++    /**
++     * Runs the adapter cleanup hook and preserves a non-secret failure class in host state.
++     *
++     * @note Called after normal child exit, explicit destroy, and failed runtime preparation.
++     */
++    private fun finishExecutableResources() {
++        try {
++            finishExecutableRun()
++        } catch (problem: Exception) {
++            synchronized(this) {
++                if (reason.isBlank()) reason = "exec:host:resource-close:" + problem::class.java.simpleName
++            }
++        }
+     }
+ 
+     private companion object {
+--- BASELINE_FILE/app/src/main/kotlin/com/ghostlock/app/backend/43284glued/Glued43284ExecutableHost.kt
++++ MODIFIED_FILE/app/src/main/kotlin/com/ghostlock/app/backend/43284glued/Glued43284ExecutableHost.kt
+@@ -1,13 +1,51 @@
+ package com.ghostlock.app.backend.cve43284glued
+ 
+ import android.content.Context
++import com.ghostlock.app.backend.cve43284glued.AndroidIpSecRuntime
+ import com.ghostlock.app.backend.core.ExecutableShizukuHost
+ import com.ghostlock.app.shizuku.host.ShizukuBackendHosts
+ 
+-/** Shizuku peer adapter for the fixed 43284 Glued executable and input files. */
+-internal class Glued43284ExecutableHost(context: Context) : ExecutableShizukuHost(
+-    context = context,
++/**
++ * Shizuku peer adapter for the fixed 43284 Glued executable and its host-domain IPsec lifetime.
++ *
++ * @param userServiceContext Context owned by this UserService process, used to acquire IPsec state.
++ * @note Caller argv must be empty; only this adapter constructs the upstream runtime flags.
++ */
++internal class Glued43284ExecutableHost(private val userServiceContext: Context) : ExecutableShizukuHost(
++    context = userServiceContext,
+     backendId = ShizukuBackendHosts.CVE_43284_GLUED,
+     binaryName = "lib43284Glued.so",
+     allowedFiles = setOf("finish.sh", "payload"),
+-)
++) {
++    private var ipSecRuntime: AndroidIpSecRuntime? = null
++
++    /**
++     * Creates this UserService process's IPsec runtime and returns upstream parser arguments.
++     *
++     * @param arguments the already validated AIDL argv; 43284 accepts no caller-supplied flags.
++     * @return only values generated by this host's live runtime, never received over Binder.
++     * @throws IllegalArgumentException when the AIDL caller supplies any arbitrary argument.
++     * @throws IllegalStateException when this UserService cannot acquire its IPsec resources.
++     * @note The runtime remains owned here until the child exits or this host is destroyed.
++     */
++    @Synchronized
++    override fun prepareExecutableArguments(arguments: List<String>): List<String> {
++        require(arguments.isEmpty()) { "43284 runtime arguments are host-generated" }
++        val runtime = AndroidIpSecRuntime.create(userServiceContext)
++        ipSecRuntime = runtime
++        return runtime.arguments
++    }
++
++    /**
++     * Releases this adapter's transform, SPI, and UDP encapsulation socket after child teardown.
++     *
++     * @throws IllegalStateException when any owned IPsec resource fails to close.
++     * @note The field is cleared before close so a repeated destroy remains idempotent.
++     */
++    @Synchronized
++    override fun finishExecutableRun() {
++        val runtime = ipSecRuntime
++        ipSecRuntime = null
++        runtime?.close()
++    }
++}
+--- BASELINE_FILE/app/src/test/kotlin/com/ghostlock/app/backend/core/ExecutableProcessRoutingTest.kt
++++ MODIFIED_FILE/app/src/test/kotlin/com/ghostlock/app/backend/core/ExecutableProcessRoutingTest.kt
+@@ -24,4 +24,28 @@
+             ExecutableProcessRouting.select(binderReachable = false, permissionGranted = false),
+         )
+     }
++
++    @Test
++    fun cve43284RuntimeArgumentsAreGeneratedBySelectedLauncherNotCallerInput() {
++        assertEquals(
++            null,
++            ExecutableBackendProcess.validateRequest(
++                backendKey = "43284Glued",
++                binaryName = "lib43284Glued.so",
++                arguments = emptyList(),
++                stdin = null,
++                files = emptyMap(),
++            ),
++        )
++        assertEquals(
++            "exec:43284:caller-arguments-forbidden",
++            ExecutableBackendProcess.validateRequest(
++                backendKey = "43284Glued",
++                binaryName = "lib43284Glued.so",
++                arguments = listOf("--spi", "1"),
++                stdin = null,
++                files = emptyMap(),
++            ),
++        )
++    }
+ }
+--- BASELINE_FILE/docs/development/full-process-uml.md
++++ MODIFIED_FILE/docs/development/full-process-uml.md
+@@ -912,8 +912,10 @@
+   EXEC -->|Shizuku binder reachable + permission granted| REMOTE[shared UserService / shell ProcessBuilder]
+   EXEC -->|otherwise| LOCAL[app UID ProcessBuilder]
+   REMOTE --> HOST[fixed Glued ID + bounded AIDL input]
+-  LOCAL --> STDIN[fixed ELF argv + stdin + run files]
+-  HOST --> STDIN
++  LOCAL --> APPARGS[fixed ELF argv + stdin + run files]
++  HOST --> HOSTARGS[fixed ELF argv + stdin + run files]
++  APPARGS -. 43284 only .-> APPIPSEC[App-domain IpSecRuntime create → exec → close]
++  HOSTARGS -. 43284 only .-> HOSTIPSEC[UserService-domain IpSecRuntime create → exec → close]
+ ```
+ 
+ ```mermaid
+@@ -953,6 +955,18 @@
+   }
+   class ExecutableBackendProcess {
+     +run(context, backendKey, binaryName, arguments, stdin, files)
++  }
++  class AndroidIpSecRuntime {
++    +create(selectedDomainContext)
++    +arguments List<String>
++    +close()
++  }
++  class IpSecCliArguments {
++    +create(encapPort, senderPort, spi, aesKey)
++  }
++  class ReverseCloseScope {
++    +add(resource, closeAction)
++    +close()
+   }
+   class ExecutableShizukuHost {
+     +prepare(config, stdin)
+@@ -975,9 +989,13 @@
+   Backend43284Glued --> Flow43284Glued
+   Flow43499Glued --> ExecutableBackendProcess
+   Flow43284Glued --> ExecutableBackendProcess
++  ExecutableBackendProcess --> AndroidIpSecRuntime : 43284 / App route only
++  AndroidIpSecRuntime --> IpSecCliArguments : fixed upstream argv
++  AndroidIpSecRuntime --> ReverseCloseScope : transform → SPI → encapsulation
+   ExecutableBackendProcess --> ShizukuBackendClient : authorized route only
+   ShizukuBackendClient --> GhostlockUserService : fixed Glued ID + bounded data
+   GhostlockUserService --> ExecutableShizukuHost : fixed backend allowlist
++  ExecutableShizukuHost --> AndroidIpSecRuntime : 43284 adapter / UserService context
+ ```
+ 
+ ```mermaid
+@@ -991,6 +1009,7 @@
+   participant E as ExecutableBackendProcess
+   participant A as App ProcessBuilder
+   participant Z as ShizukuBackendClient / UserService
++  participant R as Selected-domain IpSecRuntime (43284 only)
+   U->>P: choose 43499-Glued
+   P->>S: select(key); disabled spec rejected
+   U->>C: select indexed built-in or import .conf
+@@ -1003,11 +1022,20 @@
+   F->>E: one exec step, fixed ELF/argv/stdin/run files
+   alt Shizuku binder reachable and permission granted
+     E->>Z: prepare fixed ID + bounded data, then start/poll
++    opt backend is 43284Glued
++      Z->>R: acquire transform/SPI/socket; build fixed argv
++      R-->>Z: live args + resource owner
++    end
+     Z-->>E: terminal exit/log facts
+   else Shizuku unavailable or unauthorized
++    opt backend is 43284Glued
++      E->>R: acquire transform/SPI/socket; build fixed argv
++      R-->>E: live args + resource owner
++    end
+     E->>A: ProcessBuilder fixed ELF/argv
+     A-->>E: terminal exit/log facts
+   end
++  R->>R: release transform → SPI → encapsulation socket after child terminal
+   E-->>U: logs + exit status
+ ```
+ 
+--- BASELINE_FILE/docs/plan/exec-glue-plan.md
++++ MODIFIED_FILE/docs/plan/exec-glue-plan.md
+@@ -217,3 +217,11 @@
+ - 已接线：公用 UserService 固定注册两个 Glued ID；host 只允许映射后的 ELF、文件名 allowlist、结构化 argv 与 ≤512 KiB 输入；本地/远端日志保留上限为 8 MiB，远端 host 等待并在 destroy 时终结其直接 child。上游 fork/setsid 后代的取消/断连语义尚未完成验证，仍是部署门禁。
+ - 验证：./gradlew :app:testDebugUnitTest --no-daemon --console=plain 成功（406 tests，0 failures/errors/skipped）；./gradlew :app:assembleDebug --no-daemon --console=plain 成功；2.0.12 (1342) APK 已安装到 AVD 并打开 Paths 页，selector 中仅两项 Glued 可选，原版 43499/43284/98260 与 Custom 显示为灰色。
+ - 未完成：A301SO 尚未安装本批 APK；无副作用进程 fixture 的 Shizuku/App 双路真机 smoke 尚未完成；不执行漏洞 ELF；43499 FinishScript/O_TRUNC parity、43284 parser 参数与 IpSecRuntime 生命周期仍是部署阻断。
++
++### rev3 批次 2：43284 launcher-domain IpSec runtime（2026-10-29）
++
++- 来源核对：DFRoot commit `49e992ef3c9f7ec03c8efea6e3cf552f7ec6a347` 的 `app/src/main/java/df/root/ExploitRunner.java` 建立 UDP encapsulation socket、loopback SPI、32-byte AES key 与临时 sender port，再建立 AES-CBC transform；C parser 要求 `--encap-port/--sender-port/--spi/--aes-key`。本工作树的 Glued C 原文不变。
++- 已实现：App 路由在 App Context 创建独立 `AndroidIpSecRuntime`，由 argv formatter 生成上游四组选项；Shizuku 路由在 43284 host 的 UserService Context 创建另一份 runtime。参数不由 Flow/Binder 输入；43284 来自调用者的 argv 必须为空，profile/key 不写文件或日志。AES 字节在 close 时清零，父进程 argv 容器在 spawn 后清空。
++- 生命周期：sender `DatagramSocket` 取端口后立即关闭；transform → SPI → encapsulation socket 按逆序在 foreground ELF terminal/cancel/destroy 后释放。Shizuku prepare/setup 失败会在 spawn 前拒绝；host close 失败返回具名结果。
++- 主机验证：改前 `:app:testDebugUnitTest` 为 406 tests / 0 failures/errors/skipped；本批最新完整结果 410 tests / 0 failures/errors/skipped。`assembleDebug` 与 `assembleDebugAndroidTest` 编译通过；单测先暴露过 CloseScope 反向列表 view 被清空的缺陷，已改为 snapshot 并复测通过。
++- 设备门：本批仍需 A301SO instrumentation 只验证 App-domain runtime create/close；不调用 `start()`、不运行 ELF。Shizuku 当前未运行，故 shell/UserService runtime smoke 尚未执行。另有 43499 FinishScript/O_TRUNC parity、43499/43284 fork/setsid 取消语义和无副作用 exec fixture 仍阻止最终可用性结论。
+--- /dev/null
++++ MODIFIED_FILE/app/src/main/kotlin/com/ghostlock/app/backend/43284glued/AndroidIpSecRuntime.kt
+@@ -0,0 +1,177 @@
++package com.ghostlock.app.backend.cve43284glued
++
++import android.content.Context
++import android.net.IpSecAlgorithm
++import android.net.IpSecManager
++import android.net.IpSecTransform
++import java.net.DatagramSocket
++import java.net.InetAddress
++import java.security.SecureRandom
++import java.util.concurrent.atomic.AtomicBoolean
++
++/**
++ * Owns the per-run Android IPsec SA and the exact CLI arguments consumed by upstream DFRoot.
++ *
++ * The runtime is created in the process domain that will launch the ELF (App or Shizuku shell),
++ * remains alive until that ELF exits, and releases transform, SPI, then encapsulation socket.
++ * The AES key is kept in memory only and is cleared on close.
++ */
++internal class AndroidIpSecRuntime private constructor(
++    arguments: List<String>,
++    private val aesKey: ByteArray,
++    private val resources: ReverseCloseScope,
++) : AutoCloseable {
++    private val closed = AtomicBoolean(false)
++    private val argumentTokens = arguments.toMutableList()
++
++    /** @return a run-scoped copy of the upstream argv while this runtime remains open. */
++    val arguments: List<String>
++        get() = synchronized(this) { argumentTokens.toList() }
++
++    /**
++     * Releases this run's IPsec resources once, in reverse acquisition order, and clears key bytes.
++     *
++     * @throws IllegalStateException when one or more Android resource close operations fail.
++     */
++    override fun close() {
++        if (!closed.compareAndSet(false, true)) return
++        val failures = resources.close()
++        aesKey.fill(0)
++        synchronized(this) { argumentTokens.clear() }
++        if (failures.isNotEmpty()) {
++            throw IllegalStateException("exec:ipsec:resource-close:${failures.joinToString(",")}")
++        }
++    }
++
++    internal companion object {
++        /**
++         * Creates the DFRoot-compatible loopback transform and runtime argument vector.
++         *
++         * @param context Context of the selected launcher process; the service is never borrowed
++         * from the other process domain.
++         * @return a live runtime owner; the caller must close it after child termination.
++         * @throws Exception when the IPsec service or any required resource cannot be acquired.
++         * @note Called during the prepare/exec phase before the vulnerable ELF is started.
++         */
++        fun create(context: Context): AndroidIpSecRuntime {
++            val manager = context.getSystemService(Context.IPSEC_SERVICE) as? IpSecManager
++                ?: throw IllegalStateException("IpSecManager unavailable")
++            val loopback = InetAddress.getByName("127.0.0.1")
++            val resources = ReverseCloseScope()
++            val key = ByteArray(AES_KEY_BYTES)
++            try {
++                val encapSocket = manager.openUdpEncapsulationSocket()
++                resources.add("encapsulation") { encapSocket.close() }
++
++                val spi = manager.allocateSecurityParameterIndex(loopback)
++                resources.add("spi") { spi.close() }
++
++                SecureRandom().nextBytes(key)
++                val senderPort = DatagramSocket().use { socket -> socket.localPort }
++                val transform = IpSecTransform.Builder(context)
++                    .setEncryption(IpSecAlgorithm(IpSecAlgorithm.CRYPT_AES_CBC, key))
++                    .setIpv4Encapsulation(encapSocket, senderPort)
++                    .buildTransportModeTransform(loopback, spi)
++                resources.add("transform") { transform.close() }
++
++                val arguments = IpSecCliArguments.create(
++                    encapPort = encapSocket.port,
++                    senderPort = senderPort,
++                    spi = spi.spi,
++                    aesKey = key,
++                )
++                return AndroidIpSecRuntime(arguments, key, resources)
++            } catch (problem: Exception) {
++                key.fill(0)
++                resources.close()
++                throw problem
++            }
++        }
++
++        private const val AES_KEY_BYTES = 32
++    }
++}
++
++/**
++ * Builds a bounded argv vector matching the DFRoot C parser without shell interpolation.
++ *
++ * @note The key is encoded only for the upstream executable argument contract; callers must not
++ * persist, log, or send the returned vector over Binder.
++ */
++internal object IpSecCliArguments {
++    /**
++     * Validates and formats the four upstream options in their parser order.
++     *
++     * @param encapPort UDP encapsulation socket port.
++     * @param senderPort temporary local UDP port selected by the launcher domain.
++     * @param spi unsigned SPI bit pattern returned by IpSecManager.
++     * @param aesKey 32-byte AES-CBC key held by the live transform.
++     * @return four fixed option/value pairs as individual argv tokens.
++     * @throws IllegalArgumentException when a port, SPI, or key length is invalid.
++     * @note This formatter runs immediately before process start; it creates no files or logs.
++     */
++    fun create(encapPort: Int, senderPort: Int, spi: Int, aesKey: ByteArray): List<String> {
++        require(encapPort in 1..MAX_PORT) { "encapsulation port out of range" }
++        require(senderPort in 1..MAX_PORT) { "sender port out of range" }
++        require(spi != 0) { "SPI must be nonzero" }
++        require(aesKey.size == AES_KEY_BYTES) { "AES key must be 32 bytes" }
++        return listOf(
++            "--encap-port", encapPort.toString(),
++            "--sender-port", senderPort.toString(),
++            "--spi", java.lang.Integer.toUnsignedString(spi),
++            "--aes-key", aesKey.toLowerHex(),
++        )
++    }
++
++    private fun ByteArray.toLowerHex(): String = buildString(size * 2) {
++        for (byte in this@toLowerHex) {
++            val value = byte.toInt() and 0xff
++            append(HEX[value ushr 4])
++            append(HEX[value and 0x0f])
++        }
++    }
++
++    private const val MAX_PORT = 65535
++    private const val AES_KEY_BYTES = 32
++    private const val HEX = "0123456789abcdef"
++}
++
++/**
++ * Tracks acquired resources and releases each at most once in reverse acquisition order.
++ *
++ * @note Cleanup attempts continue after an individual close failure so one error cannot strand
++ * a later resource in the ownership stack.
++ */
++internal class ReverseCloseScope {
++    private val actions = mutableListOf<Pair<String, () -> Unit>>()
++    private var closed = false
++
++    /**
++     * Adds one resource release action to this run's owner.
++     *
++     * @param name stable non-secret resource label used only in cleanup diagnostics.
++     * @param action close operation invoked during reverse teardown.
++     * @throws IllegalStateException when ownership was already terminated.
++     */
++    @Synchronized
++    fun add(name: String, action: () -> Unit) {
++        check(!closed) { "resource scope already closed" }
++        actions += name to action
++    }
++
++    /**
++     * Runs all close actions once and returns labels for failures without exposing secret data.
++     *
++     * @return failed resource labels in reverse acquisition order, or an empty list.
++     */
++    fun close(): List<String> {
++        val pending = synchronized(this) {
++            if (closed) return emptyList()
++            closed = true
++            actions.asReversed().toList().also { actions.clear() }
++        }
++        return pending.mapNotNull { (name, action) ->
++            runCatching(action).exceptionOrNull()?.let { "$name:${it::class.java.simpleName}" }
++        }
++    }
++}
+--- /dev/null
++++ MODIFIED_FILE/app/src/test/kotlin/com/ghostlock/app/backend/43284glued/IpSecCliArgumentsTest.kt
+@@ -0,0 +1,68 @@
++package com.ghostlock.app.backend.cve43284glued
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++/** Unit contract tests for DFRoot argv encoding and the run-scoped IPsec close stack. */
++class IpSecCliArgumentsTest {
++    @Test
++    fun parserVectorUsesFixedFlagsUnsignedSpiAndLowercaseKey() {
++        val key = ByteArray(32) { it.toByte() }
++
++        val arguments = IpSecCliArguments.create(
++            encapPort = 4500,
++            senderPort = 49152,
++            spi = 0xFEDCBA98.toInt(),
++            aesKey = key,
++        )
++
++        assertEquals(
++            listOf(
++                "--encap-port", "4500",
++                "--sender-port", "49152",
++                "--spi", "4275878552",
++                "--aes-key", "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
++            ),
++            arguments,
++        )
++    }
++
++    @Test
++    fun rejectsInvalidPortZeroSpiAndWrongKeyLength() {
++        val key = ByteArray(32)
++
++        assertRejected { IpSecCliArguments.create(0, 49152, 1, key) }
++        assertRejected { IpSecCliArguments.create(4500, 65536, 1, key) }
++        assertRejected { IpSecCliArguments.create(4500, 49152, 0, key) }
++        assertRejected { IpSecCliArguments.create(4500, 49152, 1, ByteArray(31)) }
++    }
++
++    @Test
++    fun closeStackReleasesInReverseOrderContinuesAfterFailureAndRunsOnce() {
++        val closed = mutableListOf<String>()
++        val scope = ReverseCloseScope()
++        scope.add("encapsulation") { closed += "encapsulation" }
++        scope.add("spi") { closed += "spi" }
++        scope.add("transform") {
++            closed += "transform"
++            throw IllegalStateException("fixture")
++        }
++
++        val failures = scope.close()
++
++        assertEquals(listOf("transform", "spi", "encapsulation"), closed)
++        assertEquals(listOf("transform:IllegalStateException"), failures)
++        assertTrue(scope.close().isEmpty())
++        assertEquals(listOf("transform", "spi", "encapsulation"), closed)
++    }
++
++    private fun assertRejected(block: () -> Unit) {
++        try {
++            block()
++            throw AssertionError("Expected invalid IPsec input to be rejected")
++        } catch (_: IllegalArgumentException) {
++            // Expected: invalid port/SPI/key input must fail before exec.
++        }
++    }
++}
+--- /dev/null
++++ MODIFIED_FILE/app/src/androidTest/kotlin/com/ghostlock/app/backend/43284glued/AndroidIpSecRuntimeSmokeTest.kt
+@@ -0,0 +1,33 @@
++package com.ghostlock.app.backend.cve43284glued
++
++import androidx.test.ext.junit.runners.AndroidJUnit4
++import androidx.test.platform.app.InstrumentationRegistry
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import org.junit.runner.RunWith
++
++/** Device smoke for the App-UID IPsec capability used by the 43284 process launcher. */
++@RunWith(AndroidJUnit4::class)
++class AndroidIpSecRuntimeSmokeTest {
++    @Test
++    fun appDomainAcquiresAndReleasesIpSecRuntimeWithoutStartingElf() {
++        val context = InstrumentationRegistry.getInstrumentation().targetContext
++        val runtime = AndroidIpSecRuntime.create(context)
++
++        try {
++            assertEquals("--encap-port", runtime.arguments[0])
++            assertTrue(runtime.arguments[1].toInt() in 1..65535)
++            assertEquals("--sender-port", runtime.arguments[2])
++            assertTrue(runtime.arguments[3].toInt() in 1..65535)
++            assertEquals("--spi", runtime.arguments[4])
++            assertTrue(runtime.arguments[5].toLong() in 1L..0xFFFF_FFFFL)
++            assertEquals("--aes-key", runtime.arguments[6])
++            assertTrue(runtime.arguments[7].matches(Regex("[0-9a-f]{64}")))
++        } finally {
++            runtime.close()
++            runtime.close()
++        }
++        assertTrue(runtime.arguments.isEmpty())
++    }
++}

@@ -1,0 +1,12 @@
+--- BASELINE_FILE/exec-glue-plan.md
++++ MODIFIED_FILE/exec-glue-plan.md
+@@ -463,3 +463,9 @@
+ - 设备包清单：`adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp shell pm list packages` 包含 `df.root`、`me.weishu.kernelsu`、`com.ghostlock.app`；`adb -s emulator-5554 shell pm list packages` 包含 `me.weishu.kernelsu`、`com.ghostlock.app`，没有 `df.root`。
+ - 同路径读取探测：A301SO shell 查看 `/data/user_de/0/df.root/shared_prefs/dfroot.xml` 返回 `Permission denied`；AVD 返回 `No such file or directory`。因此 A301SO 安装 DFRoot 包只证明包存在，不证明 prefs 内容、DFRoot 可运行状态或 43284 bootstrap 成功；AVD 不满足 DFRoot 固定 prefs 路径存在这一先决条件。
+ - 这项复核没有启动 Glued ELF；43284 common Finish/root handoff 仍需用户裁定，不能以包存在或 `/dev/dfm6` 等 upstream marker 代替 Finish terminal。
++
++
++### 用户补充确认：双 launcher 为择一执行器（2026-10-29）
++
++- 用户确认 Shizuku 不是运行前提；Shizuku launcher 与 App launcher 并列可用。每次 run 在创建 child 前检查 Shizuku binder 与授权：两者均可用时只由 Shizuku 创建该次进程，否则只由 App 创建；这表示并列后端选择，不是同时启动两个 child。
++- 已选 launcher 若启动/连接结果不确定，不自动切换另一 launcher，以免同一 Flow 产生重复执行。当前 `ExecutableProcessRouting` 已按该规则实现；基线与改后均执行同一回归测试，改后验证见本节关联 transaction evidence。

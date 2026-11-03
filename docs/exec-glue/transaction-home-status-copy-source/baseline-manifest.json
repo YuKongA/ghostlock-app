@@ -1,0 +1,17 @@
+[
+  {
+    "path": "app/src/main/res/values/strings.xml",
+    "sha256": "1f793155885608f4dfc589fb75baa13d7dd558275299dbbfa71f9e20edad1b79",
+    "bytes": 70755
+  },
+  {
+    "path": "app/src/main/res/values-zh-rCN/strings.xml",
+    "sha256": "31ee4fa96d95185745e902dc80b427a089c4f6aa67ad06e81b96a6987ac89e67",
+    "bytes": 40327
+  },
+  {
+    "path": "docs/plan/exec-glue-plan.md",
+    "sha256": "bf4a4ba4f29555395bea991bbdab014a05c698dbe6d68042f5effad4a1b58a90",
+    "bytes": 35556
+  }
+]

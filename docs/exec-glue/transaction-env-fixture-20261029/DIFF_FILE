@@ -1,0 +1,94 @@
+--- BASELINE_FILE/docs/exec-glue/transaction-safe-exec-fixture/MODIFIED_FILE/exec_noop_fixture.c
++++ WORKTREE/docs/exec-glue/transaction-safe-exec-fixture/MODIFIED_FILE/exec_noop_fixture.c
+@@ -4,10 +4,12 @@
+  * @param argv Argument vector; values are intentionally never printed.
+  * @return Zero after stdin reaches EOF; nonzero only when a read or write fails.
+  * @note This fixture does not open files, create processes, access sockets, or invoke syscalls beyond read/write.
++ *       The 43499 build only reports its three path variables.
+  */
+ #include <errno.h>
+ #include <stdint.h>
+ #include <stdio.h>
++#include <stdlib.h>
+ #include <unistd.h>
+ 
+ #ifndef FIXTURE_BACKEND
+@@ -31,6 +33,16 @@
+         }
+         consumed += (uint64_t)count;
+     }
++#if defined(FIXTURE_REPORT_43499_ENV)
++    const char *home = getenv("GHOSTLOCK_HOME");
++    const char *tmpdir = getenv("TMPDIR");
++    const char *ksu_log = getenv("GHOSTLOCK_KSU_LOG");
++    if (printf("env_home=%s\nenv_tmpdir=%s\nenv_ksu_log=%s\n",
++               home != NULL ? home : "", tmpdir != NULL ? tmpdir : "",
++               ksu_log != NULL ? ksu_log : "") < 0) {
++        return 3;
++    }
++#endif
+     if (printf("fixture=ghostlock-exec-noop-v1\nbackend=" FIXTURE_BACKEND "\nargv_count=%d\nstdin_bytes=%llu\n",
+                argc - 1, (unsigned long long)consumed) < 0) {
+         return 3;
+--- BASELINE_FILE/app/src/androidTest/kotlin/com/ghostlock/app/backend/core/GluedExecFixtureSmokeTest.kt
++++ WORKTREE/app/src/androidTest/kotlin/com/ghostlock/app/backend/core/GluedExecFixtureSmokeTest.kt
+@@ -29,6 +29,7 @@
+  * Exercises each production Glued Flow against an APK-local, no-op ELF fixture.
+  *
+  * @note Tests skip unless the packaged executables contain the fixture marker; production payloads are never run.
++ *       The 43499 fixture also checks the three path overrides.
+  */
+ @RunWith(AndroidJUnit4::class)
+ class GluedExecFixtureSmokeTest {
+@@ -130,6 +131,18 @@
+         assertTrue("fixture output missing: $output", output.contains("fixture=ghostlock-exec-noop-v1"))
+         assertTrue("fixture backend output missing: $output", output.contains("backend=$backendKey"))
+         assertTrue("fixture stdin byte count mismatch: $output", output.contains("stdin_bytes=$expectedInputBytes"))
++        if (backendKey == "43499-Glued") {
++            val environment = output.mapNotNull { line ->
++                line.substringBefore('=').takeIf { it.startsWith("env_") }?.let { it to line.substringAfter('=') }
++            }.toMap()
++            val home = environment["env_home"].orEmpty()
++            val tmpdir = environment["env_tmpdir"].orEmpty()
++            val ksuLog = environment["env_ksu_log"].orEmpty()
++            assertTrue("43499 GHOSTLOCK_HOME is not absolute: $output", home.startsWith("/"))
++            assertEquals("43499 TMPDIR must match its run home", home, tmpdir)
++            assertEquals("43499 KSU log must be per-run and separate", "$home/.ghostlock_ksu.log", ksuLog)
++            assertTrue("43499 KSU log must not alias run.log", ksuLog != "$home/run.log")
++        }
+         Log.i(
+             "GluedExecFixtureSmoke",
+             "backend=$backendKey route=$route terminal=exit-0 fixture=true output=${output.joinToString("|")}",
+--- BASELINE_FILE/docs/plan/exec-glue-plan.md
++++ WORKTREE/docs/plan/exec-glue-plan.md
+@@ -399,7 +399,7 @@
+ - 阻断 2：native `profile.safe_mode` 与 Kotlin `FinishState.safeMode` 是双权威；43499 Glue 必须以 profile 值为执行唯一权威。
+ - 阻断 3：上游 bootstrap 已负责 KernelSU late-load，common `RootManagerPayload` 再执行会重复；bootstrap 必须是唯一 late-load owner，common tail 不重复执行。
+ - 阻断 4：detached `fork()+setsid()` 后代不等于 launcher direct child terminal；需要状态机覆盖 `STAGED → ELF_RUNNING → VICTIM_HANDOFF → FINISH_RUNNING → FINISH_TERMINAL → LOG_EOF → CLEANUP`，取消/断连/EOF 未确认均保留证据。
+-- 重要项：两 launcher 尚未设置并验证 `GHOSTLOCK_HOME/TMPDIR/GHOSTLOCK_KSU_LOG`；只读脚本的实际路径、hash、inode、owner/mode 尚未证明；upstream LOG/debug/marker 与 common writer 的 owner、容量与清理规则尚未统一。
++- 设计复核时的重要项快照（03:53）：两 launcher 尚未设置/验证 `GHOSTLOCK_HOME/TMPDIR/GHOSTLOCK_KSU_LOG`；随后已由 2026-10-29 env fixture 批次验证三键在 App 与 Shizuku 子进程中实际可见。只读脚本的 staging 路径、hash/inode/owner/mode 与 victim handoff 仍未证明；upstream LOG/debug/marker 与 common writer 的 owner、容量与清理规则仍未统一。
+ - 最小逐文件设计：`Flow43499Glued.kt` 生成并校验 profile 与 finish/payload bytes；`ExecutableBackendProcess.kt` 和 `ExecutableShizukuHost.kt` 各自 staging 到 launcher-owned runDir 并注入 env；`FinishScript.kt` 生成 parity bootstrap + common tail；`PayloadRequests.kt` 排除重复 KernelSU late-load；相关 Kotlin/Android tests 验证 parity、两路同字节、hash/inode/mode、终态与取消。`ops.cpp` 和 `victim_process.cpp` 保持逐字节不变。
+ - 用户批准门更新：Glue-only disk staging 已由用户原始需求明确授权；Shizuku/App 双 launcher 也已明确裁定。剩余为技术设计/验证门：`ops.cpp:226-431` 完整 bootstrap parity、profile.safe_mode 单一权威、KernelSU late-load 唯一 owner、同路径只读 handoff 身份、终态/EOF/取消/清理；它们不得以“落盘已批准”代替验证。
+ - 设计复核记录：2026-10-29 03:53 America/Toronto · HEAD `b119085915748a940740d7ce919b5a30ed8e9346` · 总判“阻断” · 阻断 4 项（parity、safe_mode 权威、late-load owner、detached child terminal）· 重要 3 项（双 launcher env/staging、inode identity、log/debug/marker owner）。
+@@ -417,7 +417,7 @@
+ | SELinux policy header 验证、netlink bits fixup、有限重试及 status 变化判定 | `ops.cpp:334-380` | `FinishScript.kt:47-50` 只可选 `setenforce 1` | policy repair 步骤/超时/失败状态逐项保留；区分“fixup failed 但流程继续”的既有结果 |
+ | KernelSU already-loaded 判定、ksud late-load、模块等待、条件恢复 enforcing | `ops.cpp:381-414` | `PayloadRequests.kt:28-55` 总会构造 root-manager late-load | 上游 bootstrap 唯一执行一次；common payload tail 仅追加用户配置的非重复 payload |
+ | common payload 顺序、restore SELinux、soft reboot、marker、最终退出码 | `FinishScript.kt:42-64`; `PayloadRequests.kt:128-157` | common writer 有 marker 与状态记录，但结尾没有显式 `exit "$STATUS"`；upstream bootstrap 的状态规则不同 | 明确 bootstrap→user payload→restore/reboot→marker→exit 顺序；执行码、marker 内容与 log terminal 一致 |
+-| 同路径只读执行桥 | `ops.cpp:229-234`; `victim_process.cpp:142-153` | 双 launcher 尚未 stage 固定 `.ghostlock_root.sh` 或设置 `GHOSTLOCK_HOME` | 每路 launcher 以本地 runDir 固定同名、只读、hash/inode 可核对的 script；只验证 fixture，不启动生产 ELF |
++| 同路径只读执行桥 | `ops.cpp:229-234`; `victim_process.cpp:142-153` | 双 launcher 的三个路径环境键已由 safe fixture 实测；固定 `.ghostlock_root.sh` 尚未 staging/seal，hash/inode/owner/mode 与 victim handoff 未证明 | 每路 launcher 以本地 runDir 固定同名、只读、hash/inode 可核对的 script；只验证 fixture，不启动生产 ELF |
+ 
+ #### 复核补充：输入、状态与文件合同
+ 
+@@ -446,3 +446,12 @@
+ - 部署：APK `build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk` 已安装到 A301SO 与 `emulator-5554`；`com.ghostlock.app` 两端 `2.0.12 (1342)`，base.apk 与构建产物 SHA-256 均为 `720f7100b6bb3ee0a885a5fc13b8c78a6c731f1cc16cdb8ff4c2d78548b71672`。
+ - AVD UI 证据在 `build/deployment-audit/AVD-backend-selector-20261029.png`、`AVD-43499-card-ui-20261029.png` 和 `AVD-paths-ui-20261029.png`：选择器显示两个 Glued backend 可选，三个原版后端与 Custom 灰显；43499 card 显示内置 profile 列表与 Import `.conf`，43284 card 无 profile/import 控件。
+ - 当前不等于可用攻击版本：43499 Finish parity、safe_mode 单一权威、late-load owner、固定 `.ghostlock_root.sh` staging/seal 与 detached worker terminal/EOF/cleanup 仍未闭合；43284 common Finish/root handoff 仍待独立设计裁定。
++
++#### 双 launcher 环境变量 safe fixture 复验（2026-10-29）
++
++- 修改仅限安全 no-op fixture 与 instrumentation assertion；fixture 读取 stdin 并报告固定 marker/参数字节数，43499 编译变体额外报告三个路径变量，不调用上游漏洞逻辑。
++- 命令：`./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --console=plain`；结果 `BUILD SUCCESSFUL in 41s`，84 actionable tasks（15 executed，69 up-to-date），XML 汇总 424 tests / 0 failures / 0 errors / 0 skipped。
++- AVD App route：`adb -s emulator-5554 shell am instrument -w -e expected_route APP -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner` → `OK (2 tests)`，exit 0。Logcat 证明 `GHOSTLOCK_HOME == TMPDIR == /data/user/0/com.ghostlock.app/files/ghostlock-glue/43499-Glued/<run-id>`，`GHOSTLOCK_KSU_LOG=<home>/.ghostlock_ksu.log`。
++- A301SO auto route：`adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp shell am instrument -w -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest#dispatches43499FlowThroughTheSelectedLauncher com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner` → `OK (1 test)`，exit 0；运行时实际 route 为 `SHIZUKU`，home/tmpdir 指向 shell-owned `/data/local/tmp/ghostlock-glue/CVE_2026_43499_GLUED/<run-id>`，KSU log 为该 runDir 下 `.ghostlock_ksu.log`。
++- 结束态：fixture 与 test APK 均移除/覆盖；A301SO 与 AVD 恢复安装当前 source APK `2.0.12 (1342)`，两端 `base.apk` 均与构建产物 SHA-256 `8cdb0e127871bb271af3850a378e4860fd3db00ea8ef9225bd575811440562ea` 一致；test package 不存在，未见 fixture/Glued 进程。
++- 该证据关闭“环境变量未进入实际子进程”项；不关闭 `.ghostlock_root.sh` staging/seal、detached-worker terminal/EOF/cancel cleanup、Finish parity/safe_mode/late-load owner，也未运行生产 ELF。

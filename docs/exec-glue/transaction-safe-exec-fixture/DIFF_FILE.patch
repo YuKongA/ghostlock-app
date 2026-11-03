@@ -1,0 +1,391 @@
+# Source diff and binary APK-entry delta for the no-op fixture transaction
+# Fixture-base production APK sha256=2cf5125cf4b1ab41482b3a96fd72184345c514f1271ef84ce65a10579376486a
+# Latest installed production APK sha256=35e63d5409d62f94769416e1c782c5ca135f69e91a24d14aa96380388b3d6ccb (all entries same except generated classes4.dex BuildInfo timestamp/checksum metadata)
+# Fixture modified APK sha256=bf224ba8887f42ab806d02c1978ef2e75a9cee52cad4ce54af79269e02ec1045
+# Replaced entries only: lib/arm64-v8a/lib43499-Glued.so, lib/arm64-v8a/lib43284Glued.so
+# Production entry hashes: lib43499=33a5be5e7295aa04d22ba3aae17c7d74147dbb86643904b04b8933632390f396; lib43284=1a075b686507866c0336ebf5e8e3dda43f8afe96a45e5c0368fe4531bbe9ea86
+# Fixture entry hashes: lib43499=57354f56a20adcc3762bdd5a876375cdab79b836958eca1a63c386e246faa9d9; lib43284=80bf54c53082ba3cce5b0b9ec093e9ce97cf34d01d8daab817c0896fe4c3fa65
+
+--- a/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableBackendProcess.kt
++++ b/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableBackendProcess.kt
+@@ -41,6 +41,7 @@
+     private const val MAX_INPUT_BYTES = 512 * 1024
+     private const val MAX_LOG_BYTES = 8 * 1024 * 1024
+     private const val MAX_LOG_LINE_CHARS = 8192
++    private const val MAX_REMOTE_LOG_CHUNK = 32 * 1024
+ 
+     /**
+      * Chooses one launcher before process creation; an authorized Shizuku failure is returned
+@@ -215,12 +216,23 @@
+         }
+         val startedAt = System.nanoTime()
+         var terminal = false
++        var logOffset = 0L
++        val logLines = Utf8LogLineAssembler(onLine)
++        suspend fun drainAvailableLog() {
++            while (true) {
++                val chunk = client.readLog(logOffset, MAX_REMOTE_LOG_CHUNK)
++                if (chunk.isEmpty()) return
++                logOffset += chunk.size.toLong()
++                logLines.append(chunk)
++            }
++        }
+         try {
+             val unavailable = client.availabilityReasons()
+             if (unavailable.isNotEmpty()) {
+                 return BackendRunUiState.Refused(unavailable)
+             }
+-            val prepared = client.prepare(config, stdin ?: ByteArray(0), onLine)
++            /* Executable output is drained by AIDL offset below so terminal tail cannot be lost. */
++            val prepared = client.prepare(config, stdin ?: ByteArray(0)) { }
+             if (prepared != 0) {
+                 val reason = client.lastReason()
+                 return BackendRunUiState.Refused(
+@@ -236,7 +248,11 @@
+             }
+             while (true) {
+                 val state = client.state()
++                drainAvailableLog()
+                 if (state == Glued43499ExecutableHost.STATE_TERMINAL) {
++                    /* reap() publishes TERMINAL only after the child output thread reaches EOF. */
++                    drainAvailableLog()
++                    logLines.finish()
+                     terminal = true
+                     val hostReason = client.lastReason()
+                     if (hostReason.startsWith("exec:host:resource-close:")) {
+@@ -272,6 +288,8 @@
+             )
+         } finally {
+             withContext(NonCancellable + Dispatchers.IO) {
++                runCatching { drainAvailableLog() }
++                runCatching { logLines.finish() }
+                 /* Stop/reap any uncertain child before removing the shared host service. */
+                 client.disconnect(remove = true)
+                 if (!terminal) onLine("exec:shizuku:launcher-ended-without-terminal-result")
+
+--- /dev/null
++++ b/app/src/main/kotlin/com/ghostlock/app/backend/core/Utf8LogLineAssembler.kt
+@@ -0,0 +1,63 @@
++package com.ghostlock.app.backend.core
++
++import java.io.ByteArrayOutputStream
++
++/**
++ * Reassembles UTF-8 lines from bounded AIDL log chunks without losing split code points.
++ *
++ * @param onLine receives each complete non-empty line, in byte-stream order.
++ * @return None; lines are emitted incrementally and a terminal suffix is emitted by [finish].
++ * @throws IllegalStateException when bytes are appended after the stream has finished.
++ * @note The host bounds each source line and the overall stream; this is the App-side exec-log stage.
++ */
++internal class Utf8LogLineAssembler(private val onLine: (String) -> Unit) {
++    private val pending = ByteArrayOutputStream()
++    private var finished = false
++
++    /**
++     * Appends one byte chunk and emits every complete newline-delimited UTF-8 line.
++     *
++     * @param bytes next AIDL log bytes; an empty array is a no-op.
++     * @return None; incomplete suffix bytes remain owned by this assembler.
++     * @throws IllegalStateException if [finish] has already been called.
++     */
++    fun append(bytes: ByteArray) {
++        check(!finished) { "log stream already finished" }
++        if (bytes.isEmpty()) return
++        val previous = pending.toByteArray()
++        val joined = ByteArray(previous.size + bytes.size)
++        previous.copyInto(joined)
++        bytes.copyInto(joined, destinationOffset = previous.size)
++        pending.reset()
++
++        var lineStart = 0
++        for (index in joined.indices) {
++            if (joined[index] != NEWLINE) continue
++            val lineEnd = if (index > lineStart && joined[index - 1] == CARRIAGE_RETURN) index - 1 else index
++            if (lineEnd > lineStart) {
++                onLine(String(joined, lineStart, lineEnd - lineStart, Charsets.UTF_8))
++            }
++            lineStart = index + 1
++        }
++        if (lineStart < joined.size) pending.write(joined, lineStart, joined.size - lineStart)
++    }
++
++    /**
++     * Emits a final unterminated line and makes repeated finish calls idempotent.
++     *
++     * @return None; after this call the assembler rejects further input.
++     */
++    fun finish() {
++        if (finished) return
++        finished = true
++        val tail = pending.toByteArray()
++        pending.reset()
++        val size = if (tail.lastOrNull() == CARRIAGE_RETURN) tail.size - 1 else tail.size
++        if (size > 0) onLine(String(tail, 0, size, Charsets.UTF_8))
++    }
++
++    private companion object {
++        private const val NEWLINE: Byte = 0x0a
++        private const val CARRIAGE_RETURN: Byte = 0x0d
++    }
++}
+
+--- /dev/null
++++ b/app/src/test/kotlin/com/ghostlock/app/backend/core/Utf8LogLineAssemblerTest.kt
+@@ -0,0 +1,37 @@
++package com.ghostlock.app.backend.core
++
++import org.junit.Assert.assertEquals
++import org.junit.Test
++
++/** Verifies bounded AIDL log framing, including Unicode split across chunks. */
++class Utf8LogLineAssemblerTest {
++    @Test
++    fun preservesMultibyteCharactersSplitAcrossChunks() {
++        val lines = mutableListOf<String>()
++        val assembler = Utf8LogLineAssembler(lines::add)
++        val bytes = "first\n猫尾\nlast".toByteArray(Charsets.UTF_8)
++        assembler.append(bytes.copyOfRange(0, 7))
++        assembler.append(bytes.copyOfRange(7, bytes.size))
++        assembler.finish()
++
++        assertEquals(listOf("first", "猫尾", "last"), lines)
++    }
++
++    @Test
++    fun normalizesCarriageReturnsAndFinishesOnce() {
++        val lines = mutableListOf<String>()
++        val assembler = Utf8LogLineAssembler(lines::add)
++        assembler.append("one\r\ntwo\nterminal\r".toByteArray(Charsets.UTF_8))
++        assembler.finish()
++        assembler.finish()
++
++        assertEquals(listOf("one", "two", "terminal"), lines)
++    }
++
++    @Test(expected = IllegalStateException::class)
++    fun rejectsBytesAfterFinish() {
++        val assembler = Utf8LogLineAssembler { }
++        assembler.finish()
++        assembler.append("late".toByteArray(Charsets.UTF_8))
++    }
++}
+
+--- /dev/null
++++ b/app/src/androidTest/kotlin/com/ghostlock/app/backend/core/GluedExecFixtureSmokeTest.kt
+@@ -0,0 +1,144 @@
++package com.ghostlock.app.backend.core
++
++import android.content.pm.PackageManager
++import android.util.Log
++import androidx.test.ext.junit.runners.AndroidJUnit4
++import androidx.test.platform.app.InstrumentationRegistry
++import com.ghostlock.app.backend.cve43499glued.Glued43499ProfileCodec
++import com.ghostlock.app.backend.declarations.BackendSpec
++import com.ghostlock.app.backend.declarations.cve43284glued.Backend43284Glued
++import com.ghostlock.app.backend.declarations.cve43499glued.Backend43499Glued
++import com.ghostlock.app.core.flow.FlowResult
++import com.ghostlock.app.shizuku.ShizukuBackendClient
++import com.ghostlock.app.shizuku.host.ShizukuBackendHosts
++import com.ghostlock.app.ui.backend.BackendConfigStore
++import com.ghostlock.app.ui.backend.BackendRunDispatch
++import com.ghostlock.app.ui.backend.BackendRunDispatcher
++import com.ghostlock.app.ui.backend.BackendRunGate
++import com.ghostlock.app.ui.backend.BackendRunUiState
++import com.ghostlock.app.ui.backend.RunPageContext
++import kotlinx.coroutines.runBlocking
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertTrue
++import org.junit.Assume.assumeTrue
++import org.junit.Test
++import org.junit.runner.RunWith
++import rikka.shizuku.Shizuku
++
++/**
++ * Exercises each production Glued Flow against an APK-local, no-op ELF fixture.
++ *
++ * @note Tests skip unless the packaged executables contain the fixture marker; production payloads are never run.
++ */
++@RunWith(AndroidJUnit4::class)
++class GluedExecFixtureSmokeTest {
++    @Test
++    fun dispatches43499FlowThroughTheSelectedLauncher() = runBlocking {
++        val context = InstrumentationRegistry.getInstrumentation().targetContext
++        val profileStore = BackendConfigStore.open(
++            context = context,
++            cve = Backend43499Glued.cve,
++            schema = Backend43499Glued.configSchema,
++        )
++        val previousReference = profileStore.getString("profile_reference")
++        try {
++            val profile = Glued43499ProfileCodec.builtins(context).firstOrNull { asset ->
++                runCatching { Glued43499ProfileCodec.resolve(context, "builtin:${asset.release}") }.isSuccess
++            } ?: error("fixture-smoke:no-valid-builtin-profile")
++            val reference = "builtin:${profile.release}"
++            val inputBytes = Glued43499ProfileCodec.resolve(context, reference).binary.size
++            Backend43499Glued.selectProfile(reference, profileStore)
++            assertFixtureFlow(
++                spec = Backend43499Glued,
++                backendKey = "43499-Glued",
++                binaryName = "lib43499-Glued.so",
++                expectedInputBytes = inputBytes,
++            )
++        } finally {
++            profileStore.putString("profile_reference", previousReference)
++            Backend43499Glued.restoreConfig(profileStore)
++        }
++    }
++
++    @Test
++    fun dispatches43284FlowThroughTheSelectedLauncherAndClosesRuntime() = runBlocking {
++        assertFixtureFlow(
++            spec = Backend43284Glued,
++            backendKey = "43284Glued",
++            binaryName = "lib43284Glued.so",
++            expectedInputBytes = 0,
++        )
++    }
++
++    /** Runs one selectable backend through its real dispatcher, Flow, and exec launcher. */
++    private suspend fun assertFixtureFlow(
++        spec: BackendSpec,
++        backendKey: String,
++        binaryName: String,
++        expectedInputBytes: Int,
++    ) {
++        val instrumentation = InstrumentationRegistry.getInstrumentation()
++        val context = instrumentation.targetContext
++        val fixture = context.applicationInfo.nativeLibraryDir + "/" + binaryName
++        val marker = "fixture=ghostlock-exec-noop-v1".toByteArray(Charsets.UTF_8)
++        val backendMarker = "backend=$backendKey".toByteArray(Charsets.UTF_8)
++        val fixtureFile = java.io.File(fixture)
++        val executableBytes = fixtureFile.takeIf { it.isFile }?.readBytes() ?: ByteArray(0)
++        Log.i(
++            "GluedExecFixtureSmoke",
++            "fixture-check backend=$backendKey path=$fixture exists=${fixtureFile.isFile} " +
++                "can-execute=${fixtureFile.canExecute()} bytes=${executableBytes.size}",
++        )
++        assumeTrue("No-op fixture binary is not installed", executableBytes.contains(marker))
++        assumeTrue("No-op fixture identity does not match", executableBytes.contains(backendMarker))
++
++        val binderReachable = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
++        val permissionGranted = binderReachable && runCatching {
++            Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
++        }.getOrDefault(false)
++        val route = ExecutableProcessRouting.select(binderReachable, permissionGranted)
++        InstrumentationRegistry.getArguments().getString("expected_route")?.let { expected ->
++            assertEquals("route selection", expected, route.name)
++        }
++
++        if (route == ExecutableProcessRoute.SHIZUKU) {
++            val backendId = when (backendKey) {
++                "43499-Glued" -> ShizukuBackendHosts.CVE_43499_GLUED
++                "43284Glued" -> ShizukuBackendHosts.CVE_43284_GLUED
++                else -> error("fixture-smoke:unsupported-backend")
++            }
++            assertTrue(
++                "Shizuku preflight must be ready before dispatch",
++                ShizukuBackendClient(context, backendId).availabilityReasons().isEmpty(),
++            )
++        }
++
++        val decision = BackendRunGate.decide(
++            spec = spec,
++            readiness = spec.readiness(),
++            context = RunPageContext(),
++        )
++        assertTrue("backend gate rejected $backendKey: ${decision.reasons}", decision.allowed)
++
++        val output = mutableListOf<String>()
++        val dispatch = BackendRunDispatcher.dispatch(spec, decision, context) { line -> output += line }
++        assertTrue("dispatcher did not execute the Flow", dispatch is BackendRunDispatch.Executed)
++        val state = (dispatch as BackendRunDispatch.Executed).state
++        assertTrue("Flow did not return Finished: $state", state is BackendRunUiState.Finished)
++        val result = (state as BackendRunUiState.Finished).result
++        assertTrue("fixture did not exit successfully: $result", result is FlowResult.Ok)
++        assertTrue("fixture output missing: $output", output.contains("fixture=ghostlock-exec-noop-v1"))
++        assertTrue("fixture backend output missing: $output", output.contains("backend=$backendKey"))
++        assertTrue("fixture stdin byte count mismatch: $output", output.contains("stdin_bytes=$expectedInputBytes"))
++        Log.i(
++            "GluedExecFixtureSmoke",
++            "backend=$backendKey route=$route terminal=exit-0 fixture=true output=${output.joinToString("|")}",
++        )
++    }
++
++    /** Returns true when a fixture marker is present without decoding unrelated executable bytes. */
++    private fun ByteArray.contains(needle: ByteArray): Boolean =
++        needle.isNotEmpty() && indices.any { start ->
++            start + needle.size <= size && needle.indices.all { offset -> this[start + offset] == needle[offset] }
++        }
++}
+
+--- /dev/null
++++ b/app/src/main/cpp/exec-fixture/exec_noop_fixture.c
+@@ -0,0 +1,39 @@
++/**
++ * @brief Harmless exec fixture that consumes stdin and reports only byte counts.
++ * @param argc Number of argv entries, including executable name.
++ * @param argv Argument vector; values are intentionally never printed.
++ * @return Zero after stdin reaches EOF; nonzero only when a read or write fails.
++ * @note This fixture does not open files, create processes, access sockets, or invoke syscalls beyond read/write.
++ */
++#include <errno.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <unistd.h>
++
++#ifndef FIXTURE_BACKEND
++#error FIXTURE_BACKEND must name the backend identity
++#endif
++
++int main(int argc, char **argv) {
++    (void)argv;
++    uint64_t consumed = 0U;
++    char buffer[4096];
++    for (;;) {
++        ssize_t count = read(STDIN_FILENO, buffer, sizeof(buffer));
++        if (count == 0) {
++            break;
++        }
++        if (count < 0) {
++            if (errno == EINTR) {
++                continue;
++            }
++            return 2;
++        }
++        consumed += (uint64_t)count;
++    }
++    if (printf("fixture=ghostlock-exec-noop-v1\nbackend=" FIXTURE_BACKEND "\nargv_count=%d\nstdin_bytes=%llu\n",
++               argc - 1, (unsigned long long)consumed) < 0) {
++        return 3;
++    }
++    return fflush(stdout) == 0 ? 0 : 4;
++}
+
+--- a/docs/plan/exec-glue-plan.md
++++ b/docs/plan/exec-glue-plan.md
+@@ -251,3 +251,12 @@
+ 
+ - AVD 实测 Home 状态卡片仍显示“chain execution is not wired yet”，与当前 Glued Flow/exec 接线不符。英/中提示现明确限定为 Home 状态卡片使用演示数据，并引导到 Paths 配置后端；不宣称真实执行链已完成设备验证。
+ - 验证：`./gradlew :app:testDebugUnitTest --no-daemon --console=plain` 成功（410 tests，0 failures/errors/skipped）；`./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --console=plain` 成功（77 actionable tasks）。新 APK SHA-256 `768bd2363133f940f4ac3ae6a5f354ed898f4568cd46f3beab71816f7a6e5d89` 已安装到 AVD 与 A301SO，设备 `base.apk` 与本地产物逐字节一致；AVD Home XML 显示新英文提示，A301SO `MainActivity` 为 Resumed。
++
++#### rev3 批次 4：Glued exec fixture 与 AVD UI 验证（2026-10-29）
++
++- 双 launcher 路由复核：App Flow 在 spawn 前检查 Shizuku binder 与授权；A301SO 当前授权/运行时 route 为 `SHIZUKU`，无 Shizuku 的 AVD route 为 `APP`。两端分别对 43499-Glued 与 43284Glued 执行只读 stdin、固定 stdout、无文件/网络/子进程副作用的 no-op fixture；未运行上游漏洞 ELF。
++- 修复 Shizuku 快速 child 日志竞争：AIDL offset reader 在每轮轮询读到新日志，并在 terminal 后再 drain 一次，UTF-8 assembler 保留分块边界；以 callback pump 为输出唯一来源时，A301SO 43499 fixture 曾出现 exit 0 但 `output=[]`，测试暴露后已改正。
++- instrumentation fixture 证据：AVD App route 全类运行 `OK (2 tests)`、exit 0；A301SO Shizuku route 下分别运行 43499 与 43284 单项测试时均 `OK (1 test)`、exit 0；43499 stdin 为 1,884 bytes 并回显 profile id，43284 argv_count=8 / stdin_bytes=0。另一次 A301SO 全类连续运行（43284 后 43499）中第二项于 5 s 后返回 `exec:shizuku:prepare:-8`，其后独立重跑 43499 即 `OK (1 test)`；这是 Shizuku service rebind/cleanup 的瞬时失败观察，保留为待复测项，不算连续双 backend 门通过，也没有 fallback 到 App。所有 fixture marker 在运行前核对。
++- 直接 UI 门：AVD Paths selector 有且仅有两个 Glued 项可选，原版 43284/98260/43499 与 Custom 的选项容器 `enabled=false`；43284 卡显示 `exec (upstream CLI)` 且不显示 profile 卡；43499 卡显示上游 built-in profile selector 与 `Import .conf`。实际从 Run 页分别启动两个无副作用 fixture，终端均显示对应 backend、fixture marker、`backend run: ok`、终态及 43499 profile id。层级与截图保存在 `docs/exec-glue/transaction-safe-exec-fixture/MODIFIED_FILE/`。
++- 主机验证：改前 `:app:testDebugUnitTest` 410 tests / 0 failures / 0 errors / 0 skipped；修改后复跑 413 tests / 0 failures / 0 errors / 0 skipped；`:app:assembleDebug :app:assembleDebugAndroidTest` 成功。fixture APK 只替换两个 JNI-lib APK entry 为 safe stub；活动结束后，AVD/A301SO 均安装当前 source build 2.0.12 (1342)，base.apk SHA-256=`35e63d5409d62f94769416e1c782c5ca135f69e91a24d14aa96380388b3d6ccb`，不留 fixture APK/测试 APK。
++- 仍未关闭：43499 FinishScript 对 upstream `ops.cpp` 的逐项等价与 O_TRUNC 桥接；上游 fork/setsid 后代的取消/断连清理；A301SO 连续 Shizuku run 后 service rebind 的一次瞬时 `prepare:-8` 尚未根因关闭；真实生产 ELF 未运行，故不得将攻击路径标记为 supported。当前结果证明 UI 到固定 exec 子进程、日志和终态链路的无副作用验证，不代表漏洞利用成功或完成发布门禁。
+
+--- a/docs/exec-glue/transaction-safe-exec-fixture/ROLLBACK.sh
++++ b/docs/exec-glue/transaction-safe-exec-fixture/ROLLBACK.sh
+@@ -3,6 +3,6 @@
+ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ : "${ADB_SERIAL:?set ADB_SERIAL to the device serial}"
+ ADB_BIN=${ADB:-adb}
+-BASELINE_APK=${BASELINE_APK:-"$SCRIPT_DIR/BASELINE_FILE/GhostLock-v2.0.12-1342.apk"}
++BASELINE_APK=${BASELINE_APK:-"$SCRIPT_DIR/BASELINE_FILE/GhostLock-source-updated-before-fixture.apk"}
+ test -f "$BASELINE_APK"
+ "$ADB_BIN" -s "$ADB_SERIAL" install -r "$BASELINE_APK"
+

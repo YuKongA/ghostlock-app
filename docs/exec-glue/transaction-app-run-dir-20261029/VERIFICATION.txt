@@ -1,0 +1,78 @@
+App launcher per-run artifact directories — transaction verification
+Date: 2026-10-29
+Workspace: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app
+
+Changed branch/field
+- The App launcher runDir now has the form files/ghostlock-glue/<fixed-backend>/<uuid>, so separate runs no longer overwrite one another's run.log/profile/payload artifacts. Only 43499-Glued and 43284Glued identities are accepted by newAppRunDirectory.
+- Shizuku routing follows the user's clarification: Shizuku is selected only when its binder is reachable and authorization is granted; otherwise the App process launcher is selected. Each run has exactly one selected launcher, and an uncertain Shizuku failure does not start a second App child. This route was already present and was regression-tested in this batch; the per-run directory change applies to the App launcher.
+
+Artifacts
+- MODIFIED_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-app-run-dir-20261029/MODIFIED_FILE/ExecutableBackendProcess.kt
+- MODIFIED_FILE test: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-app-run-dir-20261029/MODIFIED_FILE/ExecutableProcessRoutingTest.kt
+- DIFF_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-app-run-dir-20261029/DIFF_FILE.patch
+- VERIFICATION.txt: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-app-run-dir-20261029/VERIFICATION.txt
+- executable ROLLBACK.sh: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-app-run-dir-20261029/ROLLBACK.sh
+- BASELINE_FILE snapshots are under /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-app-run-dir-20261029/BASELINE_FILE/.
+
+BASELINE tests
+Command: ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+Input: pre-change ExecutableBackendProcess.kt and ExecutableProcessRoutingTest.kt from BASELINE_FILE; complete Debug unit-test suite.
+Literal output:
+  BUILD SUCCESSFUL in 40s
+  33 actionable tasks: 6 executed, 27 up-to-date
+Exit status: 0
+Captured output: BASELINE_FILE/unit-tests.log.
+
+MODIFIED tests/build
+Command: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --console=plain
+Input: current modified App runDir source and tests; Debug unit tests, app APK, and AndroidTest APK tasks.
+Literal output:
+  BUILD SUCCESSFUL in 42s
+  86 actionable tasks: 12 executed, 74 up-to-date
+Exit status: 0
+JUnit XML: 416 tests, 0 failures, 0 errors, 0 skipped. ExecutableProcessRoutingTest: 5 tests, 0 failures, 0 errors, 0 skipped.
+Captured output: MODIFIED_FILE/final-build-tests.log.
+APK: build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk
+APK size: 28,999,679 bytes
+APK SHA-256: 0335002fd69cb215e861794ac40568fc637ce1731a0e6868b4c8f9c3bc4b5213.
+
+AVD safe exec fixture
+Command: adb -s emulator-5554 shell am instrument -w -e expected_route APP -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner
+Input: safe fixture APK /tmp/GhostLock-app-run-dir-fixture.apk (SHA-256 ada6493aa6f6f64d02145102408dead8ea306cd996121f781ffbd85ab16f5d0e); only the 43499-Glued and 43284Glued ELF APK entries were replaced by no-op stdin/log fixtures.
+Literal result:
+  com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest:..
+  Time: 0.435
+  OK (2 tests)
+Exit status: 0
+Captured output: MODIFIED_FILE/avd-safe-fixture.log.
+Observed UUID run log paths and contents:
+- files/ghostlock-glue/43499-Glued/960cda5f-19b5-4ec4-9e07-7e3bc04bfd88/run.log: fixture=ghostlock-exec-noop-v1; backend=43499-Glued; argv_count=1; stdin_bytes=1884.
+- files/ghostlock-glue/43284Glued/7d5ba648-6dc3-427b-9307-30d1f1829b3c/run.log: fixture=ghostlock-exec-noop-v1; backend=43284Glued; argv_count=8; stdin_bytes=0.
+No production vulnerability ELF was run by this smoke test.
+
+Deployment identity check
+- AVD emulator-5554: versionName=2.0.12, versionCode=1342; pulled installed base.apk SHA-256 equals 0335002fd69cb215e861794ac40568fc637ce1731a0e6868b4c8f9c3bc4b5213.
+- A301SO adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp: versionName=2.0.12, versionCode=1342; pulled installed base.apk SHA-256 equals 0335002fd69cb215e861794ac40568fc637ce1731a0e6868b4c8f9c3bc4b5213.
+- AVD Paths screenshot inspected at /tmp/ghostlock-app-run-dir-paths.png; it shows the Glued backend selector, 43499 profile selector/import control, Payload, and Finish entries.
+
+ROLLBACK test on a separate copy
+Command: ./docs/exec-glue/transaction-app-run-dir-20261029/ROLLBACK.sh "$PWD/docs/exec-glue/transaction-app-run-dir-20261029/ROLLBACK_TEST/worktree"
+Input: isolated ROLLBACK_TEST/worktree copy; the real source worktree was not passed to rollback.
+Literal output:
+  ROLLBACK_RESTORED=app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableBackendProcess.kt sha256=d3002fb91c3befbcd4398fc52e02dd71cf9dd0457083f8160506f16b8bff3f6c
+  ROLLBACK_RESTORED=app/src/test/kotlin/com/ghostlock/app/backend/core/ExecutableProcessRoutingTest.kt sha256=f9826818c2119395b626dc9edb95263a405ef0945e3748eadb1678e0e2d55b5d
+Exit status: 0
+Restored behavior/status: both isolated-copy files compare byte-for-byte equal to BASELINE_FILE. The actual worktree remains modified and byte-equal to MODIFIED_FILE. MODIFIED_FILE/ExecutableBackendProcess.kt SHA-256 is ebb351dc94f24a58e6bbb40507e6faf16083265658ae2ee426623fd051053211; MODIFIED_FILE/ExecutableProcessRoutingTest.kt SHA-256 is 849e350222767f6d7e7485060fd0a1a9e4db13484006ea6f6d6b5148a4f4d145.
+
+git diff --check: PASS.
+ROLLBACK.sh executable bit: YES.
+Temporary TODO marker TODO(app-run-dir-unique): absent from production source and test.
+
+
+A301SO authorized Shizuku safe-fixture run (2026-10-29)
+- Device: adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp; before test com.ghostlock.app was 2.0.12/versionCode 1342 and Shizuku server PID 5885 was live.
+- Route probe command: adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp shell am instrument -w -e class com.ghostlock.app.backend.core.ShizukuRouteProbeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner. Literal result: OK (2 tests), exit 0. Logcat: binder=true permission=true route=SHIZUKU preflight=[] no_spawn=true.
+- Safe execution command: adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp shell am instrument -w -e expected_route SHIZUKU -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner. Input: fixture package whose only non-signature APK content changes are the two Glued ELF entries; each is a 7,184-byte no-op fixture with fixed marker. Literal result: OK (2 tests), exit 0.
+- Logcat: 43284Glued route=SHIZUKU terminal=exit-0, argv_count=8, stdin_bytes=0; 43499-Glued route=SHIZUKU terminal=exit-0, argv_count=1, stdin_bytes=1884. No fixture child remained afterward; Shizuku server remained live.
+- Restored production APK with adb install -r; output Success, exit 0. Then uninstalled com.ghostlock.app.test; output Success, exit 0. Pulled A301SO base.apk SHA-256 0335002fd69cb215e861794ac40568fc637ce1731a0e6868b4c8f9c3bc4b5213, equal to current production APK. The AVD App-launcher no-op fixture result remains in MODIFIED_FILE/avd-safe-fixture.log. No upstream vulnerability ELF was run.
+- Raw outputs reopened under MODIFIED_FILE/a301so-*.log.

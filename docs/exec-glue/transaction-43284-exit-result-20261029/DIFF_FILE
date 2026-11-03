@@ -1,0 +1,94 @@
+--- a/app/src/main/kotlin/com/ghostlock/app/backend/43284glued/Flow43284Glued.kt
++++ b/app/src/main/kotlin/com/ghostlock/app/backend/43284glued/Flow43284Glued.kt
+@@ -2,6 +2,7 @@
+ 
+ import android.content.Context
+ import com.ghostlock.app.core.flow.FlowRequest
++import com.ghostlock.app.core.flow.FlowResult
+ import com.ghostlock.app.core.flow.FlowStep
+ import com.ghostlock.app.core.flow.SequentialFlow
+ import com.ghostlock.app.core.flow.StepResult
+@@ -15,18 +16,30 @@
+ /** Production 43284 glue flow: one ordered exec step. */
+ internal class Flow43284Glued : SequentialFlow<Flow43284GluedRequest>(Flow43284Glued::class) {
+     override fun steps(request: Flow43284GluedRequest): List<FlowStep> = listOf(FlowStep("exec") {
+-        when (val state = ExecutableBackendProcess.run(
++        val state = ExecutableBackendProcess.run(
+             context = request.context,
+             backendKey = "43284Glued",
+             binaryName = "lib43284Glued.so",
+             arguments = emptyList(),
+             onLine = request.onLine,
+-        )) {
+-            is BackendRunUiState.Finished -> StepResult.Done(mapOf("exit" to "finished"))
+-            is BackendRunUiState.Refused -> StepResult.Failed(state.reasons.joinToString(","))
+-            else -> StepResult.Failed("exec-state-not-finished")
+-        }
++        )
++        map43284ExecutableState(state)
+     })
++}
++
++/** Maps the executable's authoritative exit result into the enclosing Flow step result.
++ *
++ * @param state completed or pre-start executable state.
++ * @return a step success only for `FlowResult.Ok`; nonzero exits and refusals remain failures.
++ * @note The executable host's exit code is the single terminal authority for this exec step.
++ */
++internal fun map43284ExecutableState(state: BackendRunUiState): StepResult = when (state) {
++    is BackendRunUiState.Finished -> when (val result = state.result) {
++        is FlowResult.Ok -> StepResult.Done(result.evidence)
++        is FlowResult.Failed -> StepResult.Failed(result.reason, result.evidence)
++    }
++    is BackendRunUiState.Refused -> StepResult.Failed(state.reasons.joinToString(","))
++    else -> StepResult.Failed("exec-state-not-finished")
+ }
+ 
+ /** Creates the spec-owned runner that constructs one fresh 43284 SequentialFlow per invocation. */
+--- /dev/null
++++ b/app/src/test/kotlin/com/ghostlock/app/backend/43284glued/Flow43284GluedResultTest.kt
+@@ -0,0 +1,44 @@
++package com.ghostlock.app.backend.cve43284glued
++
++import com.ghostlock.app.core.flow.FlowResult
++import com.ghostlock.app.core.flow.StepResult
++import com.ghostlock.app.ui.backend.BackendRunUiState
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++/** Verifies that 43284 reports success only when the upstream executable exits with status zero. */
++class Flow43284GluedResultTest {
++    @Test
++    fun exitZeroPreservesExecutableEvidenceAsSuccess() {
++        val evidence = mapOf("backend" to "43284Glued", "exit" to "0")
++
++        val result = map43284ExecutableState(
++            BackendRunUiState.Finished(FlowResult.Ok(emptyList(), evidence)),
++        )
++
++        assertEquals(StepResult.Done(evidence), result)
++    }
++
++    @Test
++    fun nonzeroExitRemainsFailureWithOriginalReasonAndEvidence() {
++        val evidence = mapOf("backend" to "43284Glued", "exit" to "1")
++
++        val result = map43284ExecutableState(
++            BackendRunUiState.Finished(
++                FlowResult.Failed("exec-exit:1", "exec", emptyList(), evidence),
++            ),
++        )
++
++        assertEquals(StepResult.Failed("exec-exit:1", evidence), result)
++    }
++
++    @Test
++    fun refusalAndNonterminalStatesRemainFailures() {
++        assertEquals(
++            StepResult.Failed("missing,unauthorized"),
++            map43284ExecutableState(BackendRunUiState.Refused(listOf("missing", "unauthorized"))),
++        )
++        assertTrue(map43284ExecutableState(BackendRunUiState.Running) is StepResult.Failed)
++    }
++}

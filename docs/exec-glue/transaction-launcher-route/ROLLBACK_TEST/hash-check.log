@@ -1,0 +1,5 @@
+app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableBackendProcess.kt	match=True
+app/src/test/kotlin/com/ghostlock/app/backend/core/ExecutableProcessRoutingTest.kt	match=True
+docs/development/full-process-uml.md	match=True
+docs/plan/exec-glue-plan.md	match=True
+rollback_hashes_match_baseline=4/4

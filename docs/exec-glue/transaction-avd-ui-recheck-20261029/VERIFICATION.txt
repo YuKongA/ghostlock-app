@@ -1,0 +1,43 @@
+AVD UI and deployment verification transaction
+Date: 2026-10-29
+Checkout: detached HEAD based on dev-nocpp, b119085915748a940740d7ce919b5a30ed8e9346
+Changed branch/field: documentation only; appended fresh AVD UI, installed APK identity, and full unit test evidence to docs/plan/exec-glue-plan.md. No production Kotlin/C/C++ source changed in this transaction.
+
+Four required artifact paths:
+MODIFIED_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-avd-ui-recheck-20261029/MODIFIED_FILE/exec-glue-plan.md
+DIFF_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-avd-ui-recheck-20261029/DIFF_FILE
+VERIFICATION.txt: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-avd-ui-recheck-20261029/VERIFICATION.txt
+ROLLBACK.sh: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-avd-ui-recheck-20261029/ROLLBACK.sh
+
+BASELINE_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-avd-ui-recheck-20261029/BASELINE_FILE/exec-glue-plan.md; 89477 bytes; SHA-256 cc9c8ff31d252a6d65f2409d4b85d31b4ca092c295fe0509c195772f980da86d
+MODIFIED_FILE: 90915 bytes; SHA-256 4f5ef832c0e097117bfe0b31fef10fffa3cfe33010de4228db9d453ba3070d09
+Live plan equals MODIFIED_FILE: true
+
+BASELINE test:
+Exact command: ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+Input: current production source before the plan-only AVD verification appendix.
+Literal output/result: BUILD SUCCESSFUL in 40s; 33 actionable tasks: 6 executed, 27 up-to-date.
+XML: 424 tests, 0 failures, 0 errors, 0 skipped (69 XML files).
+Exit status: 0.
+
+MODIFIED test:
+Exact command: ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+Input: same production source; the only worktree modification was the plan appendix.
+Literal output/result: BUILD SUCCESSFUL in 41s; 33 actionable tasks: 6 executed, 27 up-to-date.
+XML: 424 tests, 0 failures, 0 errors, 0 skipped (69 XML files).
+Exit status: 0.
+
+AVD/A301SO:
+AVD emulator-5554 and A301SO adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp are version 2.0.12, code 1342. Installed base.apk SHA-256 on both is 8cdb0e127871bb271af3850a378e4860fd3db00ea8ef9225bd575811440562ea, matching current debug APK.
+AVD directly verified Paths UI: two Glued selectable; original 43284/98260/43499 and Custom visually disabled. Tapping original 43284 leaves 43499-Glued selected. 43284 card shows upstream CLI/ELF identity and no profile/import; 43499 card shows built-in profile and Import .conf.
+UI evidence directory: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/build/deployment-audit/continuation-20261029
+No production Glued ELF was run.
+
+ROLLBACK test on another copy:
+Exact command: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-avd-ui-recheck-20261029/ROLLBACK.sh /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-avd-ui-recheck-20261029/ROLLBACK_TEST_COPY/exec-glue-plan.md /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-avd-ui-recheck-20261029/BASELINE_FILE/exec-glue-plan.md
+Input: restore only the isolated rollback test copy from baseline bytes.
+Literal output/result: ROLLBACK_OK bytes=89477 sha256=cc9c8ff31d252a6d65f2409d4b85d31b4ca092c295fe0509c195772f980da86d
+Exit status: 0.
+Restored behavior/status: test copy equals baseline byte-for-byte; 89477 bytes SHA-256 cc9c8ff31d252a6d65f2409d4b85d31b4ca092c295fe0509c195772f980da86d. Live plan remains modified at SHA-256 4f5ef832c0e097117bfe0b31fef10fffa3cfe33010de4228db9d453ba3070d09.
+
+Reopened artifacts: MODIFIED_FILE, DIFF_FILE, VERIFICATION.txt, ROLLBACK.sh, BASELINE_FILE, ROLLBACK_TEST_COPY; rollback executable bit set. The device evidence report and screenshots/XML were reopened and their content parsed/visually inspected.

@@ -1,0 +1,29 @@
+Current checkout: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app
+Changed field: active plan status rev11e/M0-ready-to-retry -> rev11e/M0-stopped-after-approved-retry-failure; device gate report adds the observed retry and rollback result.
+
+Artifacts:
+MODIFIED_FILE: docs/exec-glue/transaction-m0-gate-result-20261029/MODIFIED_FILE/docs/plan/exec-glue-plan.md; docs/exec-glue/transaction-m0-gate-result-20261029/MODIFIED_FILE/docs/analysis/device-gates/20261029-a301so-43284-m0-marker-gate.md
+DIFF_FILE: docs/exec-glue/transaction-m0-gate-result-20261029/DIFF_FILE.patch
+VERIFICATION.txt: docs/exec-glue/transaction-m0-gate-result-20261029/VERIFICATION.txt
+ROLLBACK.sh: docs/exec-glue/transaction-m0-gate-result-20261029/ROLLBACK.sh (executable)
+
+BASELINE
+Command/input: read retained A301SO runDir cache/m0-marker/459dee7efec54fc4bff96c683b486c71/run.log from the earlier App marker attempt.
+Literal output: M0_PREFLIGHT_FAIL=carrier-stat path=/vendor/lib64/libbinderdebug.so error=Permission denied.
+Result/status: ELF preflight exit 4; instrumentation failed the exit-0 assertion. The older shell status was not separately retained.
+
+MODIFIED
+Command: adb -s QV770MFGJ1 shell am instrument -w -e class 'com.ghostlock.app.backend.cve43284glued.M0MarkerGateTest#appLauncherCompletesRootReadyAndSingleReleaseMarkers' com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner.
+Input: verified app/test APKs SHA-256 bf125562352933b6e5e9e257ee4d0b46be6e97574e2b882ee42c8999aa2dbc58 / 747099b21e84dd3ab14dca0a8bb85226ec240776a5363aa5c72c1b8413ca1fbb; verified KO SHA-256 4f56858dd02ec53f14f2f3ca1e9d8fd48f83be85d6f32eaecc339220b54e5c79 (12,512 B), ELF SHA-256 ce7789c73d60414e1031a33a2eedc1e6187d18594ae43ee42d59004f02fb53fb; target was RUNNING_UNLOCKED, kernel .189, SELinux Enforcing.
+Literal output: read_vendor at 0x30d0 got 0 bytes: success; M0_PREFLIGHT_FAIL=vendor-tail-read offset=12496 required_bytes=16 path=/vendor/lib64/libbinderdebug.so; assertion M0 ELF exit expected:<0> but was:<4>; Tests run: 1, Failures: 1.
+Result/status: ELF exit 4; instrumentation shell exit 0; one JUnit test failure. No patch/helper write, KO/UMH worker, markers, Payload, or Finish ran.
+
+DEVICE ROLLBACK
+Commands: adb -s QV770MFGJ1 install -r build/deployment-audit/a301so-kmi-189/pre-retry-current-installed.apk; adb -s QV770MFGJ1 install -r -t build/deployment-audit/a301so-kmi-189/pre-retry-current-test.apk.
+Input/result: saved pre-retry APKs; both installs returned literal Success. Post-pull hashes exactly equal the saved inputs: app f74c47c23b013f8360bdb4779cbd262304cd6d9c63b7f2f074586445956e1515; test 70f767e29bd73d69e2778bac096f3f6ef6bb058fd58c9d6644a6f11f90e68f8d. Failed runDir/log remains. Crash_dump64 remains pristine (15288efc30e073dbb29a4b357d70e8b33c8136fa442c2def91a599fef85de066), SELinux is Enforcing, and no KSU module is loaded.
+
+ROLLBACK SCRIPT TEST
+Command: docs/exec-glue/transaction-m0-gate-result-20261029/ROLLBACK.sh --target-root docs/exec-glue/transaction-m0-gate-result-20261029/ROLLBACK_TEST/project-copy.
+Input: disposable copy of both MODIFIED_FILE documents.
+Literal output: ROLLBACK_OK files=2 baseline_hashes_match=yes; expected exit 0.
+Restored behavior/status: the disposable copy is returned to the pre-update plan/report; live worktree retains the actual failed gate result. No additional device retry is authorized by this record.

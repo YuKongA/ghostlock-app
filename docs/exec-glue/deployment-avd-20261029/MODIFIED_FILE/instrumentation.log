@@ -1,0 +1,82 @@
+
+com.ghostlock.app.backend.core.ExecutableRunFileStagerSmokeTest:...
+cve43284glued.AndroidIpSecRuntimeSmokeTest:
+Error in initializationError(cve43284glued.AndroidIpSecRuntimeSmokeTest):
+java.lang.RuntimeException: Failed loading specified test class 'cve43284glued.AndroidIpSecRuntimeSmokeTest'
+	at androidx.test.internal.runner.DirectTestLoader.doCreateRunner(DirectTestLoader.java:50)
+	at androidx.test.internal.runner.TestLoader.getRunnersFor(TestLoader.java:64)
+	at androidx.test.internal.runner.TestRequestBuilder.build(TestRequestBuilder.java:842)
+	at androidx.test.runner.AndroidJUnitRunner.buildRequest(AndroidJUnitRunner.java:672)
+	at androidx.test.runner.AndroidJUnitRunner.onStart(AndroidJUnitRunner.java:453)
+	at android.app.Instrumentation$InstrumentationThread.run(Instrumentation.java:2594)
+Caused by: java.lang.ClassNotFoundException: cve43284glued.AndroidIpSecRuntimeSmokeTest
+	at java.lang.Class.classForName(Native Method)
+	at java.lang.Class.forName(Class.java:607)
+	at androidx.test.internal.runner.DirectTestLoader.doCreateRunner(DirectTestLoader.java:44)
+	... 5 more
+Caused by: java.lang.ClassNotFoundException: Didn't find class "cve43284glued.AndroidIpSecRuntimeSmokeTest" on path: DexPathList[[zip file "/data/app/~~GCpGbnE6eYLDG1vToXeNSg==/com.ghostlock.app.test-1Hl2U7Rb6FNgsNMZ5_8OLA==/base.apk", zip file "/data/app/~~_eygOWEHOR3Gf4WTIAWa5g==/com.ghostlock.app-msZxMiETau7W9pDtTQWTiA==/base.apk"],nativeLibraryDirectories=[/data/app/~~GCpGbnE6eYLDG1vToXeNSg==/com.ghostlock.app.test-1Hl2U7Rb6FNgsNMZ5_8OLA==/lib/arm64, /data/app/~~_eygOWEHOR3Gf4WTIAWa5g==/com.ghostlock.app-msZxMiETau7W9pDtTQWTiA==/lib/arm64, /data/app/~~GCpGbnE6eYLDG1vToXeNSg==/com.ghostlock.app.test-1Hl2U7Rb6FNgsNMZ5_8OLA==/base.apk!/lib/arm64-v8a, /data/app/~~_eygOWEHOR3Gf4WTIAWa5g==/com.ghostlock.app-msZxMiETau7W9pDtTQWTiA==/base.apk!/lib/arm64-v8a, /system/lib64, /system_ext/lib64]]
+	at dalvik.system.BaseDexClassLoader.findClass(BaseDexClassLoader.java:259)
+	at java.lang.ClassLoader.loadClass(ClassLoader.java:637)
+	at java.lang.ClassLoader.loadClass(ClassLoader.java:573)
+	... 8 more
+
+com.ghostlock.app.backend.core.ShizukuRouteProbeTest:
+Error in authorizedShizukuServiceRejectsIncompleteRequestWithoutStartingChild(com.ghostlock.app.backend.core.ShizukuRouteProbeTest):
+java.lang.AssertionError
+	at org.junit.Assert.fail(Assert.java:87)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertTrue(Assert.java:53)
+	at com.ghostlock.app.backend.core.ShizukuRouteProbeTest$authorizedShizukuServiceRejectsIncompleteRequestWithoutStartingChild$1.invokeSuspend(ShizukuRouteProbeTest.kt:60)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:101)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source:1)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:47)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source:1)
+	at com.ghostlock.app.backend.core.ShizukuRouteProbeTest.authorizedShizukuServiceRejectsIncompleteRequestWithoutStartingChild(ShizukuRouteProbeTest.kt:55)
+.
+com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest:
+com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest:
+
+Time: 0.601
+There were 2 failures:
+1) initializationError(cve43284glued.AndroidIpSecRuntimeSmokeTest)
+java.lang.RuntimeException: Failed loading specified test class 'cve43284glued.AndroidIpSecRuntimeSmokeTest'
+	at androidx.test.internal.runner.DirectTestLoader.doCreateRunner(DirectTestLoader.java:50)
+	at androidx.test.internal.runner.TestLoader.getRunnersFor(TestLoader.java:64)
+	at androidx.test.internal.runner.TestRequestBuilder.build(TestRequestBuilder.java:842)
+	at androidx.test.runner.AndroidJUnitRunner.buildRequest(AndroidJUnitRunner.java:672)
+	at androidx.test.runner.AndroidJUnitRunner.onStart(AndroidJUnitRunner.java:453)
+	at android.app.Instrumentation$InstrumentationThread.run(Instrumentation.java:2594)
+Caused by: java.lang.ClassNotFoundException: cve43284glued.AndroidIpSecRuntimeSmokeTest
+	at java.lang.Class.classForName(Native Method)
+	at java.lang.Class.forName(Class.java:607)
+	at androidx.test.internal.runner.DirectTestLoader.doCreateRunner(DirectTestLoader.java:44)
+	... 5 more
+Caused by: java.lang.ClassNotFoundException: Didn't find class "cve43284glued.AndroidIpSecRuntimeSmokeTest" on path: DexPathList[[zip file "/data/app/~~GCpGbnE6eYLDG1vToXeNSg==/com.ghostlock.app.test-1Hl2U7Rb6FNgsNMZ5_8OLA==/base.apk", zip file "/data/app/~~_eygOWEHOR3Gf4WTIAWa5g==/com.ghostlock.app-msZxMiETau7W9pDtTQWTiA==/base.apk"],nativeLibraryDirectories=[/data/app/~~GCpGbnE6eYLDG1vToXeNSg==/com.ghostlock.app.test-1Hl2U7Rb6FNgsNMZ5_8OLA==/lib/arm64, /data/app/~~_eygOWEHOR3Gf4WTIAWa5g==/com.ghostlock.app-msZxMiETau7W9pDtTQWTiA==/lib/arm64, /data/app/~~GCpGbnE6eYLDG1vToXeNSg==/com.ghostlock.app.test-1Hl2U7Rb6FNgsNMZ5_8OLA==/base.apk!/lib/arm64-v8a, /data/app/~~_eygOWEHOR3Gf4WTIAWa5g==/com.ghostlock.app-msZxMiETau7W9pDtTQWTiA==/base.apk!/lib/arm64-v8a, /system/lib64, /system_ext/lib64]]
+	at dalvik.system.BaseDexClassLoader.findClass(BaseDexClassLoader.java:259)
+	at java.lang.ClassLoader.loadClass(ClassLoader.java:637)
+	at java.lang.ClassLoader.loadClass(ClassLoader.java:573)
+	... 8 more
+2) authorizedShizukuServiceRejectsIncompleteRequestWithoutStartingChild(com.ghostlock.app.backend.core.ShizukuRouteProbeTest)
+java.lang.AssertionError
+	at org.junit.Assert.fail(Assert.java:87)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertTrue(Assert.java:53)
+	at com.ghostlock.app.backend.core.ShizukuRouteProbeTest$authorizedShizukuServiceRejectsIncompleteRequestWithoutStartingChild$1.invokeSuspend(ShizukuRouteProbeTest.kt:60)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:101)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source:1)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:47)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source:1)
+	at com.ghostlock.app.backend.core.ShizukuRouteProbeTest.authorizedShizukuServiceRejectsIncompleteRequestWithoutStartingChild(ShizukuRouteProbeTest.kt:55)
+
+FAILURES!!!
+Tests run: 9,  Failures: 2
+
+

@@ -887,3 +887,273 @@ stateDiagram-v2
   Finished --> Idle: 本 boot 拒绝再跑（store 闸）
   Refused --> Idle
 ```
+
+### 11.7 2026-10-28：exec-glue backend 选择、43499 profile 与双 process launcher（**历史**；执行通道已被 §11.9 取代）
+
+本节是临时 exec-glue app 路径的唯一结构图：enabled 选择列表由 `BackendSpec.selectable` 决定；43499 配置权威来自上游 `kernel_profiles/index.conf` 或用户导入的自包含 `.conf`，执行前转换成当前 GLK1 wire。
+
+```mermaid
+flowchart LR
+  UI[Backend selector] -->|selectable=true| GLUED[43499-Glued / 43284Glued]
+  UI -. grey, no selection .-> OLD[Original 43499 / 43284 / 98260]
+  UI -. grey, no selection .-> LUA[Dynamic Lua]
+  GLUED --> SPEC[Concrete BackendSpec]
+  SPEC --> GATE[BackendRunGate]
+  subgraph ProfileInput[43499 card profile input]
+    INDEX[kernel_profiles/index.conf] --> ASSET[Selected built-in .conf]
+    IMPORT[SAF imported .conf] --> HOCON[HoconSupport]
+    ASSET --> HOCON
+    HOCON --> LEGACY[LegacyProfileConverter]
+    LEGACY --> VALIDATE[ProfileResolver validation]
+    VALIDATE --> WIRE[Profile.toBinary / GLK1]
+  end
+  WIRE --> FLOW[SequentialFlow: one exec step]
+  FLOW --> EXEC[ExecutableBackendProcess: app-owned routing]
+  EXEC -->|Shizuku binder reachable + permission granted| REMOTE[shared UserService / shell ProcessBuilder]
+  EXEC -->|otherwise| LOCAL[app UID ProcessBuilder]
+  REMOTE --> HOST[fixed Glued ID + bounded AIDL input]
+  LOCAL --> APPARGS[fixed ELF argv + stdin + run files]
+  HOST --> HOSTARGS[fixed ELF argv + stdin + run files]
+  APPARGS -. 43284 only .-> APPIPSEC[App-domain IpSecRuntime create → exec → close]
+  HOSTARGS -. 43284 only .-> HOSTIPSEC[UserService-domain IpSecRuntime create → exec → close]
+```
+
+```mermaid
+stateDiagram-v2
+  [*] --> NoProfile
+  NoProfile --> ValidProfile: card selects built-in or imports .conf; parse + validate
+  NoProfile --> NoProfile: Run Gate refuses profile-required
+  ValidProfile --> NoProfile: card clears selection
+  ValidProfile --> InvalidProfile: persisted source no longer resolves
+  InvalidProfile --> ValidProfile: choose a valid built-in/import again
+  ValidProfile --> ExecStep: Gate allows; 43499 Flow runs one exec step
+```
+
+```mermaid
+classDiagram
+  class BackendSpec {
+    +selectable Boolean
+    +displayNameRes Int
+    +runner BackendFlowRunner
+    +readiness() BackendReadiness
+  }
+  class Backend43499Glued {
+    +profileReference String
+    +restoreConfig(store)
+    +resolveProfile(context)
+  }
+  class Backend43284Glued
+  class Flow43499Glued
+  class Flow43284Glued
+  class BackendSelection {
+    +select(key) Boolean
+    +index Int
+  }
+  class Glued43499ProfileCodec {
+    +builtins(context)
+    +resolve(context, reference) Resolved43499Profile
+  }
+  class ExecutableBackendProcess {
+    +run(context, backendKey, binaryName, arguments, stdin, files)
+  }
+  class ExecutableProcessRouting {
+    +select(binderReachable, permissionGranted)
+    +dispatch(route, appLauncher, shizukuLauncher)
+  }
+  class ExecutableRunFileStager {
+    +stage(runDirectory, fileName, bytes) StagedRunFileEvidence
+    +requireUnchanged(runDirectory, evidence) StagedRunFileEvidence
+  }
+  class StagedRunFileEvidence {
+    +sha256Hex String
+    +sizeBytes Long
+    +device Long
+    +inode Long
+    +ownerUid Int
+    +permissionBits Int
+  }
+  class AndroidIpSecRuntime {
+    +create(selectedDomainContext)
+    +arguments List<String>
+    +close()
+  }
+  class IpSecCliArguments {
+    +create(encapPort, senderPort, spi, aesKey)
+  }
+  class ReverseCloseScope {
+    +add(resource, closeAction)
+    +close()
+  }
+  class ExecutableShizukuHost {
+    +prepare(config, stdin)
+    +start()
+    +state()
+    +readLog(offset, maxBytes)
+    +destroy()
+  }
+  class ShizukuBackendClient
+  class GhostlockUserService
+  Backend43499Glued ..|> BackendSpec
+  Backend43284Glued ..|> BackendSpec
+  BackendSelection --> BackendSpec : only selectable
+  Backend43499Glued --> Glued43499ProfileCodec
+  Backend43499Glued --> BackendConfigStore
+  Backend43499Glued --> BackendRunGate
+  Glued43499ProfileCodec --> ProfileResolver
+  Glued43499ProfileCodec --> LegacyProfileConverter
+  Backend43499Glued --> Flow43499Glued
+  Backend43284Glued --> Flow43284Glued
+  Flow43499Glued --> ExecutableBackendProcess
+  Flow43284Glued --> ExecutableBackendProcess
+  ExecutableBackendProcess --> ExecutableProcessRouting : one selected launcher owner
+  ExecutableBackendProcess --> ExecutableRunFileStager : App-owned per-run inputs
+  ExecutableShizukuHost --> ExecutableRunFileStager : shell-owned per-run inputs
+  ExecutableRunFileStager --> StagedRunFileEvidence : identity and content facts
+  ExecutableBackendProcess --> AndroidIpSecRuntime : 43284 / App route only
+  AndroidIpSecRuntime --> IpSecCliArguments : fixed upstream argv
+  AndroidIpSecRuntime --> ReverseCloseScope : transform → SPI → encapsulation
+  ExecutableBackendProcess --> ShizukuBackendClient : authorized route only
+  ShizukuBackendClient --> GhostlockUserService : fixed Glued ID + bounded data
+  GhostlockUserService --> ExecutableShizukuHost : fixed backend allowlist
+  ExecutableShizukuHost --> AndroidIpSecRuntime : 43284 adapter / UserService context
+```
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant P as BackendPage
+  participant S as BackendSelection/SessionStore
+  participant C as 43499 card
+  participant H as HOCON + Legacy converter + ProfileResolver
+  participant F as SequentialFlow
+  participant E as ExecutableBackendProcess
+  participant A as App ProcessBuilder
+  participant Z as ShizukuBackendClient / UserService
+  participant R as Selected-domain IpSecRuntime (43284 only)
+  U->>P: choose 43499-Glued
+  P->>S: select(key); disabled spec rejected
+  U->>C: select indexed built-in or import .conf
+  C->>H: parse, convert, validate
+  H-->>C: resolved profile + GLK1 bytes
+  C->>S: persist profile reference
+  U->>F: Run
+  F->>H: resolve persisted reference and encode GLK1
+  H-->>F: profile.conf text + profile.bin
+  F->>E: one exec step, fixed ELF/argv/stdin/run files
+  alt Shizuku binder reachable and permission granted
+    E->>Z: prepare fixed ID + bounded data
+    Z->>Z: exclusively stage allowlisted files in shell-owned runDir
+    Z->>Z: optionally seal supplied 43499 root script 0444; retain file identity evidence
+    Z-->>E: prepared evidence
+    E->>Z: start/poll only after prepare succeeds
+    Z->>Z: 43499 child gets three path envs from shell-owned runDir; 43284 gets none
+    opt backend is 43284Glued
+      Z->>R: acquire transform/SPI/socket; build fixed argv
+      R-->>Z: live args + resource owner
+    end
+    Z-->>E: terminal exit/log facts
+    E->>Z: unbind(remove=true); wait for disconnected callback
+    Z-->>E: main-thread callback/cache cleanup drained; next bind may start
+  else Shizuku unavailable or unauthorized
+    opt backend is 43284Glued
+      E->>R: acquire transform/SPI/socket; build fixed argv
+      R-->>E: live args + resource owner
+    end
+    E->>E: exclusively stage allowlisted files in App-private runDir
+    E->>E: optionally seal supplied 43499 root script 0444; retain file identity evidence
+    E->>A: ProcessBuilder fixed ELF/argv
+    A->>A: 43499 child gets three path envs from App-private runDir; 43284 gets none
+    A-->>E: terminal exit/log facts
+  end
+  R->>R: release transform → SPI → encapsulation socket after child terminal
+  E-->>U: logs + exit status
+```
+
+Shizuku 路由被选定后，prepare/start/连接失败不会启动第二个 App child。本图不宣称 Shizuku-host execution 或 a301so 真机验证完成；这些需单独提供运行与设备证据。
+`ExecutableRunFileStager` 的固定 `.ghostlock_root.sh` 文件目前只是 allowlist/staging 能力；当前 43499 Flow 尚未提供该文件，故此图不表示 0444 victim handoff、Finish/Payload 或 detached worker 生命周期已接通。
+43499 的两个 ProcessBuilder 只注入 `GHOSTLOCK_HOME`、`TMPDIR`、`GHOSTLOCK_KSU_LOG`；HOME/TMPDIR 指向当前 launcher-owned runDir，KSU log 与 stdout/stderr `run.log` 分离。43284 不注入这些 43499 path overrides。
+43284Glued 的 `exp.c`/`elf_parser.c` 通过共享 `gl_common` 输出：ProcessBuilder 合并 stdout/stderr，由 launcher collector 写入本次 `run.log`，并同步输出 logcat。DFRoot `bootstrap.c` 是 system-root 独立进程，logger 只写 logcat；它的 stdout 不属于 App/Shizuku `run.log`。既有 `/dev/dfm*` markers 仍是控制信号，日志不替代 marker 状态。
+Shizuku `remove=true` 后，客户端等待 binder-disconnected 回调及其所在主线程队列轮次退出，再允许同 tag 的下一次 bind；该等待只串行化 UserService 销毁，不改变 launcher 选择规则。
+
+### 11.8 Glued executable native build and APK packaging
+
+43499-Glued、43284Glued 与 DFRoot bootstrap helper 由同一个 AGP externalNativeBuild CMake variant 构建。自 2026-11-03（CMake chunk 整理）起根 `app/src/main/cpp/CMakeLists.txt` 只做 project/标准设置与 `include()` 组装：`include(common/)`、`include(glgeneral/)`、`include(backends/)`；`backends/CMakeLists.txt` 声明 6 个 per-backend option 并只 include 已开启的 chunk。每个 chunk 顶部 `include_guard(GLOBAL)` 且全部路径用 `${CMAKE_CURRENT_LIST_DIR}`（`include()` 不改变 `CMAKE_CURRENT_SOURCE_DIR`）。`gl_common` 为 **OBJECT** 库（编译成 `.o` 供各目标链接），其余目标类型/输出名不变：DSO 仍 `SHARED`，攻击 payload 仍是 PIE executable（`lib*.so` 仅是 AGP 打包命名）。CMake targets 将输出写入 AGP 的 `CMAKE_LIBRARY_OUTPUT_DIRECTORY`（位于仓库 `build/app/intermediates/cxx/<variant>/<hash>/obj/<abi>`，构型缓存 `app/.cxx/`），AGP 合入 APK；不从 `app/src/main/jniLibs` 拷贝，也不经 Makefile/Copy task。
+
+```mermaid
+flowchart LR
+  GRADLE[":app:externalNativeBuildDebug / assembleDebug"] --> ROOT["cpp/CMakeLists.txt：project/标准 + include()"]
+  ROOT --> COMMON["common/CMakeLists.txt → OBJECT gl_common (.o)"]
+  ROOT --> GENERAL["glgeneral/CMakeLists.txt → SHARED libghostlock_general.so"]
+  ROOT --> BACKENDS["backends/CMakeLists.txt：6 个 option + 按 option include()"]
+  BACKENDS -->|43499_GLUED=ON| G43499["43499glued chunk → lib43499-Glued.so (PIE exec)"]
+  BACKENDS -->|43284_GLUED=ON| G43284["43284glued chunk → lib43284Glued.so + libbootstrap.so (PIE exec)"]
+  BACKENDS -->|43499=ON| O43499["43499 chunk → libghostlock43499.so + libghostlock_victim_helper.so"]
+  BACKENDS -->|43284=ON| O43284["43284 chunk → libghostlock43284.so"]
+  BACKENDS -->|98260=ON，缺源| FATAL["configure FATAL_ERROR（fail-closed）"]
+  COMMON -->|.o 链接进| T43499["payload/DSO targets"]
+  COMMON --> T43284
+  COMMON --> GENERAL
+  T43499 --> OUT["AGP CMAKE_LIBRARY_OUTPUT_DIRECTORY"]
+  T43284 --> OUT
+  GENERAL --> OUT
+  OUT --> MERGE["AGP mergeNativeLibs / stripDebugSymbols"]
+  MERGE --> APK["APK lib/arm64-v8a/*.so"]
+  APK --> INSTALL["installed nativeLibraryDir"]
+  INSTALL --> EXEC["Kotlin Flow allowlist ProcessBuilder exec"]
+```
+
+`libbootstrap.so` 是 DFRoot 的上游 helper entry，不是 Kotlin backend；这张构建图只证明 CMake build/package 链接，不证明 DFRoot 固定路径、Finish 行为或任何漏洞 ELF 可运行。原版 JNI backend 默认关闭：`GHOSTLOCK_BACKEND_43499`/`GHOSTLOCK_BACKEND_43284` 默认继承 legacy `GHOSTLOCK_ENABLE_ORIGINAL_BACKENDS=OFF`；`GHOSTLOCK_BACKEND_98260=ON` 在源缺失时配置期 fail-closed。
+
+### 11.9 2026-11-02：新进程 Flow 通道（生效架构；取代 §11.7 的执行通道）
+
+自 2026-11-02 起，攻击一律启动新进程：UI 选择 backend 后保存 flow 入口 reflection symbol 与参数；进程启动器（一般 app 进程 `:flowhost` / Shizuku shell 进程）启动新进程并按 symbol 反射执行 Flow。symbol 只能是 `FlowEntryRegistry` 登记的 Flow 入口（`@FlowEntry` 函数，类必须实现 `Flow<*>`）。§11.7 的 `ExecutableBackendProcess`/双 launcher 图、`FlowLaunchParent` 旧执行器与旧 ELF host 通道均已删除（B5c-1/B5c-2）。
+
+```mermaid
+flowchart LR
+  UI[Backend selector] --> SPEC[BackendSpec.flowSymbol + flowParams]
+  SPEC --> GATE[BackendRunGate]
+  GATE --> DISP[BackendRunDispatcher]
+  DISP --> FLP[FlowLaunchParent.launchSymbol]
+  FLP -->|APP executor| APL[AppProcessFlowLauncher]
+  FLP -->|SHIZUKU executor| SPL[ShizukuProcessFlowLauncher]
+  APL --> HOST[FlowHostService :flowhost app uid]
+  SPL --> US[GhostlockUserService shell uid 2000]
+  HOST --> REG[FlowEntryRegistry + FlowEntryValidator]
+  US --> REG
+  REG --> ENTRY[FlowEntry.entry FlowHostEnv]
+  ENTRY --> FLOW[Flow.run]
+  FLOW -->|43499-Glued| EXEC1[staging profile → exec lib43499-Glued.so]
+  FLOW -->|43284Glued| IPSEC[AndroidIpSecRuntime.create context]
+  IPSEC --> EXEC2[exec lib43284Glued.so + argv]
+  EXEC1 --> EV[FlowHostProtocol verify evidence]
+  EXEC2 --> EV
+  EV --> MAP[FlowHostProtocol.mapTerminal]
+  MAP --> UI2[BackendRunUiState: Finished / HandoffRequested / Refused]
+```
+
+关键契约：
+- host 注入保留参数 `host.uid/pid/domain/run_dir/native_lib_dir/log_path`；调用方伪造 `host.*` 被拒；run_dir 由 host 创建（app filesDir / shell `/data/local/tmp`）并在终态 evidence 后 best-effort 清理。
+- 43499 entry 为 context-free：params(profile.conf/bin/release) → staging → exec 上游 ELF（stdin + 三环境变量）；43284 entry 使用 host-local `FlowHostEnv.context`（B4b 例外）创建 IpSec runtime，正常退出 close；超时/取消 **不 close**（`ipsec=runtime-leaked` + `host_keepalive=true`，host 跳过自杀/清理，A11）。
+- 每次 run 新进程（app pid / Shizuku 实例与 pid 变化）；one-shot；终态先回传再回收；无 fallback（执行体二选一）。
+- registry 由 `Backends.all.flowSymbol` 生成；仅 debug 构建追加诊断 fixture（release 只允许生产入口）。
+
+已交付证据（2026-11-02）：B2 App `:flowhost` 真机 smoke PASS；B4a 43499 / B4b 43284 生产 entry fixture 门禁 PASS（真实 IpSec create/close）；G9 registry 设备回归 PASS；B5c-1/B5c-2 删除旧 runner/双执行体/旧 ELF host 通道，全量单测 470/0/0，debug/androidTest/release 构建 PASS。**未验证**：真实漏洞 ELF 冷机门禁（待用户授权）、Shizuku flavor 真机（设备无 Shizuku）、release APK 运行、98260 legacy host 通道与 Lua 动态 symbol 注册（遗留 B5c-3/B5a/B5b）。
+
+### 11.9.1 2026-11-02：后端注册表统一（BackendId 删除、单一注册表驱动 UI）
+
+- 每个后端一个 object 实现 `BackendSpec`：`key/selectable/flowSymbol/flowParams/readiness/ConfigCard(miuix)/rows` 同在一个声明里；`ConfigCard` 为必选 UI 入口（接口默认 `DefaultBackendConfigCard(rows)`，可覆盖）。
+- `Backends.all` 是**唯一注册表**：菜单由 `Backends.all` 生成、`enabled=spec.selectable`；选定后的配置卡只经 `spec.ConfigCard(miuix)` 一条路径渲染（`BackendPage` Material/Miuix 均同）；`isSelectable(spec)=spec.selectable`，无对象身份白名单。
+- `BackendId` 枚举（旧 `Flow<*>` 绑定）与 `BackendSpec.id`/`customConfig` 已删除；`register` 运行时 fail-closed（空/重复 key、selectable 无 flowSymbol 拒绝）。debug probe 仅 DEBUG 注册，release 菜单不含。
+- 证据：全量 JVM 434/0/0/0；debug/androidTest/release 构建 PASS；设备 A301SO debug 走查菜单 6 项（含 调试探针）、各卡渲染正确、禁用项不可选；release 菜单 5 项无调试探针；probe/B2 设备回归 PASS。
+- 代码布局（M5，2026-11-03；纯目录/包归类 + 未完工注解，无类关系或执行通道变化，上图不变）：所有 backend 平级放在 `backend/backends/`（cve43499glued、cve43284glued、debugprobe 可运行；cve43499、cve43284、lua 未完工）；未完工由 `@UnfinishedBackend(reason)` 标记（不删除、不可选/灰显、配置卡与实现保留、禁止以清理为名删除；debug probe 不标注）；`declarations/` 只留框架契约（BackendSpec/BackendRow/BackendSelection、FlowEntryRegistryAssembly、`@UnfinishedBackend`）。包名与目录一致（`com.ghostlock.app.backend.backends.<name>`），政策见 `app/src/main/kotlin/com/ghostlock/app/backend/README.md`，交付记录见 `docs/plan/backend-directory-cleanup.md` §12。
+
+```mermaid
+flowchart LR
+  REG[Backends.all 唯一注册表] -->|filter selectable| MENU[后端菜单 enabled=selectable]
+  MENU -->|selected spec| CARD[spec.ConfigCard miuix]
+  CARD --> UI[PathPage 配置卡]
+  REG -->|spec.flowSymbol| FL[FlowLaunchParent 新进程入口]
+  REG -->|spec.readiness/flowParams| GATE[BackendRunGate/Dispatcher]
+```
+
+> 注：§11.7 的 exec-glue 类图（含 BackendId/旧 runner）为历史图；本图取代其“UI 选择/卡来源”部分。

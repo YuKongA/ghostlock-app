@@ -1,0 +1,60 @@
+11-02 14:28:31.930 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 28154) has died: vis FGS 
+11-02 14:28:31.932 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:28:31.941 I/TestRunner(28132): finished: handoffIsNotReportedAsSuccess(com.ghostlock.app.backend.core.FlowHostProcessSmokeTest)
+11-02 14:28:31.946 I/TestRunner(28132): started: oversizePayloadIsRefused(com.ghostlock.app.backend.core.FlowHostProcessSmokeTest)
+11-02 14:28:31.950 I/TestRunner(28132): finished: oversizePayloadIsRefused(com.ghostlock.app.backend.core.FlowHostProcessSmokeTest)
+11-02 14:28:31.951 I/TestRunner(28132): started: diagnosticOkRunsInFreshHostProcess(com.ghostlock.app.backend.core.FlowHostProcessSmokeTest)
+11-02 14:28:31.978 I/ActivityManager( 1881): Start proc 28170:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:28:32.001 I/ck.app:flowhost(28170): Late-enabling -Xcheck:jni
+11-02 14:28:32.032 I/ck.app:flowhost(28170): Using generational CollectorTypeCMC GC.
+11-02 14:28:33.821 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 28170) has died: vis FGS 
+11-02 14:28:33.823 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:28:33.852 I/ActivityManager( 1881): Start proc 28185:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:28:33.878 I/ck.app:flowhost(28185): Late-enabling -Xcheck:jni
+11-02 14:28:33.907 I/ck.app:flowhost(28185): Using generational CollectorTypeCMC GC.
+11-02 14:28:35.723 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 28185) has died: vis FGS 
+11-02 14:28:35.724 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:28:35.728 I/TestRunner(28132): finished: diagnosticOkRunsInFreshHostProcess(com.ghostlock.app.backend.core.FlowHostProcessSmokeTest)
+11-02 14:28:35.731 I/TestRunner(28132): started: invalidSymbolIsRefused(com.ghostlock.app.backend.core.FlowHostProcessSmokeTest)
+11-02 14:28:35.757 I/ActivityManager( 1881): Start proc 28202:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:28:35.781 I/ck.app:flowhost(28202): Late-enabling -Xcheck:jni
+11-02 14:28:35.807 I/ck.app:flowhost(28202): Using generational CollectorTypeCMC GC.
+11-02 14:28:37.426 W/GLK-FlowHost(28202): prepare/start failed: flow-symbol:unregistered
+11-02 14:28:37.485 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 28202) has died: vis FGS 
+11-02 14:28:37.487 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:28:37.491 I/TestRunner(28132): finished: invalidSymbolIsRefused(com.ghostlock.app.backend.core.FlowHostProcessSmokeTest)
+11-02 14:28:37.494 I/TestRunner(28132): run finished: 4 tests, 0 failed, 0 ignored
+11-02 14:28:46.171 I/adbd    ( 2487): adbd service requested 'shell,v2,TERM=dumb,raw:ps -A | grep flowhost'
+11-02 14:28:59.921 I/adbd    ( 2487): adbd service requested 'shell,v2,TERM=dumb,raw:dumpsys activity processes | grep -i flowhost'
+11-02 14:29:06.524 I/adbd    ( 2487): adbd service requested 'shell,v2,TERM=dumb,raw:am instrument -w -e class com.ghostlock.app.backend.core.FlowHostProcessSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner'
+11-02 14:29:10.070 I/TestRunner(28271): run started: 4 tests
+11-02 14:29:10.072 I/TestRunner(28271): started: handoffIsNotReportedAsSuccess(com.ghostlock.app.backend.core.FlowHostProcessSmokeTest)
+11-02 14:29:10.141 I/ActivityManager( 1881): Start proc 28293:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:29:10.158 I/ck.app:flowhost(28293): Late-enabling -Xcheck:jni
+11-02 14:29:10.187 I/ck.app:flowhost(28293): Using generational CollectorTypeCMC GC.
+11-02 14:29:11.951 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 28293) has died: vis FGS 
+11-02 14:29:11.953 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:29:11.959 I/TestRunner(28271): finished: handoffIsNotReportedAsSuccess(com.ghostlock.app.backend.core.FlowHostProcessSmokeTest)
+11-02 14:29:11.962 I/TestRunner(28271): started: oversizePayloadIsRefused(com.ghostlock.app.backend.core.FlowHostProcessSmokeTest)
+11-02 14:29:11.968 I/TestRunner(28271): finished: oversizePayloadIsRefused(com.ghostlock.app.backend.core.FlowHostProcessSmokeTest)
+11-02 14:29:11.970 I/TestRunner(28271): started: diagnosticOkRunsInFreshHostProcess(com.ghostlock.app.backend.core.FlowHostProcessSmokeTest)
+11-02 14:29:11.996 I/ActivityManager( 1881): Start proc 28312:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:29:12.019 I/ck.app:flowhost(28312): Late-enabling -Xcheck:jni
+11-02 14:29:12.047 I/ck.app:flowhost(28312): Using generational CollectorTypeCMC GC.
+11-02 14:29:13.812 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 28312) has died: vis FGS 
+11-02 14:29:13.813 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:29:13.841 I/ActivityManager( 1881): Start proc 28328:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:29:13.864 I/ck.app:flowhost(28328): Late-enabling -Xcheck:jni
+11-02 14:29:13.893 I/ck.app:flowhost(28328): Using generational CollectorTypeCMC GC.
+11-02 14:29:15.654 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 28328) has died: vis FGS 
+11-02 14:29:15.657 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:29:15.661 I/TestRunner(28271): finished: diagnosticOkRunsInFreshHostProcess(com.ghostlock.app.backend.core.FlowHostProcessSmokeTest)
+11-02 14:29:15.663 I/TestRunner(28271): started: invalidSymbolIsRefused(com.ghostlock.app.backend.core.FlowHostProcessSmokeTest)
+11-02 14:29:15.690 I/ActivityManager( 1881): Start proc 28344:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:29:15.712 I/ck.app:flowhost(28344): Late-enabling -Xcheck:jni
+11-02 14:29:15.741 I/ck.app:flowhost(28344): Using generational CollectorTypeCMC GC.
+11-02 14:29:17.350 W/GLK-FlowHost(28344): prepare/start failed: flow-symbol:unregistered
+11-02 14:29:17.400 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 28344) has died: vis FGS 
+11-02 14:29:17.403 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:29:17.407 I/TestRunner(28271): finished: invalidSymbolIsRefused(com.ghostlock.app.backend.core.FlowHostProcessSmokeTest)
+11-02 14:29:17.410 I/TestRunner(28271): run finished: 4 tests, 0 failed, 0 ignored

@@ -1,0 +1,80 @@
+10-29 01:45:02.358 I/TestRunner(19016): started: dispatches43284FlowThroughTheSelectedLauncherAndClosesRuntime(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:02.392 I/GluedExecFixtureSmoke(19016): fixture-check backend=43284Glued path=/data/app/~~bMLMNyc76fCobYR7Pef00A==/com.ghostlock.app-mlOWMlh8lls9LjnL1j-6kw==/lib/arm64/lib43284Glued.so exists=true can-execute=true bytes=7184
+10-29 01:45:04.939 I/GluedExecFixtureSmoke(19016): backend=43284Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43284Glued|argv_count=8|stdin_bytes=0
+10-29 01:45:04.940 I/TestRunner(19016): finished: dispatches43284FlowThroughTheSelectedLauncherAndClosesRuntime(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:04.942 I/TestRunner(19016): started: dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:05.252 I/GluedExecFixtureSmoke(19016): fixture-check backend=43499-Glued path=/data/app/~~bMLMNyc76fCobYR7Pef00A==/com.ghostlock.app-mlOWMlh8lls9LjnL1j-6kw==/lib/arm64/lib43499-Glued.so exists=true can-execute=true bytes=7184
+10-29 01:45:07.820 I/GluedExecFixtureSmoke(19016): backend=43499-Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43499-Glued|argv_count=1|stdin_bytes=1884
+10-29 01:45:07.828 I/TestRunner(19016): finished: dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:07.908 I/adbd    ( 2581): adbd service requested 'shell,v2,TERM=dumb,raw:am instrument -w -e expected_route SHIZUKU -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner'
+10-29 01:45:11.345 I/TestRunner(19095): started: dispatches43284FlowThroughTheSelectedLauncherAndClosesRuntime(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:11.379 I/GluedExecFixtureSmoke(19095): fixture-check backend=43284Glued path=/data/app/~~bMLMNyc76fCobYR7Pef00A==/com.ghostlock.app-mlOWMlh8lls9LjnL1j-6kw==/lib/arm64/lib43284Glued.so exists=true can-execute=true bytes=7184
+10-29 01:45:13.896 I/GluedExecFixtureSmoke(19095): backend=43284Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43284Glued|argv_count=8|stdin_bytes=0
+10-29 01:45:13.897 I/TestRunner(19095): finished: dispatches43284FlowThroughTheSelectedLauncherAndClosesRuntime(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:13.901 I/TestRunner(19095): started: dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:14.224 I/GluedExecFixtureSmoke(19095): fixture-check backend=43499-Glued path=/data/app/~~bMLMNyc76fCobYR7Pef00A==/com.ghostlock.app-mlOWMlh8lls9LjnL1j-6kw==/lib/arm64/lib43499-Glued.so exists=true can-execute=true bytes=7184
+10-29 01:45:16.730 I/GluedExecFixtureSmoke(19095): backend=43499-Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43499-Glued|argv_count=1|stdin_bytes=1884
+10-29 01:45:16.757 I/TestRunner(19095): finished: dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:16.880 I/adbd    ( 2581): adbd service requested 'shell,v2,TERM=dumb,raw:am instrument -w -e expected_route SHIZUKU -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner'
+10-29 01:45:20.357 I/TestRunner(19173): started: dispatches43284FlowThroughTheSelectedLauncherAndClosesRuntime(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:20.391 I/GluedExecFixtureSmoke(19173): fixture-check backend=43284Glued path=/data/app/~~bMLMNyc76fCobYR7Pef00A==/com.ghostlock.app-mlOWMlh8lls9LjnL1j-6kw==/lib/arm64/lib43284Glued.so exists=true can-execute=true bytes=7184
+10-29 01:45:22.928 I/GluedExecFixtureSmoke(19173): backend=43284Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43284Glued|argv_count=8|stdin_bytes=0
+10-29 01:45:22.928 I/TestRunner(19173): finished: dispatches43284FlowThroughTheSelectedLauncherAndClosesRuntime(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:22.930 I/TestRunner(19173): started: dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:23.227 I/GluedExecFixtureSmoke(19173): fixture-check backend=43499-Glued path=/data/app/~~bMLMNyc76fCobYR7Pef00A==/com.ghostlock.app-mlOWMlh8lls9LjnL1j-6kw==/lib/arm64/lib43499-Glued.so exists=true can-execute=true bytes=7184
+10-29 01:45:25.760 I/GluedExecFixtureSmoke(19173): backend=43499-Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43499-Glued|argv_count=1|stdin_bytes=1884
+10-29 01:45:25.785 I/TestRunner(19173): finished: dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:25.868 I/adbd    ( 2581): adbd service requested 'shell,v2,TERM=dumb,raw:am instrument -w -e expected_route SHIZUKU -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner'
+10-29 01:45:29.341 I/TestRunner(19251): started: dispatches43284FlowThroughTheSelectedLauncherAndClosesRuntime(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:29.368 I/GluedExecFixtureSmoke(19251): fixture-check backend=43284Glued path=/data/app/~~bMLMNyc76fCobYR7Pef00A==/com.ghostlock.app-mlOWMlh8lls9LjnL1j-6kw==/lib/arm64/lib43284Glued.so exists=true can-execute=true bytes=7184
+10-29 01:45:31.922 I/GluedExecFixtureSmoke(19251): backend=43284Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43284Glued|argv_count=8|stdin_bytes=0
+10-29 01:45:31.922 I/TestRunner(19251): finished: dispatches43284FlowThroughTheSelectedLauncherAndClosesRuntime(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:31.925 I/TestRunner(19251): started: dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:32.240 I/GluedExecFixtureSmoke(19251): fixture-check backend=43499-Glued path=/data/app/~~bMLMNyc76fCobYR7Pef00A==/com.ghostlock.app-mlOWMlh8lls9LjnL1j-6kw==/lib/arm64/lib43499-Glued.so exists=true can-execute=true bytes=7184
+10-29 01:45:34.828 I/GluedExecFixtureSmoke(19251): backend=43499-Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43499-Glued|argv_count=1|stdin_bytes=1884
+10-29 01:45:34.837 I/TestRunner(19251): finished: dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:34.917 I/adbd    ( 2581): adbd service requested 'shell,v2,TERM=dumb,raw:am instrument -w -e expected_route SHIZUKU -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner'
+10-29 01:45:38.350 I/TestRunner(19334): started: dispatches43284FlowThroughTheSelectedLauncherAndClosesRuntime(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:38.387 I/GluedExecFixtureSmoke(19334): fixture-check backend=43284Glued path=/data/app/~~bMLMNyc76fCobYR7Pef00A==/com.ghostlock.app-mlOWMlh8lls9LjnL1j-6kw==/lib/arm64/lib43284Glued.so exists=true can-execute=true bytes=7184
+10-29 01:45:40.886 I/GluedExecFixtureSmoke(19334): backend=43284Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43284Glued|argv_count=8|stdin_bytes=0
+10-29 01:45:40.886 I/TestRunner(19334): finished: dispatches43284FlowThroughTheSelectedLauncherAndClosesRuntime(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:40.890 I/TestRunner(19334): started: dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:41.202 I/GluedExecFixtureSmoke(19334): fixture-check backend=43499-Glued path=/data/app/~~bMLMNyc76fCobYR7Pef00A==/com.ghostlock.app-mlOWMlh8lls9LjnL1j-6kw==/lib/arm64/lib43499-Glued.so exists=true can-execute=true bytes=7184
+10-29 01:45:43.723 I/GluedExecFixtureSmoke(19334): backend=43499-Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43499-Glued|argv_count=1|stdin_bytes=1884
+10-29 01:45:43.730 I/TestRunner(19334): finished: dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:43.811 I/adbd    ( 2581): adbd service requested 'shell,v2,TERM=dumb,raw:am instrument -w -e expected_route SHIZUKU -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner'
+10-29 01:45:47.287 I/TestRunner(19413): started: dispatches43284FlowThroughTheSelectedLauncherAndClosesRuntime(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:47.321 I/GluedExecFixtureSmoke(19413): fixture-check backend=43284Glued path=/data/app/~~bMLMNyc76fCobYR7Pef00A==/com.ghostlock.app-mlOWMlh8lls9LjnL1j-6kw==/lib/arm64/lib43284Glued.so exists=true can-execute=true bytes=7184
+10-29 01:45:49.857 I/GluedExecFixtureSmoke(19413): backend=43284Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43284Glued|argv_count=8|stdin_bytes=0
+10-29 01:45:49.857 I/TestRunner(19413): finished: dispatches43284FlowThroughTheSelectedLauncherAndClosesRuntime(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:49.860 I/TestRunner(19413): started: dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:50.171 I/GluedExecFixtureSmoke(19413): fixture-check backend=43499-Glued path=/data/app/~~bMLMNyc76fCobYR7Pef00A==/com.ghostlock.app-mlOWMlh8lls9LjnL1j-6kw==/lib/arm64/lib43499-Glued.so exists=true can-execute=true bytes=7184
+10-29 01:45:52.719 I/GluedExecFixtureSmoke(19413): backend=43499-Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43499-Glued|argv_count=1|stdin_bytes=1884
+10-29 01:45:52.726 I/TestRunner(19413): finished: dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:52.809 I/adbd    ( 2581): adbd service requested 'shell,v2,TERM=dumb,raw:am instrument -w -e expected_route SHIZUKU -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner'
+10-29 01:45:56.254 I/TestRunner(19492): started: dispatches43284FlowThroughTheSelectedLauncherAndClosesRuntime(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:56.288 I/GluedExecFixtureSmoke(19492): fixture-check backend=43284Glued path=/data/app/~~bMLMNyc76fCobYR7Pef00A==/com.ghostlock.app-mlOWMlh8lls9LjnL1j-6kw==/lib/arm64/lib43284Glued.so exists=true can-execute=true bytes=7184
+10-29 01:45:58.787 I/GluedExecFixtureSmoke(19492): backend=43284Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43284Glued|argv_count=8|stdin_bytes=0
+10-29 01:45:58.787 I/TestRunner(19492): finished: dispatches43284FlowThroughTheSelectedLauncherAndClosesRuntime(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:58.793 I/TestRunner(19492): started: dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:45:59.090 I/GluedExecFixtureSmoke(19492): fixture-check backend=43499-Glued path=/data/app/~~bMLMNyc76fCobYR7Pef00A==/com.ghostlock.app-mlOWMlh8lls9LjnL1j-6kw==/lib/arm64/lib43499-Glued.so exists=true can-execute=true bytes=7184
+10-29 01:46:01.638 I/GluedExecFixtureSmoke(19492): backend=43499-Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43499-Glued|argv_count=1|stdin_bytes=1884
+10-29 01:46:01.661 I/TestRunner(19492): finished: dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:46:01.750 I/adbd    ( 2581): adbd service requested 'shell,v2,TERM=dumb,raw:am instrument -w -e expected_route SHIZUKU -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner'
+10-29 01:46:05.207 I/TestRunner(19569): started: dispatches43284FlowThroughTheSelectedLauncherAndClosesRuntime(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:46:05.244 I/GluedExecFixtureSmoke(19569): fixture-check backend=43284Glued path=/data/app/~~bMLMNyc76fCobYR7Pef00A==/com.ghostlock.app-mlOWMlh8lls9LjnL1j-6kw==/lib/arm64/lib43284Glued.so exists=true can-execute=true bytes=7184
+10-29 01:46:07.786 I/GluedExecFixtureSmoke(19569): backend=43284Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43284Glued|argv_count=8|stdin_bytes=0
+10-29 01:46:07.786 I/TestRunner(19569): finished: dispatches43284FlowThroughTheSelectedLauncherAndClosesRuntime(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:46:07.789 I/TestRunner(19569): started: dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:46:08.087 I/GluedExecFixtureSmoke(19569): fixture-check backend=43499-Glued path=/data/app/~~bMLMNyc76fCobYR7Pef00A==/com.ghostlock.app-mlOWMlh8lls9LjnL1j-6kw==/lib/arm64/lib43499-Glued.so exists=true can-execute=true bytes=7184
+10-29 01:46:10.647 I/GluedExecFixtureSmoke(19569): backend=43499-Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43499-Glued|argv_count=1|stdin_bytes=1884
+10-29 01:46:10.671 I/TestRunner(19569): finished: dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:46:10.755 I/adbd    ( 2581): adbd service requested 'shell,v2,TERM=dumb,raw:am instrument -w -e expected_route SHIZUKU -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner'
+10-29 01:46:14.247 I/TestRunner(19645): started: dispatches43284FlowThroughTheSelectedLauncherAndClosesRuntime(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:46:14.281 I/GluedExecFixtureSmoke(19645): fixture-check backend=43284Glued path=/data/app/~~bMLMNyc76fCobYR7Pef00A==/com.ghostlock.app-mlOWMlh8lls9LjnL1j-6kw==/lib/arm64/lib43284Glued.so exists=true can-execute=true bytes=7184
+10-29 01:46:16.799 I/GluedExecFixtureSmoke(19645): backend=43284Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43284Glued|argv_count=8|stdin_bytes=0
+10-29 01:46:16.799 I/TestRunner(19645): finished: dispatches43284FlowThroughTheSelectedLauncherAndClosesRuntime(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:46:16.802 I/TestRunner(19645): started: dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)
+10-29 01:46:17.092 I/GluedExecFixtureSmoke(19645): fixture-check backend=43499-Glued path=/data/app/~~bMLMNyc76fCobYR7Pef00A==/com.ghostlock.app-mlOWMlh8lls9LjnL1j-6kw==/lib/arm64/lib43499-Glued.so exists=true can-execute=true bytes=7184
+10-29 01:46:19.598 I/GluedExecFixtureSmoke(19645): backend=43499-Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43499-Glued|argv_count=1|stdin_bytes=1884
+10-29 01:46:19.625 I/TestRunner(19645): finished: dispatches43499FlowThroughTheSelectedLauncher(com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest)

@@ -1,0 +1,191 @@
+--- BASELINE_FILE/app/src/main/cpp/43284glued/m0/exp.c
++++ MODIFIED_FILE/app/src/main/cpp/43284glued/m0/exp.c
+@@ -487,6 +487,54 @@
+     return candidates[0];
+ }
+ 
++/**
++ * Validate M0 carrier capacity before any crash_dump page-cache mutation.
++ *
++ * @return zero when the selected regular carrier fits the padded KO; otherwise -1.
++ * @note TODO(m0-carrier-preflight): prevent the prior out-of-range 16-byte read by
++ *       checking the complete padded image before patch_helper; remove after this
++ *       fixture-only repair has passed host and A301SO marker gates.
++ * @pre setup() has resolved libcxx_ko_target; no page-cache writes have occurred.
++ * @stage M0 preflight, before patch_helper().
++ */
++static int m0_preflight_ko_capacity(void) {
++    int android_release = 0, major = 0, minor = 0;
++    if (libcxx_ko_target == NULL) {
++        printf("M0_PREFLIGHT_FAIL=carrier-path-missing\n");
++        return -1;
++    }
++    if (read_device_versions(&android_release, &major, &minor) != 0) {
++        printf("M0_PREFLIGHT_FAIL=kernel-version\n");
++        return -1;
++    }
++    const struct KoImage *ko = select_ko_image(android_release, major, minor);
++    if (ko == NULL || ko->end <= ko->start) {
++        printf("M0_PREFLIGHT_FAIL=ko-image-unavailable\n");
++        return -1;
++    }
++    size_t raw_length = (size_t)(ko->end - ko->start);
++    if (raw_length > SIZE_MAX - 15U) {
++        printf("M0_PREFLIGHT_FAIL=ko-size-overflow\n");
++        return -1;
++    }
++    size_t padded_length = (raw_length + 15U) & ~(size_t)15U;
++    struct stat carrier_status;
++    if (stat(libcxx_ko_target, &carrier_status) != 0) {
++        printf("M0_PREFLIGHT_FAIL=carrier-stat path=%s error=%s\n",
++               libcxx_ko_target, strerror(errno));
++        return -1;
++    }
++    if (!S_ISREG(carrier_status.st_mode) || carrier_status.st_size < 0 ||
++        (uintmax_t)carrier_status.st_size < (uintmax_t)padded_length) {
++        printf("M0_PREFLIGHT_FAIL=carrier-too-small ko_padded=%zu carrier_bytes=%lld path=%s\n",
++               padded_length, (long long)carrier_status.st_size, libcxx_ko_target);
++        return -1;
++    }
++    printf("M0_PREFLIGHT_OK=ko_padded=%zu carrier_bytes=%lld path=%s\n",
++           padded_length, (long long)carrier_status.st_size, libcxx_ko_target);
++    return 0;
++}
++
+ static int hex_to_bytes(const char *hex, uint8_t *out, size_t len) {
+     if (strlen(hex) != len * 2) return -1;
+     for (size_t i = 0; i < len; i++) {
+@@ -546,6 +594,7 @@
+     printf("\n=== M0 marker fixture exploit ===\n");
+ 
+     int rc = 3;
++    if (m0_preflight_ko_capacity() != 0) { rc = 4; goto done; }
+     if (patch_helper()) goto done;
+     if (patch_ko()) goto done;
+     if (patch_hook("/system/lib64/libc++.so",
+--- BASELINE_FILE/app/src/main/cpp/43284glued/m0/lkm/Makefile
++++ MODIFIED_FILE/app/src/main/cpp/43284glued/m0/lkm/Makefile
+@@ -10,6 +10,8 @@
+ 	    -R .BTF -R .BTF.base -R .llvm_addrsig -R .hyp.text -R .hyp.bss \
+ 	    -R .hyp.rodata -R .hyp.event_ids -R .hyp.patchable_function_entries \
+ 	    -R .hyp.data m0_dfroot.ko
++	# TODO(m0-ko-size): remove debug data so this fixture fits the measured A301SO carrier; finish when .debug_* are absent and non-debug module identity checks pass.
++	llvm-objcopy --strip-debug m0_dfroot.ko
+ 
+ clean:
+ 	$(MAKE) -C $(KDIR) M=$(CURDIR) ARCH=arm64 LLVM=1 clean
+--- BASELINE_FILE/app/src/androidTest/kotlin/com/ghostlock/app/backend/43284glued/M0MarkerGateTest.kt
++++ MODIFIED_FILE/app/src/androidTest/kotlin/com/ghostlock/app/backend/43284glued/M0MarkerGateTest.kt
+@@ -79,6 +79,8 @@
+             assertEquals("M0 ELF exit", 0, child.exitValue())
+ 
+             val output = logFile.readText()
++            val preflightLine = output.lineSequence().firstOrNull { it.startsWith("M0_PREFLIGHT_OK=") }
++            assertTrue("M0 carrier-capacity preflight evidence missing", preflightLine != null)
+             val readyFile = File(runDirectory, "ROOT_READY")
+             assertTrue("ROOT_READY missing; run retained", readyFile.isFile)
+             val readyText = readyFile.readText()
+@@ -108,7 +110,7 @@
+                 "route=APP run_dir=${runDirectory.absolutePath} launcher_uid=${Os.getuid()} " +
+                     "worker_pid=${ready["worker_pid"]} worker_uid=0 worker_context=${ready["worker_context"]} " +
+                     "run_dir_context=${ready["run_dir_context"]} ready_sha256=${sha256(readyText.toByteArray())} " +
+-                    "payload_sha256=$payloadHash finish_sha256=$finishHash release_consumed=true worker_exited=true " +
++                    "preflight=${preflightLine} payload_sha256=$payloadHash finish_sha256=$finishHash release_consumed=true worker_exited=true " +
+                     "host_exit=${child.exitValue()} canary_unchanged=true sentinel_absent=true",
+             )
+         } finally {
+--- BASELINE_FILE/docs/plan/exec-glue-plan.md
++++ MODIFIED_FILE/docs/plan/exec-glue-plan.md
+@@ -1,6 +1,6 @@
+ # Exec Glue 部署计划（唯一活动版）
+ 
+-> 状态：rev11b/M0；生产实现仍阻断；target-.189 KO 通过 host KMI 身份检查，但 App marker 试验在 UMH 前失败；额外恢复重启已完成，crash_dump64 与 pristine APEX payload 已匹配。M0 未重试。目标 2.0.12。
++> 状态：rev11b/M0；生产实现仍阻断。M0 fixture-only 修复、exact-.189 host/APK 身份门和 reboot 基线已通过；instrumentation 因 A301SO `RUNNING_LOCKED` 未进入测试体，待用户解锁后重跑同一 App marker gate。目标 2.0.12。
+ > 取代关系：本文件是唯一活动计划；此前批次记录、设备证据与详版 rev1–rev4 见归档 docs/archive/20261029-1025-exec-glue-plan-history.md。
+ > 依据：docs/development/软件工程守则.md、design-philosophy.md、engineering-standards.md、design-review-principles.md。
+ 
+@@ -70,3 +70,15 @@
+ - review1 冻结快照 1dc5ad14… 判 BLOCKED（3 阻断、3 重要、1 建议）；本版补 marker schema 与 /dev/dfm6→ROOT_READY 契约。目录访问、逐 KMI ABI/产物和 marker 防重放仍是门；未运行生产 Glued ELF。
+ - 2026-10-29 M0 设备门前置阻断：A301SO `uname -r=5.15.189-android13-8-00016-g51bba4309aac-ab14546557`；新建 M0 KO 与原 embedded KO 的 `vermagic=5.15.202-android13-5.15.202_r00-dirty SMP preempt mod_unload modversions aarch64` 不匹配。依计划 stop condition，未安装 M0 APK，未运行 M0 ELF/KO；设备仍为 Enforcing，已安装 APK 与门禁前备份逐字节相同。重建前须获得与设备精确 KMI/kernel build 对应的 DDK/KO，并复核 vermagic、config、modversions、架构；详见 `docs/analysis/device-gates/20261029-a301so-43284-m0-marker-gate.md`。design-critic 总判：M0 BLOCKED，非 marker 协议失败；不批准生产实现。
+ - Follow-up 2026-10-29: target-.189 KO passed host vermagic/config/10 common-ABI CRC checks; App marker test failed before KO insertion/UMH at `read_vendor 0x1ac70` and produced no ROOT_READY/RELEASE_FINISH. App/source/default ELF rollback passed. The user-approved recovery reboot restored active crash_dump64 byte-for-byte to the pristine APEX payload; installed APK remains the pre-gate 2.0.12 build. M0 remains failed and was not rerun; production implementation remains blocked. Details: `docs/analysis/device-gates/20261029-a301so-43284-m0-marker-gate.md`.
++- 2026-10-29 root-cause correction: the earlier `.202` vs `.189` vermagic stop was over-strict and did not explain the later failed attempt; the `.189` candidate passed host identity checks and execution reached `patch_ko`. The measured carrier `/vendor/lib64/libbinderdebug.so` is 109,688 B, while the unstripped M0 KO is 256,240 B. The failing read was at `0x1ac70` (=109,680), leaving only 8 B for a 16-byte read; therefore the attempt stopped before KO insertion/UMH because the KO did not fit its carrier, not because of the version string. The latest approved reboot verified boot=1, kernel `.189`, Enforcing, and pristine crash_dump64 SHA `15288efc30e073dbb29a4b357d70e8b33c8136fa442c2def91a599fef85de066`.
++
++## 7. M0 carrier-capacity repair batch (marker-only)
++
++- Scope: modify only `app/src/main/cpp/43284glued/m0/lkm/Makefile`, `app/src/main/cpp/43284glued/m0/exp.c`, and `app/src/androidTest/kotlin/com/ghostlock/app/backend/43284glued/M0MarkerGateTest.kt` for the isolated M0 fixture. Keep production 43284 sources, Flow, Shizuku route, Payload/Finish, and all other backends untouched. Exercise only the existing App `M0MarkerGateTest#appLauncherCompletesRootReadyAndSingleReleaseMarkers`.
++- Change A: keep the existing M0 objcopy strip and explicitly apply `llvm-objcopy --strip-debug`. Verified exact `.189` KO is ELF64/AArch64, 12,512 B, SHA `4f56858dd02ec53f14f2f3ca1e9d8fd48f83be85d6f32eaecc339220b54e5c79`, no `.debug_*`; 704-byte `__versions` equals the audited target candidate. Allocated code/data sections match except build-id/note metadata; all 71 normalized relocations match by offset/type/symbol/addend; ten imported CRCs match.
++- KMI artifact: the normal Gradle `buildM0MarkerKo` path uses the generic DDK KDIR and emitted a 11,776 B KO with no `__versions`; it is not valid for this device gate and must not be packaged. The fresh target KO comes from the isolated copy of M0 LKM source built against Podman volume `a301so-kernel-common-189` (`/source/kernel-clean`, `/source/out`) and the pinned image. Record config/toolchain/source hashes, output hash, `.189` vermagic, 704-byte `__versions` equality and imported CRCs.
++- Packaging: place only the verified fresh KO at `build/app/m0/fixture/43284glued/ko/dfroot-android13-5.15.ko`; record and check its hash before assembly. Invoke Gradle with `-Pm0Marker=true -x :app:buildM0MarkerKo` so the generic task cannot overwrite it; reject missing/stale fixture bytes, and compare the final APK entry hash/size to the KO input. All overrides stay under `build/`; no Gradle/product source change.
++- Change B: add fail-closed `stat()` capacity preflight over the selected KO's 16-byte-padded length and selected regular-file carrier size. Call it in `exploit()` before `patch_helper()`; a stat error, malformed KO size, or undersized target must exit without any page-cache mutation. Emit `M0_PREFLIGHT_OK` or `M0_PREFLIGHT_FAIL` as explicit evidence.
++- Host gate: baseline `./gradlew :app:testDebugUnitTest --no-daemon --console=plain` → `BUILD SUCCESSFUL in 39s`, exit 0. Final `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest -Pm0Marker=true -x :app:buildM0MarkerKo --no-daemon --console=plain` → `BUILD SUCCESSFUL in 41s`, exit 0; APK entry contains exact target KO at offset 517080; app version/signature match installed baseline.
++- Device gate preflight had boot=1, same A301SO `.189` kernel, Enforcing, pristine crash_dump64 SHA, no KSU module, and original installed APK hash `37756ac1…`. M0/test APK install succeeded, but instrumentation did not enter the test: user was `RUNNING_LOCKED`, and ActivityManager logged `SecurityException: Package com.ghostlock.app is not encryption aware!`. No M0 ELF/KO ran; crash_dump64 remains pristine. Cleanup restored the pre-gate app APK byte-for-byte and uninstalled the test package. Wait for user unlock, reinstall the M0 fixture, then run only the App marker test and verify markers/worker/canaries. No Payload/Finish, Shizuku, production Flow, or production ELF.
++- Current state: design-critic approved; fixture source edits, exact `.189` KO/KMI identity, APK entry/version/signature, host tests/build, and pristine device baseline are verified. Device instrumentation was blocked before test entry by `RUNNING_LOCKED`; fixture APK/test package are restored, crash_dump64 remains pristine, and user unlock is pending before reinstall/retry. Production implementation remains blocked.
+--- BASELINE_FILE/docs/analysis/device-gates/20261029-a301so-43284-m0-marker-gate.md
++++ MODIFIED_FILE/docs/analysis/device-gates/20261029-a301so-43284-m0-marker-gate.md
+@@ -1,49 +1,27 @@
+-# A301SO 43284 M0 marker gate — initial KMI stop plus follow-up device attempt
++# A301SO 43284 M0 marker gate — 2026-10-29
+ 
+-- Date: 2026-10-29 UTC
+-- Worktree HEAD: `b119085915748a940740d7ce919b5a30ed8e9346`; version `2.0.12` / code `1342`
+-- Device: A301SO / `QV770MFGJ1` / Android 15 API 35
+-- Initial result: **BLOCKED before installation or execution** due KO/KMI identity. Follow-up: **FAIL before UMH/marker handoff** after a target-.189 KO was built and the App launcher test ran.
+-- Scope: approved M0 marker-only gate. No production implementation; no Payload/Finish; no production Flow.
++- Worktree: `b119085915748a940740d7ce919b5a30ed8e9346`; GhostLock `2.0.12` / code `1342`.
++- Target: A301SO `QV770MFGJ1`, Android 15 API 35, kernel `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`.
++- Scope: M0 marker-only. No production Flow/ELF, Payload/Finish, Shizuku route, or production implementation.
+ 
+-## Blocking identity evidence
++## Previous attempt and corrected cause
+ 
+-| Check | Command / input | Literal result | Exit |
+-|---|---|---|---:|
+-| Device kernel | `adb -s QV770MFGJ1 shell uname -r` | `5.15.189-android13-8-00016-g51bba4309aac-ab14546557` | 0 |
+-| M0 KO vermagic | `strings build/app/m0/fixture/43284glued/ko/dfroot-android13-5.15.ko \| grep '^vermagic='` | `vermagic=5.15.202-android13-5.15.202_r00-dirty SMP preempt mod_unload modversions aarch64` | 0 |
+-| Original embedded KO | `strings app/src/main/cpp/43284glued/ko/dfroot-android13-5.15.ko \| grep '^vermagic='` | Same `5.15.202-android13-5.15.202_r00-dirty ... aarch64` value | 0 |
++The first `.202`-vs-`.189` vermagic stop was over-strict, not the cause of the later observed failure. A rebuilt `.189` candidate passed host identity checks and the App test reached `patch_ko`; it failed before KO insertion/UMH/markers. The measured `libbinderdebug.so` carrier was 109,688 B; the unstripped KO was 256,240 B. Offset `0x1ac70` is 109,680, leaving 8 B for a required 16-byte read. The log recorded `read_vendor ... got 0 bytes`, `patch_ko ... patch failed`, `M0_PATCH_FAILED=1`. Thus the observed failure is carrier-capacity mismatch from an oversized KO, not the version string. Detailed original commands/results and rollback evidence remain in `docs/exec-glue/transaction-m0-marker-20261029/VERIFICATION.txt` and `docs/exec-glue/transaction-m0-kmi189-20261029/VERIFICATION.txt`.
+ 
+-The device reports 5.15.189 while both available and newly built KOs report 5.15.202. Per the M0 stop condition, the fixture APK was not installed, and neither the M0 ELF nor KO was invoked. App and Shizuku ROOT_READY/RELEASE_FINISH, DAC/SELinux access, worker/host/FD termination, canary preservation, and cleanup are **not tested**. A compatible exact-KMI DDK/KO plus verification of vermagic, config, modversions, and architecture is required before retrying.
++The user-approved recovery reboot completed: `adb -s QV770MFGJ1 reboot` exit 0; postboot `BOOT_COMPLETED=1`, kernel `.189`, `Enforcing`, crash_dump64 SHA `15288efc30e073dbb29a4b357d70e8b33c8136fa442c2def91a599fef85de066` (pristine APEX payload).
+ 
+-## Build and package evidence (host only)
++## M0 repair and host identity
+ 
+-- Command: `podman machine start podman-machine-default && ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -Pm0Marker=true --no-daemon --console=plain`
+-- Literal terminal result: `BUILD SUCCESSFUL in 42s`; `76 actionable tasks: 19 executed, 57 up-to-date`; exit 0.
+-- M0 KO: `build/app/m0/fixture/43284glued/ko/dfroot-android13-5.15.ko`, 11,776 bytes, SHA-256 `7a49b8357bb228dc6c88d7bddd1a78e402a1cdd303477f64749c6add458b4206`.
+-- M0 ELF entry: `lib/arm64-v8a/lib43284Glued.so`, 1,698,624 bytes, SHA-256 `1b393b73309930c98cd9882ce96ae53b13227372102da8dc8b4690da70ac5ee6`. Marker entry strings were present; `libbootstrap.so` was absent.
+-- Fixture APK: `build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk`, SHA-256 `46e056c9eb6855b8376f2f05b6d208e704b40a62122ebdf8fe4917011d0465d1`; signer SHA-256 `b92a1aa56ccf72c789057722af1fe850d71fa067deafc71e985c4d7b3f3badca` (same cert as the installed APK).
+-- Instrumentation APK SHA-256: `4b6823cedfe12aec3124bb2a4c71dc3c20719a8139f70d916944d3007e4338fe`.
++- M0 fixture adds a fail-closed carrier `stat()`/padded-KO capacity check in `exploit()` before `patch_helper()` and records `M0_PREFLIGHT_OK/FAIL`. The existing App instrumentation asserts and logs the single `M0_PREFLIGHT_OK=` line before deleting runDir.
++- Generic Gradle KO (`11,776` B, no `__versions`) is rejected for the device. Exact `.189` rebuild used pinned `ghcr.io/ylarod/ddk-min:android13-5.15-20260828`, Podman volume `a301so-kernel-common-189`, `KDIR=/source/kernel-clean`, `KBUILD_OUTPUT=/source/out`, and the M0 Makefile strip pipeline.
++- Exact KO: 12,512 B, SHA-256 `4f56858dd02ec53f14f2f3ca1e9d8fd48f83be85d6f32eaecc339220b54e5c79`; ELF64/AArch64; `.189` vermagic; no `.debug_*`; `__versions` 704 B and byte-identical to the audited `.189` candidate; ten imported CRCs match. Allocated code/data bytes match; normalized 71 relocations (offset/type/symbol/addend) match. The build-id note differs. Module-relevant config flags match device; full config is not byte-identical (KVM/compressor defaults differ; localversion is deliberately device-tagged). Critic approved the offline KMI artifact gate.
++- Final build command: `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest -Pm0Marker=true -x :app:buildM0MarkerKo --no-daemon --console=plain` → `BUILD SUCCESSFUL in 41s`; exit 0. The explicit exclusion prevents generic KDIR from replacing the verified KO.
++- APK: `build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk`, 28,740,886 B, SHA-256 `1ef59943e572c9d168726ef0087af1548d77001222d50c8b972cc3b743a533d4`; `versionName=2.0.12`, `versionCode=1342`; signer SHA-256 `b92a1aa56ccf72c789057722af1fe850d71fa067deafc71e985c4d7b3f3badca`. Embedded `lib43284Glued.so` contains exact KO bytes at offset 517080; library SHA-256 `58962069468b08c8f97ff39adea0ef86e43bf23eea3d71a417e6f51cf8e47018`.
+ 
+-## Tests and device state
++## Device preflight before marker retry
+ 
+-- Baseline: `./gradlew :app:testDebugUnitTest --no-daemon --console=plain` → `BUILD SUCCESSFUL in 40s`; 69 XML files, 424 tests, 0 failures, 0 errors, 0 skipped; exit 0.
+-- Modified source: `./gradlew :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin --no-daemon --console=plain` → `BUILD SUCCESSFUL in 5s`; exit 0. `./gradlew :app:testDebugUnitTest --no-daemon --console=plain` → `BUILD SUCCESSFUL in 42s`; 69 XML files, 424 tests, 0 failures, 0 errors, 0 skipped; exit 0.
+-- Device remained `getenforce=Enforcing`; package remains 2.0.12/code 1342. Pulled installed base APK SHA-256 is `37756ac1a4b7df5cbc4ed8734178fd12b1b131e4bf4bae7184d2b7e40ecdce92`, byte-identical to the saved pre-gate APK. No M0 worker process was listed. No device install, instrumentation, kernel module insertion, payload, or finish occurred.
+-- Design-critic reviewed the result as BLOCKED: the KMI mismatch is a production-artifact identity blocker; preserve the installed APK and retry only after an exact-kernel build.
+-- Rollback: `docs/exec-glue/transaction-m0-marker-20261029/ROLLBACK.sh` passed on a separate source/cache copy (exit 0; `ROLLBACK_RESULT=restored M0-only source delta; changed_paths=19`) and on the active source worktree (exit 0). Two M0 CMake cache directories from the first rollback were removed by exact path (`M0_CACHE_DIRS_REMOVED=2`). All 24 start-state source hashes match; the M0 overlay/test/cache/build copy and fixture APKs are absent.
+-- Default rebuild after cache removal: `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --console=plain` → `BUILD SUCCESSFUL in 5s`; exit 0. Source/build M0 scan is empty. The default APK's `lib43284Glued.so` is byte-identical to the saved pre-gate entry: 1,937,896 bytes, SHA-256 `42ee0ffc5581451720588c0349adb6ed5e26457ebc03e95572c4d610bc5d8079`; M0 marker and dex strings are absent.
++Command facts: `getprop sys.boot_completed`=`1`; uptime=`1232.20 9641.61`; `uname -r` exact `.189` above; `getenforce`=`Enforcing`; active crash_dump64 SHA equals pristine `15288efc30e073dbb29a4b357d70e8b33c8136fa442c2def91a599fef85de066`; `/proc/modules` has no KSU entry. Installed base APK was pulled before install: 28,999,754 B, SHA-256 `37756ac1a4b7df5cbc4ed8734178fd12b1b131e4bf4bae7184d2b7e40ecdce92`; package is `2.0.12`/1342 and test package is absent.
+ 
+-The detailed transaction manifest and executable rollback evidence are under `docs/exec-glue/transaction-m0-marker-20261029/`.
++**Device attempt:** both fixture APK installs returned `Success`; app metadata remained `2.0.12`/1342. The requested `am instrument` command did not enter the test method: ActivityManager logged `SecurityException: Package com.ghostlock.app is not encryption aware!`; `dumpsys user` showed `RUNNING_LOCKED`. The host adb wrapper was interrupted with exit 130 after waiting; this is not an M0 test result. No M0 ELF/KO or worker ran, and post-attempt crash_dump64 remains pristine with SHA `15288efc30e073dbb29a4b357d70e8b33c8136fa442c2def91a599fef85de066`, kernel `.189`, SELinux Enforcing. Test rollback completed: original app APK was reinstalled, test package uninstalled, and a fresh pull is byte-identical to the pre-gate APK (28,999,754 B, SHA-256 `37756ac1a4b7df5cbc4ed8734178fd12b1b131e4bf4bae7184d2b7e40ecdce92`). Device is back on the original app; after unlock, reinstall the M0 fixture before retry. Await device unlock, then rerun only `M0MarkerGateTest#appLauncherCompletesRootReadyAndSingleReleaseMarkers`; no Payload/Finish.
+ 
+-
+-## Follow-up: exact-release candidate and App marker attempt (2026-10-29)
+-
+-- Source candidate: official Android Common Kernel tag [`android13-5.15.189_r00`](https://android.googlesource.com/kernel/common/+/refs/tags/android13-5.15.189_r00), commit `f32b52534f1d4df1fc1a6afe6cf4639adebf8a63`; target `/proc/config.gz` was used with pinned DDK image `ghcr.io/ylarod/ddk-min:android13-5.15-20260828`.
+-- Built KO: `vermagic=5.15.189-android13-8-00016-g51bba4309aac-ab14546557 SMP preempt mod_unload modversions aarch64`, size 256240, SHA-256 `28bce76c49e7aed99d82a2a4c47c1e775378ace327d32933427010a9b5fe7b1f`; ELF64/AArch64. Ten imported common-ABI CRCs matched; `module_layout` CRC `0x0222dd63`. Candidate therefore passed host identity checks, but was not inserted on device.
+-- Fixture build command: `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest -Pm0Marker=true --no-daemon --console=plain`; result `BUILD SUCCESSFUL in 40s`, 424 tests passed. Follow-up test-only rebuild after fixing the JUnit method signature: `./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -Pm0Marker=true --no-daemon --console=plain`; result `BUILD SUCCESSFUL in 8s`.
+-- Device command: `adb -s QV770MFGJ1 shell am instrument -w -e class 'com.ghostlock.app.backend.cve43284glued.M0MarkerGateTest#appLauncherCompletesRootReadyAndSingleReleaseMarkers' com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner`. JUnit result: `M0 ELF exit expected:<0> but was:<3>`; test failed before root handoff. `run.log`: `read_vendor at 0x1ac70 got 0 bytes: open vendor file failed or read returned < 16 bytes`; `patch: /vendor/lib64/libbinderdebug.so patch failed: -1`; `M0_PATCH_FAILED=1`. No KO insertion, UMH, ROOT_READY, or RELEASE_FINISH occurred; no Payload/Finish ran. Payload/Finish canaries were unchanged and no worker process remained.
+-- Shizuku service was installed but not running; only the App route was exercised. The failed fixture retained its run directory and log for evidence.
+-- Cleanup restored the pre-gate APK SHA-256 `37756ac1a4b7df5cbc4ed8734178fd12b1b131e4bf4bae7184d2b7e40ecdce92`, source preimages, and default ELF SHA-256 `42ee0ffc5581451720588c0349adb6ed5e26457ebc03e95572c4d610bc5d8079`. Rollback command was `docs/exec-glue/transaction-m0-kmi189-20261029/ROLLBACK.sh`; result `ROLLBACK_RESULT=device app + source + default ELF restored`.
+-- Recovery reboot after explicit user approval completed. Verification: boot=1, uptime=89.43s, same .189 kernel, SELinux Enforcing; active crash_dump64 SHA-256 `15288efc30e073dbb29a4b357d70e8b33c8136fa442c2def91a599fef85de066` equals saved pristine payload (482904 bytes). Installed 2.0.12/code 1342 APK remains byte-identical to pre-gate SHA `37756ac1a4b7df5cbc4ed8734178fd12b1b131e4bf4bae7184d2b7e40ecdce92`; test package and M0 worker are absent. Recovery is verified; the failed M0 gate was not rerun, and Payload/Finish were not executed.
+-- Detailed transaction and exact commands/results: `docs/exec-glue/transaction-m0-kmi189-20261029/VERIFICATION.txt`.
++Full transaction diff, verification, and executable source rollback: `docs/exec-glue/transaction-m0-carrier-capacity-20261029/`.

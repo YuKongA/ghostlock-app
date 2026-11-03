@@ -10,6 +10,7 @@
   三份**保留为历史**（头部有 superseded 指针），不再各自作为依据；冲突以本文为准。
 - 进度仍以 `docs/plan/MASTER-PLAN.md` 为唯一入口；本文只定结构与规则，不记进度。
 - 事实基线（路径/文件名）见 `docs/development/introduction.md` §七。
+- **2026-11-02 用户新架构（生效）**：攻击一律启动新进程；Flow 在选中执行体进程（App `:flowhost` 或 Shizuku）内按 reflection symbol 执行；执行通道/契约见 [flow-process-launcher-plan.md](flow-process-launcher-plan.md)。本文 §1 规则 3/4/5 与其余结构仍有效，§1 规则 1/2 仍按 ADR-0022 历史化。
 
 ## 1. 三条规则（其余都是推论）
 

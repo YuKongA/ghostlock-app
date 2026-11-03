@@ -1,0 +1,69 @@
+package com.ghostlock.app.backend.core
+
+import android.content.pm.PackageManager
+import android.os.Bundle
+import android.util.Log
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.ghostlock.app.backend.core.ExecutableProcessRoute.APP
+import com.ghostlock.app.backend.core.ExecutableProcessRoute.SHIZUKU
+import com.ghostlock.app.shizuku.ShizukuBackendClient
+import com.ghostlock.app.shizuku.host.ShizukuBackendHosts
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+import rikka.shizuku.Shizuku
+
+/** Validates the live route predicate and Shizuku AIDL preflight without starting a child.
+ *
+ * @note It never starts a Glued executable or changes Shizuku authorization state.
+ */
+@RunWith(AndroidJUnit4::class)
+class ShizukuRouteProbeTest {
+    @Test
+    fun selectsShizukuOnlyWhenBinderAndPermissionAreAvailable() {
+        val binderReachable = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
+        val permissionGranted = binderReachable && runCatching {
+            Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+        }.getOrDefault(false)
+        val expected = if (binderReachable && permissionGranted) SHIZUKU else APP
+        val preflightReasons = if (expected == SHIZUKU) {
+            ShizukuBackendClient(
+                InstrumentationRegistry.getInstrumentation().targetContext,
+                ShizukuBackendHosts.CVE_43499_GLUED,
+            ).availabilityReasons()
+        } else {
+            emptyList()
+        }
+
+        assertEquals(expected, ExecutableProcessRouting.select(binderReachable, permissionGranted))
+        if (expected == SHIZUKU) assertEquals(emptyList<String>(), preflightReasons)
+        Log.i(
+            "GhostLockRouteProbe",
+            "binder=$binderReachable permission=$permissionGranted route=$expected " +
+                "preflight=$preflightReasons no_spawn=true",
+        )
+    }
+
+    /** Binds the common UserService and verifies fail-closed AIDL validation before spawn.
+     *
+     * @note The deliberately incomplete Bundle is rejected before file staging or child creation.
+     */
+    @Test
+    fun authorizedShizukuServiceRejectsIncompleteRequestWithoutStartingChild() = runBlocking {
+        val client = ShizukuBackendClient(
+            InstrumentationRegistry.getInstrumentation().targetContext,
+            ShizukuBackendHosts.CVE_43499_GLUED,
+        )
+        assertTrue(client.availabilityReasons().isEmpty())
+        try {
+            val result = client.prepare(Bundle(), ByteArray(0)) { }
+            assertTrue("incomplete request must fail before start", result != 0)
+            assertEquals("exec:host:argv-missing", client.lastReason())
+        } finally {
+            client.disconnect(remove = true)
+        }
+    }
+}

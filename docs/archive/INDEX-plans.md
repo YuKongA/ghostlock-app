@@ -161,3 +161,9 @@
 | 原路径 | 归档路径 | 原因 | 日期 |
 |---|---|---|---|
 | `docs/development/full-process-uml.md` | `docs/development/old-full-process-uml.md` | **旧实现内容未随 A0–A6 更新** | 2026-10-08 |
+
+## 2026-10-29 计划压缩归档
+
+| 原路径 | 归档路径 | 原因 | 日期 |
+|---|---|---|---|
+| docs/plan/exec-glue-plan.md | docs/archive/20261029-1025-exec-glue-plan-history.md | rev1-rev4 详版历史保留；唯一活动计划压缩至 A3 配额 | 2026-10-29 |

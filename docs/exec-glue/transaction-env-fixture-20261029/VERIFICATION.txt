@@ -1,0 +1,47 @@
+VERIFICATION.txt
+Changed branch/field: safe-fixture build of the 43499 path-environment branch. The no-op 43499 ELF reports GHOSTLOCK_HOME, TMPDIR, GHOSTLOCK_KSU_LOG; the instrumentation assertion requires HOME=TMPDIR, KSU_LOG=<home>/.ghostlock_ksu.log, and KSU_LOG != <home>/run.log. No production C/C++ or production ELF was changed/run.
+
+Required transaction artifacts:
+- MODIFIED_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-env-fixture-20261029/MODIFIED_FILE
+- DIFF_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-env-fixture-20261029/DIFF_FILE
+- VERIFICATION.txt: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-env-fixture-20261029/VERIFICATION.txt
+- executable ROLLBACK.sh: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-env-fixture-20261029/ROLLBACK.sh
+
+Baseline command/input/result/exit:
+- Command: adb -s emulator-5554 shell am instrument -w -e expected_route APP -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner
+- Input: pre-env safe no-op fixture APK and pre-env AndroidTest APK, expected route APP. Captured baseline is docs/exec-glue/transaction-safe-exec-fixture/VERIFICATION.txt.
+- Literal result: com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest:.. ; Time: 0.119 ; OK (2 tests) ; EXIT_STATUS=0. Exit status: 0.
+
+Modified build/test command/input/result/exit:
+- Command: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --console=plain
+- Input: current working tree; full unit suite plus debug and AndroidTest APK assembly.
+- Literal result: BUILD SUCCESSFUL in 41s ; 84 actionable tasks: 15 executed, 69 up-to-date. XML aggregate: 424 tests, 0 failures, 0 errors, 0 skipped. Exit status: 0.
+
+Modified AVD command/input/result/exit:
+- Command: adb -s emulator-5554 shell am instrument -w -e expected_route APP -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner
+- Input: current source AndroidTest APK and signed safe fixture APK, expected_route=APP.
+- Literal result: com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest:.. ; Time: 0.473 ; OK (2 tests) ; exit status 0.
+- Logcat result: backend=43499-Glued route=APP terminal=exit-0 fixture=true; env_home=/data/user/0/com.ghostlock.app/files/ghostlock-glue/43499-Glued/4d490092-1261-4627-b5b2-4606041b2f6b; env_tmpdir is identical; env_ksu_log is that run directory plus /.ghostlock_ksu.log.
+
+Modified A301SO command/input/result/exit:
+- Command: adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp shell am instrument -w -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest#dispatches43499FlowThroughTheSelectedLauncher com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner
+- Input: current source AndroidTest APK and safe fixture APK; launcher selection left automatic.
+- Literal result: com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest:. ; Time: 3.059 ; OK (1 test) ; exit status 0.
+- Logcat result: backend=43499-Glued route=SHIZUKU terminal=exit-0 fixture=true; env_home=/data/local/tmp/ghostlock-glue/CVE_2026_43499_GLUED/13c00150-8646-4706-9958-e10ffb70b47b; env_tmpdir is identical; env_ksu_log is that run directory plus /.ghostlock_ksu.log.
+
+APK fixture construction:
+- NDK command: /Users/nickji/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android31-clang -std=c11 -O2 -fPIE -pie -DFIXTURE_BACKEND="43499-Glued" -DFIXTURE_REPORT_43499_ENV /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-env-fixture-20261029/MODIFIED_FILE/exec_noop_fixture.c -o build/env-fixture-20261029/lib43499-Glued.so ; exit 0.
+- NDK command: /Users/nickji/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android31-clang -std=c11 -O2 -fPIE -pie -DFIXTURE_BACKEND="43284Glued" /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-env-fixture-20261029/MODIFIED_FILE/exec_noop_fixture.c -o build/env-fixture-20261029/lib43284Glued.so ; exit 0.
+- zipalign and apksigner verify both exited 0. APK entry comparison showed only the two Glued ELF contents changed; three META-INF v1 signature entries were added by signing. Production APK zip entry contents otherwise match.
+
+Restored device state:
+- After tests, the current production APK build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk was reinstalled to A301SO and emulator-5554; each install returned Success.
+- Both installed base.apk files are 28,999,754 bytes and SHA-256 8cdb0e127871bb271af3850a378e4860fd3db00ea8ef9225bd575811440562ea, equal to the current build APK. com.ghostlock.app.test is absent on both; no fixture/Glued process remained.
+
+Rollback test command/input/result/exit:
+- Command: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-env-fixture-20261029/ROLLBACK.sh /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-env-fixture-20261029/ROLLBACK_TEST_COPY
+- Input: isolated ROLLBACK_TEST_COPY containing modified copies of the fixture C source, instrumentation test, and active plan. The live working tree was not the rollback target.
+- Literal result: ROLLBACK_OK restored=3; verification: all three files byte-match BASELINE_FILE. Exit status: 0.
+- Restored behavior/status: the isolated copy has pre-change fixture output/assertions and the baseline plan; the live worktree and devices retain the current production build, while fixture APK/test package are removed.
+
+Remaining deployment gates: actual fixed .ghostlock_root.sh staging/seal/identity/handoff; full 43499 FinishScript parity with ops.cpp:226-431; safe_mode single authority; single late-load owner; detached child/sentinel/EOF/cancel cleanup; 43284 common-Finish root handoff. This batch validates environment propagation only.

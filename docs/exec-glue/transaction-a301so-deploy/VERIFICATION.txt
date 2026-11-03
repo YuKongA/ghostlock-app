@@ -1,0 +1,47 @@
+A301SO deployment transaction — verified
+
+Changed target field
+- TARGET: com.ghostlock.app on A301SO, Android 15.
+- FIELD: installed APK bytes at /data/app/…/com.ghostlock.app…/base.apk.
+- Baseline package: versionName 2.0.12, versionCode 1342; SHA-256 3ac14db4e097243acff9c26de1c77bae2b1117e704452c94546583c7241e3de3.
+- Modified package: versionName 2.0.12, versionCode 1342; SHA-256 3423a23384792dbdbcb72a88662ec6fcf61eb588cf6127d811f91c6d824001b1.
+- No native exploit ELF was launched.
+
+Artifacts
+- BASELINE_FILE: BASELINE_FILE/base.apk, exact device APK pulled before install.
+- MODIFIED_FILE: MODIFIED_FILE/base.apk, exact APK installed on A301SO.
+- DIFF_FILE: DIFF_FILE.patch, APK ZIP-entry delta (8 changed entries; 0 added; 0 removed).
+- VERIFICATION.txt: this report.
+- ROLLBACK.sh: executable reinstall-and-byte-verify script.
+
+BASELINE test
+Command: adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp shell am start -W -n com.ghostlock.app/.ui.MainActivity
+Input: the pre-deployment APK already installed on A301SO.
+Literal result: Status: ok; LaunchState: WARM; Activity: com.ghostlock.app/.ui.MainActivity; TotalTime: 605; WaitTime: 607; Complete.
+Exit status: 0 (ADB command chain completed).
+Baseline hash command: adb pull /data/app/…/com.ghostlock.app…/base.apk /tmp/ghostlock-a301so-installed.apk; SHA-256 3ac14db4e097243acff9c26de1c77bae2b1117e704452c94546583c7241e3de3.
+
+MODIFIED test and deployment
+Command: adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp install -r build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk
+Input: MODIFIED_FILE/base.apk, identical SHA-256 to the build output.
+Literal result: Performing Streamed Install; Success.
+Exit status: 0.
+Verification command: adb shell pm path/dumpsys package + adb exec-out cat of the installed base.apk, compared byte-for-byte to MODIFIED_FILE/base.apk.
+Literal result: model A301SO; Android 15; versionCode=1342; versionName=2.0.12; lastUpdateTime=2026-10-28 23:42:30; APK_IDENTICAL=True; installed SHA-256 3423a23384792dbdbcb72a88662ec6fcf61eb588cf6127d811f91c6d824001b1.
+Launch command: adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp shell am start -W -n com.ghostlock.app/.ui.MainActivity
+Literal result: Status: ok; LaunchState: UNKNOWN (0); Activity: com.ghostlock.app/.ui.MainActivity; WaitTime: 3027; Complete; pid 18696; ResumedActivity is com.ghostlock.app/.ui.MainActivity.
+Exit status: 0. The device was Dozing with keyguard showing, so this is process/activity launch evidence, not a visible A301SO screenshot. No FATAL EXCEPTION was found in the last 4000 logcat lines.
+
+UI verification
+Command: adb -s emulator-5554 shell am start -W -n com.ghostlock.app/.ui.MainActivity; adb exec-out uiautomator dump /dev/tty; adb exec-out screencap -p.
+Literal result: Status: ok; Compose screen shows Paths and the selector: CVE-2026-43499 · Glued and CVE-2026-43284 · Glued enabled; CVE-2026-43284, CVE-2026-98260, CVE-2026-43499, and Custom greyed; 43499 profile selection and Import .conf visible. Screenshot: a301so-deploy/../transaction-a301so-deploy/avd-main.png.
+Exit status: 0. This AVD screenshot is not physical-device UI validation.
+
+ROLLBACK copy test
+Command: ADB_BIN="$PWD/docs/exec-glue/transaction-a301so-deploy/rollback-test/fake_adb.py" docs/exec-glue/transaction-a301so-deploy/ROLLBACK.sh mock-device
+Input: a separate mock-device APK copy initialized from MODIFIED_FILE; the script's baseline source is BASELINE_FILE/base.apk.
+Literal result: ROLLBACK_VERIFY=PASS sha256=3ac14db4e097243acff9c26de1c77bae2b1117e704452c94546583c7241e3de3; ROLLBACK_COPY_IDENTICAL=True; ACTIVE_MODIFIED_RETAINED=True.
+Exit status: 0. The active A301SO remains on MODIFIED_FILE; the rollback test touched only the isolated mock copy.
+
+Rollback command for A301SO (not executed): docs/exec-glue/transaction-a301so-deploy/ROLLBACK.sh adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp
+Expected restored behavior/status: the exact baseline APK is reinstalled and its pulled bytes hash to 3ac14db4e097243acff9c26de1c77bae2b1117e704452c94546583c7241e3de3.

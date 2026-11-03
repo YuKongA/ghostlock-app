@@ -1,0 +1,148 @@
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -77,11 +77,96 @@
+     }
+ }
+ 
++/** Stages one M0 source snapshot with a separately verified, immutable target KO input. */
++abstract class StageM0MarkerSourcesTask : org.gradle.api.DefaultTask() {
++    @get:javax.inject.Inject
++    abstract val fileSystemOperations: org.gradle.api.file.FileSystemOperations
++
++    @get:org.gradle.api.tasks.InputDirectory
++    abstract val sourceDir: org.gradle.api.file.DirectoryProperty
++
++    @get:org.gradle.api.tasks.InputFile
++    abstract val verifiedKo: org.gradle.api.file.RegularFileProperty
++
++    @get:org.gradle.api.tasks.InputFile
++    abstract val cmakeSource: org.gradle.api.file.RegularFileProperty
++
++    @get:org.gradle.api.tasks.Input
++    abstract val expectedKoSha256: org.gradle.api.provider.Property<String>
++
++    @get:org.gradle.api.tasks.OutputDirectory
++    abstract val outputDir: org.gradle.api.file.DirectoryProperty
++
++    @get:org.gradle.api.tasks.OutputFile
++    abstract val manifestFile: org.gradle.api.file.RegularFileProperty
++
++    @org.gradle.api.tasks.TaskAction
++    fun stageSources() {
++        val source = sourceDir.get().asFile
++        val verified = verifiedKo.get().asFile
++        val expectedHash = expectedKoSha256.get()
++        val verifiedBytes = verified.readBytes()
++        check(sha256(verifiedBytes) == expectedHash) {
++            "Verified M0 KO SHA-256 mismatch: ${verified.absolutePath}"
++        }
++
++        val output = outputDir.get().asFile
++        fileSystemOperations.delete { delete(output) }
++        source.copyRecursively(output, overwrite = true)
++        val stagedKo = File(output, "ko/dfroot-android13-5.15.ko")
++        check(stagedKo.parentFile.mkdirs() || stagedKo.parentFile.isDirectory) {
++            "M0 staged KO directory is unavailable"
++        }
++        stagedKo.writeBytes(verifiedBytes)
++        check(sha256(stagedKo.readBytes()) == expectedHash) {
++            "Staged M0 KO SHA-256 changed during source staging"
++        }
++        check(sha256(verified.readBytes()) == expectedHash) {
++            "Verified M0 KO input changed during source staging"
++        }
++
++        val sourceEntries = output.walkTopDown()
++            .filter { it.isFile }
++            .map { file ->
++                file.relativeTo(output).invariantSeparatorsPath to sha256(file.readBytes())
++            }
++            .toMutableList()
++        val cmake = cmakeSource.get().asFile
++        sourceEntries += ("app/src/main/cpp/43284glued/CMakeLists.txt" to sha256(cmake.readBytes()))
++        val manifest = manifestFile.get().asFile
++        check(manifest.parentFile.mkdirs() || manifest.parentFile.isDirectory) {
++            "M0 source-manifest directory is unavailable"
++        }
++        manifest.writeText(
++            sourceEntries.sortedBy { it.first }
++                .joinToString(separator = "\n", postfix = "\n") { (path, hash) -> "$hash  $path" },
++        )
++    }
++
++    private fun sha256(bytes: ByteArray): String =
++        MessageDigest.getInstance("SHA-256")
++            .digest(bytes)
++            .joinToString(separator = "") { byte -> "%02x".format(byte.toInt() and 0xff) }
++}
++
+ //TODO(m0-marker-20261029): build the isolated A301SO-only fixture KO with its pinned DDK image.
+-val m0BuildDirectory = layout.buildDirectory.dir("m0/fixture/43284glued")
++val m0BuildDirectory = layout.buildDirectory.dir("m0/apk-source/43284glued")
++val m0GenericBuildDirectory = layout.buildDirectory.dir("m0/unverified/43284glued")
++val m0VerifiedKo = layout.buildDirectory.file("m0/verified/dfroot-android13-5.15.ko")
++val m0SourceManifest = layout.buildDirectory.file("m0/manifests/43284glued-source.sha256")
++val m0KoSha256 = "4f56858dd02ec53f14f2f3ca1e9d8fd48f83be85d6f32eaecc339220b54e5c79"
+ val buildM0MarkerKo = tasks.register<BuildM0MarkerKoTask>("buildM0MarkerKo") {
+     sourceDir.set(layout.projectDirectory.dir("src/main/cpp/43284glued/m0"))
++    outputDir.set(m0GenericBuildDirectory)
++    outputs.upToDateWhen { false }
++}
++val stageM0MarkerSources = tasks.register<StageM0MarkerSourcesTask>("stageM0MarkerSources") {
++    sourceDir.set(layout.projectDirectory.dir("src/main/cpp/43284glued/m0"))
++    verifiedKo.set(m0VerifiedKo)
++    cmakeSource.set(layout.projectDirectory.file("src/main/cpp/43284glued/CMakeLists.txt"))
++    expectedKoSha256.set(m0KoSha256)
+     outputDir.set(m0BuildDirectory)
++    manifestFile.set(m0SourceManifest)
+     outputs.upToDateWhen { false }
+ }
+ 
+@@ -243,9 +328,9 @@
+ }
+ 
+ if (m0MarkerEnabled) {
+-    tasks.named("preBuild") { dependsOn(buildM0MarkerKo) }
++    tasks.named("preBuild") { dependsOn(stageM0MarkerSources) }
+     tasks.configureEach {
+-        if (name.contains("CMake", ignoreCase = true)) dependsOn(buildM0MarkerKo)
++        if (name.contains("CMake", ignoreCase = true)) dependsOn(stageM0MarkerSources)
+     }
+ }
+ 
+--- a/docs/analysis/architecture-review-log.md
++++ b/docs/analysis/architecture-review-log.md
+@@ -285,3 +285,6 @@
+ - 2026-10-29 22:12 UTC: 43284 M0 review evidence addendum: `Flow43284Glued.kt` is wired as one `ExecutableBackendProcess` step and `Glued43284ExecutableHost` supplies Shizuku runtime arguments; the earlier reference to legacy `Flow43284Impl` as the Glued route is corrected. M0 still requires an isolated marker fixture; no change to the production gate verdict.
+ - 2026-10-29 22:28 UTC: A301SO 43284 M0 fixture manifest复核（HEAD b119085915748a940740d7ce919b5a30ed8e9346；计划 SHA-256 a3c5afec3ad079f34aabc9959bd0e7e8760ec7efdf6eb0733bbc2c7b12ffa4d5；manifest SHA-256 16fea317a6144822af04491b27f4484a438547175436a71da536e2e68b1bda7a）= M0 可进入 marker-only 设备门；前次 APK 文件哈希/证书指纹歧义已修正；阻断 0，重要 2（默认路径 absence 与双 launcher 设备证据属执行门）。未批准生产实现、Payload/Finish 或 exploit support。
+ - 2026-10-29 22:50 UTC: A301SO 43284 M0 marker gate实证复核（冻结 HEAD b119085915748a940740d7ce919b5a30ed8e9346；KO `vermagic=5.15.202-android13-5.15.202_r00-dirty` vs device `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`）= BLOCKED（1 阻断：M0 KO 与目标 KMI 不匹配；1 重要：不安装、不运行、保持设备 APK 原状）。要求精确 KMI DDK/KO 后重跑；无 marker 协议结论、无生产实现批准。
++- 2026-10-30 02:51 UTC: M0 carrier-tail preflight 设计复核（冻结 HEAD b119085915748a940740d7ce919b5a30ed8e9346；`exp.c` SHA `cac62e5e…`；plan SHA `3d83f654…`）= 可进入 M0 fixture-only 实现门（阻断 0，重要 3，建议 1）。要求固定 carrier/offset、单次精确 16-byte 只读尾块、fingerprint/reason code、维持 `patch_helper()` 前顺序；不批准生产实现。
++- 2026-10-30 03:00 UTC: M0 source/KO staging 设计复核（冻结 HEAD b119085915748a940740d7ce919b5a30ed8e9346；APK 仍含旧 `carrier-stat`）= BLOCKED（阻断 2：`-x buildM0MarkerKo` 同时跳过 source staging，generic KO/source output 重叠；重要 2：source+KO 双身份与 Gradle DAG 未锁定；建议 1：更新 plan/manifest）。必须分离 `stageM0MarkerSources`、verified KO 输入与 generic builder output，增加 source manifest/ELF string/embedded-KO hash gates 后方可重试；无生产实现批准。
++- 2026-10-30 03:05 UTC: M0 source/verified-KO staging implementation 复核（冻结 HEAD b119085915748a940740d7ce919b5a30ed8e9346；final ELF SHA ce7789c73d60414e1031a33a2eedc1e6187d18594ae43ee42d59004f02fb53fb；APK SHA bf125562352933b6e5e9e257ee4d0b46be6e97574e2b882ee42c8999aa2dbc58）= 可进入本批唯一一次 A301SO App marker retry（阻断 0，重要 2，建议 1）。Source/KO/ELF/APK identity、task DAG 与 JUnit `()V` 已核；仍未验证真实 tail read、ROOT_READY/RELEASE_FINISH、worker cleanup/absence。未批准生产实现、Shizuku、Payload/Finish 或 production Flow。
+--- a/docs/plan/exec-glue-plan.md
++++ b/docs/plan/exec-glue-plan.md
+@@ -1,6 +1,6 @@
+ # Exec Glue 部署计划（唯一活动版）
+ 
+-> 状态：rev11c/M0-debug；生产实现仍阻断。设备已进入 RUNNING_UNLOCKED；App marker 测试体曾启动，但 ELF 在修改页缓存前因 App UID 对 vendor carrier 的 `stat()` 返回 EACCES 而以 exit 4 终止。design-critic 复核通过单次只读尾块探测候选；fixture 修正后仅重试同一 App marker gate。目标 2.0.12。
++> 状态：rev11e/M0-stopped-after-approved-retry-failure；生产实现仍阻断。唯一获批的 App marker-only retry 在 `read_vendor_content()` tail probe 得到 0/16 bytes，以 ELF exit 4 fail-closed；没有进入 patch/KO/UMH/marker，Payload/Finish 未执行。按门禁停止，不再重试。设备 APK 已逐字节回到 retry 前状态，失败 runDir/log 保留。目标 2.0.12。
+ > 取代关系：本文件是唯一活动计划；此前批次记录、设备证据与详版 rev1–rev4 见归档 docs/archive/20261029-1025-exec-glue-plan-history.md。
+ > 依据：docs/development/软件工程守则.md、design-philosophy.md、engineering-standards.md、design-review-principles.md。
+ 
+@@ -74,11 +74,12 @@
+ 
+ ## 7. M0 carrier-capacity repair batch (marker-only)
+ 
+-- Scope: modify only `app/src/main/cpp/43284glued/m0/lkm/Makefile`, `app/src/main/cpp/43284glued/m0/exp.c`, and `app/src/androidTest/kotlin/com/ghostlock/app/backend/43284glued/M0MarkerGateTest.kt` for the isolated M0 fixture. Keep production 43284 sources, Flow, Shizuku route, Payload/Finish, and all other backends untouched. Exercise only the existing App `M0MarkerGateTest#appLauncherCompletesRootReadyAndSingleReleaseMarkers`.
++- Scope: modify only `app/build.gradle.kts`, `app/src/main/cpp/43284glued/m0/exp.c`, `app/src/androidTest/kotlin/com/ghostlock/app/backend/43284glued/M0MarkerGateTest.kt`, and this M0 plan for the isolated fixture. Keep production 43284 sources, Flow, Shizuku route, Payload/Finish, and all other backends untouched. Exercise only the existing App `M0MarkerGateTest#appLauncherCompletesRootReadyAndSingleReleaseMarkers`.
+ - Change A: keep the existing M0 objcopy strip and explicitly apply `llvm-objcopy --strip-debug`. Verified exact `.189` KO is ELF64/AArch64, 12,512 B, SHA `4f56858dd02ec53f14f2f3ca1e9d8fd48f83be85d6f32eaecc339220b54e5c79`, no `.debug_*`; 704-byte `__versions` equals the audited target candidate. Allocated code/data sections match except build-id/note metadata; all 71 normalized relocations match by offset/type/symbol/addend; ten imported CRCs match.
+ - KMI artifact: the normal Gradle `buildM0MarkerKo` path uses the generic DDK KDIR and emitted a 11,776 B KO with no `__versions`; it is not valid for this device gate and must not be packaged. The fresh target KO comes from the isolated copy of M0 LKM source built against Podman volume `a301so-kernel-common-189` (`/source/kernel-clean`, `/source/out`) and the pinned image. Record config/toolchain/source hashes, output hash, `.189` vermagic, 704-byte `__versions` equality and imported CRCs.
+ - Packaging: place only the verified fresh KO at `build/app/m0/fixture/43284glued/ko/dfroot-android13-5.15.ko`; record and check its hash before assembly. Invoke Gradle with `-Pm0Marker=true -x :app:buildM0MarkerKo` so the generic task cannot overwrite it; reject missing/stale fixture bytes, and compare the final APK entry hash/size to the KO input. All overrides stay under `build/`; no Gradle/product source change.
+ - Change B (design-critic reviewed after device evidence): replace App-UID `stat()` (A301SO returned EACCES) with a single fail-closed `read_vendor_content()` tail-block probe before `patch_helper()`. Require the exact fixture carrier path `/vendor/lib64/libbinderdebug.so`, a valid 16-byte-padded selected KO size and representable `padded_length - 16` offset; read exactly the final 16-byte block through the existing crash_dump read helper. A short read/helper error, carrier-path mismatch, malformed size or invalid offset exits before any patch/helper write; no fallback or second read. Log path, padded length, offset, exact byte count and the 16-byte tail fingerprint. This proves the selected read path can return the required final block; it is not a generic stat/regular-file identity proof. The read may affect page-cache residency/timing, so the retry must confirm it occurs once before `patch_helper()` and leaves source bytes/system baseline unchanged.
+-- Host gate: baseline `./gradlew :app:testDebugUnitTest --no-daemon --console=plain` → `BUILD SUCCESSFUL in 39s`, exit 0. Final `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest -Pm0Marker=true -x :app:buildM0MarkerKo --no-daemon --console=plain` → `BUILD SUCCESSFUL in 41s`, exit 0; APK entry contains exact target KO at offset 517080; app version/signature match installed baseline.
+-- Device gate: after user unlock, `dumpsys user` reported `RUNNING_UNLOCKED`; the old test APK initially failed JUnit class validation because the Shizuku test method returned non-void. The test method was mechanically wrapped in a JVM-void body and the AndroidTest APK rebuilt. The App test then entered its body and exited with assertion `M0 ELF exit expected:<0> but was:<4>`; retained run log: `M0_PREFLIGHT_FAIL=carrier-stat path=/vendor/lib64/libbinderdebug.so error=Permission denied`. No marker, KO/UMH worker or Payload/Finish ran; the APEX crash_dump64 payload hash remains pristine (`15288efc30e073dbb29a4b357d70e8b33c8136fa442c2def91a599fef85de066`), SELinux is Enforcing, and no KSU module is loaded. Preserve the exact failed runDir until its log is archived, then remove only that fixture directory. Retry the same App marker test at most once after the reviewed preflight correction; stop and return to debug on another gate failure. Do not run Payload/Finish, Shizuku, production Flow, or production ELF.
+-- Current state: design-critic approved the one-read tail-probe candidate; baseline host tests and modified AndroidTest build pass, and both JUnit methods now compile with `()V`. One actual App marker attempt failed before page-cache mutation because direct `stat()` is denied; device fixture/test APKs are presently installed and the failed runDir is retained. Production implementation remains blocked.
++- Change C (design-critic required after stale APK evidence): split M0 source staging from generic KO compilation. `buildM0MarkerKo` writes only to `build/app/m0/unverified/43284glued`; `stageM0MarkerSources` takes the checked `.189` KO from `build/app/m0/verified/dfroot-android13-5.15.ko`, requires SHA-256 `4f56858dd02ec53f14f2f3ca1e9d8fd48f83be85d6f32eaecc339220b54e5c79`, clean-stages current M0 source into `build/app/m0/apk-source/43284glued`, injects the verified KO, writes a sorted source/CMake SHA manifest, and is an explicit `preBuild`/CMake dependency. Do not use `-x` to bypass required source staging. Before device install, verify source manifest, final ELF contains `vendor-tail`/`tail_hex` and excludes `carrier-stat`, embedded KO bytes match verified input at the expected offset, APK version/signature and source/KO hashes match.
++- Host gate: baseline `./gradlew :app:testDebugUnitTest --no-daemon --console=plain` → `BUILD SUCCESSFUL in 44s`, exit 0. A previous green assembly using `-x :app:buildM0MarkerKo` was invalid because its ELF retained `carrier-stat`. Correct command `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest -Pm0Marker=true --no-daemon --console=plain` → `BUILD SUCCESSFUL in 45s`, exit 0. `stageM0MarkerSources` ran; staged `exp.c` matches source; staged KO matches verified input SHA `4f56858dd02ec53f14f2f3ca1e9d8fd48f83be85d6f32eaecc339220b54e5c79`; manifest SHA `0e4901e219288c2b1484d6d0723a65c74ebbe937b5cf186eadb3b52ac625133c`; final ELF SHA `ce7789c73d60414e1031a33a2eedc1e6187d18594ae43ee42d59004f02fb53fb`, includes `vendor-tail`/`tail_hex`, excludes `carrier-stat`; 12,512-byte KO embedded at offset `517024`; app APK SHA `bf125562352933b6e5e9e257ee4d0b46be6e97574e2b882ee42c8999aa2dbc58`; androidTest APK SHA `747099b21e84dd3ab14dca0a8bb85226ec240776a5363aa5c72c1b8413ca1fbb`; version `2.0.12`/1342 and signer match.
++- Device gate: after user unlock, `dumpsys user` reported `RUNNING_UNLOCKED`; the old test APK first failed JUnit class validation because the Shizuku test method returned non-void. The method was mechanically wrapped in a JVM-void body and host/AndroidTest compilation passes. The only actual App test entered its body and exited `4`; retained log: `M0_PREFLIGHT_FAIL=carrier-stat path=/vendor/lib64/libbinderdebug.so error=Permission denied`. No marker, KO/UMH worker or Payload/Finish ran; APEX crash_dump64 hash remains pristine (`15288efc30e073dbb29a4b357d70e8b33c8136fa442c2def91a599fef85de066`), SELinux is Enforcing, and no KSU module is loaded. A green assembly after the source edit was rejected as stale because its ELF still has `carrier-stat`; no second device attempt occurred. Preserve the exact failed runDir until its log is archived; after the final gate, remove only fixture dirs/packages and verify absence. At most one device retry after the new dual-identity build gate; stop after another gate failure. No Payload/Finish, Shizuku, production Flow, or production ELF.
++- Current state: the approved retry ran once from the verified `2.0.12`/1342 app APK SHA `bf125562352933b6e5e9e257ee4d0b46be6e97574e2b882ee42c8999aa2dbc58` and test APK SHA `747099b21e84dd3ab14dca0a8bb85226ec240776a5363aa5c72c1b8413ca1fbb`. The test entered its body but the M0 ELF exited `4`: `read_vendor at 0x30d0 got 0 bytes: success`, then `M0_PREFLIGHT_FAIL=vendor-tail-read offset=12496 required_bytes=16 path=/vendor/lib64/libbinderdebug.so`; `tests=1, failures=1` (instrument shell exit `0`). No patch/helper write, KO/UMH worker, ROOT_READY/RELEASE_FINISH, or Payload/Finish followed. RunDir `57e6128b79b243fbb4c0e0b1ee95e417` is retained with log and canary files; marker/sentinel files are absent. The active APEX crash_dump64 hash is pristine `15288efc30e073dbb29a4b357d70e8b33c8136fa442c2def91a599fef85de066`; SELinux remains Enforcing and `/proc/modules` has no KSU. App/test APK rollback was verified byte-identical to their pre-retry copies (`f74c47c23b013f8360bdb4779cbd262304cd6d9c63b7f2f074586445956e1515` / `70f767e29bd73d69e2778bac096f3f6ef6bb058fd58c9d6644a6f11f90e68f8d`). This consumes the sole approved retry: do not rerun this device gate. Shizuku, Payload/Finish, production Flow/ELF, and production implementation remain outside the gate.

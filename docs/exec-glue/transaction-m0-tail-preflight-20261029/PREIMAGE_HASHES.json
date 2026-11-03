@@ -1,0 +1,14 @@
+{
+  "app/src/main/cpp/43284glued/m0/exp.c": {
+    "baseline_sha256": "cac62e5e8b314a741db266b5bf4c67e68b120d173331dc3c963c5266c0826acb",
+    "modified_sha256": "277a8d8f3f3dbc7acc526dda99b1418d2dce9b97579bbdaa53533659ebeac0c0"
+  },
+  "app/src/androidTest/kotlin/com/ghostlock/app/backend/43284glued/M0MarkerGateTest.kt": {
+    "baseline_sha256": "00f2eaf92128c68b432c35a83e931f1a1b2c09beda4d1832d8e8bc3be4e0e92a",
+    "modified_sha256": "cb5058690c92b7deb1b396872411f3733dc3fe53b722fcbe4c7aa3e23f0d857d"
+  },
+  "docs/plan/exec-glue-plan.md": {
+    "baseline_sha256": "3d83f654ac1460fbeea48cc5315b9f12498ed80a94f648a5537181d9e81e45c8",
+    "modified_sha256": "9dd6c5e1bc7ba689f9fef883e562f7d9211e2b82ea5aef9df3b6ea63b8aaae97"
+  }
+}

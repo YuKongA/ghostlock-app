@@ -1,0 +1,14 @@
+--- BASELINE_FILE/exec-glue-plan.md
++++ MODIFIED_FILE/exec-glue-plan.md
+@@ -455,3 +455,11 @@
+ - A301SO auto route：`adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp shell am instrument -w -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest#dispatches43499FlowThroughTheSelectedLauncher com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner` → `OK (1 test)`，exit 0；运行时实际 route 为 `SHIZUKU`，home/tmpdir 指向 shell-owned `/data/local/tmp/ghostlock-glue/CVE_2026_43499_GLUED/<run-id>`，KSU log 为该 runDir 下 `.ghostlock_ksu.log`。
+ - 结束态：fixture 与 test APK 均移除/覆盖；A301SO 与 AVD 恢复安装当前 source APK `2.0.12 (1342)`，两端 `base.apk` 均与构建产物 SHA-256 `8cdb0e127871bb271af3850a378e4860fd3db00ea8ef9225bd575811440562ea` 一致；test package 不存在，未见 fixture/Glued 进程。
+ - 该证据关闭“环境变量未进入实际子进程”项；不关闭 `.ghostlock_root.sh` staging/seal、detached-worker terminal/EOF/cancel cleanup、Finish parity/safe_mode/late-load owner，也未运行生产 ELF。
++
++
++### A301SO / AVD 部署前依赖复核（2026-10-29）
++
++- 当前路由回归：`./gradlew :app:testDebugUnitTest --tests 'com.ghostlock.app.backend.core.ExecutableProcessRoutingTest' --no-daemon --console=plain` → `BUILD SUCCESSFUL in 5s`；`build/app/test-results/testDebugUnitTest/TEST-com.ghostlock.app.backend.core.ExecutableProcessRoutingTest.xml` 为 5 tests / 0 failures / 0 errors / 0 skipped。该项只证明 binder+permission 路由规则与单 launcher owner，不证明 Finish 或 root handoff。
++- 设备包清单：`adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp shell pm list packages` 包含 `df.root`、`me.weishu.kernelsu`、`com.ghostlock.app`；`adb -s emulator-5554 shell pm list packages` 包含 `me.weishu.kernelsu`、`com.ghostlock.app`，没有 `df.root`。
++- 同路径读取探测：A301SO shell 查看 `/data/user_de/0/df.root/shared_prefs/dfroot.xml` 返回 `Permission denied`；AVD 返回 `No such file or directory`。因此 A301SO 安装 DFRoot 包只证明包存在，不证明 prefs 内容、DFRoot 可运行状态或 43284 bootstrap 成功；AVD 不满足 DFRoot 固定 prefs 路径存在这一先决条件。
++- 这项复核没有启动 Glued ELF；43284 common Finish/root handoff 仍需用户裁定，不能以包存在或 `/dev/dfm6` 等 upstream marker 代替 Finish terminal。

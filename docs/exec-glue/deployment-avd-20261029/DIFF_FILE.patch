@@ -1,0 +1,23 @@
+APK comparison (installed AVD baseline -> current build)
+baseline_sha256=586b7516629be7637c10cb99769394d59a200f66b0e9abbe2c930003b3f6ec33
+modified_sha256=d174452840f18336fafc507a13694126477f7e8d86b4f127cd20baf4cdc5273f
+baseline_entries=398
+modified_entries=398
+classes4.dex: (279016, 'ef979c7a96830f9df3548ce05a3bdd108758ca16d04420440609b924228971b6') -> (279016, '56b76feb21efcd5ff80e156adbcac8caf8a0a0f81d07c996d299ca34ba25b16e')
+
+--- BASELINE_FILE/metadata.txt
++++ MODIFIED_FILE/metadata.txt
+@@ -2,7 +2,10 @@
+ versionName=2.0.12
+ versionCode=1342
+ platform=AVD emulator-5554
+-installed_state=before_this_turn
+-base_apk_bytes=28999754
+-base_apk_sha256=586b7516629be7637c10cb99769394d59a200f66b0e9abbe2c930003b3f6ec33
++source_head=b119085915748a940740d7ce919b5a30ed8e9346
++source_branch=detached at dev-nocpp base
++current_apk_bytes=28999754
++current_apk_sha256=d174452840f18336fafc507a13694126477f7e8d86b4f127cd20baf4cdc5273f
+ signer_sha256=b92a1aa56ccf72c789057722af1fe850d71fa067deafc71e985c4d7b3f3badca
++unit_tests=424 pass; full modified worktree
++native_exploit_execution=not performed

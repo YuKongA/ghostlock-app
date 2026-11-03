@@ -1,0 +1,36 @@
+TARGET: AVD UI validation for GhostLock 2.0.12 (versionCode 1342).
+CHANGED BRANCH/FIELD: installed APK from source batch 3; Paths backend selector and backend-specific cards inspected on emulator-5554.
+
+ARTIFACT PATHS
+MODIFIED_FILE: docs/exec-glue/transaction-avd-43284-upstreamfix/MODIFIED_FILE/
+DIFF_FILE: docs/exec-glue/transaction-avd-43284-upstreamfix/DIFF_FILE.patch
+VERIFICATION.txt: docs/exec-glue/transaction-avd-43284-upstreamfix/VERIFICATION.txt
+ROLLBACK.sh: docs/exec-glue/transaction-avd-43284-upstreamfix/ROLLBACK.sh
+
+BASELINE
+Input: installed base.apk SHA-256 3423a23384792dbdbcb72a88662ec6fcf61eb588cf6127d811f91c6d824001b1 (29,261,538 bytes).
+Baseline capture commands:
+`adb -s emulator-5554 shell pm path com.ghostlock.app`
+Literal output: `package:/data/app/~~p1DlJdKu170RyvNHX020NQ==/com.ghostlock.app-zpW4CGFp9it2C_DRusY9-g==/base.apk`
+`adb -s emulator-5554 exec-out cat /data/app/~~p1DlJdKu170RyvNHX020NQ==/com.ghostlock.app-zpW4CGFp9it2C_DRusY9-g==/base.apk`
+Literal output: binary stream captured; 29,261,538 bytes; SHA-256 3423a23384792dbdbcb72a88662ec6fcf61eb588cf6127d811f91c6d824001b1.
+Exit status: 0 for both commands. No baseline UI screenshot is used as evidence.
+
+MODIFIED
+Install command: adb -s emulator-5554 install -r build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk
+Literal output:
+Performing Streamed Install
+Success
+Exit status: 0.
+Launch command: adb -s emulator-5554 shell am start -n com.ghostlock.app/.ui.MainActivity
+Literal output: Starting: Intent { cmp=com.ghostlock.app/.ui.MainActivity }
+Exit status: 0.
+Installed base.apk SHA-256: 82f117e974217587d769009cce0f54eb542e4536625e320a9d963394035559b7; exact byte match to local artifact. Visual screenshot `ui-backend-menu.png`: both Glued options enabled; original 43284, 98260, 43499 and Custom are grey. `ui-43284-card.png`: 43284 has no profile selector and shows exec payload. `ui-43499-profile-card.png`: 43499 has built-in profile selector and Import .conf. `ui-paths.png` shows Backend/Payload/Finish UI. Retained instrumentation APK SHA-256 cf3e857c4d96ef250db874ec21287fdd58e963c08ca52ff0c1bc1219f724a124 (454,243 bytes); it was not installed on AVD. Current selection was returned to 43499 profile card after inspection.
+
+ROLLBACK
+Command: ADB_BIN=<transaction fake_adb.py> ADB_STATE=<rollback-test/state> docs/exec-glue/transaction-avd-43284-upstreamfix/ROLLBACK.sh emulator-5554
+Literal output:
+Success
+ROLLBACK_VERIFY=PASS sha256=3423a23384792dbdbcb72a88662ec6fcf61eb588cf6127d811f91c6d824001b1
+Exit status: 0.
+Restored behavior/status: isolated fake-device copy restored exact baseline APK hash; AVD remains on modified APK. UI screenshot/XML artifacts were reopened from this build. Home XML still contains the stale demo/not-wired message; it was observed, not changed.

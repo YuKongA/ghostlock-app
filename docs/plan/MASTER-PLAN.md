@@ -2,6 +2,8 @@
 
 > **当前 `dev-nocpp` C 分支的剩余执行计划见 [REMAINING-PLAN.md](REMAINING-PLAN.md)。**
 > 本文件保留 C++/Kotlin 主计划的进度与历史，不覆盖当前 C 分支的独立收口。
+>
+> **2026-11-02 在办执行架构**：[flow-process-launcher-plan.md](flow-process-launcher-plan.md)（新进程攻击机制，已生效）；exec-glue-plan 执行通道部分被其取代。2026-11-02 状态：App 新进程通道机制/取消/keepalive/超时+A11 已设备验证（G9–G13）；B4-real 真实漏洞门禁待用户授权。
 
 > **2026-10-19 43284 重置**：旧 43284 后端/JNI 具体实现已删除；重构设计与批次见 `docs/analysis/43284-refactor-design-v4.md`、`docs/plan/43284-reset-batch.md`。该文件取代 DFRP P1/P2/P3 旧会话实现；KPLAN 用户裁定不变（Kotlin plan/write，C++ 仅 syscall）。
 

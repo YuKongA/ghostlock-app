@@ -1,0 +1,80 @@
+Exec Glue rev11a plan transaction verification
+Date: 2026-10-29
+Workspace: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app
+Base ref: dev-nocpp contains HEAD b119085915748a940740d7ce919b5a30ed8e9346 (2.0.12); current checkout is detached at that commit.
+Changed field: docs/plan/exec-glue-plan.md, rev10 to rev11a. The response records user authorization to minimally modify upstream 43284 C/KO for root handoff, makes Shizuku optional, replaces AF_UNIX candidate with versioned per-run file handoff, treats ROOT_READY as the only readiness signal, and specifies Finish as the final exec with no post-exec action. Production code was not changed by this transaction.
+
+ARTIFACTS
+BASELINE_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/plan-rev11-20261029/BASELINE_FILE/exec-glue-plan.md
+MODIFIED_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/plan-rev11-20261029/MODIFIED_FILE/exec-glue-plan.md
+DIFF_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/plan-rev11-20261029/DIFF_FILE.patch
+VERIFICATION: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/plan-rev11-20261029/VERIFICATION.txt
+ROLLBACK: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/plan-rev11-20261029/ROLLBACK.sh
+Review1 snapshot: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/plan-rev11-20261029/REVIEWED_FILE/exec-glue-plan-rev11-review1.md
+Additional changed review record: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/analysis/architecture-review-log.md
+
+PLAN HASHES
+BASELINE: 15,947 bytes; SHA-256 301b1117e371fdb3ff18f8edda0aefda82e2f9434ac1583096a22e1ddb2bb7a7
+MODIFIED/ACTIVE: 15,869 bytes; SHA-256 61912b4313150869ef4a3aa0e1a23a2d1a475618409226693bb40cdd80b99925
+DIFF_FILE.patch: 32,218 bytes; SHA-256 04f4ddb377703ab11ec29c6456c96e98ec9f0aee0e6ce7666ab21a8f4a05d850
+
+BASELINE TEST
+Command:
+python3 - <<'PY'
+from pathlib import Path
+import hashlib
+p=Path('docs/exec-glue/plan-rev11-20261029/BASELINE_FILE/exec-glue-plan.md')
+b=p.read_bytes();s=b.decode('utf-8')
+assert len(b)==15947 and '## 3. rev9 设计合同' in s
+print(f'BASELINE_VALID: PASS bytes={len(b)} sha256={hashlib.sha256(b).hexdigest()}')
+PY
+Input: BASELINE_FILE/exec-glue-plan.md
+Literal output: BASELINE_VALID: PASS bytes=15947 sha256=301b1117e371fdb3ff18f8edda0aefda82e2f9434ac1583096a22e1ddb2bb7a7
+Exit status: 0 (BASELINE_EXIT=0)
+
+MODIFIED TEST
+Command:
+python3 - <<'PY'
+from pathlib import Path
+import hashlib
+p=Path('docs/exec-glue/plan-rev11-20261029/MODIFIED_FILE/exec-glue-plan.md')
+b=p.read_bytes();s=b.decode('utf-8')
+required=['rev11 设计候选','HandoffRequested','ROOT_READY','RELEASE_FINISH','selinux_state','avc_has_perm_noaudit','uid=euid=0','b119085915748a940740d7ce919b5a30ed8e9346','FD_CLOEXEC','/dev/dfm6','dev/inode']
+assert not [x for x in required if x not in s]
+assert len(b)<=16384 and s.lower().count('terminal')==0
+assert s.count('## 3. rev11 设计候选')==1 and '生产代码门关闭' in s
+print(f'MODIFIED_VALID: PASS bytes={len(b)} lines={len(s.splitlines())} sha256={hashlib.sha256(b).hexdigest()} finish_post_actions=0')
+PY
+Input: MODIFIED_FILE/exec-glue-plan.md
+Literal output: MODIFIED_VALID: PASS bytes=15869 lines=70 sha256=61912b4313150869ef4a3aa0e1a23a2d1a475618409226693bb40cdd80b99925 finish_post_actions=0
+Exit status: 0 (MODIFIED_EXIT=0)
+
+DIFF TEST
+Command:
+python3 - <<'PY'
+from pathlib import Path
+import hashlib,difflib
+r=Path('docs/exec-glue/plan-rev11-20261029')
+plan=''.join(difflib.unified_diff((r/'BASELINE_FILE/exec-glue-plan.md').read_text().splitlines(True),(r/'MODIFIED_FILE/exec-glue-plan.md').read_text().splitlines(True),fromfile='a/docs/plan/exec-glue-plan.md',tofile='b/docs/plan/exec-glue-plan.md'))
+log=''.join(difflib.unified_diff((r/'BASELINE_FILE/architecture-review-log.md').read_text().splitlines(True),(r/'MODIFIED_FILE/architecture-review-log.md').read_text().splitlines(True),fromfile='a/docs/analysis/architecture-review-log.md',tofile='b/docs/analysis/architecture-review-log.md'))
+expected=plan+log
+actual=(r/'DIFF_FILE.patch').read_text()
+assert expected==actual
+print(f'DIFF_VALID: PASS bytes={len(actual.encode())} sha256={hashlib.sha256(actual.encode()).hexdigest()} files=2')
+PY
+Input: BASELINE_FILE and MODIFIED_FILE plan plus review-log copies
+Literal output: DIFF_VALID: PASS bytes=32218 sha256=04f4ddb377703ab11ec29c6456c96e98ec9f0aee0e6ce7666ab21a8f4a05d850 files=2
+Exit status: 0 (DIFF_EXIT=0)
+
+ROLLBACK TEST
+Input preparation: ROLLBACK_TEST/exec-glue-plan.md receives the current MODIFIED_FILE/exec-glue-plan.md bytes.
+Command:
+sh docs/exec-glue/plan-rev11-20261029/ROLLBACK.sh docs/exec-glue/plan-rev11-20261029/ROLLBACK_TEST/exec-glue-plan.md docs/exec-glue/plan-rev11-20261029/BASELINE_FILE/exec-glue-plan.md
+Literal output: ROLLBACK_VERIFIED: PASS target=/Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/plan-rev11-20261029/ROLLBACK_TEST/exec-glue-plan.md sha256=301b1117e371fdb3ff18f8edda0aefda82e2f9434ac1583096a22e1ddb2bb7a7
+Exit status: 0 (ROLLBACK_EXIT=0)
+Restored behavior/status: ROLLBACK_TEST is byte-identical to BASELINE_FILE (15,947 B, original SHA-256) and contains the prior rev9 section heading. Active docs/plan/exec-glue-plan.md and MODIFIED_FILE remain rev11a.
+
+DESIGN-CRITIC REVIEWS
+Review1 frozen plan: 15,208 B, SHA-256 1dc5ad14e0a478431db3781c48eb5a7587ccc97d49861ba066ace0deab6f251a; BLOCKED (3 blockers, 3 important, 1 suggestion). Responses added in rev11a: fixed marker fields/identity, anti-replay and /dev/dfm6-to-ROOT_READY semantics.
+Review2 frozen plan: 15,869 B, SHA-256 61912b4313150869ef4a3aa0e1a23a2d1a475618409226693bb40cdd80b99925; BLOCKED (1 blocker, 3 important, 1 suggestion). Remaining blocker: A301SO proof that init-domain root worker can perform required DAC/SELinux operations on both App-private and Shizuku run directories. Remaining important gates: per-KMI ABI/KO hashes, exp.c cleanup return result, HandoffRequested propagation. FD/exec fixture remains an explicit validation suggestion.
+Both review rows are appended to docs/analysis/architecture-review-log.md. No production source implementation or new APK was created in this transaction.

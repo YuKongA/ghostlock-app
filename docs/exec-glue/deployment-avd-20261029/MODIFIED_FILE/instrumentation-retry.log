@@ -1,0 +1,12 @@
+
+com.ghostlock.app.backend.core.ExecutableRunFileStagerSmokeTest:...
+com.ghostlock.app.backend.cve43284glued.AndroidIpSecRuntimeSmokeTest:.
+com.ghostlock.app.backend.core.ShizukuRouteProbeTest:.
+com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest:
+com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest:
+
+Time: 0.855
+
+OK (8 tests)
+
+

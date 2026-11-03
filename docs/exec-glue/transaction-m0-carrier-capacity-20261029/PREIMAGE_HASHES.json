@@ -1,0 +1,22 @@
+{
+  "app/src/main/cpp/43284glued/m0/exp.c": {
+    "sha256": "79bee37b591002b576c92720bf44c4d1889f7faf0482bda9e37d302b7b98c00b",
+    "bytes": 22390
+  },
+  "app/src/main/cpp/43284glued/m0/lkm/Makefile": {
+    "sha256": "63640db06aabeb143ae07807b3213cd8c4eee87ec23af15bb0ce0bbe85c3c9fe",
+    "bytes": 571
+  },
+  "docs/plan/exec-glue-plan.md": {
+    "sha256": "132036a78d4abc058ec7c8f95d7684e139290ed52666ef163597360d1b7199e6",
+    "bytes": 17390
+  },
+  "docs/analysis/device-gates/20261029-a301so-43284-m0-marker-gate.md": {
+    "sha256": "85375b6770a76a5c2d1300b8ee7eaa6c18431c9015b2074ade3c8aca73a80bb6",
+    "bytes": 7772
+  },
+  "app/src/androidTest/kotlin/com/ghostlock/app/backend/43284glued/M0MarkerGateTest.kt": {
+    "sha256": "11a7b099e35b2d951a2b442771c314a9be5ca4b69db3dcd941ae275cd0efb587",
+    "bytes": 12697
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "baseline_sha256": {
+    "app/build.gradle.kts": "6c4d77ac7f1f8c5b678959fefd2a3da0957a6a2d1257a4313460c16e3b8a230e",
+    "docs/analysis/architecture-review-log.md": "acbefa7b396c05d0fddb986f62c017786da27db18410478483ba9ff551368d24",
+    "docs/plan/exec-glue-plan.md": "9dd6c5e1bc7ba689f9fef883e562f7d9211e2b82ea5aef9df3b6ea63b8aaae97"
+  },
+  "modified_sha256": {
+    "app/build.gradle.kts": "3c6b87f6c2054f3b637a6e33f1d65288972487486aa46938fd44d5d73dfbd9b2",
+    "docs/analysis/architecture-review-log.md": "f8ce5d8dc83aea5fbc98ad83d4f4251b537b1b3b860c0dca6dc81dee86b268bd",
+    "docs/plan/exec-glue-plan.md": "17f059f74a8ba389515fb51e090d63756c9fdc6fa54703e4213e79bf321608fb"
+  }
+}

@@ -1,0 +1,19 @@
+--- BASELINE_FILE/exec-glue-plan.md
++++ MODIFIED_FILE/exec-glue-plan.md
+@@ -308,3 +308,16 @@
+ - 43499 共通 Finish 的候选约束：以 `ops.cpp:226-431` 为唯一 bootstrap 行为源，确保 root UID gate、ksud 查找与 fallback、KMI、profile.safe_mode、iomem 原子缓存、checkreqprot、SELinux policy 重试、late-load/module wait、debug dump 与退出路径逐项保真；通用 payload tail 不再重复由上游拥有的 manager late-load。profile `safe_mode` 是 43499 bootstrap 权威，Finish UI 不得形成第二个值源。上游 `O_TRUNC` 写失败后继续至 victim 同路径 read/exec 的狭义证据已在 `20261029-0126-43499-readonly-script-bridge-fixture.md`；实际 Glued staging/handoff 的 inode/hash/权限/生命周期仍未验证。
+ - 双 launcher staging / 生命周期候选：App 与 shell 各自创建 launcher-owned 每 run 唯一目录（App-private 与 `/data/local/tmp/ghostlock-glue/<backend>/<run-id>`）；绝不把 App-private path 传给 shell；两端写入同一组输入 bytes 并核验 script/payload hash、regular-file/no-symlink、mode、owner；设置唯一允许的 `GHOSTLOCK_HOME`、`TMPDIR`、`GHOSTLOCK_KSU_LOG`。只有 child 终态且输出 pipe EOF 才能把 detached root script 视为已退出并清理；cancel/binder death/EOF 未确认时保留 run dir 与日志，不伪称无 orphan。按该合同完成独立 safe fixture 集成与 cancellation/binder-death 测试前，不进入 production finish bridge 实现。
+ - 当前门结论：用户新增的 launcher 路由裁定已经落实并有 safe fixture 证据；43284 runtime/参数与 host registry 不是当前阻断。剩余设计阻断为 43499 complete script parity 与 Glued path identity/lifecycle；43284 common finish 的成功后 root handoff 尚是待复核候选。不得以本节或 safe fixture 记录宣告整体部署完成。
++
++
++### rev3 当前实现复核结论（design-critic，2026-10-29）
++
++冻结对象：HEAD `b119085915748a940740d7ce919b5a30ed8e9346` + 当前 worktree（route-audit 复核附录后）；design-critic 只读，未改生产源、未跑门禁。
++
++- 已关闭：Glued App Flow 单一权威；spawn 前按 Shizuku binder+permission 选一个 launcher；授权/可达时走 Shizuku，否则 App；选中 Shizuku 的失败不回退二次 spawn。两个 Glued stable ID/host adapters 已注册，共用 UserService/AIDL 分发。普通 `FlowLaunchParent` 的 `remote-pending` 仍仅是其它 backend 的一般 Flow executor 限制，不表示 Glued 自动 launcher 未实现。
++- 已关闭：43284 App 与 Shizuku host 均有 launcher-domain `AndroidIpSecRuntime`/argv owner；A301SO safe fixture 运行证明 Shizuku host runtime 可创建并给 fixture 传 8 个上游 argv token；该证据不运行或验证生产漏洞 ELF。
++- 阻断：43284 的 `bootstrap.c` 不读 `GHOSTLOCK_HOME`、`.ghostlock_root.sh` 或外部 finish path。若保留 C 原文且要求 common Finish/Payload 对 43284 生效，必须设计并获批“ELF exit-0 后 launcher 另起 root finish”阶段；需要定义执行域/uid/SELinux、只执行一次的 late-load owner、成功/失败与 marker/log 合并、取消/断连以及 IpSecRuntime 释放点。未获批前不实现该新阶段。
++- 阻断：43499 common Finish 与 `ops.cpp:226-431` 尚无逐项 parity 证明；唯一 bootstrap owner 必须是上游逻辑，通用 payload tail 不得重复 `ksud late-load`；profile.safe_mode 与 Finish UI safeMode 必须归一。
++- 重要：两 launcher runDir 的 owner/mode/path、预置脚本与 payload 的 identity/hash/inode、同路径 victim handoff，以及 detached child terminal/pipe EOF/cancel/binder-death 的资源终结未落成状态机或集成门。EOF 未确认时不可清理或宣称无 orphan。
++
++验证已确认：AVD App-route 与 A301SO Shizuku-route no-op fixture；A301SO 连续 10 次 43284→43499 双 fixture；43284 runtime create/close smoke；43499 只读脚本 `O_TRUNC` 失败后继续读取/执行的双设备狭义 fixture。验证未确认：43499完整行为等价、43284 post-exit finish 权限/结果语义、双 launcher真实path/inode lifecycle、cancel/binder death descendant清理、生产ELF finish/payload；以上均为未验证，不宣称 supported。

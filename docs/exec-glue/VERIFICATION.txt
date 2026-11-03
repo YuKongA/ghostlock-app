@@ -1,0 +1,108 @@
+对象：exec-glue backend 选择器与 43499 profile card
+工作树：/Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app
+Git ref：HEAD（detached），b119085915748a940740d7ce919b5a30ed8e9346
+CHANGED_BRANCH_FIELD：Backends.isSelectable set/equality membership → singleton referential identity allowlist；43499 readiness → card 所选且通过校验的 profile
+
+MODIFIED_FILE：/Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/app/src/main/kotlin/com/ghostlock/app/backend/core/BackendSpec.kt
+DIFF_FILE：/Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/DIFF_FILE.patch
+VERIFICATION：/Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/VERIFICATION.txt
+ROLLBACK：/Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/ROLLBACK.sh（executable，0755）
+
+核对结果：
+- registry 有 2 个 43499 declaration：`43499-Glued` 与原版 `CVE-2026-43499`。旧选择器以相同 titleRes 显示二者，并未在 UI/选择恢复/运行门禁实施统一 allowlist；原版和 Glued 因此同名且都能选。当前 Material/Miuix、PathViewModel、会话恢复及 BackendRunGate 统一走 `Backends.isSelectable`；allowlist 仅含两个 Glued spec。原版 43499/43284/98260、自定义 Lua 与动态 Lua 均保留显示但不可选。当前 registry 中没有第三个 43499 declaration。
+- 43499 card 的内置列表来自 `kernel_profiles/index.conf`，支持 SAF 导入 `.conf`；执行前要求 card profile 已选择并通过解析/校验。运行 readiness 不再拿原版 JNI 输入条件替代 Glued 的 profile 条件。
+- `origin/main` 的 85 个 profile 资产与 `LegacyProfileConverter.kt` 已逐字节核对；旧 main `assets/profile/` 已移除。APK 内保留的 3 个 `assets/profile/` 条目属于 debug source set，不被 Glued 读取。43499 profile card 组件位于 `backend/43499glued/`，Kotlin package 为 `backend.cve43499glued`，不归入 `backend.declarations`。
+- 当前 app 源码及 APK DEX 均没有旧 Glue 继承类；共用进程助手为 `backend/core/ExecutableBackendProcess.kt`。diff 的删除上下文可含历史行，不代表当前实现。
+
+BASELINE
+command：`python3 /tmp/exec-glue-baseline-check.py /tmp/ghostlock-ui-correction-baseline`
+input：基线源码快照 `/tmp/ghostlock-ui-correction-baseline`；校验脚本 `/tmp/exec-glue-baseline-check.py`，SHA-256 `27a6acf2f98536b6d2399188695795c6159549f0920992fef9181b265ee3de77`
+literal output：`BASELINE_REPRODUCED: shared 43499 title; all specs shown/selectable; hardcoded local debug conf; ExecGlueSpec abstraction present`
+exit status：0
+
+MODIFIED
+command：`./gradlew :app:assembleDebug`
+input：当前工作树 Kotlin/资源/CMake 与 exec-glue upstream 源
+literal output：`BUILD SUCCESSFUL in 1s`；`44 actionable tasks: 7 executed, 37 up-to-date`
+exit status：0
+command：`python3 /tmp/exec-glue-correction-check.py`
+input：当前源码、`origin/main` 资产和 `build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk`
+literal output：`MODIFIED_ASSERTIONS: PASS; selectable=2 Glued objects; original 43499/43284/98260 and Lua disabled across UI/selection/run gate; 43499 card has upstream built-in list + SAF .conf import and profile-only readiness; source has no obsolete executor class; origin/main profiles=85/85 exact; APK has both executables, no legacy main profiles, debug-only profile assets=3; DEX obsolete executor class=absent`
+exit status：0
+command：`./gradlew :app:testDebugUnitTest --tests 'com.ghostlock.app.ui.screen.module.backends.DynamicBackendsTest'`
+input：当前工作树 app JVM unit-test source set
+literal result：`:app:compileDebugUnitTestKotlin FAILED`；首个 diagnostic 为 `A301SoDebugConfigTest.kt:23:52 Unresolved reference 'Cve43499RequestBuild'.`；其余错误来自未随既有源码迁移更新的 `Cve43499RequestFactory`、`FinishState`、`PayloadSlot` 等测试引用；本次 `DynamicBackendsTest.kt` 未产生 compiler diagnostic。
+exit status：1
+command：`adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp install -r 'build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk'`
+input：上述 arm64-v8a debug APK，SHA-256 `c2debc2c6004b625b573575f9985d4a729902ec1edaae86c3f07d1a93dd16da1`
+literal output：`Performing Streamed Install`；`Success`
+exit status：0
+installed package result：`versionCode=1342 minSdk=31 targetSdk=37`；`versionName=2.0.12`
+command：`adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp pull /data/app/~~3nkHcDfz8Iq26qUqy9oLMw==/com.ghostlock.app-cZVz6rVNICSiBXG_1mhZQg==/base.apk /tmp/ghostlock-a301so-installed.apk`
+input：A301SO installed `base.apk` and the local debug APK
+literal result：both files are 28,999,679 bytes and SHA-256 `c2debc2c6004b625b573575f9985d4a729902ec1edaae86c3f07d1a93dd16da1`
+exit status：0
+
+ROLLBACK（仅测试副本；主工作树保持修改）
+command：`sh docs/exec-glue/ROLLBACK.sh /tmp/exec-glue-correction-rollback-copy`
+input：按 `DIFF_FILE.patch` 的 461 个路径构造的隔离副本；当前态文件复制 299 个；补入三份事务 artifact
+literal output：`ROLLBACK_APPLIED: git apply --reverse --binary; patch_blocks=461; added_files_removed=181; artifacts_removed=3`
+exit status：0
+command：`python3 /tmp/verify-exec-glue-rollback.py`
+input：回滚副本、`DIFF_FILE.patch` 路径集与当前 Git `HEAD` blobs
+literal output：`ROLLBACK_VERIFY: PASS; changed_paths=461 exact to HEAD; added paths removed; deleted paths restored; 3 transaction artifacts removed; main worktree unchanged`
+exit status：0
+restored behavior/status：测试副本中 461 个差异路径与 `HEAD` 精确一致；新增文件已移除、删除文件已恢复、事务 artifact 已清理。主工作树及已部署 APK 未回滚。
+
+--- 本轮问题追因与复核（2026-10-29）---
+
+根因核实：基线 `backend/43499glued/BackendExecGlue.kt` 中 `ExecGlueSpec` 把 `CVE-2026-43499` 的 titleRes 和 Ready readiness 赋给所有子类；因此 43499 Glued、43284 Glued、原版 43499 曾出现三个 43499 标签。旧 selector/selection 没有 disabled allowlist，故原版后端和 Lua 也能选。现已移除该抽象；两个 Glued spec 各自直接实现 BackendSpec、声明独立 displayNameRes 和 readiness。当前 source/DEX 都没有 `BackendExecGlue` / `ExecGlueSpec`。保留的 `backend/core/ExecutableBackendProcess.kt` 是两条 Flow 共用的执行 helper；Gradle `buildExecGlue` / `packageExecGlue` 是构建和打包 upstream ELF 的 task，均非 backend declaration/base class。
+
+本轮代码变化：`Backends.isSelectable` 从 Set membership 改为 `===` singleton 比较，防止动态 Lua spec 通过自定义 equals/hashCode 冒充 Glued；`DynamicBackendsTest` 增加 equality-impostor 回归用例；BackendSpec selector KDoc 改为实际使用的 displayNameRes。
+
+BASELINE
+command：`python3 /tmp/exec-glue-baseline-check.py /tmp/ghostlock-ui-correction-baseline`
+input：改动前的 backend/UI/profile source snapshot
+literal output：`BASELINE_REPRODUCED: shared 43499 title; all specs shown/selectable; hardcoded local debug conf; ExecGlueSpec abstraction present`
+exit status：0
+
+MODIFIED
+command：`python3 /tmp/exec-glue-selector-final-check.py`
+input：当前 backend/UI/test source、origin/main profile files、最终 APK
+literal output：`SELECTOR_PROFILE_AUDIT: PASS; exactly two singleton Glued backends selectable; legacy CVEs and Lua disabled; 43499 card requires valid built-in/imported profile; no BackendExecGlue/ExecGlueSpec`
+`UPSTREAM_PROFILE_SYNC: PASS; origin/main=437b3b257462e17d395cfd2cd8fb81536d6c6358; profile_files=85/85 and LegacyProfileConverter.kt byte-identical`
+`APK_AUDIT: PASS; both upstream ELFs and both Glued declarations present; legacy glue base class absent`
+exit status：0
+command：`./gradlew :app:compileDebugKotlin`
+input：当前 Kotlin main source
+literal output：`BUILD SUCCESSFUL in 830ms`；`9 actionable tasks: 2 executed, 7 up-to-date`
+exit status：0
+command：`./gradlew :app:assembleDebug`
+input：当前 2.0.12 source tree 与 upstream ELF package task
+literal output：`BUILD SUCCESSFUL in 1s`；`44 actionable tasks: 7 executed, 37 up-to-date`
+exit status：0
+APK：`build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk`；SHA-256 `3ac14db4e097243acff9c26de1c77bae2b1117e704452c94546583c7241e3de3`；28,999,679 bytes
+
+MODIFIED UNIT TEST
+command：`./gradlew :app:testDebugUnitTest --tests 'com.ghostlock.app.ui.screen.module.backends.DynamicBackendsTest'`
+input：当前 app JVM unit-test source set
+literal result：`:app:compileDebugUnitTestKotlin FAILED`；首个 diagnostic 为 `A301SoDebugConfigTest.kt:23:52 Unresolved reference 'Cve43499RequestBuild'`；其余诊断是既有测试对已迁移 `Cve43499RequestFactory`、Finish/Payload 符号的 stale references；`DynamicBackendsTest.kt` 没有 compiler diagnostic。
+exit status：1
+
+DEVICE INSTALL
+command：`adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp install -r 'build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk'`
+input：上述 arm64-v8a debug APK
+literal output：`Performing Streamed Install`；`Success`
+exit status：0
+installed package：`versionCode=1342`；`versionName=2.0.12`
+command：`adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp pull <installed base.apk> /tmp/ghostlock-a301so-installed-final.apk` + `cmp -s <built APK> /tmp/ghostlock-a301so-installed-final.apk`
+literal result：`28999679 bytes`；两文件 SHA-256 均为 `3ac14db4e097243acff9c26de1c77bae2b1117e704452c94546583c7241e3de3`；`A301SO_INSTALLED_APK: byte-identical to final APK`
+
+ROLLBACK
+command：`python3 /tmp/prepare-exec-glue-rollback-copy.py && docs/exec-glue/ROLLBACK.sh /tmp/exec-glue-correction-rollback-copy && python3 /tmp/verify-exec-glue-rollback.py`
+input：由 DIFF_FILE.patch 的 461 个路径构造的隔离测试副本
+literal output：`ROLLBACK_COPY_PREPARED: paths=461; current_files_copied=299; root=/tmp/exec-glue-correction-rollback-copy`
+`ROLLBACK_APPLIED: git apply --reverse --binary; patch_blocks=461; added_files_removed=181; artifacts_removed=3`
+`ROLLBACK_VERIFY: PASS; changed_paths=461 exact to HEAD; added paths removed; deleted paths restored; 3 transaction artifacts removed; main worktree unchanged`
+exit status：0
+restored behavior/status：只测试副本回到 HEAD；真实工作树保留 identity allowlist、profile card 和 backend/UI 改动，A301SO 安装保留最终 2.0.12 APK。

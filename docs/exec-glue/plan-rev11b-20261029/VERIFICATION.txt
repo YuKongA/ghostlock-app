@@ -1,0 +1,38 @@
+# rev11b M0 plan transaction verification
+
+Changed field: active plan adds the isolated M0 marker-only test batch and records `M0 已批、计划通过，待实施`; production implementation remains blocked. The review log appends the rev11a gate review, draft-size review, compact-plan verdict, and Flow route correction.
+
+MODIFIED_FILE: `docs/exec-glue/plan-rev11b-20261029/MODIFIED_FILE/exec-glue-plan.md` and `.../MODIFIED_FILE/architecture-review-log.md`
+DIFF_FILE: `docs/exec-glue/plan-rev11b-20261029/DIFF_FILE.patch`
+VERIFICATION.txt: `docs/exec-glue/plan-rev11b-20261029/VERIFICATION.txt`
+ROLLBACK.sh: `docs/exec-glue/plan-rev11b-20261029/ROLLBACK.sh`
+
+## BASELINE
+Command: `python3 -c "from pathlib import Path; import hashlib; p=Path('docs/exec-glue/plan-rev11b-20261029/BASELINE_FILE/exec-glue-plan.md'); assert hashlib.sha256(p.read_bytes()).hexdigest()=='61912b4313150869ef4a3aa0e1a23a2d1a475618409226693bb40cdd80b99925'; print('BASELINE=PASS rev11a SHA-256 verified')"`
+Input: frozen rev11a plan in `BASELINE_FILE`.
+Literal output: `BASELINE=PASS rev11a SHA-256 verified`
+Exit: `0`
+
+## MODIFIED
+Command: `python3 -c "from pathlib import Path; import hashlib; p=Path('docs/plan/exec-glue-plan.md'); s=p.read_text(); assert len(p.read_bytes())<=16000 and 'rev11b/M0' in s and '隔离 fixture ABI/KO/ELF/worker' in s and 'ROOT_READY/RELEASE_FINISH 单次消费' in s and '不复用生产 Flow' in s and '不读/执行 Payload/Finish' in s; print(f'MODIFIED=PASS bytes={len(p.read_bytes())} sha256={hashlib.sha256(p.read_bytes()).hexdigest()}')"`
+Input: active `docs/plan/exec-glue-plan.md`.
+Literal output: `MODIFIED=PASS bytes=16000 sha256=a3c5afec3ad079f34aabc9959bd0e7e8760ec7efdf6eb0733bbc2c7b12ffa4d5`
+Exit: `0`
+
+Review-log command: Python prefix/hash and four-entry assertions against `BASELINE_FILE/architecture-review-log.md`.
+Literal output: `REVIEW_LOG=PASS append_only=true correction_present=true`
+Exit: `0`
+An earlier assertion used a label not present in the log and raised `AssertionError` (exit `1`); the expected tokens were corrected to the actual appended headings and the rerun above passed. No files were changed by the failed assertion.
+
+## ROLLBACK
+Command: `docs/exec-glue/plan-rev11b-20261029/ROLLBACK.sh docs/exec-glue/plan-rev11b-20261029/BASELINE_FILE/exec-glue-plan.md docs/exec-glue/plan-rev11b-20261029/BASELINE_FILE/architecture-review-log.md docs/exec-glue/plan-rev11b-20261029/ROLLBACK_TEST/exec-glue-plan.md docs/exec-glue/plan-rev11b-20261029/ROLLBACK_TEST/architecture-review-log.md`
+Input: independent working copies of plan and review log; baseline snapshots in `BASELINE_FILE`.
+Literal output:
+```text
+ROLLBACK=BASELINE docs/exec-glue/plan-rev11b-20261029/ROLLBACK_TEST/exec-glue-plan.md sha256=61912b4313150869ef4a3aa0e1a23a2d1a475618409226693bb40cdd80b99925
+ROLLBACK=BASELINE docs/exec-glue/plan-rev11b-20261029/ROLLBACK_TEST/architecture-review-log.md sha256=220be073feb8cf4a416f4f0f328d0d0538d7596a668701dffdf2bbf1e15b8c33
+```
+Exit: `0`
+Restored status: both test copies match baseline SHA-256; active rev11b plan and review log remain modified.
+
+Reopen: both active files match `MODIFIED_FILE`; plan is 16,000 B; ROLLBACK.sh is executable.

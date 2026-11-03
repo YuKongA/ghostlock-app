@@ -1,0 +1,20 @@
+$ adb -s emulator-5554 install -r 'build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk'
+Performing Streamed Install
+Success
+AVD_INSTALL_EXIT_STATUS=0
+/data/app/~~UrN_FZnVXH1PyfNPBxMfOw==/com.ghostlock.app-k_KXENg3nwtgv1_1QvZU8Q==/base.apk: 1 file pulled, 0 skipped. 162.6 MB/s (29276436 bytes in 0.172s)
+$ adb -s emulator-5554 shell dumpsys package com.ghostlock.app | grep -m2 -E 'versionCode=|versionName='
+    versionCode=1342 minSdk=31 targetSdk=37
+    versionName=2.0.12
+$ adb -s emulator-5554 install -r 'build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk'
+Performing Streamed Install
+Success
+A301SO_INSTALL_EXIT_STATUS=0
+$ adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp shell dumpsys package com.ghostlock.app | grep -m2 -E 'versionCode=|versionName='
+    versionCode=1342 minSdk=31 targetSdk=37
+    versionName=2.0.12
+/data/app/~~ybe08A_y8MJR6cVFQ1wvpQ==/com.ghostlock.app-BJMRjwzPzLJ_xmwS9st0iQ==/base.apk: 1 file pulled, 0 skipped. 20.9 MB/s (29276436 bytes in 1.336s)
+build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk: bytes=29276436 sha256=df6da45d3aff989e5375bc3fc172c99b45a49c7910240e4365b85777b412aad6
+AVD base.apk: bytes=29276436 sha256=df6da45d3aff989e5375bc3fc172c99b45a49c7910240e4365b85777b412aad6
+A301SO base.apk: bytes=29276436 sha256=df6da45d3aff989e5375bc3fc172c99b45a49c7910240e4365b85777b412aad6
+DEVICE_HASH_CHECK_EXIT_STATUS=0

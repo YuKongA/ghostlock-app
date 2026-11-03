@@ -30,6 +30,8 @@
 - **A12 不迁移既有 backend**：43499/43284 保持 App 域语义与 W3；禁止“顺手迁移”。
 - **A13 参数/偏移声明**：BackendSpec 必须声明 backend 需要的偏移/地址/尺寸/调优参数（只声明元数据，值仍由 profile 提供）；公共 ABI 项与 backend 私有项分开；Lua spec 可由脚本元数据声明自己的参数。
 
+> **2026-11-02 沿革（执行通道被取代）**：A4（攻击在 JVM 线程）、A5 与 §2.1（`symbol=backend key`；App=`LocalThreadFlowExecutor`；Shizuku=pending）已被 [flow-process-launcher-plan.md](flow-process-launcher-plan.md) 取代（攻击一律启动新进程；UI 持久化 flow reflection symbol+参数；App `:flowhost` / Shizuku 进程启动器反射执行；symbol 只能指向 Flow 函数）。A1/A2/A3/A6/A7/A8–A13 继续有效。
+
 ## 2. 具象架构要求（How / 组件与契约）
 
 ### 2.1 执行体与 Flow 入口

@@ -1,0 +1,14 @@
+--- BASELINE_FILE/route-decision.md
++++ MODIFIED_FILE/route-decision.md
+@@ -15,3 +15,11 @@
+ 
+ 
+ Source SHA-256: ebb351dc94f24a58e6bbb40507e6faf16083265658ae2ee426623fd051053211
++
++
++### 本轮执行证据（2026-10-29）
++
++- 变更字段：`ExecutableProcessRoute`。Shizuku binder 可达且授权时选 `SHIZUKU`；任一条件不成立时选 `APP`。选定后只调用一个 launcher；Shizuku start/prepare 的不确定失败不再启动第二个 App child，防止重复执行。
++- 源码证据：`app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableBackendProcess.kt` 中 `ExecutableProcessRouting.select/dispatch`；本次复核前后 SHA-256 保持 `ebb351dc94f24a58e6bbb40507e6faf16083265658ae2ee426623fd051053211`。
++- AVD UI：`com.ghostlock.app` versionCode 1342；源 APK 与 AVD 已安装 `base.apk` 字节完全一致，SHA-256 `0335002fd69cb215e861794ac40568fc637ce1731a0e6868b4c8f9c3bc4b5213`。Paths selector 截图显示仅 `43499-Glued` / `43284Glued` 可选，原版 43284 / 98260 / 43499 与 Custom 灰显；在弹出的选项中点击原版 43499 后，选择仍为 `43499-Glued`。
++- 安全范围：本次只检查 AVD UI与 host 单测，不启动 CVE ELF，也不将 UI/单测当作攻击路径真机验证。

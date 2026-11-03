@@ -1,0 +1,70 @@
+GhostLock 2.0.12 deployment transaction — AVD verification
+Date: 2026-10-29
+
+Workspace identity
+- Root: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app
+- HEAD: b119085915748a940740d7ce919b5a30ed8e9346 (2.0.12, dev-nocpp base; detached checkout)
+- Target: emulator-5554, Android 15 / API 35
+- Changed package field: com.ghostlock.app base.apk, versionName=2.0.12, versionCode=1342
+- Baseline installed APK SHA-256: 586b7516629be7637c10cb99769394d59a200f66b0e9abbe2c930003b3f6ec33
+- Modified APK SHA-256: d174452840f18336fafc507a13694126477f7e8d86b4f127cd20baf4cdc5273f
+- APK bytes: 28,999,754 for both; signer SHA-256 unchanged: b92a1aa56ccf72c789057722af1fe850d71fa067deafc71e985c4d7b3f3badca
+
+Required transaction artifacts
+- MODIFIED_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/deployment-avd-20261029/MODIFIED_FILE/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk
+- DIFF_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/deployment-avd-20261029/DIFF_FILE.patch
+- VERIFICATION.txt: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/deployment-avd-20261029/VERIFICATION.txt
+- Executable ROLLBACK.sh: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/deployment-avd-20261029/ROLLBACK.sh
+
+BASELINE
+Input: clean source archive of b119085915748a940740d7ce919b5a30ed8e9346 at build/deployment-avd-20261029/BASELINE_FILE/source; Android SDK at /Users/nickji/Library/Android/sdk.
+Command (from the clean source archive root):
+ANDROID_HOME=/Users/nickji/Library/Android/sdk ./gradlew --no-daemon --no-parallel --max-workers=1 testDebugUnitTest --console=plain
+Literal result excerpt:
+405 tests completed, 1 failed
+> Task :app:testDebugUnitTest FAILED
+BUILD FAILED in 1m 10s
+Exit: 1.
+The single failing baseline test was NativeHygieneContractTest > B13 inflight wait is bounded and names carrier error (assertion at line 48).
+
+MODIFIED
+Input: this worktree at HEAD b119085915748a940740d7ce919b5a30ed8e9346 with its existing exec-glue changes; target package com.ghostlock.app.
+Build/test command:
+./gradlew --no-daemon --no-parallel --max-workers=1 testDebugUnitTest assembleDebug assembleDebugAndroidTest
+Literal result excerpt:
+BUILD SUCCESSFUL in 50s
+84 actionable tasks: 12 executed, 72 up-to-date
+Exit: 0.
+Unit-test rerun command:
+./gradlew --no-daemon --no-parallel --max-workers=1 testDebugUnitTest --console=plain
+Literal result excerpt:
+BUILD SUCCESSFUL in 46s
+33 actionable tasks: 6 executed, 27 up-to-date
+Exit: 0. XML aggregate: 69 files, 424 tests, 0 failures, 0 errors, 0 skipped.
+APK input: build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk. The packaged copy is MODIFIED_FILE above. adb install -r returned literal Success; pulling installed base.apk produced the same SHA-256 d174452840f18336fafc507a13694126477f7e8d86b4f127cd20baf4cdc5273f. dumpsys package reported versionCode=1342 and versionName=2.0.12. MainActivity cold launch returned Status: ok.
+UI evidence: MODIFIED_FILE/main-ui.png, paths-ui.png, selector-dialog.png, 43284-card.png and accompanying XML. Both Glued choices appeared selectable; original CVE and Custom entries were gray; disabled-entry tap left selector XML unchanged; 43284 card had no 43499 profile controls; 43499 profile list/import controls were visible.
+Safe Android instrumentation rerun: class list ExecutableRunFileStagerSmokeTest, AndroidIpSecRuntimeSmokeTest, ShizukuRouteProbeTest#selectsShizukuOnlyWhenBinderAndPermissionAreAvailable, GluedExecFixtureSmokeTest; target com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner. Literal output: OK (8 tests). Exit: 0. The packaged executable did not contain the fixture marker, so no production Glued ELF was dispatched.
+
+ROLLBACK
+Input: AVD emulator-5554; BASELINE_FILE/installed-base.apk; expected SHA-256 586b7516629be7637c10cb99769394d59a200f66b0e9abbe2c930003b3f6ec33.
+Exact command (from workspace root):
+sh docs/exec-glue/deployment-avd-20261029/ROLLBACK.sh emulator-5554 docs/exec-glue/deployment-avd-20261029/BASELINE_FILE/installed-base.apk 586b7516629be7637c10cb99769394d59a200f66b0e9abbe2c930003b3f6ec33
+Literal result excerpt:
+Performing Streamed Install
+Success
+ROLLBACK_VERIFIED: PASS device=emulator-5554 sha256=586b7516629be7637c10cb99769394d59a200f66b0e9abbe2c930003b3f6ec33
+EXIT=0
+Rollback test restored the baseline package identity/hash on the AVD and saved the pulled APK at ROLLBACK_TEST/installed-base.apk. The modified APK was then reinstalled; final installed hash is d174452840f18336fafc507a13694126477f7e8d86b4f127cd20baf4cdc5273f, versionName=2.0.12, versionCode=1342. Thus the AVD is left on the modified build.
+
+Deployment/design status
+- Historical device snapshot for the prior AVD verification window: only emulator-5554 was connected, and no fresh A301SO install proof existed then. A later live check is recorded in docs/exec-glue/plan-rev10-20261029/VERIFICATION.txt.
+- No production Glued ELF, exploit, root handoff, Payload or Finish script was run. The current plan is docs/plan/exec-glue-plan.md (rev9). Rev8 and rev9 review snapshots are recorded below; the exact frozen input bytes were preserved during each review.
+- Review result captured 2026-10-29 20:37:37 UTC: rev8 remains design-blocked and is not approved for production implementation. Findings: 3 blockers (module-parameter/UMH helper ABI and per-KMI artifact provenance; AF_UNIX peer/SELinux and dual-launcher reachability), 2 important items (exp.c cleanup/resource ownership; Flow/UI must not report handoff as Finish success), and 1 suggestion (next-run runDir reclamation must preserve live/unknown users).
+- Closed in the reviewed design: Finish is the last process image via execve; after successful exec no waiting, observation, status/log write, cleanup or further action. The App records only finish_handoff_requested before release and never claims Finish success. This is a design decision, not runtime proof.
+- Unverified: actual UMH/helper execution, module-parameter ABI, pinned KO artifacts and per-KMI replacement hashes, AF_UNIX credentials/SELinux in App and Shizuku domains, root UID/context, exp cleanup ownership, production ELF, cancellation/disconnect behavior, and A301SO device gates.
+- The AVD build/UI evidence above remains host/emulator validation only and does not close the root-handoff design or deployment gate.
+- Design-critic record: 2026-10-29 20:37 UTC · rev8 · frozen SHA-256 7844af3d874a084c00f95030f6f2737e7551fce31b4b174165120b031c8a5c4b · verdict blocked · 3 blockers.
+- rev9 snapshot: docs/plan/exec-glue-plan.md · SHA-256 aa3a273b074ca1c8e7e9d90f552a3d805ae521142d90ca7377a5b14541c3e886 · 15,443 B · frozen 2026-10-29 20:44:55 UTC; plan bytes were unchanged during review.
+- rev9 review result captured 2026-10-29 21:02 UTC: blocked, 3 blockers (module-parameter/UMH ABI; AF_UNIX credentials/SELinux reachability; HandoffRequested state propagation), 3 important (exp cleanup ownership; execve failure/no-success semantics; KO provenance), 1 suggestion (frame/argv golden tests).
+- New source evidence: current CMake builds upstream bootstrap.c as libbootstrap.so; libcxx.S supplies only insmod tool/KO/null; exp.c setup patches only KO path; BackendRunUiState lacks handoff status and RunPage emits backend run: ok for FlowResult.Ok. rev9 plan corrects the worker target and adds a non-success handoff state candidate; no production implementation was started.
+- Design-critic record: 2026-10-29 21:02 UTC · rev9 · frozen SHA-256 aa3a273b074ca1c8e7e9d90f552a3d805ae521142d90ca7377a5b14541c3e886 · verdict blocked · 3 blockers.

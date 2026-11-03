@@ -1,0 +1,35 @@
+# M0 carrier-tail preflight repair verification
+
+Changed branch/field: M0-only 43284 preflight branch in `app/src/main/cpp/43284glued/m0/exp.c`: replace App-UID `stat()` with one exact 16-byte tail read through the existing crash_dump read helper; pin carrier path `/vendor/lib64/libbinderdebug.so`; emit padded KO length, offset, byte count and 16-byte tail fingerprint. The app instrumentation asserts `ko_padded=12512`, `offset=12496`, `returned_bytes=16`, exact path, and a 32-hex-byte fingerprint. Active plan updated to record the design-reviewed gate and failure evidence. No production backend source changed; no Payload/Finish is run.
+
+Changed files and hashes:
+- `app/src/main/cpp/43284glued/m0/exp.c` baseline `cac62e5e8b314a741db266b5bf4c67e68b120d173331dc3c963c5266c0826acb`; modified `277a8d8f3f3dbc7acc526dda99b1418d2dce9b97579bbdaa53533659ebeac0c0`.
+- `app/src/androidTest/kotlin/com/ghostlock/app/backend/43284glued/M0MarkerGateTest.kt` baseline `00f2eaf92128c68b432c35a83e931f1a1b2c09beda4d1832d8e8bc3be4e0e92a`; modified `cb5058690c92b7deb1b396872411f3733dc3fe53b722fcbe4c7aa3e23f0d857d`.
+- `docs/plan/exec-glue-plan.md` baseline `3d83f654ac1460fbeea48cc5315b9f12498ed80a94f648a5537181d9e81e45c8`; modified `9dd6c5e1bc7ba689f9fef883e562f7d9211e2b82ea5aef9df3b6ea63b8aaae97`.
+
+## BASELINE
+
+- Command: `./gradlew :app:testDebugUnitTest --no-daemon --console=plain`
+- Input: baseline Kotlin test source and current host project.
+- Literal output: `BUILD SUCCESSFUL in 44s`; `33 actionable tasks: 7 executed, 1 from cache, 25 up-to-date`.
+- Exit status: `0`.
+- Approved App gate command: `adb -s QV770MFGJ1 shell am instrument -w -e class 'com.ghostlock.app.backend.cve43284glued.M0MarkerGateTest#appLauncherCompletesRootReadyAndSingleReleaseMarkers' com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner`.
+- Literal result after the JUnit signature repair: `M0_PREFLIGHT_FAIL=carrier-stat path=/vendor/lib64/libbinderdebug.so error=Permission denied`; assertion `M0 ELF exit expected:<0> but was:<4>`; `Tests run: 1, Failures: 1`.
+- Device status: failure happened before page-cache patch/helper mutation; no marker or worker; APEX crash_dump64 hash stayed `15288efc30e073dbb29a4b357d70e8b33c8136fa442c2def91a599fef85de066`; SELinux Enforcing; test runDir retained for evidence; no Payload/Finish.
+
+## MODIFIED
+
+- Host command: `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest -Pm0Marker=true --no-daemon --console=plain`.
+- Host input/result: M0 fixture C preflight + App test assertions + staged source/verified `.189` KO; `BUILD SUCCESSFUL in 45s`, exit `0`. The final ELF contains `vendor-tail`/`tail_hex`, excludes `carrier-stat`; APK embeds the verified 12,512-byte KO.
+- Device command: `adb -s QV770MFGJ1 shell am instrument -w -e class 'com.ghostlock.app.backend.cve43284glued.M0MarkerGateTest#appLauncherCompletesRootReadyAndSingleReleaseMarkers' com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner`.
+- Device input/result: verified app APK SHA `bf125562352933b6e5e9e257ee4d0b46be6e97574e2b882ee42c8999aa2dbc58`; test APK SHA `747099b21e84dd3ab14dca0a8bb85226ec240776a5363aa5c72c1b8413ca1fbb`; KO SHA `4f56858dd02ec53f14f2f3ca1e9d8fd48f83be85d6f32eaecc339220b54e5c79`. Literal result: `read_vendor at 0x30d0 got 0 bytes: success`; `M0_PREFLIGHT_FAIL=vendor-tail-read offset=12496 required_bytes=16 path=/vendor/lib64/libbinderdebug.so`; ELF exit `4`, `Tests run: 1, Failures: 1` (instrument shell exit `0`).
+- Exit status/result: one approved retry completed and failed before `patch_helper()`. No patch write, KO/UMH worker, marker, Payload, or Finish ran. Do not retry again.
+
+## ROLLBACK
+
+- Command: `./ROLLBACK.sh --target-root ROLLBACK_TEST/project-copy-final`
+- Input: disposable copy of the three `MODIFIED_FILE` paths.
+- Literal output/result: `ROLLBACK_RESULT=restored 3 baseline files; changed_paths=3`; exit `0` (disposable copy).
+- Restored behavior: the copy returns to the exact stat-based preflight, old test assertions, and pre-tail-repair plan; the live worktree remains on tail-preflight source. The A301SO runDir/log is separately retained; app/test APK files were restored byte-identically to their pre-retry copies.
+
+`ROLLBACK.sh` verifies all target paths match `MODIFIED_FILE` before writing any baseline byte and only acts on the explicitly supplied target root.

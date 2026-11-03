@@ -1,0 +1,128 @@
+GhostLock Glued exec / AVD UI verification
+Date: 2026-10-29
+Workspace: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app
+
+Changed branch/field
+- ExecProcessRouting.select(binderReachable, permissionGranted): both signals true selects SHIZUKU; otherwise selects APP. The same app-owned Flow/exec step is retained. Once SHIZUKU is selected, a Shizuku prepare/start failure remains a Shizuku failure and does not start an App child.
+- Shizuku terminal log path: App now pulls AIDL readLog(offset, maxBytes) while polling and drains once more after terminal, then flushes the UTF-8 line assembler. This prevents losing a short child's terminal stdout when the callback pump lags.
+- Android UI: Paths selector exposes the two Glued entries; 43284 has the upstream CLI card and no profile card; 43499 has built-in profile selection and Import .conf. Original CVE entries and Custom are disabled.
+
+Required artifacts
+- MODIFIED_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-safe-exec-fixture/MODIFIED_FILE/GhostLock-exec-fixture.apk
+- DIFF_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-safe-exec-fixture/DIFF_FILE.patch
+- VERIFICATION.txt: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-safe-exec-fixture/VERIFICATION.txt
+- executable ROLLBACK.sh: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-safe-exec-fixture/ROLLBACK.sh
+
+Baseline
+Command/input:
+  ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+Literal result:
+  BUILD SUCCESSFUL in 39s
+  33 actionable tasks: 6 executed, 27 up-to-date
+  JUNIT_XML_FILES=65 TOTAL={'tests': 410, 'failures': 0, 'errors': 0, 'skipped': 0}
+  EXIT_STATUS=0
+This is the captured pre-log-drain source baseline. Baseline device APK: BASELINE_FILE/GhostLock-v2.0.12-1342.apk; SHA-256 768bd2363133f940f4ac3ae6a5f354ed898f4568cd46f3beab71816f7a6e5d89.
+
+Modified host verification
+Command/input:
+  ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+Literal result:
+  BUILD SUCCESSFUL in 39s
+  33 actionable tasks: 6 executed, 27 up-to-date
+  Configuration cache entry reused.
+  EXIT_STATUS=0
+XML result:
+  JUNIT_XML_FILES=66 TOTAL={'tests': 413, 'failures': 0, 'errors': 0, 'skipped': 0}
+
+Build command/input:
+  ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --console=plain
+Literal result:
+  BUILD SUCCESSFUL in 5s
+  77 actionable tasks: 9 executed, 68 up-to-date
+  Configuration cache entry reused.
+  EXIT_STATUS=0
+
+Modified fixture APK identity
+- Production APK input: BASELINE_FILE/GhostLock-source-updated-before-fixture.apk, 29,275,567 bytes, SHA-256 2cf5125cf4b1ab41482b3a96fd72184345c514f1271ef84ce65a10579376486a.
+- Fixture APK: MODIFIED_FILE/GhostLock-exec-fixture.apk, 23,923,144 bytes, SHA-256 bf224ba8887f42ab806d02c1978ef2e75a9cee52cad4ce54af79269e02ec1045.
+- Only substituted ZIP entries: lib/arm64-v8a/lib43499-Glued.so and lib/arm64-v8a/lib43284Glued.so. Production entry hashes: 43499=33a5be5e7295aa04d22ba3aae17c7d74147dbb86643904b04b8933632390f396; 43284=1a075b686507866c0336ebf5e8e3dda43f8afe96a45e5c0368fe4531bbe9ea86. Fixture hashes: 43499=57354f56a20adcc3762bdd5a876375cdab79b836958eca1a63c386e246faa9d9; 43284=80bf54c53082ba3cce5b0b9ec093e9ce97cf34d01d8daab817c0896fe4c3fa65.
+- Latest assembled production APK: BASELINE_FILE/GhostLock-source-final-20261029.apk, 29,275,567 bytes, SHA-256 35e63d5409d62f94769416e1c782c5ca135f69e91a24d14aa96380388b3d6ccb. All 397 ZIP entry names match the pre-fixture production APK; only `classes4.dex` differs. Its strings diff includes generated BuildInfo timestamp `2026-10-29 00:48:17` and BuildInfo checksum metadata; both executable entries are byte-identical to the pre-fixture APK.
+- Both fixture ELF files were checked for marker before test dispatch. They read stdin and emit fixed marker/count lines only. No upstream vulnerability ELF was run.
+
+AVD fixture instrumentation, APP route
+Exact command:
+  adb -s emulator-5554 shell am instrument -w -e expected_route APP -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner
+Input: the installed fixture APK and the built AndroidTest APK; expected_route=APP.
+Literal result:
+  com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest:..
+  Time: 0.119
+  OK (2 tests)
+  EXIT_STATUS=0
+Log evidence:
+  backend=43284Glued route=APP terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43284Glued|argv_count=8|stdin_bytes=0
+  backend=43499-Glued route=APP terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43499-Glued|argv_count=1|stdin_bytes=1884
+Source log capture: MODIFIED_FILE/avd-smoke.log.
+
+A301SO fixture instrumentation, SHIZUKU route
+Exact commands:
+  adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp shell am instrument -w -e expected_route SHIZUKU -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest#dispatches43499FlowThroughTheSelectedLauncher com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner
+  adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp shell am instrument -w -e expected_route SHIZUKU -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest#dispatches43284FlowThroughTheSelectedLauncherAndClosesRuntime com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner
+Inputs: installed fixture APK and AndroidTest APK; Shizuku binder reachable and permission granted; expected_route=SHIZUKU.
+Literal result for each command:
+  com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest:.
+  Time: 2.517 / 2.139
+  OK (1 test)
+  EXIT_STATUS=0
+Log evidence:
+  backend=43499-Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43499-Glued|argv_count=1|stdin_bytes=1884
+  backend=43284Glued route=SHIZUKU terminal=exit-0 fixture=true output=fixture=ghostlock-exec-noop-v1|backend=43284Glued|argv_count=8|stdin_bytes=0
+Source log capture: MODIFIED_FILE/a301so-smoke.log.
+
+Observed failed attempt retained
+Command/input:
+  adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp shell am instrument -w -e expected_route SHIZUKU -e class com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner
+Literal test result:
+  com.ghostlock.app.backend.core.GluedExecFixtureSmokeTest:.
+  Error in dispatches43499FlowThroughTheSelectedLauncher(...): Failed(reason=exec:shizuku:prepare:-8, failedStep=exec, elapsedMs=5050)
+  FAILURES!!!
+  Tests run: 2, Failures: 1
+  EXIT_STATUS=0 (instrumentation printed a test failure despite shell command exit 0)
+The method order was 43284 then 43499. The immediately following isolated 43499 test and isolated 43284 test each passed. The same full-class command then passed five consecutive times; literal per-iteration result was `OK (2 tests)` / `PASS`, exit 0, retained in MODIFIED_FILE/a301so-rebind-repeat.log. The initial timeout is unreproduced in those five runs; no App fallback child started. Cause remains unlocated.
+
+AVD direct UI execution
+- Screenshot/hierarchy: MODIFIED_FILE/avd-backend-selector.png, avd-final-selector.xml; MODIFIED_FILE/avd-run-43499.png, avd-run-43499-after-start.xml; MODIFIED_FILE/avd-run-after-start.xml; MODIFIED_FILE/avd-selected-43284.xml.
+- Paths selector hierarchy literal: 43499-Glued and 43284-Glued option containers enabled=true; original CVE-2026-43284, CVE-2026-98260, CVE-2026-43499 and Custom containers enabled=false.
+- Selecting 43284 and pressing Run displayed `backend run: CVE-2026-43284-Glued`, fixture marker, `backend=43284Glued`, `argv_count=8`, `stdin_bytes=0`, `backend run: ok`, `exit = finished`, and `Done`.
+- Selecting 43499 and pressing Run displayed `backend run: CVE-2026-43499-Glued`, fixture marker, `backend=43499-Glued`, `argv_count=1`, `stdin_bytes=1884`, `backend run: ok`, `exit = 0`, selected `profile = 5.10.236-android12-9-00014-gb97c62c4e7d1-ab13436420`, and `Done`.
+- Commands used: `adb -s emulator-5554 shell input tap 400 2210` (Paths), `input tap 700 550` (selector), `input tap 600 795` (43284), `input tap 675 2210` (Run), `input tap 875 1965` (Start); for 43499 the selector row tap was `input tap 600 675`, followed by force-stop/relaunch to reset Run state, then Run and Start taps as above.
+
+Rollback
+Test-copy command/input:
+  ADB="$PWD/docs/exec-glue/transaction-safe-exec-fixture/ROLLBACK_TEST/bin/adb" ADB_SERIAL=rollback-copy ROLLBACK_TEST_STATE="$PWD/docs/exec-glue/transaction-safe-exec-fixture/ROLLBACK_TEST/state.apk" docs/exec-glue/transaction-safe-exec-fixture/ROLLBACK_TEST/ROLLBACK.sh
+Literal output/result:
+  fake-adb-installed sha256=2cf5125cf4b1ab41482b3a96fd72184345c514f1271ef84ce65a10579376486a
+  rollback-test-state-sha256=2cf5125cf4b1ab41482b3a96fd72184345c514f1271ef84ce65a10579376486a
+  ROLLBACK_EXECUTABLE=yes
+  EXIT_STATUS=0
+Actual restore commands/input:
+  ADB_SERIAL=emulator-5554 docs/exec-glue/transaction-safe-exec-fixture/ROLLBACK.sh
+  adb -s emulator-5554 uninstall com.ghostlock.app.test
+  ADB_SERIAL=adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp docs/exec-glue/transaction-safe-exec-fixture/ROLLBACK.sh
+  adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp uninstall com.ghostlock.app.test
+Literal output/result:
+  Performing Streamed Install / Success / Success
+  EXIT_STATUS=0 for each command
+Final current-build deployment commands/input:
+  adb -s emulator-5554 install -r build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk
+  adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp install -r build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk
+Literal output/result:
+  Performing Streamed Install / Success
+  EXIT_STATUS=0 for each command
+Restored behavior/status:
+  AVD and A301SO both have versionName=2.0.12, versionCode=1342; `MODIFIED_FILE/avd-installed-final.apk` and `MODIFIED_FILE/a301so-installed-final.apk` each have SHA-256 35e63d5409d62f94769416e1c782c5ca135f69e91a24d14aa96380388b3d6ccb, exactly matching the latest assembled production APK. Test package com.ghostlock.app.test is absent. No lib43499-Glued.so/lib43284Glued.so fixture process or GhostlockUserService process remained at final check.
+
+Remaining implementation gates
+- FinishScript vs upstream ops.cpp behavior and O_TRUNC bridge are not equivalent/verified.
+- Upstream fork/setsid descendant cancellation/reap semantics are not verified.
+- One A301SO consecutive Shizuku rebind attempt failed as recorded above; isolated Shizuku route runs pass but the sequence is not yet repeatably green.
+- Production ELF was not executed; AVD UI success is a no-op fixture proof, not an exploit/device attack-success claim.

@@ -1,0 +1,75 @@
+GhostLock exec-glue progress verification: 43499 terminal mapping
+Date: 2026-10-29
+Workspace: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app
+
+Changed branch/field
+- Branch: `Flow43499Glued.steps` terminal result mapping.
+- Field: `BackendRunUiState.Finished.result` (`FlowResult.Ok` / `FlowResult.Failed`).
+- Before: nonzero executable exit became generic `exec-failed`; original reason and executable evidence were lost.
+- After: success preserves executable evidence and adds selected `profile`; failure preserves its original reason and evidence and adds selected `profile`. Refused and nonterminal state behavior is unchanged.
+- Modified source SHA-256: `caee65903a69ef4c06afa151f4e46347928224826c07d808b1729fbdd9d87c0a`; baseline source SHA-256: `ad0bfb1305b1ee3b812fc3e3ba76ce4cceef0d52b0b712b69b9a67afdf85e8da`.
+
+Four transaction artifact paths
+- MODIFIED_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-43499-exit-result-20261029/MODIFIED_FILE
+- DIFF_FILE: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-43499-exit-result-20261029/DIFF_FILE
+- VERIFICATION.txt: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-43499-exit-result-20261029/VERIFICATION.txt
+- Executable ROLLBACK.sh: /Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-43499-exit-result-20261029/ROLLBACK.sh
+
+BASELINE
+Command: `./gradlew :app:testDebugUnitTest --tests com.ghostlock.app.backend.cve43499.flow.Cve43499CleanFailureReasonTest --no-daemon --console=plain`
+Input: retryability vectors: clean failure details must be retryable; dirty, receipt-incomplete, invalid, empty and rejected failure reasons must not be retryable.
+Literal stdout result (captured final lines):
+```
+BUILD SUCCESSFUL in 7s
+33 actionable tasks: 6 executed, 27 up-to-date
+Configuration cache entry stored.
+```
+Exit status: `0`. XML: `build/app/test-results/testDebugUnitTest/TEST-com.ghostlock.app.backend.cve43499.flow.Cve43499CleanFailureReasonTest.xml`, `tests=2 failures=0 errors=0 skipped=0`.
+
+MODIFIED
+Command: `./gradlew :app:testDebugUnitTest --tests com.ghostlock.app.backend.cve43499glued.Flow43499GluedResultTest --no-daemon --console=plain`
+Input: exit 0 with evidence `{backend=43499-Glued, exit=0, runDir=fixture}`; exit 13 with reason `exec-exit:13` and evidence `{backend=43499-Glued, exit=13, runDir=fixture}`; refusal `missing,unauthorized`; running state; all results carry the selected release `6.6.30-profile` in terminal evidence.
+Literal stdout result (captured final lines):
+```
+BUILD SUCCESSFUL in 8s
+33 actionable tasks: 7 executed, 26 up-to-date
+Configuration cache entry stored.
+```
+Exit status: `0`. XML: `build/app/test-results/testDebugUnitTest/TEST-com.ghostlock.app.backend.cve43499glued.Flow43499GluedResultTest.xml`, `tests=3 failures=0 errors=0 skipped=0`.
+
+Full verification
+Command: `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --console=plain`
+Input: complete app JVM test suite, debug APK and Android-test APK.
+Literal stdout result (captured final lines):
+```
+BUILD SUCCESSFUL in 41s
+84 actionable tasks: 12 executed, 72 up-to-date
+Configuration cache entry reused.
+```
+Exit status: `0`. XML aggregate: `tests=422 failures=0 errors=0 skipped=0`; 43499 result mapping 3/3, 43284 result mapping 3/3, launcher routing 5/5.
+
+ROLLBACK
+Command: `./docs/exec-glue/transaction-43499-exit-result-20261029/ROLLBACK.sh docs/exec-glue/transaction-43499-exit-result-20261029/ROLLBACK_TEST_COPY`
+Input: the rollback-test copy has modified `Flow43499Glued.kt` plus the new unit test; the live worktree is not passed.
+Literal stdout result:
+```
+RESTORED source_sha256=ad0bfb1305b1ee3b812fc3e3ba76ce4cceef0d52b0b712b69b9a67afdf85e8da test_removed=True
+```
+Exit status: `0`. Independent comparison output:
+```
+baseline_sha256=ad0bfb1305b1ee3b812fc3e3ba76ce4cceef0d52b0b712b69b9a67afdf85e8da
+target_sha256=ad0bfb1305b1ee3b812fc3e3ba76ce4cceef0d52b0b712b69b9a67afdf85e8da
+test_file_exists=False
+result=RESTORED
+```
+Exit status: `0`. Restored behavior/status: the test copy exactly matches the baseline source bytes and the added test has been removed; the current production source remains modified.
+
+Deployment recheck
+- APK: `build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk`; bytes `28,999,754`; SHA-256 `fa7e5af3aee5f3a7317e46820037142a76680a6bf76e5f621e0558db16f1f6d6`.
+- Both `adb -s emulator-5554 install -r ...` and `adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp install -r ...` returned `Performing Streamed Install` / `Success`, exit `0`. The installed `base.apk` hash on each device exactly matches `fa7e5af3aee5f3a7317e46820037142a76680a6bf76e5f621e0558db16f1f6d6`; package `versionName=2.0.12`, `versionCode=1342`. AVD `MainActivity` is resumed. Reopened AVD screenshot/XML: `/Users/nickji/.codex/worktrees/exec-glue-clean/ghostlock-app/docs/exec-glue/transaction-43499-exit-result-20261029/avd-ui.png` and `avd-ui.xml`.
+- This is build/install/UI verification. No upstream production Glued ELF was run.
+
+Latest APK AVD selector check
+- On the just-installed APK (hash above), navigated to Paths with `adb -s emulator-5554 shell input tap 405 2210`; opened selector with `input tap 760 550`; tapped disabled original CVE-2026-43499 at `input tap 510 1150`; then selected `CVE-2026-43284 · Glued` at `input tap 600 800`.
+- Literal inspection result: `glued_options=[CVE-2026-43499 · Glued, CVE-2026-43499 · Glued, CVE-2026-43499 · Glued, CVE-2026-43284 · Glued]` (current selection and menu entries); `original_options_visible=[CVE-2026-43284, CVE-2026-98260, CVE-2026-43499, Custom]`; `disabled_original_tap_kept_menu=True`; `disabled_original_tap_kept_43499_selected=True`; `selected_43284=True`; `profile_or_import_on_43284=False`. The original options are visibly grey in `avd-backends.png`.
+- Accessibility and screenshot evidence: `avd-paths.xml`, `avd-backends.xml`, `avd-disabled-tap.xml`, `avd-43284.xml`, `avd-backends.png`, `avd-43284.png` in this transaction folder.

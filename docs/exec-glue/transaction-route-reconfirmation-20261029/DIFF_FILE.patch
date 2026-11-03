@@ -1,0 +1,11 @@
+--- BASELINE_FILE/exec-glue-plan.md
++++ MODIFIED_FILE/exec-glue-plan.md
+@@ -277,3 +277,8 @@
+ - `O_TRUNC` 狭义语义已有实证：`ops.cpp:226-234` 失败分支只返回；`cve_2026_43499_backend.cpp:453-458` 调用后继续 setup；`victim_process.cpp:142-153` 对同一路径只读打开并执行。AVD 与 A301SO 的 App UID、shell UID safe fixture 均得 `TRUNCATE_EXIT=1`、`CONTENT_UNCHANGED=yes`、`SCRIPT_EXEC_EXIT=0`、`MARKER=fixture-ok`，fixture 清理后文件不存在。证据：`docs/analysis/device-gates/20261029-0126-43499-readonly-script-bridge-fixture.md`。design-critic 关闭“写失败是否阻断静态控制流/只读执行机制”项；实际 Glued 双 launcher 的 runDir 路径、owner/mode/inode 与 native handoff 集成仍未验证。
+ - 其余阻断：① native root script 与共同 `RootManagerPayload` 可能重复 late-load，执行 owner 未定；② upstream `profile.safe_mode` 与 `FinishState.safeMode` 缺单一权威；③ App-private 与 Shizuku shell 的 payload staging、可读性、校验和清理未定；④ upstream `LOG`/debug dump、共同 log/marker 的映射和容量未定；⑤ detached `fork()+setsid()` worker 的完成/取消/目录清理所有权未定。
+ - 本复核未修改上游 C/C++ 或生产 Kotlin/native 源；不运行漏洞 ELF。只有关闭上述设计项、经 design-critic 复核和用户批准后，才实现并执行双 launcher safe fixture 集成门。
++
++
++### 用户对执行器路由的再次确认（2026-10-29）
++
++用户确认 Shizuku 是可选执行通道：Shizuku binder 可达且授权时走 Shizuku launcher；否则走 App launcher。Flow 始终由 App 持有；路由在 child 启动前选定，选中 Shizuku 后发生错误不再启动 App child。此确认与本计划 rev3 一致，不新增运行时分支。

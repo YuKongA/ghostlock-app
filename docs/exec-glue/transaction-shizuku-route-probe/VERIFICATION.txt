@@ -1,0 +1,43 @@
+TARGET: approved rev3 dual process-launch routing, A301SO instrumentation probe.
+CHANGED BRANCH/FIELD: new androidTest ShizukuRouteProbeTest validates binder reachability + permission selection, production preflight, and the shared UserService/AIDL fail-closed prepare path; it does not create a child or invoke an ELF.
+
+ARTIFACT PATHS
+MODIFIED_FILE: docs/exec-glue/transaction-shizuku-route-probe/MODIFIED_FILE/
+DIFF_FILE: docs/exec-glue/transaction-shizuku-route-probe/DIFF_FILE.patch
+VERIFICATION.txt: docs/exec-glue/transaction-shizuku-route-probe/VERIFICATION.txt
+ROLLBACK.sh: docs/exec-glue/transaction-shizuku-route-probe/ROLLBACK.sh
+
+BASELINE
+Command: adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp shell am instrument -w -e class com.ghostlock.app.backend.cve43284glued.AndroidIpSecRuntimeSmokeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner
+Literal result:
+com.ghostlock.app.backend.cve43284glued.AndroidIpSecRuntimeSmokeTest:.
+Time: 0.026
+OK (1 test)
+Exit status: 0. No route probe was present in the baseline test APK.
+
+MODIFIED BUILD
+Command: ./gradlew :app:assembleDebugAndroidTest --no-daemon --console=plain
+Literal output:
+BUILD SUCCESSFUL in 5s
+60 actionable tasks: 9 executed, 51 up-to-date
+Configuration cache entry reused.
+Exit status: 0.
+
+MODIFIED DEVICE INPUT
+Command: adb -s adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp shell am instrument -w -e class com.ghostlock.app.backend.core.ShizukuRouteProbeTest com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner
+Literal test output:
+com.ghostlock.app.backend.core.ShizukuRouteProbeTest:..
+Time: 1.824
+OK (2 tests)
+The second test bound the common UserService over AIDL, sent an empty Bundle, asserted nonzero result and exact reason exec:host:argv-missing, then called disconnect(remove=true).
+Literal route log:
+10-29 00:15:21.107 23342 23494 I GhostLockRouteProbe: binder=true permission=true route=SHIZUKU preflight=[] no_spawn=true
+Exit status: 0. Final test APK SHA-256 cf3e857c4d96ef250db874ec21287fdd58e963c08ca52ff0c1bc1219f724a124 (454,243 bytes); install and uninstall each returned “Success”.
+
+ROLLBACK
+Command: docs/exec-glue/transaction-shizuku-route-probe/ROLLBACK.sh docs/exec-glue/transaction-shizuku-route-probe/rollback-test/tree
+Literal output:
+ROLLBACK_APPLIED restored=0 removed=1
+ROLLBACK_VERIFY=PASS restored=0 removed=1 errors=0
+Exit status: 0.
+Restored behavior/status: isolated rollback copy has no ShizukuRouteProbeTest.kt; active worktree retains the added instrumentation test. A301SO's next Glued run selects SHIZUKU. UserService bind/AIDL/host fail-closed prepare are verified; successful prepare/start and harmless child execution remain unverified. Probe spawned no child.

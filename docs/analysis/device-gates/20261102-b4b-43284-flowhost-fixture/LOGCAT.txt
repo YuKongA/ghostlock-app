@@ -1,0 +1,60 @@
+11-02 14:49:15.465 D/IpSecService( 1881): Allocated SPI 1573376268
+11-02 14:49:15.471 D/IpSecTransform(30875): Added Transform with Id 6
+11-02 14:49:15.580 D/IpSecTransform(30875): Removing Transform with Id 6
+11-02 14:49:15.585 D/IpSecService( 1881): Closing port 45248
+11-02 14:49:15.727 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 30875) has died: vis FGS 
+11-02 14:49:15.729 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:49:15.734 I/TestRunner(30818): finished: glued43284RunsThroughNewProcessChannel(com.ghostlock.app.backend.core.Flow43284GluedHostSmokeTest)
+11-02 14:49:15.737 I/TestRunner(30818): run finished: 1 tests, 0 failed, 0 ignored
+11-02 14:49:19.354 I/TestRunner(30906): run started: 1 tests
+11-02 14:49:19.356 I/TestRunner(30906): started: gluedFlowRunsThroughNewProcessChannel(com.ghostlock.app.backend.core.Flow43499GluedHostSmokeTest)
+11-02 14:49:19.676 I/ActivityManager( 1881): Start proc 30928:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:49:19.701 I/ck.app:flowhost(30928): Late-enabling -Xcheck:jni
+11-02 14:49:19.730 I/ck.app:flowhost(30928): Using generational CollectorTypeCMC GC.
+11-02 14:49:21.645 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 30928) has died: vis FGS 
+11-02 14:49:21.650 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:49:21.765 I/ActivityManager( 1881): Start proc 30948:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:49:21.791 I/ck.app:flowhost(30948): Late-enabling -Xcheck:jni
+11-02 14:49:21.818 I/ck.app:flowhost(30948): Using generational CollectorTypeCMC GC.
+11-02 14:49:23.746 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 30948) has died: vis FGS 
+11-02 14:49:23.748 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:49:23.752 I/TestRunner(30906): finished: gluedFlowRunsThroughNewProcessChannel(com.ghostlock.app.backend.core.Flow43499GluedHostSmokeTest)
+11-02 14:49:23.756 I/TestRunner(30906): run finished: 1 tests, 0 failed, 0 ignored
+11-02 14:49:32.264 I/TestRunner(30980): run started: 1 tests
+11-02 14:49:32.266 I/TestRunner(30980): started: glued43284RunsThroughNewProcessChannel(com.ghostlock.app.backend.core.Flow43284GluedHostSmokeTest)
+11-02 14:49:32.367 I/ActivityManager( 1881): Start proc 31000:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:49:32.389 I/ck.app:flowhost(31000): Late-enabling -Xcheck:jni
+11-02 14:49:32.419 I/ck.app:flowhost(31000): Using generational CollectorTypeCMC GC.
+11-02 14:49:34.056 V/IpSecService( 1881): Binding to port 44996
+11-02 14:49:34.057 D/IpSecService( 1881): Allocated SPI 1069633457
+11-02 14:49:34.063 D/IpSecTransform(31000): Added Transform with Id 9
+11-02 14:49:34.173 D/IpSecTransform(31000): Removing Transform with Id 9
+11-02 14:49:34.176 D/IpSecService( 1881): Closing port 44996
+11-02 14:49:34.327 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 31000) has died: vis FGS 
+11-02 14:49:34.329 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:49:34.355 I/ActivityManager( 1881): Start proc 31020:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:49:34.378 I/ck.app:flowhost(31020): Late-enabling -Xcheck:jni
+11-02 14:49:34.406 I/ck.app:flowhost(31020): Using generational CollectorTypeCMC GC.
+11-02 14:49:36.067 V/IpSecService( 1881): Binding to port 39695
+11-02 14:49:36.068 D/IpSecService( 1881): Allocated SPI 815278513
+11-02 14:49:36.074 D/IpSecTransform(31020): Added Transform with Id 12
+11-02 14:49:36.186 D/IpSecTransform(31020): Removing Transform with Id 12
+11-02 14:49:36.191 D/IpSecService( 1881): Closing port 39695
+11-02 14:49:36.336 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 31020) has died: vis FGS 
+11-02 14:49:36.338 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:49:36.342 I/TestRunner(30980): finished: glued43284RunsThroughNewProcessChannel(com.ghostlock.app.backend.core.Flow43284GluedHostSmokeTest)
+11-02 14:49:36.346 I/TestRunner(30980): run finished: 1 tests, 0 failed, 0 ignored
+11-02 14:49:39.935 I/TestRunner(31052): run started: 1 tests
+11-02 14:49:39.937 I/TestRunner(31052): started: gluedFlowRunsThroughNewProcessChannel(com.ghostlock.app.backend.core.Flow43499GluedHostSmokeTest)
+11-02 14:49:40.244 I/ActivityManager( 1881): Start proc 31072:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:49:40.269 I/ck.app:flowhost(31072): Late-enabling -Xcheck:jni
+11-02 14:49:40.298 I/ck.app:flowhost(31072): Using generational CollectorTypeCMC GC.
+11-02 14:49:42.230 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 31072) has died: vis FGS 
+11-02 14:49:42.232 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:49:42.358 I/ActivityManager( 1881): Start proc 31092:com.ghostlock.app:flowhost/u0a673 for service {com.ghostlock.app/com.ghostlock.app.backend.core.FlowHostService}
+11-02 14:49:42.383 I/ck.app:flowhost(31092): Late-enabling -Xcheck:jni
+11-02 14:49:42.412 I/ck.app:flowhost(31092): Using generational CollectorTypeCMC GC.
+11-02 14:49:44.339 I/ActivityManager( 1881): Process com.ghostlock.app:flowhost (pid 31092) has died: vis FGS 
+11-02 14:49:44.342 W/ActivityManager( 1881): Scheduling restart of crashed service com.ghostlock.app/.backend.core.FlowHostService in 1000ms for connection
+11-02 14:49:44.347 I/TestRunner(31052): finished: gluedFlowRunsThroughNewProcessChannel(com.ghostlock.app.backend.core.Flow43499GluedHostSmokeTest)
+11-02 14:49:44.350 I/TestRunner(31052): run finished: 1 tests, 0 failed, 0 ignored

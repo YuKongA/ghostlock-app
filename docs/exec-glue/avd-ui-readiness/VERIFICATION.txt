@@ -1,0 +1,89 @@
+# AVD UI readiness verification
+
+Target change: make the 43499 Glued home status display the first reason from its existing readiness declaration, rather than the interface default “readiness undeclared”. This does not alter the Run gate or executable behavior.
+
+## Artifacts
+
+- MODIFIED_FILE: `docs/exec-glue/avd-ui-readiness/MODIFIED_FILE`
+- DIFF_FILE: `docs/exec-glue/avd-ui-readiness/DIFF_FILE.patch`
+- ROLLBACK: `docs/exec-glue/avd-ui-readiness/ROLLBACK.sh` (executable)
+- Production source: `app/src/main/kotlin/com/ghostlock/app/backend/43499glued/Backend43499Glued.kt`
+- AVD screenshots: `selector.png`, `profile-list.png` in this directory
+- Baseline source SHA-256: `6f28e140a24e7105020484a72ae9a3884191acd066ae3f061b60cecc6fd6988a`
+- Modified source SHA-256: `75b3f087a2eee61e7e1f4d50b8f49d6ec722f9e5d78cfe332feeea89837c65eb`
+- Modified debug APK SHA-256: `5d99bec5fe21875ec8d3229580e2e3b5200056aecda7dddf2e367117086b053a`
+
+## BASELINE
+
+Command: `./gradlew :app:assembleDebug --no-daemon --console=plain`
+Input: current source before this status-text addition (SHA-256 above).
+Literal output: `BUILD SUCCESSFUL in 5s`; tasks included `:app:compileDebugKotlin` and `:app:assembleDebug`.
+Exit status: 0.
+
+Command: `./gradlew :app:testDebugUnitTest --tests 'com.ghostlock.app.ui.screen.module.backends.DynamicBackendsTest' --no-daemon --console=plain`
+Input: unchanged baseline source and current test tree.
+Literal output: `Execution failed for task ':app:compileDebugUnitTestKotlin'`; unresolved imports include `Cve43499RequestBuild` at `A301SoDebugConfigTest.kt:23` and stale Finish/Payload test symbols.
+Exit status: 1.
+
+AVD before the change: Home hierarchy returned `Readiness is not declared for this backend` with the 43499 Glued backend selected and no profile; the Paths card itself already displayed `Select a valid built-in or imported profile before running`.
+
+## MODIFIED
+
+Command: `./gradlew :app:assembleDebug --no-daemon --console=plain`
+Input: source with `Backend43499Glued.statusTextRes()` forwarding the first reason from `readiness()`; current debug APK.
+Literal output: `BUILD SUCCESSFUL in 5s`; tasks included `:app:compileDebugKotlin` and `:app:assembleDebug`.
+Exit status: 0.
+
+Command: `/Users/nickji/Library/Android/sdk/emulator/emulator -avd GhostLock_6_6 -no-audio -no-boot-anim -gpu swiftshader_indirect`
+Input: AVD `GhostLock_6_6`, Android API 35, arm64-v8a; `sys.boot_completed=1`.
+Result: emulator attached as `emulator-5554`.
+
+Command: `adb -s emulator-5554 install -r 'build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk'`; then `adb -s emulator-5554 shell pm clear com.ghostlock.app`; launch `com.ghostlock.app/.ui.MainActivity`.
+Input: modified APK (versionName `2.0.12`, versionCode `1342`).
+Literal result: `Success`; package reports `versionName=2.0.12`, `versionCode=1342`.
+Exit status: 0.
+
+AVD UI interaction results (captured through UIAutomator hierarchy and screenshots):
+
+- With no profile, Home text is `Select a valid built-in or imported profile before running` (not “readiness undeclared”).
+- Selector shows only `CVE-2026-43499 · Glued` and `CVE-2026-43284 · Glued` as normal/dark entries; original `CVE-2026-43284`, `CVE-2026-98260`, `CVE-2026-43499`, and `Custom` render gray. See `selector.png`.
+- Tapping the gray original `CVE-2026-43499` left `selected_summary='CVE-2026-43499 · Glued'`; the disabled entry did not replace the selection.
+- The 43499 card exposes `Select a profile` and `Import .conf`; the profile dialog displays upstream built-ins (including `5.10.236-android12-9-00014-gb97c62c4e7d1-ab13436420`, `5.15.41-android13-8-g8dc4c75ab7d8-ab1673212412`, and `5.15.119-android13-8-g6ff5097ee32a-ab1764665171`). See `profile-list.png`.
+- Selecting the first built-in profile changed Home status to `Ready`.
+
+AVD UI test result: PASS for the selector, disabled-item interaction, profile picker/import control, and readiness/status transition. No exploit executable was launched.
+
+Command: `./gradlew :app:testDebugUnitTest --tests 'com.ghostlock.app.ui.screen.module.backends.DynamicBackendsTest' --no-daemon --console=plain`
+Input: modified production source and unchanged test tree.
+Literal output: `Execution failed for task ':app:compileDebugUnitTestKotlin'`; the same pre-existing unresolved `Cve43499RequestBuild` and stale Finish/Payload symbols prevent the test source set from compiling.
+Exit status: 1.
+
+`git diff --check`
+Literal output: empty.
+Exit status: 0.
+
+## ROLLBACK
+
+Command: `docs/exec-glue/avd-ui-readiness/ROLLBACK.sh /tmp/Backend43499Glued.rollback-test.kt`
+Input: separate copy of `MODIFIED_FILE`; production source was not passed to the rollback command.
+Literal output: `ROLLBACK_APPLIED`.
+Exit status: 0.
+Restored behavior/status: test copy byte-equaled baseline source; restored SHA-256 `6f28e140a24e7105020484a72ae9a3884191acd066ae3f061b60cecc6fd6988a`. Production source remains modified, SHA-256 `75b3f087a2eee61e7e1f4d50b8f49d6ec722f9e5d78cfe332feeea89837c65eb`.
+
+## Direct AVD recheck (2026-10-28, user authorized AVD UI validation)
+
+Target APK: `build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk`; SHA-256 `5d99bec5fe21875ec8d3229580e2e3b5200056aecda7dddf2e367117086b053a`. AVD: `emulator-5554` (`sdk_gphone64_arm64`, API 35); package reports `versionName=2.0.12`, `versionCode=1342`.
+
+Commands/results:
+
+- `adb -s emulator-5554 shell pm clear com.ghostlock.app` → literal `Success`, exit 0.
+- `adb -s emulator-5554 shell am start -n com.ghostlock.app/.ui.MainActivity` → literal `Starting: Intent { cmp=com.ghostlock.app/.ui.MainActivity }`, exit 0.
+- `adb -s emulator-5554 shell uiautomator dump /sdcard/avd-paths.xml` → literal `UI hierchary dumped to: /sdcard/avd-paths.xml`, exit 0. Initial Home shows `Select a valid built-in or imported profile before running` and backend `CVE-2026-43499-Glued`.
+- Opened backend picker. Screenshot shows enabled `CVE-2026-43499 · Glued` and `CVE-2026-43284 · Glued`; original `CVE-2026-43284`, `CVE-2026-98260`, `CVE-2026-43499`, and `Custom` are gray. Tapped the gray original 43499 row at `(500,1165)`; UI remained on the same picker with selected summary `CVE-2026-43499 · Glued` (before/after screenshot SHA-256 both `5c5798c3f03f322b1e1bc873cff157420bef504dd5977b077d35a51778c99687`).
+- Tapped enabled `CVE-2026-43284 · Glued`; hierarchy summary changed to `CVE-2026-43284 · Glued` and its card showed `CVE-2026-43284-Glued`.
+- Returned to `CVE-2026-43499 · Glued`; tapped `Select a profile`. Dialog showed upstream built-ins including `5.10.236-android12-9-00014-gb97c62c4e7d1-ab13436420`, `5.15.41-android13-8-g8dc4c75ab7d8-ab1673212412`, and `5.15.119-android13-8-g6ff5097ee32a-ab1764665171`; Paths card exposes `Import .conf`.
+- Selected the first built-in and returned Home; hierarchy showed literal `Ready` and `CVE-2026-43499-Glued`.
+
+Fresh screenshots: `current/selector-open.png` (SHA-256 `5c5798c3f03f322b1e1bc873cff157420bef504dd5977b077d35a51778c99687`), `current/43284-selected.png` (`b648f754a5104168514dd80d92874db54e8088f21022863370a60a7e654d507d`), `current/profile-list.png` (`2ba3d9a2a82b308219d21a3c03c813e3a05caf03982e00682fd0cf9a66d4547f`), and `current/home-ready.png` (`2deb8d79269acc1565644a93d6579d30ddfbf3b93a22db1505631bca25eaac60`).
+
+Result: AVD UI validation PASS for Glued backend choice, disabled legacy entries, profile selection/import affordance, and readiness transition. The Home banner still states `GhostLock is running with demo data; chain execution is not wired yet.` This was UI-only validation; no ELF/exploit was launched and it does not establish deployment or execution readiness on A301SO.

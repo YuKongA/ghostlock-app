@@ -1,0 +1,55 @@
+# Exec Glue rev3 routing design and current deployment status
+
+Objective: continue deployment of the version 2.0.12 GhostLock worktree. This batch updates the single active plan only; production source was not changed.
+
+Changed document/field: docs/plan/exec-glue-plan.md, rev3 routing: App owns the only Glued Flow; the exec step selects Shizuku child launcher when Shizuku is authorized/available, otherwise App child launcher. Remote uncertain failure does not trigger a second local spawn. Rev2 conflicting text is marked historical and rev3 is the only active design.
+HEAD: b119085915748a940740d7ce919b5a30ed8e9346 (detached).
+Baseline plan SHA-256: 76f7f0e210c28b5c3d15ad61fec7d128a8bf0c573593d204deedfbff67269b49.
+Modified plan SHA-256: 67f684a9984f4251c59e393763649d39917eb2651d12d82b731e7bc16b8aa573.
+
+Artifacts:
+- MODIFIED_FILE: docs/exec-glue/plan-rev3-routing/MODIFIED_FILE
+- DIFF_FILE: docs/exec-glue/plan-rev3-routing/DIFF_FILE.patch
+- VERIFICATION: docs/exec-glue/plan-rev3-routing/VERIFICATION.txt
+- ROLLBACK.sh: docs/exec-glue/plan-rev3-routing/ROLLBACK.sh (executable)
+- BASELINE_FILE: docs/exec-glue/plan-rev3-routing/BASELINE_FILE
+
+User route decision: “shizuku并非必须，和app的进程启动器并行，如果有shizuku授权则通过shizuku启动进程，否则通过app权限”. The design critic reviewed rev3 core at SHA 8fef09b5e5cd7dc173ee262bd5d85df3b8ece0e49929b27c713915a12fb0ded0: design route accepted; App is the only Flow authority; dual process launchers; single spawn owner; 43284 App-domain IpSec readiness gate; no original backend migration. The subsequent edit only marks rev2 historical/rev3 active. A follow-up critic check confirmed the old/new route conflict is clearly labeled.
+
+BASELINE test
+Command: ./gradlew :app:testDebugUnitTest --tests 'com.ghostlock.app.ui.screen.module.backends.DynamicBackendsTest' --no-daemon --console=plain
+Input: same production source before plan rev3; no production Kotlin/C source changes in this transaction.
+Literal result: “> Task :app:compileDebugUnitTestKotlin FAILED”; unresolved Cve43499RequestBuild/Cve43499RequestFactory and stale Finish/Payload imports.
+Exit status: 1.
+
+MODIFIED build and test
+Command: ./gradlew :app:assembleDebug --no-daemon --console=plain
+Input: same production source; plan rev3/current SHA above; packaged arm64-v8a APK.
+Literal output: “BUILD SUCCESSFUL in 5s”; exit status: 0.
+Current APK SHA-256: aacddbebdf9c9630c78c6a8b0bd8e8d06b0b1680d30cd67aea2b3b82374bbb8c.
+
+Command: ./gradlew :app:testDebugUnitTest --tests 'com.ghostlock.app.ui.screen.module.backends.DynamicBackendsTest' --no-daemon --console=plain
+Input: same unchanged production source; current plan SHA above.
+Literal result: “> Task :app:compileDebugUnitTestKotlin FAILED”; first diagnostic: “Unresolved reference 'Cve43499RequestBuild'” at A301SoDebugConfigTest.kt:23; stale Finish/Payload symbols also remain.
+Exit status: 1.
+
+AVD validation on the exact current APK
+Command sequence: adb -s emulator-5554 install -r build/app/outputs/apk/debug/GhostLock-v2.0.12(1342)-arm64-v8a-debug.apk; pm clear; am start -n com.ghostlock.app/.ui.MainActivity; UIAutomator hierarchy capture; tap Paths/backend/profile controls.
+Install output: “Success”; pm clear output: “Success”; launch output: “Starting: Intent { cmp=com.ghostlock.app/.ui.MainActivity }”. AVD installed base.apk SHA-256 equals current APK SHA-256 aacddbebdf9c9630c78c6a8b0bd8e8d06b0b1680d30cd67aea2b3b82374bbb8c.
+Assertions: HOME_NO_PROFILE=PASS; SELECTOR_CHOICES_AND_LEGACY_ROWS=PASS; DISABLED_LEGACY_TAP=PASS_SELECTION_UNCHANGED; 43284_GLUED_SELECTION=PASS; BUILTIN_PROFILE_AND_IMPORT_CONTROL=PASS; PROFILE_SELECTED_HOME_READY=PASS. UI banner “chain execution is not wired yet” remains present. No executable ELF was launched.
+Screenshots: docs/exec-glue/avd-ui-readiness/current/final-selector.png SHA-256 87914fcfab96e41bd2aaed57a320d0eee5d57d371edd5c59ccf0d59547c20a86; final-profile-list.png SHA-256 d59d279a113b2e98e25d8b3769501a0d0baed6fa48ff890bf2be616bf6ea0745; final-home-ready.png SHA-256 71ff1aa18ab68b8fd80969de7235f9a35555a373393f2ee080e5ab2765cdf221.
+
+A301SO current state
+Installed versionName=2.0.12/versionCode=1342, installed APK SHA-256 3ac14db4e097243acff9c26de1c77bae2b1117e704452c94546583c7241e3de3; current workspace APK hash differs, so current APK is not deployed there. Shizuku 13.6.0 package and shizuku_server process are present; service authorization/host bridge not validated.
+
+Remaining concrete code blockers
+- FlowLaunchParent still has remote-pending and currently treats Shizuku as a Flow executor; rev3 requires App-only Flow for Glued and launcher choice inside exec.
+- ExecutableBackendProcess still starts in App UID; Shizuku host registry only maps CVE_98260.
+- Flow43284Glued still passes empty argv; IpSec runtime is absent.
+- Common FinishScript is not equivalent to upstream ops.cpp:226-431; O_TRUNC bridge is unproven.
+
+ROLLBACK
+Command: docs/exec-glue/plan-rev3-routing/ROLLBACK.sh /tmp/exec-glue-plan-rev3.rollback-test.md
+Input: separate copy of MODIFIED_FILE; active plan is not passed to rollback.
+Literal output: “ROLLBACK_APPLIED”; exit status: 0.
+Restored status: test copy is byte-equal to BASELINE_FILE, SHA-256 76f7f0e210c28b5c3d15ad61fec7d128a8bf0c573593d204deedfbff67269b49; active plan remains modified at SHA-256 67f684a9984f4251c59e393763649d39917eb2651d12d82b731e7bc16b8aa573.

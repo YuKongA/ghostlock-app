@@ -1,0 +1,10 @@
+{
+  "baseline_sha256": {
+    "docs/plan/exec-glue-plan.md": "b0efcf66fb6004bd6e2980bdc5e7db5fe9f2f7cea97f1a874dd6b8a8dc7a7686",
+    "docs/analysis/device-gates/20261029-a301so-43284-m0-marker-gate.md": "a7799cd50b7c3549fd0170c997e77ef6c100b35499efd5e810ec68a46ece8b05"
+  },
+  "modified_sha256": {
+    "docs/plan/exec-glue-plan.md": "17f059f74a8ba389515fb51e090d63756c9fdc6fa54703e4213e79bf321608fb",
+    "docs/analysis/device-gates/20261029-a301so-43284-m0-marker-gate.md": "5e8e840ebb2dbeb99c8e0aeccd1ca7246d91a7767bdd53da6fe284f03c40e066"
+  }
+}

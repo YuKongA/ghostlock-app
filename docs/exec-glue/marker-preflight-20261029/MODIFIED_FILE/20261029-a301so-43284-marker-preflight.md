@@ -1,0 +1,21 @@
+# 2026-10-29 A301SO 43284 marker gate 预检（未执行）
+
+- HEAD：`b119085915748a940740d7ce919b5a30ed8e9346`（2.0.12；detached，`dev-nocpp` 包含此提交）
+- 设备：A301SO / `QV770MFGJ1` / Android 15 API 35 / `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`
+- 结果：**冷启动会话预检通过；marker-only ELF/KO 未运行；Payload/Finish 未运行。**
+
+## 设备证据
+
+本次获授权执行 `adb -s QV770MFGJ1 reboot`。随后读取：`boot_completed=1`、`uptime=246.39 1843.38`、`getenforce=Enforcing`、`bootreason=reboot,shell`、`verifiedboot=green`。`/proc/modules` 中没有 KSU/KernelSU 匹配项；`/sys/module/kernelsu` 与 `/sys/kernel/kernelsu` 均不存在。KernelSU 管理器 APK 仍安装；这些只记录可见模块/sysfs 状态。
+
+设备仍安装 `com.ghostlock.app`（`versionName=2.0.12`, `versionCode=1342`）；当前 worktree 没有 `app/build/outputs/apk/debug/app-debug.apk`，所以已安装 APK 与当前源码的产物身份未建立。
+
+## 门禁入口状态
+
+目标 Glued backend 的 `app/src/main/kotlin/com/ghostlock/app/backend/cve43284glued/Flow43284Glued.kt` 已有单步 `SequentialFlow`，经 `ExecutableBackendProcess` 在 App 与获授权的 Shizuku launcher 中二选一；`Glued43284ExecutableHost` 负责 Shizuku 侧 IpSec 参数/生命周期。该 Flow 存在不代表 marker handoff 已实现：当前 `exp.c` 仍以 `/dev/dfm6` 为成功 marker；A301SO 匹配的 `dfroot-android13-5.15.ko`（SHA-256 `75e0239ca2a4534db328f9f6662c5c8eea898a4381d4f82f75e5c0912543fa70`）仍嵌入 `/data/user_de/0/df.root/bootstrap`。该 `bootstrap.c`（SHA-256 `5b19bfe9d4c632794d52de71a513d1bac2820e0fbd474ce19813913782111ce9`）含分区只读、模块 disable 和 `ksud late-load` 路径，不是 marker-only worker。当前没有 `ROOT_READY` / `RELEASE_FINISH` 执行实现，且本次未触发上游 ELF/KO。
+
+来源清单位于 `src/upstream/SOURCE-MANIFEST.json`，但清单引用的 `src/upstream/43284/` 目录不存在；当前 `app/src/main/cpp/43284glued/exp.c` SHA-256 为 `afdd68cb6b07fa9b04f93c7d4bd9f8ce0333f4dd2265416959cf9c630d55ac39`，`libcxx.S` 为 `d423e769a9b127f52f545e4c1bc5874aa0643a1457a3b9ac69471480ad9812be`。因此不能用该清单为当前复制目录或 marker 变体作完整来源证明。
+
+## 判定与下一步
+
+**PRECHECK PASS / MARKER GATE PENDING**。本次只刷新设备启动会话并确认静态前置条件；未声称 DAC/SELinux 双 runDir 可达性，也未声称 marker 协议通过。下一步须先在批准范围内准备 marker-only root worker + 对应 43284 KO/ELF/launcher 路径，确保它只创建/核验 `ROOT_READY`、消费 `RELEASE_FINISH`，且不会打开/执行 Payload 或 Finish；随后对 App 与 Shizuku staging 分别运行同一冷启动会话门禁并归档原始日志。

@@ -1,0 +1,4 @@
+kind	path	sha256	bytes
+modified	app/src/main/res/values/strings.xml	ec763d9c02cc2d3f5656495fa481918fb00833705cb1785eb721d58d9892e984	70771
+modified	app/src/main/res/values-zh-rCN/strings.xml	3dec31b38f0481438d8b7d6b4f9719f703dfe52267bffcfa915068772492b16a	40342
+modified	docs/plan/exec-glue-plan.md	6b5ea86dd2b4417d6f18903c664568cc215e7f19cfe433c93550e361464da5c2	36370

@@ -1,0 +1,47 @@
+# Exec Glue rev2 design-review transaction
+
+Target change: append the design-critic-confirmed boundary between original 43499/43284 and new Glued IDs, source parity evidence, the known Finish mismatch, and current deployment blockers to the single active plan. No production source was changed.
+
+Changed document/section: docs/plan/exec-glue-plan.md, “复核落实与来源对拍（2026-10-28）”.
+Baseline SHA-256: 8db80fedfa15eee1c070e3a42dbbbfb0b5c1b5b5132f35de52cd194dfe7f0136.
+Modified SHA-256: 76f7f0e210c28b5c3d15ad61fec7d128a8bf0c573593d204deedfbff67269b49.
+Source append: 3,760 bytes; baseline 18,669 bytes / 138 lines; modified 22,429 bytes / 172 lines.
+HEAD snapshot: b119085915748a940740d7ce919b5a30ed8e9346 (detached).
+
+Artifacts:
+- MODIFIED_FILE: docs/exec-glue/plan-rev2-review/MODIFIED_FILE
+- DIFF_FILE: docs/exec-glue/plan-rev2-review/DIFF_FILE.patch
+- VERIFICATION: docs/exec-glue/plan-rev2-review/VERIFICATION.txt
+- ROLLBACK: docs/exec-glue/plan-rev2-review/ROLLBACK.sh (executable)
+- Rollback baseline payload: docs/exec-glue/plan-rev2-review/BASELINE_FILE
+
+BASELINE
+Command: ./gradlew :app:testDebugUnitTest --tests 'com.ghostlock.app.ui.screen.module.backends.DynamicBackendsTest' --no-daemon --console=plain
+Input: production tree and active plan before the plan-only append; source HEAD b119085915748a940740d7ce919b5a30ed8e9346; plan SHA 8db80fedfa15eee1c070e3a42dbbbfb0b5c1b5b5132f35de52cd194dfe7f0136.
+Literal result: “> Task :app:compileDebugUnitTestKotlin FAILED”; first diagnostics: “Unresolved reference 'Cve43499RequestBuild'” at A301SoDebugConfigTest.kt:23 and stale Finish/Payload test symbols.
+Exit status: 1.
+
+MODIFIED
+Command: ./gradlew :app:assembleDebug --no-daemon --console=plain
+Input: same production source; plan updated to SHA 76f7f0e210c28b5c3d15ad61fec7d128a8bf0c573593d204deedfbff67269b49. CMake/ELF tasks were up-to-date; Gradle compiled Kotlin and packaged APK.
+Literal output: “BUILD SUCCESSFUL in 5s”; exit status: 0.
+
+Command: ./gradlew :app:testDebugUnitTest --tests 'com.ghostlock.app.ui.screen.module.backends.DynamicBackendsTest' --no-daemon --console=plain
+Input: same production source; modified plan SHA above.
+Literal result: “> Task :app:compileDebugUnitTestKotlin FAILED”; the same unresolved Cve43499RequestBuild and stale Finish/Payload test references remain.
+Exit status: 1.
+
+Read-only source verification:
+- origin/main commit: 437b3b257462e17d395cfd2cd8fb81536d6c6358.
+- Python byte comparison of 85 files under app/src/main/assets/kernel_profiles plus app/src/main/kotlin/com/ghostlock/app/data/LegacyProfileConverter.kt: “checked=86 missing_upstream=0 byte_mismatches=0”; 84 profile .conf assets plus index.conf.
+- index.conf SHA-256: 1f0efc66a8613aaec037ea427af261e9e685d0f69172327679076f6a595f8791.
+- LegacyProfileConverter.kt SHA-256: 947c2024ff8a6e0f4986301bed18460dcc0b62e5eb41425f9d071cbfb903465c.
+- Design critic final review at HEAD b119085915748a940740d7ce919b5a30ed8e9346 and plan SHA d6291ade5ff88480e0c7acad7b6cf8230f551cc7627bd3f62025268c3c2f0e34: A12/new-Glued identity conflict closed; boundary table sufficient; profile parity closed; rev2 is ready for user approval. Five implementation blockers remain: Shizuku Flow remote-pending, no Glued host registry adapters, app-local ProcessBuilder, 43284 empty argv/no IpSec runtime, and common FinishScript not equivalent to upstream ops.cpp.
+- Finish comparison: upstream source app/src/main/cpp/43499glued/attack/ops.cpp:226-431; common app/src/main/kotlin/com/ghostlock/app/core/finish/FinishScript.kt:17-65. Missing behavior includes root UID check, ksud lookup/fallback, iomem cache, debug dump, checkreqprot, KMI, safe-mode module disabling, SELinux policy fix/retry, late-load, and module wait; O_TRUNC failure bridge is unproven.
+- git diff --check -- docs/plan/exec-glue-plan.md: empty output; exit status 0.
+
+ROLLBACK
+Command: docs/exec-glue/plan-rev2-review/ROLLBACK.sh /tmp/exec-glue-plan.rollback-test.md
+Input: separate copy of MODIFIED_FILE, never the active plan.
+Literal output: “ROLLBACK_APPLIED”; exit status: 0.
+Restored behavior/status: test copy is byte-equal to BASELINE_FILE; restored SHA-256 8db80fedfa15eee1c070e3a42dbbbfb0b5c1b5b5132f35de52cd194dfe7f0136. Active plan remains modified at SHA-256 76f7f0e210c28b5c3d15ad61fec7d128a8bf0c573593d204deedfbff67269b49.

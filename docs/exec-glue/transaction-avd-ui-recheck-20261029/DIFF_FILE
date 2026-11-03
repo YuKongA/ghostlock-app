@@ -1,0 +1,14 @@
+--- BASELINE_FILE/exec-glue-plan.md
++++ MODIFIED_FILE/exec-glue-plan.md
+@@ -469,3 +469,11 @@
+ 
+ - 用户确认 Shizuku 不是运行前提；Shizuku launcher 与 App launcher 并列可用。每次 run 在创建 child 前检查 Shizuku binder 与授权：两者均可用时只由 Shizuku 创建该次进程，否则只由 App 创建；这表示并列后端选择，不是同时启动两个 child。
+ - 已选 launcher 若启动/连接结果不确定，不自动切换另一 launcher，以免同一 Flow 产生重复执行。当前 `ExecutableProcessRouting` 已按该规则实现；基线与改后均执行同一回归测试，改后验证见本节关联 transaction evidence。
++
++
++### Fresh AVD UI 与设备包复核（2026-10-29）
++
++- 当前 checkout 为 detached HEAD `b119085915748a940740d7ce919b5a30ed8e9346`（基于 `dev-nocpp`）。AVD `emulator-5554` 与 A301SO `adb-QV770MFGJ1-XxNlpb._adb-tls-connect._tcp` 安装均为 GhostLock `2.0.12` / versionCode `1342`；两端 installed `base.apk` SHA-256 均为 `8cdb0e127871bb271af3850a378e4860fd3db00ea8ef9225bd575811440562ea`，与当前构建 APK 相同。A301SO 不存在 instrumentation test package。
++- 直接在 AVD 启动 `MainActivity` 并进入 Paths：选择器显示两个 Glued 可选、原版 43284/98260/43499 与 Custom 灰显；实际点按灰显原版 43284 后仍保持 43499-Glued 选中。切到 43284-Glued 后 UI 显示 ID `CVE-2026-43284-Glued`、Channel `exec (upstream CLI)`、Payload `lib43284Glued.so`，且没有 profile/import 控件；切回 43499-Glued 后内置 profile selector 与 `Import .conf` 可见。
++- 本轮完整 `./gradlew :app:testDebugUnitTest --no-daemon --console=plain` → `BUILD SUCCESSFUL in 40s`，33 actionable tasks（6 executed，27 up-to-date）；69 个 XML 汇总 424 tests / 0 failures / 0 errors / 0 skipped。
++- 截图与 UIAutomator XML：`build/deployment-audit/continuation-20261029/`。此轮只证明 APK 身份、UI 可见性/禁用选择行为与 host 单测；没有运行生产 Glued ELF，不关闭 43499 Finish parity、43284 common Finish/root handoff 或 detached worker lifecycle 门。

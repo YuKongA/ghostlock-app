@@ -1,0 +1,28 @@
+Changed files: app/build.gradle.kts (M0 source staging separated from generic KO compilation), docs/analysis/architecture-review-log.md, docs/plan/exec-glue-plan.md. Source staging change keeps verified KO SHA 4f56858dd02ec53f14f2f3ca1e9d8fd48f83be85d6f32eaecc339220b54e5c79 distinct from generic unverified output and stages source before native build.
+
+Artifacts:
+MODIFIED_FILE: docs/exec-glue/transaction-m0-source-staging-20261029/MODIFIED_FILE/
+DIFF_FILE: docs/exec-glue/transaction-m0-source-staging-20261029/DIFF_FILE.patch
+VERIFICATION.txt: docs/exec-glue/transaction-m0-source-staging-20261029/VERIFICATION.txt
+ROLLBACK.sh: docs/exec-glue/transaction-m0-source-staging-20261029/ROLLBACK.sh (executable)
+
+BASELINE
+Command: ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+Input: pre-staging baseline source snapshot.
+Literal result: BUILD SUCCESSFUL in 44s.
+Exit status: 0.
+
+MODIFIED
+Command: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest -Pm0Marker=true --no-daemon --console=plain
+Input: modified Gradle staging task; verified KO 12,512 B, SHA-256 4f56858dd02ec53f14f2f3ca1e9d8fd48f83be85d6f32eaecc339220b54e5c79.
+Literal result: BUILD SUCCESSFUL in 45s. Staged exp.c matches source; staged KO matches verified input; source manifest SHA-256 0e4901e219288c2b1484d6d0723a65c74ebbe937b5cf186eadb3b52ac625133c; final ELF SHA-256 ce7789c73d60414e1031a33a2eedc1e6187d18594ae43ee42d59004f02fb53fb; app APK SHA-256 bf125562352933b6e5e9e257ee4d0b46be6e97574e2b882ee42c8999aa2dbc58; androidTest APK SHA-256 747099b21e84dd3ab14dca0a8bb85226ec240776a5363aa5c72c1b8413ca1fbb.
+Exit status: 0.
+
+Device evidence: the one approved A301SO App marker retry entered the test body but failed before patch_helper/KO/UMH/markers at vendor tail read (0x30d0, 0/16 bytes), ELF exit 4. See docs/analysis/device-gates/20261029-a301so-43284-m0-marker-gate.md and transaction-m0-gate-result-20261029/VERIFICATION.txt. Payload/Finish were not run.
+
+ROLLBACK TEST
+Command: docs/exec-glue/transaction-m0-source-staging-20261029/ROLLBACK.sh --target-root docs/exec-glue/transaction-m0-source-staging-20261029/ROLLBACK_TEST/project-copy
+Input: disposable copies of the three MODIFIED_FILE paths.
+Literal result: ROLLBACK_OK files=3 baseline_hashes_match=yes.
+Exit status: 0.
+Restored behavior/status: test copy returns to pre-staging file hashes; active worktree remains at modified state and device marker failure record remains.

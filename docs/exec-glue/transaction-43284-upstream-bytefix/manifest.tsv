@@ -1,0 +1,6 @@
+kind	path	sha256	bytes
+modified	app/src/main/cpp/43284glued/CMakeLists.txt	e004a88b1b9a383ac8e092f22a6dfbb2e60404f4dafdcca3cde84afd7e00f2b6	2076
+modified	app/src/main/cpp/43284glued/exp.c	afdd68cb6b07fa9b04f93c7d4bd9f8ce0333f4dd2265416959cf9c630d55ac39	22927
+removed	app/src/main/cpp/43284glued/df_log.c	-	0
+removed	app/src/main/cpp/43284glued/df_log.h	-	0
+modified	docs/plan/exec-glue-plan.md	bf4a4ba4f29555395bea991bbdab014a05c698dbe6d68042f5effad4a1b58a90	35556

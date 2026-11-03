@@ -1,0 +1,33 @@
+--- BASELINE_FILE/app/src/main/res/values/strings.xml
++++ MODIFIED_FILE/app/src/main/res/values/strings.xml
+@@ -136,7 +136,7 @@
+     <string name="home_click_to_learn_kernelsu">Tap to learn how GhostLock works</string>
+     <string name="home_support_title">About GhostLock</string>
+     <string name="home_support_content">GhostLock is an open research project for Android kernel-level exploit chains. The interface currently runs on demo data.</string>
+-    <string name="home_gki_warning">GhostLock is running with demo data; chain execution is not wired yet.</string>
++    <string name="home_gki_warning">Home status cards use demo data; backend configuration is available on the Paths page.</string>
+     <string name="about_source_code">Source code</string>
+     <string name="profile" translatable="false">App Profile</string>
+     <string name="profile_default">Default</string>
+--- BASELINE_FILE/app/src/main/res/values-zh-rCN/strings.xml
++++ MODIFIED_FILE/app/src/main/res/values-zh-rCN/strings.xml
+@@ -123,7 +123,7 @@
+     <string name="home_click_to_learn_kernelsu">点按了解 GhostLock 的工作方式</string>
+     <string name="home_support_title">关于 GhostLock</string>
+     <string name="home_support_content">GhostLock 是面向 Android 内核级利用链的开放研究项目；当前界面为演示数据。</string>
+-    <string name="home_gki_warning">GhostLock 当前使用演示数据，链路执行尚未接线。</string>
++    <string name="home_gki_warning">主页状态卡片使用演示数据；后端配置请在 Paths 页面查看。</string>
+     <string name="about_source_code">源代码</string>
+     <string name="profile_default">默认</string>
+     <string name="profile_template">模板</string>
+--- BASELINE_FILE/docs/plan/exec-glue-plan.md
++++ MODIFIED_FILE/docs/plan/exec-glue-plan.md
+@@ -246,3 +246,8 @@
+ 
+ - 更新：A301SO 此时 `shizuku_server` 正在运行；instrumentation `ShizukuRouteProbeTest` 共 2 tests，实测 `binder=true permission=true route=SHIZUKU preflight=[]`；通过 Shizuku UserService/AIDL 发送空 Bundle 后收到 `exec:host:argv-missing`，测试随后 `disconnect(remove=true)`。此前批次 2 的“Shizuku 未运行”只描述其当时观测状态，不能用于当前路由判断。
+ - 已验证 Shizuku binder/授权/UID/SELinux preflight、UserService bind、AIDL dispatch 及 host fail-closed prepare；该探针没有启动 Glued ELF。A301SO 的下一次 Glued run 会选择 Shizuku；成功 prepare/start、子进程终态/回收及无副作用子进程执行链仍未端到端实测。Shizuku 选中后出错不得 fallback 到 App 子进程。
++
++#### Home 状态提示文案校准（2026-10-29）
++
++- AVD 实测 Home 状态卡片仍显示“chain execution is not wired yet”，与当前 Glued Flow/exec 接线不符。英/中提示现明确限定为 Home 状态卡片使用演示数据，并引导到 Paths 配置后端；不宣称真实执行链已完成设备验证。
++- 验证：`./gradlew :app:testDebugUnitTest --no-daemon --console=plain` 成功（410 tests，0 failures/errors/skipped）；`./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --console=plain` 成功（77 actionable tasks）。新 APK SHA-256 `768bd2363133f940f4ac3ae6a5f354ed898f4568cd46f3beab71816f7a6e5d89` 已安装到 AVD 与 A301SO，设备 `base.apk` 与本地产物逐字节一致；AVD Home XML 显示新英文提示，A301SO `MainActivity` 为 Resumed。
