@@ -37,7 +37,35 @@ stale-node reap 的隔离 probe，再重新核对所有权/终结点。
 两条链：
 
 - `timer`：真实 cred 零写 → `uid=0`、`u:r:shell:s0`（shell 域 root，bset caps）
-- `timer fake`：fake cred（full caps）→ 安装版 KernelSU `libksud.so` late-load
+- `timer fake`：保留上游命令名，但当前实现直接修改真实 cred 的 capability/uid/gid → 安装版
+  KernelSU `libksud.so` late-load；不再构造和长期持有 fake cred
+
+## Android 14 AVD 6.1 门禁结论（2026-11-03）
+
+**当前结论：`ids`、`leak` 与 real-cred uid-0 链已通过；KernelSU handoff 尚未通过，AVD profile
+不得标记为 `supported`。A301SO 5.15 实验已经停止，后续变量只在这个精确 6.1 AVD 上验证。**
+
+固定环境是 8 vCPU `GhostLock_6_1` 冷机实例，精确内核
+`6.1.23-android14-4-00257-g7e35917775b8-ab9964412`、SELinux `Enforcing`、初始
+`kernelsu` 模块 absent。4 vCPU 默认启动会改变 `posix_timers_cache` 几何，不能作为本 profile 的
+有效门禁。目标常量由 CMake 的 `GLK98260_TARGET_PROFILE=AVD_61` 单选，并集中在
+[`timer/avd_61_params.h`](timer/avd_61_params.h)；A301SO 兼容构建使用 `A301SO_515`，两者不能混选。
+
+| 阶段 | 实测结果 | 判定 |
+| --- | --- | --- |
+| `ids` | `page_alloc=262 page_free=260 pairs=1029` | PASS |
+| `leak` | direct-map base `0xffffff7fc0000000`、slide `0`、cred site `0xf1bd0`、task record 1 | PASS |
+| real cred | child 读回 uid 0，`setresgid/setuid` 成功，`ROOT_SHELL_OK`，adb exit 0 | PASS |
+| r10 capability handoff | 二次 exec 后 `CapPrm=CapEff=CapAmb=0x10000`，但模块 absent，exit 2 | FAIL |
+| r10 `ksud` 根因 | `ksud 3.3.1 (uapi: 5)` 报 `Cannot parse kallsyms` / `EPERM`；当时 `kptr_restrict=2` | 已定位 |
+| r11 修复 | handoff 前临时置 `kptr_restrict=0`，退出路径恢复原值并无条件恢复 SELinux；AVD/A301SO 均 `-Werror` 编译通过 | host PASS |
+| r11 冷机门禁 | 两次分别在 `cap_permitted` 与 `cap_inheritable` 的 held-reclaim miss 处 park，均未进入新增 ksud 分支 | INDETERMINATE / STOP |
+
+r10 还暴露了失败路径把 SELinux 留在 `Permissive` 的清理缺陷；该实例已冷停。r11 已把
+`kptr_restrict` 和 SELinux 恢复移到 loader 成败共用的 cleanup，但两次冷机运行都在该代码之前停下，
+所以这部分目前只有编译证据，没有设备执行证据。依照同批连续失败两次即停的门禁，本轮不再追加
+随机重试。完整原始输出记录在
+[`docs/analysis/device-gates/20261103-avd61-98260-ksu-handoff.md`](../../../../../../docs/analysis/device-gates/20261103-avd61-98260-ksu-handoff.md)。
 
 ## 漏洞分析与攻击流程
 
@@ -152,26 +180,23 @@ flowchart TD
         HELD -- 是 --> PARK
     end
 
-    subgraph E2["E2. fake cred：full caps 到 KernelSU late-load"]
-        WRITESTAGE -- fake_cred --> PTR[task→cred = A<br/>A 处 fake cred 含 full capability 与伪造 SELinux blob]
-        PTR --> REQSEL[下一次 stage_write<br/>zero selinux_state + slide - 7]
-        REQSEL --> RETRYREQ
-        WRITESTAGE -- selinux --> SELOFF[SELinux enforcing 已清零]
-        SELOFF --> POW{读取 panic_on_warn 是否为 0?}
-        POW -- 否 --> REQPOW[下一次 stage_write<br/>zero panic_on_warn + slide]
-        REQPOW --> RETRYREQ
-        WRITESTAGE -- panic_on_warn --> REQUID[下一次 stage_write<br/>zero A + 0x8 修复 fake uid / gid]
-        POW -- 是 --> REQUID
-        REQUID --> RETRYREQ
-        WRITESTAGE -- fake_uid --> FAKEWAKE[唤醒子进程 C<br/>fake cred 的 uid / gid 已修复]
-        FAKEWAKE --> WORKER[C fork worker<br/>prepare_creds 规范化 cred / real_cred<br/>并取得真实 SELinux blob]
-        WORKER --> SCRIPT[worker exec ksu_stage.sh<br/>定位已安装 manager 的 libksud.so]
-        SCRIPT --> KSUD[ksud late-load<br/>KMI = android16-6.12, allow-shell]
+    subgraph E2["E2. fake 命令兼容名：真实 cred 到 KernelSU late-load"]
+        WRITESTAGE -- fake 命令 --> POWZERO[零写 panic_on_warn]
+        POWZERO --> CAPINH[指针写 real cred CapInheritable<br/>必须包含 CAP_SYS_MODULE]
+        CAPINH --> CAPPRM[指针写 real cred CapPermitted<br/>必须包含 CAP_SYS_MODULE]
+        CAPPRM --> SELOFF[零写 selinux_state.enforcing]
+        SELOFF --> UIDZERO[零写 real cred uid / gid]
+        UIDZERO --> FAKEWAKE[唤醒并验证子进程 C 的 uid = 0]
+        FAKEWAKE --> SETCAPIDS[setresgid / setuid<br/>raise Ambient CAP_SYS_MODULE]
+        SETCAPIDS --> KPTR[暂置 kptr_restrict = 0<br/>保留原值供 cleanup]
+        KPTR --> WORKER[worker 二次 exec 自身<br/>验证 Effective / Ambient capability]
+        WORKER --> KSUD[exec 安装版 ksud late-load<br/>KMI = android14-6.1, allow-shell]
         KSUD --> KSU{modules 中出现 kernelsu?}
-        KSU -- 是 --> KSUOK([输出 KSU_LOADED<br/>恢复 SELinux enforcing])
-        KSU -- 否 --> KSUMISS([输出 KSU_MISSING])
-        KSUOK --> PARK
-        KSUMISS --> PARK
+        KSU -- 是 --> RESTORE[恢复 kptr_restrict 原值<br/>恢复 SELinux enforcing]
+        KSU -- 否 --> RESTORE
+        RESTORE --> CLEANOK{两项 cleanup 均读回成功?}
+        CLEANOK -- 是且模块存在 --> KSUOK([输出 KSU_LOADED])
+        CLEANOK -- 否或模块 absent --> KSUMISS([KSU_HANDOFF_FAIL / exit 2])
     end
 
     HOLD --> PARK[park_forever<br/>不 reap，持有 zombie / socket page]
@@ -182,6 +207,7 @@ flowchart TD
     classDef boundary fill:#fff3cd,stroke:#8a6d00,color:#4d3c00;
     class UAF,REAP,RBERASE,HOLD,PARK,REBOOT danger;
     class IDSEND,LEAKEND,WRITEOK,DONE,KSUOK success;
+    class KSUMISS boundary;
     class SAFEFAIL,NOSTALE,REALLIMIT boundary;
 ```
 
@@ -389,15 +415,16 @@ LIST_POISON 与 kernel panic，没有从 list corruption 到受控对象、任�
 
 ## 状态
 
-| 路径                                     | 结果                                                              |
-| ---------------------------------------- | ----------------------------------------------------------------- |
-| real cred 零写 + `setuid(0)` + `exec sh` | `uid=0`、`u:r:shell:s0`、`ROOT_SHELL_OK`                          |
-| fake cred + `ksud late-load`             | 安装版 `libksud.so`（uapi 6）、`KSU_LOADED`、`su` 为 `u:r:ksu:s0` |
+| 路径 | 当前精确 AVD 结果 |
+| --- | --- |
+| real cred 零写 + `setuid(0)` + `exec sh` | PASS：`uid=0`、`u:r:shell:s0`、`ROOT_SHELL_OK` |
+| 真实 cred capability + `ksud late-load` | 未通过：r10 到达 ksud 后 kallsyms 被 `kptr_restrict=2` 隐藏；r11 两次提前 reclaim miss，未验证修复 |
 
 ## 环境
 
 - 启动身份：adb/shell（uid 2000，`u:r:shell:s0`），可读 tracefs 与 `/proc/slabinfo`
-- KernelSU manager 已安装（`me.weishu.kernelsu`）时，`fake` 会自动使用其 `lib/arm64/libksud.so`
+- KernelSU manager 已安装（`me.weishu.kernelsu`）时，`fake` 会自动复制并使用其
+  `lib/arm64/libksud.so`；manager 存在不等于 handoff 已通过
 
 ## 构建
 
@@ -427,7 +454,7 @@ adb shell /data/local/tmp/timer leak    # 只做 base/cred/task 泄漏，不触�
 adb shell /data/local/tmp/timer         # id + context + ROOT_SHELL_OK
 adb shell /data/local/tmp/timer shell   # 交互 sh
 
-# KernelSU（fake cred + 安装版 ksud）
+# KernelSU（`fake` 是兼容命令名，当前实现修改真实 cred）
 adb shell 'cd /data/local/tmp && setsid ./timer fake >timer.log 2>&1 </dev/null &'
 adb shell cat /data/local/tmp/timer.log
 ```
@@ -446,8 +473,8 @@ adb shell /system/bin/su -c id   # uid=0 ... context=u:r:ksu:s0
 
 ## 安全
 
-- 失败 state 会 **park 并持有 zombie**；不要 kill，重启是唯一安全清理
-- `fake` 成功后父进程也会 park，用 socket 持有 fake cred 页
+- reclaim miss 会 **park 并持有 zombie**；不要 kill，冷重启是唯一已验证清理
+- 只有进入 KSU handoff cleanup 后，代码才会尝试恢复 `kptr_restrict` 与 SELinux；提前 park 不会执行该 cleanup
 - 触发 UAF 后不要对 parked 进程 `timeout`/`kill`，否则 init 回收 stale node 可能 panic
 - 硬重启后 ksu root 消失，使用 KernelSU 模拟软重启不会导致 ksu root 消失
 
@@ -461,9 +488,11 @@ tools/*.c          移植诊断源码
 
 ## 目标与移植
 
-关键常量写死在 `timer/timer.c`：`do_timer_create`/`copy_process` 站点、`selinux_state`、`panic_on_warn`、`copy_process` task cache 大小、`init_*` 符号
+目标 ABI、call-site、结构偏移、slab 几何与实验额度集中在 `timer/*_params.h`，由
+`GLK98260_TARGET_PROFILE` 在编译期单选；`timer.c` 只读取被选中的 authority。
 
-换内核时用设备的 boot.img/BTF/kallsyms 重新推导；`tools/` 下的文件用于核对 call site、raw record、timer 泄漏与 8 KiB AF_UNIX 回收通道
+换内核时用设备的 boot.img/BTF/kallsyms 重新推导，并重新验证 trigger 失败语义、CPU/slab 几何、
+trace record 布局、direct-map 校准与 KernelSU KMI；`tools/` 只用于诊断，不能替代设备门禁。
 
 ## 参考
 

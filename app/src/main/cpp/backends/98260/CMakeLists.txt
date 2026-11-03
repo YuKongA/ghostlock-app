@@ -1,20 +1,55 @@
 include_guard(GLOBAL)
 
-# Purpose: CVE-2026-98260 A301SO helper-only experiment chunk.
+# Purpose: CVE-2026-98260 exact-profile helper-only experiment chunk.
 # Inputs: timer/timer.c or the isolated core_state probe selected at configure
-# time, plus their compile-time A301SO 5.15 parameter authorities.
+# time, plus one compile-time target parameter authority.
 # Output: static ET_EXEC packaged as libghostlock98260_helper.so.
-# Failure: GHOSTLOCK_BACKEND_98260=ON with either source missing fails at configure time.
+# Failure: an unknown target, incompatible probe, or missing source fails configure.
 # Preconditions: included by backends/CMakeLists.txt only when GHOSTLOCK_BACKEND_98260=ON.
-# Phase: staged ids -> leak -> real-cred -> fake/KSU cold-device experiment.
+# Phase: staged ids -> leak -> real-cred -> fake/KSU device experiment.
 # Note: included via include(), so every path is anchored at ${CMAKE_CURRENT_LIST_DIR}.
+
+set(GLK98260_TARGET_PROFILE "AVD_61" CACHE STRING
+    "Exact CVE-2026-98260 target profile")
+set_property(CACHE GLK98260_TARGET_PROFILE PROPERTY STRINGS
+    AVD_61
+    A301SO_515
+)
+if(GLK98260_TARGET_PROFILE STREQUAL "AVD_61")
+    set(GLK_98260_TARGET_DEFINITION GLK98260_TARGET_AVD_61=1)
+    set(GLK_98260_TARGET_HEADER timer/avd_61_params.h)
+elseif(GLK98260_TARGET_PROFILE STREQUAL "A301SO_515")
+    set(GLK_98260_TARGET_DEFINITION GLK98260_TARGET_A301SO_515=1)
+    set(GLK_98260_TARGET_HEADER timer/a301so_515_params.h)
+else()
+    message(FATAL_ERROR
+        "Unknown GLK98260_TARGET_PROFILE=${GLK98260_TARGET_PROFILE}; "
+        "expected AVD_61 or A301SO_515")
+endif()
+
+# The diagnostic selector preserves the existing target/artifact and process
+# route. ON replaces only the translation unit with a no-timer core_state probe;
+# it never links both entry points and cannot reach the stale-node plant.
+option(GLK98260_CORE_STATE_PROBE
+    "Build the isolated no-timer exec/core_state probe"
+    OFF)
+if(GLK98260_CORE_STATE_PROBE AND
+   NOT GLK98260_TARGET_PROFILE STREQUAL "A301SO_515")
+    message(FATAL_ERROR
+        "GLK98260_CORE_STATE_PROBE is an A301SO_515-only diagnostic")
+endif()
 
 set(GLK_98260_REQUIRED_SOURCES
     timer/timer.c
-    timer/a301so_515_params.h
-    timer/core_state_probe.c
-    timer/core_state_probe_params.h
+    timer/target_params.h
+    ${GLK_98260_TARGET_HEADER}
 )
+if(GLK98260_CORE_STATE_PROBE)
+    list(APPEND GLK_98260_REQUIRED_SOURCES
+        timer/core_state_probe.c
+        timer/core_state_probe_params.h
+    )
+endif()
 set(GLK_98260_MISSING_SOURCES "")
 foreach(source IN LISTS GLK_98260_REQUIRED_SOURCES)
     if(NOT EXISTS "${CMAKE_CURRENT_LIST_DIR}/${source}")
@@ -28,12 +63,6 @@ if(GLK_98260_MISSING_SOURCES)
         "Restore the 98260 sources or keep GHOSTLOCK_BACKEND_98260=OFF.")
 endif()
 
-# The diagnostic selector preserves the existing target/artifact and process
-# route. ON replaces only the translation unit with a no-timer core_state probe;
-# it never links both entry points and cannot reach the stale-node plant.
-option(GLK98260_CORE_STATE_PROBE
-    "Build the isolated no-timer exec/core_state probe"
-    OFF)
 if(GLK98260_CORE_STATE_PROBE)
     set(GLK_98260_ENTRY_SOURCE timer/core_state_probe.c)
 else()
@@ -55,7 +84,7 @@ target_compile_options(ghostlock98260_helper PRIVATE
     -Wall -Wextra -Werror -pthread
 )
 target_compile_definitions(ghostlock98260_helper PRIVATE
-    GLK98260_TARGET_A301SO_515=1
+    ${GLK_98260_TARGET_DEFINITION}
 )
 target_link_options(ghostlock98260_helper PRIVATE
     -static

