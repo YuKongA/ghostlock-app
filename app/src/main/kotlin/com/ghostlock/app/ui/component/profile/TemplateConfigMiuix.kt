@@ -8,11 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.ghostlock.app.ui.Natives
 import com.ghostlock.app.R
-import com.ghostlock.app.ui.util.listAppProfileTemplates
-import com.ghostlock.app.ui.util.setSepolicy
-import com.ghostlock.app.ui.viewmodel.getTemplateInfoById
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
@@ -25,13 +21,13 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun TemplateConfigMiuix(
     modifier: Modifier = Modifier,
-    profile: Natives.Profile,
+    profile: ProfileDraft,
+    templates: List<ProfileTemplateOption>,
+    onTemplateSelected: (id: String) -> Unit,
     onViewTemplate: (id: String) -> Unit = {},
     onManageTemplate: () -> Unit = {},
-    onProfileChange: (Natives.Profile) -> Unit
 ) {
-    val profileTemplates = listAppProfileTemplates()
-    val noTemplates = profileTemplates.isEmpty()
+    val noTemplates = templates.isEmpty()
 
     if (noTemplates) {
         ArrowPreference(
@@ -48,31 +44,16 @@ fun TemplateConfigMiuix(
             onClick = onManageTemplate,
         )
     } else {
-        val template = profile.rootTemplate ?: profileTemplates[0]
+        val template = profile.rootTemplate ?: templates[0].id
 
         Column(modifier = modifier) {
             OverlayDropdownPreference(
                 title = stringResource(R.string.profile_template),
-                items = profileTemplates,
-                selectedIndex = profileTemplates.indexOf(template).takeIf { it >= 0 } ?: 0,
+                items = templates.map(ProfileTemplateOption::name),
+                selectedIndex = templates.indexOfFirst { it.id == template }.takeIf { it >= 0 } ?: 0,
                 onSelectedIndexChange = { index ->
-                    if (index < 0 || index >= profileTemplates.size) return@OverlayDropdownPreference
-                    val selected = profileTemplates[index]
-                    val templateInfo = getTemplateInfoById(selected)
-                    if (templateInfo != null && setSepolicy(selected, templateInfo.rules.joinToString("\n"))) {
-                        onProfileChange(
-                            profile.copy(
-                                rootTemplate = selected,
-                                rootUseDefault = false,
-                                uid = templateInfo.uid,
-                                gid = templateInfo.gid,
-                                groups = templateInfo.groups,
-                                capabilities = templateInfo.capabilities,
-                                context = templateInfo.context,
-                                namespace = templateInfo.namespace,
-                            )
-                        )
-                    }
+                    if (index !in templates.indices) return@OverlayDropdownPreference
+                    onTemplateSelected(templates[index].id)
                 },
                 maxHeight = 280.dp
             )

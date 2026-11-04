@@ -2,7 +2,7 @@ package com.ghostlock.app.backend.backends.cve43499.perf
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.ghostlock.app.data.cve43499.A301SoDebugConfig
+import com.ghostlock.app.backend.backends.cve43499.config.Cve43499DebugConfig
 import com.ghostlock.app.jni.Native43499CloseResult
 import com.ghostlock.app.jni.Native43499PerfCollectResult
 import com.ghostlock.app.jni.Native43499PerfOpenRequest
@@ -64,11 +64,11 @@ class PerfMechanismProbeTest {
                 "|uid=${android.os.Process.myUid()}|my_pid=${android.os.Process.myPid()}",
         )
 
-        val parsed = A301SoDebugConfig.parse(assetStart)
+        val parsed = Cve43499DebugConfig.parse(assetStart)
         val assetPerf = requireNotNull(parsed.perf) { "debug asset perf section missing" }
         /* 仅内存启用（debug 测试注入）；asset 未改。 */
         val perf = assetPerf.copy(enabled = 1)
-        val execution = A301SoDebugConfig.executionParameters()
+        val execution = Cve43499DebugConfig.executionParameters()
         record(
             "PERF-G1|attr|sample_type=${perf.attrSampleType}" +
                 "|period=${perf.attrSamplePeriod}" +

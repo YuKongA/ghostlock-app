@@ -29,8 +29,8 @@ import com.ghostlock.app.backend.backends.cve43499.victim.VictimUidResult
 import com.ghostlock.app.backend.backends.cve43499.w3.Cve43499W3HardGate
 import com.ghostlock.app.backend.backends.cve43499.owned.LandingConfig
 import com.ghostlock.app.backend.backends.cve43499.owned.PlacementConfig
-import com.ghostlock.app.data.cve43499.A301SoDebugConfig
-import com.ghostlock.app.data.cve43499.DebugPrimitiveKind
+import com.ghostlock.app.backend.backends.cve43499.config.Cve43499DebugConfig
+import com.ghostlock.app.backend.backends.cve43499.config.DebugPrimitiveKind
 import com.ghostlock.app.core.flow.FlowResult
 import com.ghostlock.app.core.flow.StepResult
 import com.ghostlock.app.jni.Native43499ActorSetup
@@ -1251,8 +1251,8 @@ class Cve43499WriteChainFlowTest {
         failStopTerminator: ((String) -> Unit)? = null,
         failStopEvidenceSink: ((Map<String, String>) -> Unit)? = null,
     ): Flow43499Request {
-        val debug = A301SoDebugConfig.parse(readDebugAsset())
-        val execution = A301SoDebugConfig.executionParameters()
+        val debug = Cve43499DebugConfig.parse(readDebugAsset())
+        val execution = Cve43499DebugConfig.executionParameters()
         val context = Cve43499GeneratorContext(debug, execution, 4242)
         val planner: Cve43499WritePlanner = Cve43499DebugWritePlanner(context)
         val chain = Cve43499WriteChain(
@@ -1291,7 +1291,7 @@ class Cve43499WriteChainFlowTest {
     }
 
     private fun policy(): Cve43499WriteChainPolicy = Cve43499WriteChainPolicy.fromDebug(
-        parameters = A301SoDebugConfig.writeChainParameters(),
+        parameters = Cve43499DebugConfig.writeChainParameters(),
         primitive = DebugPrimitiveKind.MULTICAST,
     )
 

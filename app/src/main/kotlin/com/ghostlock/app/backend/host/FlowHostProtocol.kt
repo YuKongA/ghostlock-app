@@ -1,7 +1,7 @@
 package com.ghostlock.app.backend.host
 
 import com.ghostlock.app.core.flow.FlowResult
-import com.ghostlock.app.ui.backend.BackendRunUiState
+import com.ghostlock.app.backend.launcher.BackendExecutionState
 
 /**
  * `:flowhost` 通道的稳定码、状态与终态 verify 行协议（B2a）。
@@ -208,23 +208,23 @@ object FlowHostProtocol {
      *
      * @param verified 已解码终态。
      * @param profileIdentity 可选持久化身份；非 null 时并入 evidence（`profileIdentity`）。
-     * @return OK→Finished(Ok)、FAILED→Finished(Failed)、HANDOFF→[BackendRunUiState.HandoffRequested]。
+     * @return OK→Finished(Ok)、FAILED→Finished(Failed)、HANDOFF→[BackendExecutionState.HandoffRequested]。
      * @note HANDOFF 不报成功/不等待/不写状态（计划 §2.5）。
      */
     fun mapTerminal(
         verified: VerifiedTerminal,
         profileIdentity: String? = null,
-    ): BackendRunUiState {
+    ): BackendExecutionState {
         val evidence = if (profileIdentity.isNullOrBlank()) {
             verified.evidence
         } else {
             verified.evidence + ("profileIdentity" to profileIdentity)
         }
         return when (verified.result) {
-            TerminalResult.OK -> BackendRunUiState.Finished(
+            TerminalResult.OK -> BackendExecutionState.Finished(
                 FlowResult.Ok(steps = emptyList(), evidence = evidence),
             )
-            TerminalResult.FAILED -> BackendRunUiState.Finished(
+            TerminalResult.FAILED -> BackendExecutionState.Finished(
                 FlowResult.Failed(
                     reason = verified.reason ?: "flow-host:verify:missing-reason",
                     failedStep = null,
@@ -232,7 +232,7 @@ object FlowHostProtocol {
                     evidence = evidence,
                 ),
             )
-            TerminalResult.HANDOFF -> BackendRunUiState.HandoffRequested
+            TerminalResult.HANDOFF -> BackendExecutionState.HandoffRequested
         }
     }
 

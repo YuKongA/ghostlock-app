@@ -11,17 +11,7 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuOpen
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Route
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.outlined.PlayArrow
-import androidx.compose.material.icons.outlined.Route
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -33,47 +23,41 @@ import androidx.compose.material3.WideNavigationRailValue
 import androidx.compose.material3.rememberWideNavigationRailState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
-import com.ghostlock.app.ui.Natives
 import com.ghostlock.app.R
-import com.ghostlock.app.ui.data.repository.SettingsRepositoryImpl
 import com.ghostlock.app.ui.LocalMainPagerState
 
 @Composable
 fun NavigationRailMaterial(
     navigationBadge: NavigationBadgeState,
+    destinations: List<MainNavigationDestination>,
+    pageCount: Int,
+    fullFeatured: Boolean,
+    expanded: Boolean,
+    onExpandedChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val fullFeatured = Natives.isFullFeatured()
     if (!fullFeatured) return
 
     val mainPagerState = LocalMainPagerState.current
 
-    val items = listOf(
-        Triple(R.string.home, Icons.Filled.Home, Icons.Outlined.Home),
-        Triple(R.string.module, Icons.Filled.Route, Icons.Outlined.Route),
-        Triple(R.string.superuser, Icons.Filled.PlayArrow, Icons.Outlined.PlayArrow),
-        Triple(R.string.settings, Icons.Filled.Settings, Icons.Outlined.Settings)
-    )
+    val items = destinations.take(pageCount)
 
-    val settingsRepo = remember { SettingsRepositoryImpl() }
     val state = rememberWideNavigationRailState(
-        initialValue = if (settingsRepo.navigationRailExpanded) {
+        initialValue = if (expanded) {
             WideNavigationRailValue.Expanded
         } else {
             WideNavigationRailValue.Collapsed
         },
     )
     val scope = rememberCoroutineScope()
-    val expanded = state.targetValue == WideNavigationRailValue.Expanded
+    val railExpanded = state.targetValue == WideNavigationRailValue.Expanded
     LaunchedEffect(state.targetValue) {
-        settingsRepo.navigationRailExpanded =
-            state.targetValue == WideNavigationRailValue.Expanded
+        onExpandedChanged(state.targetValue == WideNavigationRailValue.Expanded)
     }
 
     WideNavigationRail(
@@ -92,23 +76,23 @@ fun NavigationRailMaterial(
                 modifier = Modifier.padding(start = 24.dp),
                 onClick = {
                     scope.launch {
-                        if (expanded) state.collapse() else state.expand()
+                        if (railExpanded) state.collapse() else state.expand()
                     }
                 },
             ) {
                 Icon(
-                    if (expanded) Icons.AutoMirrored.Filled.MenuOpen else Icons.Filled.Menu,
+                    if (railExpanded) Icons.AutoMirrored.Filled.MenuOpen else Icons.Filled.Menu,
                     contentDescription = stringResource(
-                        if (expanded) R.string.nav_rail_collapse else R.string.nav_rail_expand
+                        if (railExpanded) R.string.nav_rail_collapse else R.string.nav_rail_expand
                     )
                 )
             }
         },
     ) {
-        items.forEachIndexed { index, (label, selectedIcon, unselectedIcon) ->
+        items.forEachIndexed { index, destination ->
             val selected = mainPagerState.selectedPage == index
             WideNavigationRailItem(
-                railExpanded = expanded,
+                railExpanded = railExpanded,
                 selected = selected,
                 onClick = {
                     if (!selected) {
@@ -117,12 +101,12 @@ fun NavigationRailMaterial(
                 },
                 icon = {
                     NavigationIconWithBadge(
-                        icon = if (selected) selectedIcon else unselectedIcon,
-                        contentDescription = stringResource(label),
+                        icon = if (selected) destination.materialSelectedIcon else destination.materialUnselectedIcon,
+                        contentDescription = stringResource(destination.label),
                         badge = badgeFor(index, navigationBadge),
                     )
                 },
-                label = { Text(stringResource(label)) }
+                label = { Text(stringResource(destination.label)) }
             )
         }
     }

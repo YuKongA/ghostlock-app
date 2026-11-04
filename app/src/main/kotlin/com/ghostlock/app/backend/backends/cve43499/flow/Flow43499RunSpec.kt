@@ -117,8 +117,8 @@ class Flow43499RunSpec internal constructor(
         android.os.SystemClock.elapsedRealtimeNanos()
     },
     /* task-86：victim 传输选择（process|jni-spawn|common；默认 PROCESS=现状）。 */
-    internal val victimTransport: com.ghostlock.app.data.cve43499.DebugVictimTransport =
-        com.ghostlock.app.data.cve43499.DebugVictimTransport.PROCESS,
+    internal val victimTransport: com.ghostlock.app.backend.backends.cve43499.config.DebugVictimTransport =
+        com.ghostlock.app.backend.backends.cve43499.config.DebugVictimTransport.PROCESS,
 
     /* task-84/B3：acceptance 期望 uid（debug-only 可配；默认 root=0；负值 fail-closed）。 */
     internal val expectedUid: Long = 0L,

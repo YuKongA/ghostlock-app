@@ -52,7 +52,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.ghostlock.app.ui.component.material.SegmentedColumn
+import com.ghostlock.app.ui.component.material.SegmentedDropdownItem
+import com.ghostlock.app.ui.component.material.SegmentedListItem
 import top.yukonga.miuix.kmp.basic.Button as MiuixButton
+import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.NavigationBar as MiuixNavigationBar
 import top.yukonga.miuix.kmp.basic.Scaffold as MiuixScaffold
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
@@ -61,6 +65,9 @@ import top.yukonga.miuix.kmp.basic.Card as MiuixCard
 import top.yukonga.miuix.kmp.basic.Switch as MiuixSwitch
 import top.yukonga.miuix.kmp.basic.Text as MiuixText
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 
 /** 间距 token（M3 的 8dp 栅格：4 只用于行内间隙，其余都是 8 的倍数）。 */
 object Spacing {
@@ -114,8 +121,11 @@ interface GhostlockKit {
     /** 对话框（标题 + 内容 + 关闭）。 */
     @Composable fun Dialog(title: String, content: @Composable () -> Unit, onDismiss: () -> Unit)
 
+    /** Renderer-owned configuration group built from one shared semantic item list. */
+    @Composable fun ConfigItems(items: List<ConfigItem>)
+
     /**
-     *  状态头（KernelSU 式）：最上面一张卡 —— 大字状态 + 一行副标题。
+     *  状态头：最上面一张卡 —— 大字状态 + 一行副标题。
      *
      *  @param title    状态主文（如“工作中/已就绪/受限”）。
      *  @param subtitle 一行细节（版本 / 内核 / 权限）。
@@ -123,7 +133,7 @@ interface GhostlockKit {
      */
     @Composable fun Hero(title: String, subtitle: String, active: Boolean)
 
-    /** 顶部提示条（KernelSU 的黄色/红色 notice 卡）：一行文字 + 语义色。 */
+    /** 顶部提示条：一行文字 + notice/error 语义色。 */
     @Composable fun Banner(text: String, warn: Boolean = true)
 
     /** 顶栏（M3 TopAppBar 语义）：标题 + 可选动作。 */
@@ -246,6 +256,53 @@ object MaterialKit : GhostlockKit {
                     Spacer(Modifier.height(Spacing.xs))
                 }
                 content()
+            }
+        }
+    }
+
+    @Composable override fun ConfigItems(items: List<ConfigItem>) {
+        SegmentedColumn(modifier = Modifier.fillMaxWidth()) {
+            items.forEachIndexed { index, model ->
+                item(key = index) {
+                    when (model) {
+                        is ConfigItem.Toggle -> SegmentedListItem(
+                            leadingContent = model.icon?.let { icon ->
+                                { Icon(icon, contentDescription = null) }
+                            },
+                            headlineContent = { Text(model.title) },
+                            supportingContent = model.summary?.let { summary ->
+                                { Text(summary) }
+                            },
+                            trailingContent = {
+                                Switch(
+                                    checked = model.checked,
+                                    onCheckedChange = model.onChange,
+                                )
+                            },
+                        )
+
+                        is ConfigItem.Choice -> SegmentedDropdownItem(
+                            title = model.title,
+                            summary = model.summary.orEmpty(),
+                            items = model.items,
+                            selectedIndex = model.selectedIndex,
+                            onItemSelected = model.onSelect,
+                        )
+
+                        is ConfigItem.Link -> SegmentedListItem(
+                            headlineContent = { Text(model.title) },
+                            supportingContent = model.summary?.let { summary ->
+                                { Text(summary) }
+                            },
+                            onClick = model.onClick,
+                        )
+
+                        is ConfigItem.ReadOnly -> SegmentedListItem(
+                            headlineContent = { Text(model.title) },
+                            supportingContent = { Text(model.summary) },
+                        )
+                    }
+                }
             }
         }
     }
@@ -438,6 +495,49 @@ object MiuixKit : GhostlockKit {
         }
     }
 
+    @Composable override fun ConfigItems(items: List<ConfigItem>) {
+        Column {
+            items.forEach { model ->
+                when (model) {
+                    is ConfigItem.Toggle -> SwitchPreference(
+                        startAction = {
+                            model.icon?.let { icon ->
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    tint = MiuixTheme.colorScheme.onBackground,
+                                )
+                            }
+                        },
+                        title = model.title,
+                        summary = model.summary,
+                        checked = model.checked,
+                        onCheckedChange = model.onChange,
+                    )
+
+                    is ConfigItem.Choice -> OverlayDropdownPreference(
+                        title = model.title,
+                        summary = model.summary,
+                        items = model.items,
+                        selectedIndex = model.selectedIndex,
+                        onSelectedIndexChange = model.onSelect,
+                    )
+
+                    is ConfigItem.Link -> ArrowPreference(
+                        title = model.title,
+                        summary = model.summary,
+                        onClick = model.onClick,
+                    )
+
+                    is ConfigItem.ReadOnly -> BasicComponent(
+                        title = model.title,
+                        summary = model.summary,
+                    )
+                }
+            }
+        }
+    }
+
     @Composable override fun SwitchItem(title: String, summary: String?, checked: Boolean, onChange: (Boolean) -> Unit) {
         Row(Modifier.fillMaxWidth().padding(vertical = Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -549,10 +649,4 @@ object MiuixKit : GhostlockKit {
             }
         }
     }
-}
-
-/** 取一个套件的组件面。界面只调用它，不 import 具体控件。 */
-fun kitOf(kit: UiKit): GhostlockKit = when (kit) {
-    UiKit.Material -> MaterialKit
-    UiKit.Miuix -> MiuixKit
 }

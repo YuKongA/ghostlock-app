@@ -2,7 +2,6 @@ package com.ghostlock.app.ui.component.profile
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import com.ghostlock.app.ui.Natives
 import com.ghostlock.app.ui.LocalUiMode
 import com.ghostlock.app.ui.UiMode
 
@@ -11,8 +10,9 @@ fun AppProfileConfig(
     modifier: Modifier = Modifier,
     fixedName: Boolean,
     enabled: Boolean,
-    profile: Natives.Profile,
-    onProfileChange: (Natives.Profile) -> Unit,
+    profile: ProfileDraft,
+    defaultUmountModules: Boolean,
+    onProfileChange: (ProfileDraft) -> Unit,
 ) {
     when (LocalUiMode.current) {
         UiMode.Miuix -> AppProfileConfigMiuix(
@@ -20,6 +20,7 @@ fun AppProfileConfig(
             fixedName = fixedName,
             enabled = enabled,
             profile = profile,
+            defaultUmountModules = defaultUmountModules,
             onProfileChange = onProfileChange
         )
 
@@ -28,6 +29,7 @@ fun AppProfileConfig(
             fixedName = fixedName,
             enabled = enabled,
             profile = profile,
+            defaultUmountModules = defaultUmountModules,
             onProfileChange = onProfileChange
         )
     }
@@ -38,8 +40,9 @@ fun RootProfileConfig(
     modifier: Modifier = Modifier,
     fixedName: Boolean,
     enabled: Boolean = true,
-    profile: Natives.Profile,
-    onProfileChange: (Natives.Profile) -> Unit,
+    profile: ProfileDraft,
+    isPolicyValid: (String) -> Boolean = { true },
+    onProfileChange: (ProfileDraft) -> Unit,
 ) {
     when (LocalUiMode.current) {
         UiMode.Miuix -> RootProfileConfigMiuix(
@@ -47,6 +50,7 @@ fun RootProfileConfig(
             fixedName = fixedName,
             enabled = enabled,
             profile = profile,
+            isPolicyValid = isPolicyValid,
             onProfileChange = onProfileChange
         )
 
@@ -54,6 +58,7 @@ fun RootProfileConfig(
             modifier = modifier,
             enabled = enabled,
             profile = profile,
+            isPolicyValid = isPolicyValid,
             onProfileChange = onProfileChange
         )
     }
@@ -62,25 +67,28 @@ fun RootProfileConfig(
 @Composable
 fun TemplateConfig(
     modifier: Modifier = Modifier,
-    profile: Natives.Profile,
+    profile: ProfileDraft,
+    templates: List<ProfileTemplateOption>,
+    onTemplateSelected: (id: String) -> Unit,
     onViewTemplate: (id: String) -> Unit = {},
     onManageTemplate: () -> Unit = {},
-    onProfileChange: (Natives.Profile) -> Unit
 ) {
     when (LocalUiMode.current) {
         UiMode.Miuix -> TemplateConfigMiuix(
             modifier = modifier,
             profile = profile,
+            templates = templates,
+            onTemplateSelected = onTemplateSelected,
             onViewTemplate = onViewTemplate,
             onManageTemplate = onManageTemplate,
-            onProfileChange = onProfileChange
         )
 
         UiMode.Material -> TemplateConfigMaterial(
             profile = profile,
+            templates = templates,
+            onTemplateSelected = onTemplateSelected,
             onViewTemplate = onViewTemplate,
             onManageTemplate = onManageTemplate,
-            onProfileChange = onProfileChange
         )
     }
 }

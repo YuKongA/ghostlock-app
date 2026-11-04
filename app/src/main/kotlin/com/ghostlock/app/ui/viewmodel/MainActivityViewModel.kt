@@ -1,77 +1,71 @@
 package com.ghostlock.app.ui.viewmodel
 
-import android.content.Context
-import android.content.SharedPreferences
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
+import androidx.lifecycle.viewModelScope
+import com.ghostlock.app.domain.settings.ObserveUiPreferencesUseCase
+import com.ghostlock.app.domain.settings.SetNavigationRailExpandedUseCase
+import com.ghostlock.app.domain.settings.UiPreferences
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import com.ghostlock.app.ui.data.repository.SettingsRepository
-import com.ghostlock.app.ui.data.repository.SettingsRepositoryImpl
-import com.ghostlock.app.ui.ksuApp
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import com.ghostlock.app.ui.UiMode
 import com.ghostlock.app.ui.theme.ThemeController
 
+/**
+ * Owns application-shell state while depending only on the settings domain use case.
+ *
+ * @param savedStateHandle Activity navigation-state owner.
+ * @param observeUiPreferences Domain stream for renderer preferences.
+ * @param setNavigationRailExpanded Domain command for the only shell preference mutated by navigation chrome.
+ * @note SharedPreferences listener ownership now belongs to the data adapter in AppContainer.
+ */
 class MainActivityViewModel(
     savedStateHandle: SavedStateHandle,
+    observeUiPreferences: ObserveUiPreferencesUseCase,
+    private val setNavigationRailExpanded: SetNavigationRailExpandedUseCase,
 ) : ViewModel() {
-
-    private val prefs = ksuApp.getSharedPreferences("settings", Context.MODE_PRIVATE)
-    private val settingRepo: SettingsRepository = SettingsRepositoryImpl()
     private val mainPageState = MainPageState(savedStateHandle)
-    private val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == null || key in observedKeys) {
-            _uiState.value = readUiState()
-        }
-    }
+    private val preferences = observeUiPreferences()
 
-    private val _uiState = MutableStateFlow(readUiState())
-    val uiState: StateFlow<MainActivityUiState> = _uiState.asStateFlow()
+    val uiState: StateFlow<MainActivityUiState> = preferences
+        .map(::toUiState)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = toUiState(preferences.value),
+        )
     val selectedMainPage: StateFlow<Int> = mainPageState.selectedPage
 
-    init {
-        prefs.registerOnSharedPreferenceChangeListener(listener)
-    }
-
-    override fun onCleared() {
-        prefs.unregisterOnSharedPreferenceChangeListener(listener)
-    }
-
+    /** Updates only the Activity-owned pager position. */
     fun setSelectedMainPage(page: Int) {
         mainPageState.updateSelectedPage(page)
     }
 
-    private fun readUiState(): MainActivityUiState {
-        return MainActivityUiState(
-            appSettings = ThemeController.getAppSettings(),
-            pageScale = settingRepo.pageScale,
-            enableBlur = settingRepo.enableBlur,
-            enableFloatingBottomBar = settingRepo.enableFloatingBottomBar,
-            enableFloatingBottomBarBlur = settingRepo.enableFloatingBottomBarBlur,
-            enableNavigationBadge = settingRepo.enableNavigationBadge,
-            enableSwipeDismiss = settingRepo.enableSwipeDismiss,
-            pagerInterceptionMode = settingRepo.pagerInterceptionMode,
-            moduleDescriptionMaxLines = settingRepo.moduleDescriptionMaxLines,
-            uiMode = UiMode.fromValue(settingRepo.uiMode),
-        )
+    /** Persists the wide-screen rail state through the domain command boundary. */
+    fun updateNavigationRailExpanded(expanded: Boolean) {
+        setNavigationRailExpanded(expanded)
     }
 
-    private companion object {
-        val observedKeys = setOf(
-            "color_mode",
-            "key_color",
-            "color_style",
-            "color_spec",
-            "page_scale",
-            "module_description_max_lines",
-            "enable_blur",
-            "enable_floating_bottom_bar",
-            "enable_floating_bottom_bar_blur",
-            "enable_navigation_badge",
-            "enable_swipe_dismiss",
-            "pager_interception_mode",
-            "ui_mode",
+    /**
+     * Maps one domain snapshot to the existing presentation contract.
+     *
+     * @param value Storage-neutral shell preferences.
+     * @return Current MainActivity renderer state.
+     */
+    private fun toUiState(value: UiPreferences): MainActivityUiState {
+        return MainActivityUiState(
+            appSettings = ThemeController.getAppSettings(value),
+            pageScale = value.pageScale,
+            enableBlur = value.enableBlur,
+            enableFloatingBottomBar = value.enableFloatingBottomBar,
+            enableFloatingBottomBarBlur = value.enableFloatingBottomBarBlur,
+            enableNavigationBadge = value.enableNavigationBadge,
+            navigationRailExpanded = value.navigationRailExpanded,
+            enableSwipeDismiss = value.enableSwipeDismiss,
+            pagerInterceptionMode = value.pagerInterceptionMode,
+            uiMode = UiMode.fromValue(value.uiMode),
         )
     }
 }

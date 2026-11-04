@@ -1,8 +1,8 @@
 package com.ghostlock.app.backend.backends.cve43499.flow
 
 import com.ghostlock.app.backend.backends.cve43499.lifecycle.Cve43499PlacementFacts
-import com.ghostlock.app.data.cve43499.DebugWriteChainParameters
-import com.ghostlock.app.data.cve43499.DebugPrimitiveKind
+import com.ghostlock.app.backend.backends.cve43499.config.DebugWriteChainParameters
+import com.ghostlock.app.backend.backends.cve43499.config.DebugPrimitiveKind
 
 /**
  * 写链阶段 id（evidence token；与 legacy 阶段名对齐）。

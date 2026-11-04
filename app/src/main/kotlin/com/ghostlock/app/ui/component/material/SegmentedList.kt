@@ -434,6 +434,18 @@ fun SegmentedDropdownItem(
     onItemSelected: (Int) -> Unit,
 ) {
     val haptic = LocalHapticFeedback.current
+    /**
+     * Keeps the selected row foreground and background on one theme-derived contrast pair.
+     *
+     * Unselected and disabled rows retain the Material menu defaults; this value performs no I/O
+     * and requires the surrounding [MaterialTheme] to be active during composition.
+     */
+    val dropdownItemColors = MenuDefaults.selectableItemColors(
+        selectedTextColor = colorScheme.onPrimaryContainer,
+        selectedContainerColor = colorScheme.primaryContainer,
+        selectedLeadingIconColor = colorScheme.onPrimaryContainer,
+        selectedTrailingContentColor = colorScheme.onPrimaryContainer,
+    )
     var expanded by remember { mutableStateOf(false) }
     var anchorOffset by remember { mutableStateOf(IntOffset.Zero) }
 
@@ -480,17 +492,11 @@ fun SegmentedDropdownItem(
             items.forEachIndexed { index, text ->
                 SelectableDropdownMenuItem(
                     text = {
-                        Text(
-                            text = text,
-                            color = if (itemEnabled(index)) {
-                                colorScheme.onSurface
-                            } else {
-                                colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
-                            },
-                        )
+                        Text(text = text)
                     },
                     selected = index == safeIndex,
                     enabled = itemEnabled(index),
+                    colors = dropdownItemColors,
                     onClick = {
                         if (index in items.indices && itemEnabled(index)) {
                             haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)

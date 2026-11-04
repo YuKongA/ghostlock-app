@@ -1,29 +1,35 @@
 package com.ghostlock.app.backend.backends.lua
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.OpenableColumns
 import com.ghostlock.app.backend.declarations.UnfinishedBackend
 import com.ghostlock.app.backend.declarations.BackendRow
 import com.ghostlock.app.backend.declarations.BackendSpec
-import androidx.compose.runtime.Composable
 import com.ghostlock.app.R
-import com.ghostlock.app.ui.Natives
-import com.ghostlock.app.ui.backend.BackendConfigKey
-import com.ghostlock.app.ui.backend.BackendConfigSchema
-import com.ghostlock.app.ui.backend.BackendConfigStore
-import com.ghostlock.app.ui.backend.BackendConfigType
-import com.ghostlock.app.ui.backend.BackendReadiness
-import com.ghostlock.app.ui.backend.BackendRunCapability
-import com.ghostlock.app.ui.backend.ReadinessReason
-import com.ghostlock.app.ui.component.backend.CustomLuaConfig
-import com.ghostlock.app.ui.component.backend.CustomLuaConfigState
-import com.ghostlock.app.ui.util.rootAvailable
+import com.ghostlock.app.backend.declarations.BackendConfigKey
+import com.ghostlock.app.backend.declarations.BackendConfigSchema
+import com.ghostlock.app.backend.declarations.BackendConfigStore
+import com.ghostlock.app.backend.declarations.BackendConfigType
+import com.ghostlock.app.backend.declarations.BackendConfigurationSpec
+import com.ghostlock.app.backend.declarations.BackendReadiness
+import com.ghostlock.app.backend.declarations.BackendRunCapability
+import com.ghostlock.app.backend.declarations.ReadinessReason
+import com.ghostlock.app.domain.backend.BackendConfigMutationResult
+import com.ghostlock.app.domain.backend.BackendConfigValue
+import com.ghostlock.app.domain.backend.BackendConfiguration
+import com.ghostlock.app.domain.backend.BackendConfigurationMutation
 
 /**
  *  「自定义」backend（2026-10-18 用户裁定）。
  *
- *  它没有固定的 CVE 与配置项：配置区由单独的 [CustomLuaConfig] 负责（加载 Lua 脚本）。
+ *  它没有固定的 CVE 与配置项：presentation renderer 负责加载 Lua 脚本的配置区。
  */
 @UnfinishedBackend(reason = "Lua/custom backend unfinished")
 object BackendCustom : BackendSpec {
+    private val scriptMimeTypes =
+        listOf("text/x-lua", "text/plain", "application/octet-stream")
+
     /** Keep the custom Lua backend visible in the selector but disabled in the exec-glue build. */
     override val selectable: Boolean = false
     override val cve: String = "CUSTOM"
@@ -33,12 +39,6 @@ object BackendCustom : BackendSpec {
         BackendRow(R.string.backend_row_id, "自定义"),
         BackendRow(R.string.backend_row_status, "未接线"),
     )
-
-    /** Lua 配置卡（脚本加载）；唯一 UI 入口。 */
-    @Composable
-    override fun ConfigCard(miuix: Boolean) {
-        CustomLuaConfig(miuix)
-    }
 
     /** 自定义 backend 没有 Flow run 入口；运行页只展示脚本/Lua 能力与拒绝原因。 */
 
@@ -53,22 +53,71 @@ object BackendCustom : BackendSpec {
         ),
     )
 
+    /** Standard document configuration capability for the custom Lua script selection. */
+    override val configurationSpec: BackendConfigurationSpec = object : BackendConfigurationSpec {
+        /** @return Complete document-picker semantics and current bounded script facts. */
+        override fun snapshot(store: BackendConfigStore): BackendConfiguration {
+            val selection = LuaScriptSelectionStore.state.value
+            return BackendConfiguration.Document(
+                key = key,
+                field = CONFIG_KEY_SCRIPT_URI,
+                importTitle = store.context.getString(R.string.backend_custom_script),
+                documentSummary = selection.uri?.let { uri -> displayName(store.context, uri) }
+                    ?: store.context.getString(R.string.backend_custom_none),
+                mimeTypes = scriptMimeTypes,
+                facts = listOf(
+                    BackendConfigValue(
+                        label = store.context.getString(R.string.backend_custom_runtime),
+                        value = LuaScriptHost.runtimeName,
+                    ),
+                ),
+                details = selection.summary,
+            )
+        }
+
+        /** Validates, commits, and then publishes one Lua document selection. */
+        override fun mutate(
+            store: BackendConfigStore,
+            mutation: BackendConfigurationMutation,
+        ): BackendConfigMutationResult {
+            if (mutation !is BackendConfigurationMutation.ImportDocument ||
+                mutation.field != CONFIG_KEY_SCRIPT_URI
+            ) {
+                return BackendConfigMutationResult.UNSUPPORTED
+            }
+            if (mutation.uri.isBlank()) return BackendConfigMutationResult.INVALID
+            val parsed = Uri.parse(mutation.uri)
+            if (parsed.scheme.isNullOrBlank()) return BackendConfigMutationResult.INVALID
+            store.context.contentResolver.takePersistableUriPermission(
+                parsed,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+            val summary = LuaScriptHost.readSummary(store.context, parsed)
+            store.putString(CONFIG_KEY_SCRIPT_URI, parsed.toString())
+            LuaScriptSelectionStore.selectValidated(parsed, summary)
+            return BackendConfigMutationResult.APPLIED
+        }
+    }
+
     /**
      * 把当前选中的脚本 URI 写入框架 store。
      *
-     * @param store UI 框架注入的配置 store。
+     * @param store Outer data adapter 注入的 typed store。
      */
     override fun saveConfig(store: BackendConfigStore) {
-        store.putString(CONFIG_KEY_SCRIPT_URI, CustomLuaConfigState.uri?.toString().orEmpty())
+        store.putString(
+            CONFIG_KEY_SCRIPT_URI,
+            LuaScriptSelectionStore.state.value.uri?.toString().orEmpty(),
+        )
     }
 
     /**
      * 从框架 store 恢复脚本选择（URI 失效/不可读 ⇒ fail-closed 清空为“未选择”）。
      *
-     * @param store UI 框架注入的配置 store。
+     * @param store Outer data adapter 注入的 typed store。
      */
     override fun restoreConfig(store: BackendConfigStore) {
-        CustomLuaConfigState.restore(store.context, store.getString(CONFIG_KEY_SCRIPT_URI))
+        LuaScriptSelectionStore.restore(store.context, store.getString(CONFIG_KEY_SCRIPT_URI))
     }
 
     /** backend 提供短文案：就绪 → 「就绪」；当前 → 「未就绪：未选择脚本」。 */
@@ -81,7 +130,7 @@ object BackendCustom : BackendSpec {
 
     /**
      * 真实来源：自定义 Lua 脚本选择状态只存在于 Composable 的 `remember`（无持久化来源），
-     * 且 Lua 运行时未接线；环境探测（Natives/root）当前为 stub。
+     * 且 Lua 运行时未接线；目标环境尚未验证。
      *
      * @return 恒 NotReady，带具名原因。
      */
@@ -89,13 +138,18 @@ object BackendCustom : BackendSpec {
     private const val CONFIG_KEY_SCRIPT_URI = "script_uri"
 
     override fun readiness(): BackendReadiness {
-        val rootDetail = "isManager=" + Natives.isManager +
-            ", rootAvailable=" + rootAvailable()
         return BackendReadiness.NotReady(
             listOf(
                 ReadinessReason(R.string.backend_readiness_custom_script),
-                ReadinessReason(R.string.backend_readiness_unverified_env, rootDetail),
+                ReadinessReason(R.string.backend_readiness_environment_unverified),
             ),
         )
     }
+
+    /** @return Provider display name or a stable URI path fallback. */
+    private fun displayName(context: android.content.Context, uri: Uri): String =
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
+        } ?: uri.lastPathSegment ?: "script.lua"
 }

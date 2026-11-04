@@ -9,7 +9,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
-import com.ghostlock.app.ui.Natives
 import com.ghostlock.app.R
 import com.ghostlock.app.ui.component.miuix.EditText
 import top.yukonga.miuix.kmp.preference.SwitchPreference
@@ -19,8 +18,9 @@ fun AppProfileConfigMiuix(
     modifier: Modifier = Modifier,
     fixedName: Boolean,
     enabled: Boolean,
-    profile: Natives.Profile,
-    onProfileChange: (Natives.Profile) -> Unit,
+    profile: ProfileDraft,
+    defaultUmountModules: Boolean,
+    onProfileChange: (ProfileDraft) -> Unit,
 ) {
     Column(modifier = modifier) {
         if (!fixedName) {
@@ -38,7 +38,7 @@ fun AppProfileConfigMiuix(
             checked = if (enabled) {
                 profile.umountModules
             } else {
-                Natives.isDefaultUmountModules()
+                defaultUmountModules
             },
             enabled = enabled,
             onCheckedChange = {
@@ -56,8 +56,13 @@ fun AppProfileConfigMiuix(
 @Preview
 @Composable
 private fun AppProfileConfigPreview() {
-    var profile by remember { mutableStateOf(Natives.Profile("")) }
-    AppProfileConfigMiuix(fixedName = true, enabled = false, profile = profile) {
+    var profile by remember { mutableStateOf(ProfileDraft()) }
+    AppProfileConfigMiuix(
+        fixedName = true,
+        enabled = false,
+        profile = profile,
+        defaultUmountModules = true,
+    ) {
         profile = it
     }
 }

@@ -7,7 +7,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ghostlock.app.R
-import com.ghostlock.app.ui.component.KsuIsValid
 import com.ghostlock.app.ui.component.ListPopupDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -20,47 +19,44 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 
 @Composable
 fun RebootListPopupMiuix(
+    options: List<RebootListOption>,
+    onReboot: (String) -> Unit,
     modifier: Modifier = Modifier,
     alignment: PopupPositionProvider.Align = PopupPositionProvider.Align.TopEnd
 ) {
     val showTopPopup = remember { mutableStateOf(false) }
-    KsuIsValid {
-        val onReboot = rememberRebootAction()
-        IconButton(
-            modifier = modifier,
-            onClick = { showTopPopup.value = true },
-            holdDownState = showTopPopup.value
-        ) {
-            Icon(
-                imageVector = MiuixIcons.Close2,
-                contentDescription = stringResource(id = R.string.reboot),
-                tint = colorScheme.onBackground
-            )
-        }
-        OverlayListPopup(
-            show = showTopPopup.value,
-            popupPositionProvider = ListPopupDefaults.MenuPositionProvider,
-            alignment = alignment,
-            onDismissRequest = {
-                showTopPopup.value = false
-            },
-            content = {
-                val rebootOptions = getRebootListOption()
-
-                ListPopupColumn {
-                    rebootOptions.forEachIndexed { idx, option ->
-                        RebootDropdownItem(
-                            option = option,
-                            showTopPopup = showTopPopup,
-                            optionSize = rebootOptions.size,
-                            index = idx,
-                            onReboot = onReboot
-                        )
-                    }
-                }
-            }
+    IconButton(
+        modifier = modifier,
+        onClick = { showTopPopup.value = true },
+        holdDownState = showTopPopup.value
+    ) {
+        Icon(
+            imageVector = MiuixIcons.Close2,
+            contentDescription = stringResource(id = R.string.reboot),
+            tint = colorScheme.onBackground
         )
     }
+    OverlayListPopup(
+        show = showTopPopup.value,
+        popupPositionProvider = ListPopupDefaults.MenuPositionProvider,
+        alignment = alignment,
+        onDismissRequest = {
+            showTopPopup.value = false
+        },
+        content = {
+            ListPopupColumn {
+                options.forEachIndexed { idx, option ->
+                    RebootDropdownItem(
+                        option = option,
+                        showTopPopup = showTopPopup,
+                        optionSize = options.size,
+                        index = idx,
+                        onReboot = onReboot
+                    )
+                }
+            }
+        }
+    )
 }
 
 @Composable

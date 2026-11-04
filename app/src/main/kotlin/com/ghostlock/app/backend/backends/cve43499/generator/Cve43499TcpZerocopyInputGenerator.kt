@@ -103,7 +103,7 @@ internal class Cve43499TcpZerocopyInputGenerator(
      */
     private fun validate(
         facts: Cve43499PlacementFacts,
-        tcp: com.ghostlock.app.data.cve43499.DebugTcpGenerator,
+        tcp: com.ghostlock.app.backend.backends.cve43499.config.DebugTcpGenerator,
     ) {
         val pageSize = facts.pageSize
         if (pageSize <= 0L) throw Cve43499GeneratorException("tcp:page-size")
@@ -168,7 +168,7 @@ internal class Cve43499TcpZerocopyInputGenerator(
      * @return 帧字节（其余字段 0）。
      */
     private fun buildFrame(
-        tcp: com.ghostlock.app.data.cve43499.DebugTcpGenerator,
+        tcp: com.ghostlock.app.backend.backends.cve43499.config.DebugTcpGenerator,
         initTaskAlias: Long,
         fakeLock: Long,
     ): ByteArray {

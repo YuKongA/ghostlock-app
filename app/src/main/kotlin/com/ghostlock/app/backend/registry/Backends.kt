@@ -1,8 +1,5 @@
 package com.ghostlock.app.backend.registry
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import com.ghostlock.app.BuildConfig
 import com.ghostlock.app.backend.backends.cve43284glued.BackendCve43284Glued
 import com.ghostlock.app.backend.backends.cve43499glued.BackendCve43499Glued
@@ -10,7 +7,6 @@ import com.ghostlock.app.backend.backends.debugprobe.BackendDebugProbe
 import com.ghostlock.app.backend.backends.lua.BackendCustom
 import com.ghostlock.app.backend.backends.cve43284.BackendCve43284
 import com.ghostlock.app.backend.backends.cve43499.BackendCve43499
-import com.ghostlock.app.backend.declarations.BackendSelection
 import com.ghostlock.app.backend.declarations.BackendSpec
 
 object Backends {
@@ -25,7 +21,7 @@ object Backends {
     }
 
     /** 当前全部 backend（内置 + 动态）；顺序=下拉框顺序。 */
-    var all: List<BackendSpec> by mutableStateOf(builtins)
+    var all: List<BackendSpec> = builtins
         private set
 
     /**
@@ -63,9 +59,6 @@ object Backends {
         val next = all.filterNot { it.key == key }
         if (next.size == all.size) return false
         all = next
-        if (BackendSelection.selectedKey == key) {
-            BackendSelection.selectedKey = next.firstOrNull { isSelectable(it) }?.key
-        }
         return true
     }
 
@@ -75,11 +68,5 @@ object Backends {
     /** 恢复内置列表（测试/诊断用）。 */
     fun resetToBuiltins() {
         all = builtins
-        if (BackendSelection.selectedKey?.let { key ->
-                builtins.any { it.key == key && isSelectable(it) }
-            } != true
-        ) {
-            BackendSelection.selectedKey = builtins.firstOrNull { isSelectable(it) }?.key
-        }
     }
 }

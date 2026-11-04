@@ -2,7 +2,7 @@ package com.ghostlock.app.backend.backends.cve43499.victim
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.ghostlock.app.data.cve43499.A301SoDebugConfig
+import com.ghostlock.app.backend.backends.cve43499.config.Cve43499DebugConfig
 import com.ghostlock.app.jni.VictimCloseJniResult
 import com.ghostlock.app.jni.VictimSpawnJniResult
 import com.ghostlock.app.jni.Native43499Jni
@@ -99,7 +99,7 @@ class JniVictimMechanismProbeTest {
         }.getOrElse { problem ->
             throw AssertionError("E0|debug-asset-unreadable:${problem.message}")
         }
-        val perf = runCatching { A301SoDebugConfig.parse(asset).perf }.getOrNull()
+        val perf = runCatching { Cve43499DebugConfig.parse(asset).perf }.getOrNull()
             ?: throw AssertionError("E0|perf-section-missing")
         record(
             "E0|attr|sample_type=${perf.attrSampleType}|period=${perf.attrSamplePeriod}" +

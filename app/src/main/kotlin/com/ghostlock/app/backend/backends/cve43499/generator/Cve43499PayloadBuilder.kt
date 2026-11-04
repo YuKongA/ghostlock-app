@@ -252,7 +252,7 @@ internal object Cve43499PayloadBuilder {
     private fun writeChunk(
         writer: Cve43499LeWriter,
         at: Long,
-        layout: com.ghostlock.app.data.cve43499.DebugPayloadLayout,
+        layout: com.ghostlock.app.backend.backends.cve43499.config.DebugPayloadLayout,
         request: Cve43499WriteRequest,
         write: Cve43499WriteLayout,
         fakeLock: Long,

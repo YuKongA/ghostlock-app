@@ -9,14 +9,19 @@ import com.ghostlock.app.backend.host.HostRunPaths
 import com.ghostlock.app.backend.host.cleanupHostPaths
 import com.ghostlock.app.backend.host.createShellHostPaths
 import com.ghostlock.app.backend.host.FlowHostProtocol
+import com.ghostlock.app.backend.declarations.BackendRegistryIdentityFactory
 import com.ghostlock.app.backend.declarations.FlowEntryRegistryAssembly
+import com.ghostlock.app.backend.declarations.BackendSpec
+import com.ghostlock.app.backend.registry.Backends
 import com.ghostlock.app.core.flow.FlowEntryResolution
+import com.ghostlock.app.core.flow.FlowEntryRegistry
 import com.ghostlock.app.core.flow.FlowEntrySpec
 import com.ghostlock.app.core.flow.FlowHostEnv
 import com.ghostlock.app.core.flow.FlowHostParams
 import com.ghostlock.app.core.flow.FlowHostParamsCodec
 import com.ghostlock.app.core.flow.FlowResult
 import com.ghostlock.app.core.flow.FlowSymbols
+import com.ghostlock.app.domain.backend.BackendRegistryIdentity
 import com.ghostlock.app.shizuku.host.ShizukuBackendHost
 import com.ghostlock.app.shizuku.host.ShizukuBackendHosts
 import java.io.FileOutputStream
@@ -35,6 +40,18 @@ import java.util.concurrent.atomic.AtomicLong
  * @note 未在 manifest 注册（Shizuku UserService 非 AMS 组件）；真机门禁 G8–G14 pending。
  */
 class GhostlockUserService : IGhostlockUserService.Stub {
+    /** Shell-process immutable registry membership captured once by this UserService root. */
+    private val backendRegistryEntries: List<BackendSpec> =
+        Backends.all.toList()
+
+    /** Shell-process identity calculated from the same captured membership as [hostRegistry]. */
+    private val backendRegistryIdentity: BackendRegistryIdentity =
+        BackendRegistryIdentityFactory.capture(backendRegistryEntries)
+
+    /** Shell-process immutable Flow allowlist assembled once from [backendRegistryEntries]. */
+    private val hostRegistry: FlowEntryRegistry by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        FlowEntryRegistryAssembly.hostRegistry(backendRegistryEntries)
+    }
 
     @Volatile
     private var userServiceContext: Context? = null
@@ -191,7 +208,7 @@ class GhostlockUserService : IGhostlockUserService.Stub {
         }
         val parsed = FlowSymbols.parse(symbol.orEmpty())
             ?: return@synchronized FlowHostProtocol.ERR_SYMBOL
-        val registry = runCatching { FlowEntryRegistryAssembly.hostRegistry() }
+        val registry = runCatching { hostRegistry }
             .getOrElse { return@synchronized FlowHostProtocol.ERR_SYMBOL }
         val spec = when (val resolution = registry.resolve(parsed)) {
             is FlowEntryResolution.Resolved -> resolution.entry
@@ -300,6 +317,12 @@ class GhostlockUserService : IGhostlockUserService.Stub {
         val length = minOf(maxBytes, FlowHostProtocol.MAX_LOG_BYTES, snapshot.size - start)
         return snapshot.copyOfRange(start, start + length)
     }
+
+    /** @return Shell-process registry content version captured before Flow resolution. */
+    override fun getFlowRegistryVersion(): Long = backendRegistryIdentity.version
+
+    /** @return Shell-process registry content hash captured before Flow resolution. */
+    override fun getFlowRegistryContentHash(): String = backendRegistryIdentity.contentHash
 
     /** 后台执行 Flow 入口并落终态（不抛到线程外）。 */
     private fun runFlowEntry() {

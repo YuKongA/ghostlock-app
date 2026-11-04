@@ -5,7 +5,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.ghostlock.app.backend.diagnostics.DiagnosticOkFlow
 import com.ghostlock.app.backend.launcher.AppProcessFlowLauncher
 import com.ghostlock.app.core.flow.FlowResult
-import com.ghostlock.app.ui.backend.BackendRunUiState
+import com.ghostlock.app.backend.launcher.BackendExecutionState
 import java.io.File
 import java.util.Collections
 import kotlinx.coroutines.runBlocking
@@ -64,8 +64,8 @@ class Flow43284TimeoutKeepaliveTest {
                 mapOf("exec.timeout_ms" to TIMEOUT_MS),
                 null,
             ) { line -> lines += line }
-            assertTrue("expected Finished, got $state", state is BackendRunUiState.Finished)
-            val result = (state as BackendRunUiState.Finished).result
+            assertTrue("expected Finished, got $state", state is BackendExecutionState.Finished)
+            val result = (state as BackendExecutionState.Finished).result
             assertTrue("expected Failed, got $result", result is FlowResult.Failed)
             val failed = result as FlowResult.Failed
             assertTrue(
@@ -136,9 +136,9 @@ class Flow43284TimeoutKeepaliveTest {
         ) { }
         assertTrue(
             "fresh run must finish: $freshState",
-            freshState is BackendRunUiState.Finished,
+            freshState is BackendExecutionState.Finished,
         )
-        val freshResult = (freshState as BackendRunUiState.Finished).result
+        val freshResult = (freshState as BackendExecutionState.Finished).result
         assertTrue("fresh run must be Ok: $freshResult", freshResult is FlowResult.Ok)
         val freshPid = fresh.lastHostPid
         assertTrue("fresh run must report host pid", freshPid > 0)

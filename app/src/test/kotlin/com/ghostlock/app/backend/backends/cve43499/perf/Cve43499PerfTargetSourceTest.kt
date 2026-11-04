@@ -3,9 +3,9 @@ package com.ghostlock.app.backend.backends.cve43499.perf
 import com.ghostlock.app.backend.backends.cve43499.flow.Cve43499TargetAcquisition
 import com.ghostlock.app.backend.backends.cve43499.flow.Cve43499VictimBaseline
 import com.ghostlock.app.backend.backends.cve43499.flow.Cve43499VictimContext
-import com.ghostlock.app.data.cve43499.A301SoDebugConfig
-import com.ghostlock.app.data.cve43499.DebugExecutionParameters
-import com.ghostlock.app.data.cve43499.DebugPerfParameters
+import com.ghostlock.app.backend.backends.cve43499.config.Cve43499DebugConfig
+import com.ghostlock.app.backend.backends.cve43499.config.DebugExecutionParameters
+import com.ghostlock.app.backend.backends.cve43499.config.DebugPerfParameters
 import com.ghostlock.app.jni.Native43499CloseResult
 import com.ghostlock.app.jni.Native43499PerfCollectResult
 import com.ghostlock.app.jni.Native43499PerfOpenRequest
@@ -218,7 +218,7 @@ class Cve43499PerfTargetSourceTest {
         val source = Cve43499PerfTargetSource(
             native = native,
             perf = perf,
-            execution = A301SoDebugConfig.executionParameters(),
+            execution = Cve43499DebugConfig.executionParameters(),
         )
         return source.acquire(
             Cve43499VictimContext(
@@ -299,7 +299,7 @@ class Cve43499PerfTargetSourceTest {
 
     private companion object {
         val RING_BYTES: Long =
-            A301SoDebugConfig.executionParameters().pageSize * 64L
+            Cve43499DebugConfig.executionParameters().pageSize * 64L
         const val MAX_CANDIDATES = 256
         val TASK = 0xffffff896fe31200uL.toLong()
     }

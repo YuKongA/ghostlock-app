@@ -43,6 +43,12 @@ interface IFlowHost {
     /** 请求取消；幂等，不 kill 攻击子进程（A11）。 */
     void cancel() = 9;
 
+    /** @return host 进程捕获的 backend registry 64-bit content version。 */
+    long getRegistryVersion() = 10;
+
+    /** @return host 进程捕获的 backend registry SHA-256 content hash。 */
+    String getRegistryContentHash() = 11;
+
     /** 清理并退出宿主进程（幂等）。 */
     void destroy() = 16777114;
 }

@@ -1,12 +1,8 @@
 package com.ghostlock.app
 
 import android.app.Application
-import com.ghostlock.app.attack.AttackSettings
-import com.ghostlock.app.attack.BootSettings
 import com.ghostlock.app.log.LogFile
-import com.ghostlock.app.log.LogSettings
 import com.ghostlock.app.log.NativeLogBridge
-import com.ghostlock.app.ui.screen.home.ExecutorPreference
 import com.ghostlock.app.log.log
 
 /**
@@ -17,15 +13,13 @@ import com.ghostlock.app.log.log
  *  屏幕上的弹窗（LogPopup）读的就是这份文件的尾部。
  */
 class GhostLockApp : Application() {
+    /** Application-scoped dependency composition root initialized before UI construction. */
+    lateinit var container: AppContainer
+        private set
+
     override fun onCreate() {
         super.onCreate()
-        com.ghostlock.app.ui.ksuApp = this
-        /* KernelSU 移植界面要求一个全局 Application 句柄（未接线，只用来取资源/SharedPreferences）。 */
-        LogSettings.attach(this)
-        AttackSettings.attach(this)
-        BootSettings.attach(this)
-        /* 执行体口径（用户裁定）：App→43499/43284；Shizuku→通用新进程 FlowHost。 */
-        ExecutorPreference.load(this)
+        container = AppContainer(this)
         val opened = LogFile.open()
         if (opened == null) {
             log.warn("app: 日志文件不可写（只走 logcat + 内存环）")

@@ -6,12 +6,12 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.ghostlock.app.backend.backends.cve43499glued.BackendCve43499Glued
 import com.ghostlock.app.backend.backends.cve43499glued.Glued43499ProfileCodec
 import com.ghostlock.app.core.flow.FlowResult
-import com.ghostlock.app.ui.backend.BackendConfigStore
-import com.ghostlock.app.ui.backend.BackendRunDispatch
-import com.ghostlock.app.ui.backend.BackendRunDispatcher
-import com.ghostlock.app.ui.backend.BackendRunGate
-import com.ghostlock.app.ui.backend.BackendRunUiState
-import com.ghostlock.app.ui.backend.RunPageContext
+import com.ghostlock.app.data.backend.BackendSessionStore
+import com.ghostlock.app.backend.launcher.BackendRunDispatch
+import com.ghostlock.app.backend.launcher.BackendRunDispatcher
+import com.ghostlock.app.backend.launcher.BackendRunGate
+import com.ghostlock.app.backend.launcher.BackendExecutionState
+import com.ghostlock.app.backend.launcher.RunPageContext
 import java.io.File
 import java.util.Collections
 import kotlinx.coroutines.runBlocking
@@ -75,11 +75,12 @@ class Real43499GateTest {
         )
         val release = requireNotNull(matched).release
         val spec = BackendCve43499Glued
-        val store = BackendConfigStore.open(context, spec.cve, spec.configSchema)
+        val store = BackendSessionStore.from(context).configStore(context, spec)
         spec.selectProfile("builtin:$release", store)
         Log.i(TAG, "profile.selected=builtin:$release os.version=$osVersion")
 
-        val decision = BackendRunGate.decide(spec, spec.readiness(), RunPageContext())
+        val runContext = RunPageContext()
+        val decision = BackendRunGate.decide(spec, spec.readiness(), runContext)
         assertTrue(
             "gate denied real 43499 attack: ${decision.reasons}",
             decision.allowed,
@@ -88,7 +89,12 @@ class Real43499GateTest {
 
         val output = Collections.synchronizedList(mutableListOf<String>())
         val startedAt = System.currentTimeMillis()
-        val dispatch = BackendRunDispatcher.dispatch(spec, decision, context) { line ->
+        val dispatch = BackendRunDispatcher.dispatch(
+            spec,
+            decision,
+            context,
+            runContext.executor,
+        ) { line ->
             output += line
         }
         val elapsedMs = System.currentTimeMillis() - startedAt
@@ -99,7 +105,7 @@ class Real43499GateTest {
         val state = (dispatch as BackendRunDispatch.Executed).state
         Log.i(TAG, "terminal.state=$state elapsedMs=$elapsedMs")
         when (state) {
-            is BackendRunUiState.Finished -> when (val result = state.result) {
+            is BackendExecutionState.Finished -> when (val result = state.result) {
                 is FlowResult.Ok -> Log.i(
                     TAG,
                     "result=Ok steps=${result.steps.size} evidence=${result.evidence}",
@@ -112,14 +118,14 @@ class Real43499GateTest {
                 )
             }
 
-            is BackendRunUiState.Refused -> Log.e(
+            is BackendExecutionState.Refused -> Log.e(
                 TAG,
                 "result=Refused reasons=${state.reasons}",
             )
 
-            BackendRunUiState.HandoffRequested -> Log.i(TAG, "result=HandoffRequested")
-            BackendRunUiState.Idle -> Log.i(TAG, "result=Idle")
-            BackendRunUiState.Running -> Log.i(TAG, "result=Running")
+            BackendExecutionState.HandoffRequested -> Log.i(TAG, "result=HandoffRequested")
+            BackendExecutionState.Idle -> Log.i(TAG, "result=Idle")
+            BackendExecutionState.Running -> Log.i(TAG, "result=Running")
         }
         output.takeLast(MAX_LOG_LINES).forEachIndexed { index, line ->
             Log.i(TAG, "out[$index]=$line")

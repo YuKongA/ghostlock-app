@@ -7,7 +7,7 @@ import com.ghostlock.app.backend.diagnostics.DiagnosticOkFlow
 import com.ghostlock.app.backend.host.FlowHostProtocol
 import com.ghostlock.app.backend.launcher.AppProcessFlowLauncher
 import com.ghostlock.app.core.flow.FlowResult
-import com.ghostlock.app.ui.backend.BackendRunUiState
+import com.ghostlock.app.backend.launcher.BackendExecutionState
 import java.io.File
 import java.util.Collections
 import kotlinx.coroutines.runBlocking
@@ -41,8 +41,8 @@ class FlowHostProcessSmokeTest {
         val lines = Collections.synchronizedList(mutableListOf<String>())
         val first = AppProcessFlowLauncher(context)
         val state = first.run(okSymbol(), mapOf("k" to "v"), null) { line -> lines += line }
-        assertTrue("expected Finished, got $state", state is BackendRunUiState.Finished)
-        assertTrue((state as BackendRunUiState.Finished).result is FlowResult.Ok)
+        assertTrue("expected Finished, got $state", state is BackendExecutionState.Finished)
+        assertTrue((state as BackendExecutionState.Finished).result is FlowResult.Ok)
         assertEquals(3, lines.count { it.startsWith("diag:line:") })
         val firstPid = first.lastHostPid
         assertTrue("host pid must be reported", firstPid > 0)
@@ -61,8 +61,8 @@ class FlowHostProcessSmokeTest {
     fun invalidSymbolIsRefused() = runBlocking {
         val state = AppProcessFlowLauncher(context)
             .run("com.ghostlock.app.core.flow.NoSuchFlow#entry", emptyMap(), null) { }
-        assertTrue(state is BackendRunUiState.Refused)
-        val reasons = (state as BackendRunUiState.Refused).reasons
+        assertTrue(state is BackendExecutionState.Refused)
+        val reasons = (state as BackendExecutionState.Refused).reasons
         assertTrue(reasons.any { it.contains("symbol", ignoreCase = true) })
     }
 
@@ -71,8 +71,8 @@ class FlowHostProcessSmokeTest {
         val payload = ByteArray(FlowHostProtocol.MAX_PAYLOAD_BYTES + 1)
         val state = AppProcessFlowLauncher(context)
             .run(okSymbol(), emptyMap(), payload) { }
-        assertTrue(state is BackendRunUiState.Refused)
-        val reasons = (state as BackendRunUiState.Refused).reasons
+        assertTrue(state is BackendExecutionState.Refused)
+        val reasons = (state as BackendExecutionState.Refused).reasons
         assertTrue(reasons.any { it.contains("payload", ignoreCase = true) })
     }
 
@@ -80,6 +80,6 @@ class FlowHostProcessSmokeTest {
     fun handoffIsNotReportedAsSuccess() = runBlocking {
         val state = AppProcessFlowLauncher(context)
             .run(handoffSymbol(), emptyMap(), null) { }
-        assertEquals(BackendRunUiState.HandoffRequested, state)
+        assertEquals(BackendExecutionState.HandoffRequested, state)
     }
 }

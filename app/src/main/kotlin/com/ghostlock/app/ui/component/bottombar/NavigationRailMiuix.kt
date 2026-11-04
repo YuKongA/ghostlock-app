@@ -2,12 +2,9 @@ package com.ghostlock.app.ui.component.bottombar
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import com.ghostlock.app.ui.Natives
 import com.ghostlock.app.R
-import com.ghostlock.app.ui.data.repository.SettingsRepositoryImpl
 import com.ghostlock.app.ui.LocalMainPagerState
 import top.yukonga.miuix.kmp.basic.NavigationRail
 import top.yukonga.miuix.kmp.basic.NavigationRailItem
@@ -18,26 +15,29 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun NavigationRailMiuix(
     navigationBadge: NavigationBadgeState,
+    destinations: List<MainNavigationDestination>,
+    pageCount: Int,
+    fullFeatured: Boolean,
+    expanded: Boolean,
+    onExpandedChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val fullFeatured = Natives.isFullFeatured()
     if (!fullFeatured) return
 
     val mainState = LocalMainPagerState.current
 
-    val items = BottomBarDestination.entries.map { destination ->
-        Pair(stringResource(destination.label), destination.icon)
+    val items = destinations.take(pageCount).map { destination ->
+        Pair(stringResource(destination.label), destination.miuixIcon)
     }
-    val settingsRepo = remember { SettingsRepositoryImpl() }
     val state = rememberNavigationRailState(
-        initialValue = if (settingsRepo.navigationRailExpanded) {
+        initialValue = if (expanded) {
             NavigationRailValue.Expanded
         } else {
             NavigationRailValue.Collapsed
         },
     )
     LaunchedEffect(state.currentValue) {
-        settingsRepo.navigationRailExpanded = state.isExpanded
+        onExpandedChanged(state.isExpanded)
     }
 
     NavigationRail(

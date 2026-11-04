@@ -5,7 +5,7 @@ package com.ghostlock.app.backend.declarations
  *
  * 语义：`backend/backends/` 不再按 active/unfinished 两级目录区分 backend；是否可运行由
  * [BackendSpec.selectable] 与 [BackendSpec.flowSymbol] 决定。本注解只标记“未完工、暂未接线”，
- * **不表示弃用**：实现、测试、注册项（`Backends.all`）与配置卡（[BackendSpec.ConfigCard]）
+ * **不表示弃用**：实现、测试、注册项（`Backends.all`）与 presentation 配置卡
  * 都必须保留；被标记的 backend 在菜单中灰显/不可选，禁止以“清理/归档”为名删除。
  *
  * 不变量（由 `UnfinishedBackendAnnotationTest` 守卫）：

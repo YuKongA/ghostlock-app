@@ -6,7 +6,7 @@ import com.ghostlock.app.backend.diagnostics.DiagnosticOkFlow
 import com.ghostlock.app.backend.diagnostics.DiagnosticSlowFlow
 import com.ghostlock.app.backend.launcher.AppProcessFlowLauncher
 import com.ghostlock.app.core.flow.FlowResult
-import com.ghostlock.app.ui.backend.BackendRunUiState
+import com.ghostlock.app.backend.launcher.BackendExecutionState
 import java.io.File
 import java.util.Collections
 import kotlinx.coroutines.Dispatchers
@@ -40,7 +40,7 @@ class FlowHostHostDeathTest {
     fun hostDeathWhileRunningFailsFastWithHostLostAndNextRunUsesFreshProcess() = runBlocking {
         val ticks = Collections.synchronizedList(mutableListOf<String>())
         val launcher = AppProcessFlowLauncher(context)
-        var result: BackendRunUiState? = null
+        var result: BackendExecutionState? = null
         val job = launch(Dispatchers.Default) {
             result = launcher.run(slowSymbol(), emptyMap(), null) { line -> ticks += line }
         }
@@ -65,8 +65,8 @@ class FlowHostHostDeathTest {
                 elapsed <= HOST_DEATH_TIMEOUT_MS,
             )
             val state = result
-            assertTrue("expected Refused, got $state", state is BackendRunUiState.Refused)
-            val reasons = (state as BackendRunUiState.Refused).reasons
+            assertTrue("expected Refused, got $state", state is BackendExecutionState.Refused)
+            val reasons = (state as BackendExecutionState.Refused).reasons
             assertTrue(
                 "host-lost reason missing: $reasons",
                 reasons.any { it.contains("flow-launcher:app:host-lost") },
@@ -87,9 +87,9 @@ class FlowHostHostDeathTest {
         val freshState = fresh.run(okSymbol(), emptyMap(), null) { }
         assertTrue(
             "fresh run must finish: $freshState",
-            freshState is BackendRunUiState.Finished,
+            freshState is BackendExecutionState.Finished,
         )
-        val freshResult = (freshState as BackendRunUiState.Finished).result
+        val freshResult = (freshState as BackendExecutionState.Finished).result
         assertTrue("fresh run must be Ok: $freshResult", freshResult is FlowResult.Ok)
         val freshPid = fresh.lastHostPid
         assertTrue("fresh run must report host pid", freshPid > 0)

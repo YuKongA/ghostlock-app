@@ -50,7 +50,6 @@ import androidx.compose.material.icons.filled.Brightness7
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.DesignServices
 import androidx.compose.material.icons.rounded.Pin
 import androidx.compose.material.icons.rounded.Style
@@ -96,8 +95,7 @@ import com.ghostlock.app.ui.component.material.TopBarBackButton
 import com.ghostlock.app.ui.component.material.expressiveTopAppBarColors
 import com.ghostlock.app.ui.theme.ColorMode
 import com.ghostlock.app.ui.theme.keyColorOptions
-import com.ghostlock.app.ui.theme.rememberKernelSUColorScheme
-import kotlin.math.roundToInt
+import com.ghostlock.app.ui.theme.rememberGhostLockColorScheme
 
 @Composable
 fun ColorPaletteScreenMaterial(
@@ -389,61 +387,6 @@ fun ColorPaletteScreenMaterial(
             }
 
             item {
-                TonalCard(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    val sliderState = rememberSliderState(
-                        value = uiState.moduleDescriptionMaxLines.toFloat(),
-                        steps = 3,
-                        trackRange = 1f..5f
-                    )
-
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Rounded.Description,
-                                contentDescription = stringResource(id = R.string.settings_module_description_max_lines),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.settings_module_description_max_lines),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = stringResource(id = R.string.settings_module_description_max_lines_summary),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Text(
-                                text = "${sliderState.value.roundToInt()} " + stringResource(R.string.unit_lines),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        Slider(
-                            state = sliderState,
-                            onValueChange = { sliderState.value = it },
-                            onValueChangeFinished = {
-                                actions.onSetModuleDescriptionMaxLines(sliderState.value.roundToInt())
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                }
-            }
-
-            item {
                 Spacer(modifier = Modifier.height(16.dp + navBars.calculateBottomPadding() + captionBar.calculateBottomPadding()))
             }
         }
@@ -465,7 +408,7 @@ private fun ThemePreviewCard(
     val screenRatio = screenWidth / screenHeight
     val useRail = useNavigationRail(enableFloatingBottomBar = false)
 
-    val colorScheme = rememberKernelSUColorScheme(
+    val colorScheme = rememberGhostLockColorScheme(
         seedColor = if (keyColor == 0) Color.Unspecified else Color(keyColor),
         isDark = isDark,
         isAmoled = isAmoled,
@@ -590,7 +533,7 @@ private fun ColorButtonMaterial(
     onClick: () -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
-    val colorScheme = rememberKernelSUColorScheme(
+    val colorScheme = rememberGhostLockColorScheme(
         seedColor = color,
         isDark = isDark,
         isAmoled = isAmoled,

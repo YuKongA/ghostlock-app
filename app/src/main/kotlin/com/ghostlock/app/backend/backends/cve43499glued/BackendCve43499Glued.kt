@@ -1,25 +1,40 @@
 package com.ghostlock.app.backend.backends.cve43499glued
 
 import android.content.Context
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import android.content.Intent
+import android.net.Uri
+import android.provider.OpenableColumns
 import com.ghostlock.app.R
 import com.ghostlock.app.backend.declarations.BackendRow
 import com.ghostlock.app.core.flow.FlowSymbol
 import com.ghostlock.app.backend.declarations.BackendSpec
-import com.ghostlock.app.ui.backend.BackendConfigKey
-import com.ghostlock.app.ui.backend.BackendConfigSchema
-import com.ghostlock.app.ui.backend.BackendConfigStore
-import com.ghostlock.app.ui.backend.BackendConfigType
-import com.ghostlock.app.ui.backend.BackendFlowParams
-import com.ghostlock.app.ui.backend.BackendReadiness
-import com.ghostlock.app.ui.backend.ReadinessReason
+import com.ghostlock.app.backend.declarations.BackendConfigKey
+import com.ghostlock.app.backend.declarations.BackendConfigSchema
+import com.ghostlock.app.backend.declarations.BackendConfigStore
+import com.ghostlock.app.backend.declarations.BackendConfigType
+import com.ghostlock.app.backend.declarations.BackendConfigurationSpec
+import com.ghostlock.app.backend.declarations.BackendFlowParams
+import com.ghostlock.app.backend.declarations.BackendReadiness
+import com.ghostlock.app.backend.declarations.ReadinessReason
+import com.ghostlock.app.domain.backend.BackendChoiceKind
+import com.ghostlock.app.domain.backend.BackendChoiceOption
+import com.ghostlock.app.domain.backend.BackendConfigMutationResult
+import com.ghostlock.app.domain.backend.BackendConfiguration
+import com.ghostlock.app.domain.backend.BackendConfigurationMutation
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+/** Profile selection facts owned by the backend rather than a Compose renderer. */
+internal data class Backend43499ProfileState(
+    val reference: String = "",
+    val validated: Boolean = false,
+)
 
 /** Selectable 43499 backend backed by the untouched upstream executable. */
 object BackendCve43499Glued : BackendSpec {
     private const val PROFILE_REFERENCE = "profile_reference"
+    private val profileMimeTypes = listOf("text/plain", "application/octet-stream", "*/*")
 
     override val key: String = "43499-Glued"
     override val cve: String = "CVE-2026-43499-Glued"
@@ -35,16 +50,121 @@ object BackendCve43499Glued : BackendSpec {
     override val configSchema: BackendConfigSchema = BackendConfigSchema(
         listOf(BackendConfigKey(PROFILE_REFERENCE, BackendConfigType.STRING, "")),
     )
-    /** 43499-Glued 自定义卡（profile 选择）；唯一 UI 入口。 */
-    @Composable
-    override fun ConfigCard(miuix: Boolean) {
-        Backend43499GluedProfileCard(miuix)
-    }
+    private val mutableProfileState = MutableStateFlow(Backend43499ProfileState())
+
+    /** Immutable profile-selection stream consumed by the presentation adapter. */
+    internal val profileState: StateFlow<Backend43499ProfileState> =
+        mutableProfileState.asStateFlow()
 
     /** Persisted built-in reference or SAF URI; blank means the card still requires a profile choice. */
-    var profileReference: String by mutableStateOf("")
-        private set
-    private var profileValidated: Boolean by mutableStateOf(false)
+    val profileReference: String
+        get() = profileState.value.reference
+
+    /** Standard semantic configuration projection and mutation contract for profile selection. */
+    override val configurationSpec: BackendConfigurationSpec = object : BackendConfigurationSpec {
+        /** @return Complete choice/import semantics without exposing reference parsing to UI. */
+        override fun snapshot(store: BackendConfigStore): BackendConfiguration {
+            val profile = profileState.value
+            val builtIns = runCatching {
+                Glued43499ProfileCodec.builtins(store.context).map { it.release }
+            }.getOrDefault(emptyList())
+            val importedName = profile.reference.takeIf { it.startsWith("uri:") }
+                ?.removePrefix("uri:")
+                ?.let { raw -> displayName(store.context, Uri.parse(raw)) }
+            val importedLabel = importedName?.takeIf(String::isNotBlank)?.let { name ->
+                store.context.getString(R.string.backend_43499_imported_profile, name)
+            }
+            val options = buildList {
+                add(
+                    BackendChoiceOption(
+                        value = null,
+                        label = store.context.getString(R.string.backend_43499_profile_none),
+                        kind = BackendChoiceKind.NONE,
+                    ),
+                )
+                builtIns.forEach { release ->
+                    add(BackendChoiceOption(release, release, BackendChoiceKind.BUILT_IN))
+                }
+                if (importedLabel != null) {
+                    add(
+                        BackendChoiceOption(
+                            value = profile.reference,
+                            label = importedLabel,
+                            kind = BackendChoiceKind.IMPORTED,
+                        ),
+                    )
+                }
+            }
+            val selectedIndex = when {
+                profile.reference.startsWith("builtin:") -> {
+                    val release = profile.reference.removePrefix("builtin:")
+                    options.indexOfFirst { option ->
+                        option.kind == BackendChoiceKind.BUILT_IN && option.value == release
+                    }.takeIf { it >= 0 } ?: 0
+                }
+
+                importedLabel != null -> options.lastIndex
+                else -> 0
+            }
+            val summary = when {
+                profile.reference.startsWith("builtin:") ->
+                    profile.reference.removePrefix("builtin:")
+                importedLabel != null -> importedLabel
+                else -> store.context.getString(R.string.backend_43499_profile_required)
+            }
+            return BackendConfiguration.ChoiceDocument(
+                key = key,
+                field = PROFILE_REFERENCE,
+                title = store.context.getString(R.string.backend_43499_profile_label),
+                summary = summary,
+                options = options,
+                selectedIndex = selectedIndex,
+                importTitle = store.context.getString(R.string.backend_43499_import_profile),
+                importSummary = store.context.getString(R.string.backend_43499_import_profile_summary),
+                mimeTypes = profileMimeTypes,
+                errorText = store.context.getString(R.string.backend_43499_profile_invalid),
+                invalid = profile.reference.isNotBlank() && !profile.validated,
+            )
+        }
+
+        /** Applies only the profile-reference choice/import commands owned by this backend. */
+        override fun mutate(
+            store: BackendConfigStore,
+            mutation: BackendConfigurationMutation,
+        ): BackendConfigMutationResult {
+            if (mutation.field != PROFILE_REFERENCE) {
+                return BackendConfigMutationResult.UNSUPPORTED
+            }
+            when (mutation) {
+                is BackendConfigurationMutation.SelectValue -> {
+                    val release = mutation.value
+                    if (release.isNullOrBlank()) {
+                        clearProfile(store)
+                    } else {
+                        val reference = "builtin:$release"
+                        Glued43499ProfileCodec.resolve(store.context, reference)
+                        selectProfile(reference, store)
+                    }
+                }
+
+                is BackendConfigurationMutation.ImportDocument -> {
+                    if (mutation.uri.isBlank()) return BackendConfigMutationResult.INVALID
+                    val parsed = Uri.parse(mutation.uri)
+                    if (parsed.scheme.isNullOrBlank()) return BackendConfigMutationResult.INVALID
+                    store.context.contentResolver.takePersistableUriPermission(
+                        parsed,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                    )
+                    Glued43499ProfileCodec.validateImported(store.context, parsed)
+                    selectProfile("uri:$parsed", store)
+                }
+
+                is BackendConfigurationMutation.SetBoolean ->
+                    return BackendConfigMutationResult.UNSUPPORTED
+            }
+            return BackendConfigMutationResult.APPLIED
+        }
+    }
 
     /** Short backend facts shown in the card beneath the profile selector. */
     override fun rows(): List<BackendRow> = listOf(
@@ -54,12 +174,15 @@ object BackendCve43499Glued : BackendSpec {
     )
 
     /** The selected config is a real run prerequisite; no profile means fail-closed. */
-    override fun readiness(): BackendReadiness = if (profileReference.isNotBlank() && profileValidated) {
-        BackendReadiness.Ready()
-    } else if (profileReference.isNotBlank()) {
-        BackendReadiness.NotReady(listOf(ReadinessReason(R.string.backend_43499_profile_invalid)))
-    } else {
-        BackendReadiness.NotReady(listOf(ReadinessReason(R.string.backend_43499_profile_required)))
+    override fun readiness(): BackendReadiness {
+        val selection = profileState.value
+        return if (selection.reference.isNotBlank() && selection.validated) {
+            BackendReadiness.Ready()
+        } else if (selection.reference.isNotBlank()) {
+            BackendReadiness.NotReady(listOf(ReadinessReason(R.string.backend_43499_profile_invalid)))
+        } else {
+            BackendReadiness.NotReady(listOf(ReadinessReason(R.string.backend_43499_profile_required)))
+        }
     }
 
     /**
@@ -77,9 +200,11 @@ object BackendCve43499Glued : BackendSpec {
     /** Loads the saved profile and validates it using the same codec as the exec input path. */
     override fun restoreConfig(store: BackendConfigStore) {
         val saved = store.getString(PROFILE_REFERENCE)
-        profileReference = saved
-        profileValidated = saved.isNotBlank() &&
-            runCatching { Glued43499ProfileCodec.resolve(store.context, saved) }.isSuccess
+        mutableProfileState.value = Backend43499ProfileState(
+            reference = saved,
+            validated = saved.isNotBlank() &&
+                runCatching { Glued43499ProfileCodec.resolve(store.context, saved) }.isSuccess,
+        )
     }
 
     /** Writes only the declared profile reference; profile content remains in assets or the SAF URI. */
@@ -90,15 +215,13 @@ object BackendCve43499Glued : BackendSpec {
     /** Selects a pre-validated reference and immediately persists it in the declared schema. */
     fun selectProfile(reference: String, store: BackendConfigStore) {
         store.putString(PROFILE_REFERENCE, reference)
-        profileReference = reference
-        profileValidated = true
+        mutableProfileState.value = Backend43499ProfileState(reference, validated = true)
     }
 
     /** Clears the profile choice so readiness and dispatch return to the profile-required state. */
     fun clearProfile(store: BackendConfigStore) {
         store.putString(PROFILE_REFERENCE, "")
-        profileReference = ""
-        profileValidated = false
+        mutableProfileState.value = Backend43499ProfileState()
     }
 
     /** B4a：UI 进程把 profile 解析成 Flow 参数（失败具名 Refused；host 不读 UI 全局）。 */
@@ -108,4 +231,11 @@ object BackendCve43499Glued : BackendSpec {
     /** Resolves the persisted selection into upstream HOCON text plus current GLK1 bytes. */
     internal fun resolveProfile(context: Context): Resolved43499Profile =
         Glued43499ProfileCodec.resolve(context, profileReference)
+
+    /** @return Provider display name or a stable URI path fallback. */
+    private fun displayName(context: Context, uri: Uri): String =
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
+        } ?: uri.lastPathSegment ?: "document"
 }

@@ -13,72 +13,42 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.ghostlock.app.ui.Natives
 import com.ghostlock.app.R
 import com.ghostlock.app.ui.component.material.SegmentedColumn
 import com.ghostlock.app.ui.component.material.SegmentedListItem
 import com.ghostlock.app.ui.component.profile.dialogs.SingleSelectDialog
-import com.ghostlock.app.ui.util.listAppProfileTemplates
-import com.ghostlock.app.ui.util.setSepolicy
-import com.ghostlock.app.ui.viewmodel.getTemplateInfoById
-
-private data class TemplateOption(
-    val id: String,
-    val name: String
-)
 
 @Composable
 fun TemplateConfigMaterial(
-    profile: Natives.Profile,
+    profile: ProfileDraft,
+    templates: List<ProfileTemplateOption>,
+    onTemplateSelected: (id: String) -> Unit,
     onViewTemplate: (id: String) -> Unit = {},
     onManageTemplate: () -> Unit = {},
-    onProfileChange: (Natives.Profile) -> Unit
 ) {
     val showDialog = remember { mutableStateOf(false) }
     val template = profile.rootTemplate ?: ""
-    val profileTemplates = listAppProfileTemplates()
-    val noTemplates = profileTemplates.isEmpty()
+    val noTemplates = templates.isEmpty()
 
-    val templateOptions = remember(profileTemplates) {
-        profileTemplates.map { tid ->
-            TemplateOption(tid, tid)
-        }
-    }
-
-    val selectedTemplate = remember(template, templateOptions) {
-        templateOptions.find { it.id == template } ?: templateOptions.firstOrNull()
+    val selectedTemplate = remember(template, templates) {
+        templates.find { it.id == template } ?: templates.firstOrNull()
     }
 
     if (showDialog.value && !noTemplates) {
         SingleSelectDialog(
             title = stringResource(R.string.profile_template),
-            items = templateOptions,
-            selectedItem = selectedTemplate ?: templateOptions.first(),
+            items = templates,
+            selectedItem = selectedTemplate ?: templates.first(),
             itemTitle = { it.name },
             onConfirm = { selected ->
-                val tid = selected.id
-                val templateInfo = getTemplateInfoById(tid)
-                if (templateInfo != null && setSepolicy(tid, templateInfo.rules.joinToString("\n"))) {
-                    onProfileChange(
-                        profile.copy(
-                            rootTemplate = tid,
-                            rootUseDefault = false,
-                            uid = templateInfo.uid,
-                            gid = templateInfo.gid,
-                            groups = templateInfo.groups,
-                            capabilities = templateInfo.capabilities,
-                            context = templateInfo.context,
-                            namespace = templateInfo.namespace,
-                        )
-                    )
-                }
+                onTemplateSelected(selected.id)
                 showDialog.value = false
             },
             onDismiss = { showDialog.value = false }
         )
     }
 
-    val selectedTemplateName = template.ifEmpty { "None" }
+    val selectedTemplateName = selectedTemplate?.name ?: "None"
 
     SegmentedColumn(
         modifier = Modifier.padding(horizontal = 16.dp),

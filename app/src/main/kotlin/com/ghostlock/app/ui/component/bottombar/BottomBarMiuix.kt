@@ -1,29 +1,19 @@
 package com.ghostlock.app.ui.component.bottombar
 
-import androidx.annotation.StringRes
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Cottage
-import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.Route
-import androidx.compose.material.icons.rounded.Security
-import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ghostlock.app.ui.Natives
-import com.ghostlock.app.R
 import com.ghostlock.app.ui.LocalMainPagerState
 import com.ghostlock.app.ui.component.FloatingBottomBar
 import com.ghostlock.app.ui.component.FloatingBottomBarItem
@@ -46,19 +36,21 @@ fun BottomBarMiuix(
     blurBackdrop: LayerBackdrop?,
     backdrop: Backdrop,
     navigationBadge: NavigationBadgeState,
+    destinations: List<MainNavigationDestination>,
+    pageCount: Int,
+    fullFeatured: Boolean,
     modifier: Modifier,
 ) {
-    val fullFeatured = Natives.isFullFeatured()
     if (!fullFeatured) return
 
     val mainState = LocalMainPagerState.current
     val enableFloatingBottomBar = LocalEnableFloatingBottomBar.current
     val enableFloatingBottomBarBlur = LocalEnableFloatingBottomBarBlur.current
 
-    val items = BottomBarDestination.entries.map { destination ->
+    val items = destinations.take(pageCount).map { destination ->
         NavigationItem(
             label = stringResource(destination.label),
-            icon = destination.icon,
+            icon = destination.miuixIcon,
         )
     }
     if (!enableFloatingBottomBar) {
@@ -131,16 +123,6 @@ fun BottomBarMiuix(
             }
         }
     }
-}
-
-enum class BottomBarDestination(
-    @get:StringRes val label: Int,
-    val icon: ImageVector,
-) {
-    Home(R.string.home, Icons.Rounded.Cottage),
-    Module(R.string.module, Icons.Rounded.Route),
-    SuperUser(R.string.superuser, Icons.Rounded.PlayArrow),
-    Setting(R.string.settings, Icons.Rounded.Settings)
 }
 
 internal fun navigationBadgeFor(

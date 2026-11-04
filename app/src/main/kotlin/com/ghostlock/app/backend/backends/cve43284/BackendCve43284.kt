@@ -4,28 +4,18 @@ import com.ghostlock.app.backend.declarations.UnfinishedBackend
 import com.ghostlock.app.backend.declarations.BackendRow
 import com.ghostlock.app.backend.declarations.BackendSpec
 import com.ghostlock.app.core.finish.*
-
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.ui.Modifier
-import com.ghostlock.app.ui.component.material.SegmentedColumn
-import com.ghostlock.app.ui.component.material.SegmentedListItem
-import androidx.compose.runtime.Composable
 import com.ghostlock.app.R
-import com.ghostlock.app.ui.Natives
-import com.ghostlock.app.ui.backend.BackendConfigKey
-import com.ghostlock.app.ui.backend.BackendConfigSchema
-import com.ghostlock.app.ui.backend.BackendConfigStore
-import com.ghostlock.app.ui.backend.BackendConfigType
-import com.ghostlock.app.ui.backend.BackendReadiness
-import com.ghostlock.app.ui.backend.BackendSessionStore
-import com.ghostlock.app.ui.backend.ReadinessReason
-import com.ghostlock.app.ui.util.rootAvailable
-import top.yukonga.miuix.kmp.preference.SwitchPreference
+import com.ghostlock.app.backend.declarations.BackendConfigKey
+import com.ghostlock.app.backend.declarations.BackendConfigSchema
+import com.ghostlock.app.backend.declarations.BackendConfigStore
+import com.ghostlock.app.backend.declarations.BackendConfigType
+import com.ghostlock.app.backend.declarations.BackendConfigurationSpec
+import com.ghostlock.app.backend.declarations.BackendReadiness
+import com.ghostlock.app.backend.declarations.ReadinessReason
+import com.ghostlock.app.domain.backend.BackendConfigIcon
+import com.ghostlock.app.domain.backend.BackendConfigMutationResult
+import com.ghostlock.app.domain.backend.BackendConfiguration
+import com.ghostlock.app.domain.backend.BackendConfigurationMutation
 
 /**
  *  CVE-2026-43284 的配置页（页缓存写 + LKM relay）。
@@ -63,33 +53,65 @@ object BackendCve43284 : BackendSpec {
         ),
     )
 
+    /** Standard configuration capability; normal reads and writes use canonical [FinishConfig]. */
+    override val configurationSpec: BackendConfigurationSpec = object : BackendConfigurationSpec {
+        /** @return Complete renderer semantics for the relay-access toggle. */
+        override fun snapshot(store: BackendConfigStore): BackendConfiguration {
+            FinishConfig.load(store.context)
+            return BackendConfiguration.Toggle(
+                key = key,
+                field = CONFIG_KEY_KERNEL_ACCESS,
+                title = store.context.getString(R.string.backend_43284_access_title),
+                enabled = FinishConfig.state.kernelAccessAfterRelay,
+                enabledSummary = store.context.getString(R.string.backend_43284_access_on),
+                disabledSummary = store.context.getString(R.string.backend_43284_access_off),
+                icon = BackendConfigIcon.SECURITY,
+            )
+        }
+
+        /** Applies only this backend's declared boolean field through [FinishConfig]. */
+        override fun mutate(
+            store: BackendConfigStore,
+            mutation: BackendConfigurationMutation,
+        ): BackendConfigMutationResult {
+            if (mutation !is BackendConfigurationMutation.SetBoolean ||
+                mutation.field != CONFIG_KEY_KERNEL_ACCESS
+            ) {
+                return BackendConfigMutationResult.UNSUPPORTED
+            }
+            FinishConfig.load(store.context)
+            FinishConfig.update(
+                store.context,
+                FinishConfig.state.copy(kernelAccessAfterRelay = mutation.value),
+            )
+            return BackendConfigMutationResult.APPLIED
+        }
+    }
+
     /**
-     * 从 `FinishConfig.state` 写内核访问开关到框架 store（先加载已保存的 FinishState，避免覆盖）。
+     * 保留 session lifecycle hook；canonical [FinishConfig] 不回写 retired typed duplicate。
      *
-     * @param store UI 框架注入的配置 store。
+     * @param store Outer data adapter 注入的 typed store；本 hook 有意不写入。
      */
     override fun saveConfig(store: BackendConfigStore) {
-        FinishConfig.load(store.context)
-        store.putBoolean(CONFIG_KEY_KERNEL_ACCESS, FinishConfig.state.kernelAccessAfterRelay)
+        /* FinishConfig is canonical; never recreate the retired typed duplicate. */
     }
 
     /**
      * 读框架 store 并写回 `FinishConfig`（启动恢复/切换 backend 时调用）。
      *
-     * @param store UI 框架注入的配置 store。
+     * @param store Outer data adapter 注入的 typed store，只作一次性迁移输入。
      * @note 幂等；先 load 再 copy，避免丢其它收尾字段。
      */
     override fun restoreConfig(store: BackendConfigStore) {
         FinishConfig.load(store.context)
         if (store.contains(CONFIG_KEY_KERNEL_ACCESS)) {
-            val enabled = store.getBoolean(CONFIG_KEY_KERNEL_ACCESS)
+            val migrated = store.getBoolean(CONFIG_KEY_KERNEL_ACCESS)
             FinishConfig.update(
                 store.context,
-                FinishConfig.state.copy(kernelAccessAfterRelay = enabled),
+                FinishConfig.state.copy(kernelAccessAfterRelay = migrated),
             )
-        } else {
-            /* 首次升级（旧版本只写 FinishConfig）：以 legacy 值为准并回填 schema。 */
-            store.putBoolean(CONFIG_KEY_KERNEL_ACCESS, FinishConfig.state.kernelAccessAfterRelay)
+            store.clear()
         }
     }
 
@@ -102,74 +124,19 @@ object BackendCve43284 : BackendSpec {
         }
 
     /**
-     * 真实来源：无 Flow 运行入口（只有 Finish/LKM relay）+ 环境未验证（Natives/root 为 stub）。
+     * 真实来源：无 Flow 运行入口（只有 Finish/LKM relay）且目标环境尚未验证。
      *
      * @return 恒 NotReady，至少两条具名原因。
      */
     override fun readiness(): BackendReadiness {
-        val rootDetail = "isManager=" + Natives.isManager +
-            ", rootAvailable=" + rootAvailable()
         return BackendReadiness.NotReady(
             listOf(
                 ReadinessReason(R.string.backend_run_no_flow_entry),
-                ReadinessReason(R.string.backend_readiness_unverified_env, rootDetail),
+                ReadinessReason(R.string.backend_readiness_environment_unverified),
             ),
         )
     }
 
-    /** 43284 自定义卡（kernel access 开关）；唯一 UI 入口。 */
-    @Composable
-    override fun ConfigCard(miuix: Boolean) {
-        Backend43284Config(miuix)
-    }
-
     /** 内核访问开关的 snake_case key（命名空间由框架拼）。 */
     private const val CONFIG_KEY_KERNEL_ACCESS = "kernel_access_after_relay"
-}
-
-@Composable
-private fun Backend43284Config(miuix: Boolean) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val enabled = FinishConfig.state.kernelAccessAfterRelay
-    val title = androidx.compose.ui.res.stringResource(R.string.backend_43284_access_title)
-    val summaryOn = androidx.compose.ui.res.stringResource(R.string.backend_43284_access_on)
-    val summaryOff = androidx.compose.ui.res.stringResource(R.string.backend_43284_access_off)
-    val summary = if (enabled) summaryOn else summaryOff
-
-    fun toggle(value: Boolean) {
-        FinishConfig.update(context, FinishConfig.state.copy(kernelAccessAfterRelay = value))
-        /* task-27：开关变更同时经 backend save 持久化到框架 store（重启恢复）。 */
-        runCatching {
-            BackendCve43284.saveConfig(
-                BackendSessionStore.from(context).configStore(context, BackendCve43284),
-            )
-        }
-    }
-
-    if (miuix) {
-        SwitchPreference(
-            startAction = {
-                androidx.compose.material3.Icon(
-                    imageVector = Icons.Filled.Security,
-                    contentDescription = null,
-                    tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground,
-                )
-            },
-            title = title,
-            summary = summary,
-            checked = enabled,
-            onCheckedChange = ::toggle,
-        )
-    } else {
-        SegmentedColumn(modifier = Modifier.fillMaxWidth()) {
-            item {
-                SegmentedListItem(
-                    leadingContent = { Icon(Icons.Filled.Security, contentDescription = null) },
-                    headlineContent = { Text(title) },
-                    supportingContent = { Text(summary) },
-                    trailingContent = { Switch(checked = enabled, onCheckedChange = ::toggle) },
-                )
-            }
-        }
-    }
 }

@@ -8,13 +8,13 @@ import com.ghostlock.app.BuildConfig
 import com.ghostlock.app.backend.backends.debugprobe.BackendDebugProbe
 import com.ghostlock.app.backend.launcher.ShizukuProcessFlowLauncher
 import com.ghostlock.app.core.flow.FlowResult
-import com.ghostlock.app.ui.backend.BackendRunDispatch
-import com.ghostlock.app.ui.backend.BackendRunDispatcher
-import com.ghostlock.app.ui.backend.BackendRunGate
-import com.ghostlock.app.ui.backend.BackendRunUiState
-import com.ghostlock.app.ui.backend.RunPageContext
-import com.ghostlock.app.ui.screen.home.ExecutorMode
-import com.ghostlock.app.ui.screen.home.ExecutorPreference
+import com.ghostlock.app.domain.privilege.AttackExecutorKind
+import com.ghostlock.app.domain.privilege.AttackExecutorState
+import com.ghostlock.app.backend.launcher.BackendRunDispatch
+import com.ghostlock.app.backend.launcher.BackendRunDispatcher
+import com.ghostlock.app.backend.launcher.BackendRunGate
+import com.ghostlock.app.backend.launcher.BackendExecutionState
+import com.ghostlock.app.backend.launcher.RunPageContext
 import java.io.File
 import java.util.Collections
 import kotlinx.coroutines.runBlocking
@@ -47,23 +47,23 @@ class DebugProbeHostSmokeTest {
     @Test
     fun appHostRunsDebugProbeAndPersistsLog(): Unit = runBlocking {
         assumeTrue("debug probe is debug-build only", BuildConfig.DEBUG)
-        /* 设备可能持久化了 Shizuku 执行体；App 分支必须强制 App host（persist 在 filesDir 下）。 */
-        ExecutorPreference.load(context)
-        val previousMode = ExecutorPreference.mode
-        ExecutorPreference.set(context, ExecutorMode.App)
-        try {
+        val executor = AttackExecutorState(AttackExecutorKind.APP, authorized = true)
         val output = Collections.synchronizedList(mutableListOf<String>())
         val spec = BackendDebugProbe
-        val decision = BackendRunGate.decide(spec, spec.readiness(), RunPageContext())
+        val decision = BackendRunGate.decide(
+            spec,
+            spec.readiness(),
+            RunPageContext(executor = executor),
+        )
         assertTrue("gate rejected debug probe: ${decision.reasons}", decision.allowed)
 
-        val dispatch = BackendRunDispatcher.dispatch(spec, decision, context) { line ->
+        val dispatch = BackendRunDispatcher.dispatch(spec, decision, context, executor) { line ->
             output += line
         }
         assertTrue("dispatcher did not execute: $dispatch", dispatch is BackendRunDispatch.Executed)
         val state = (dispatch as BackendRunDispatch.Executed).state
-        assertTrue("expected Finished, got $state", state is BackendRunUiState.Finished)
-        val result = (state as BackendRunUiState.Finished).result
+        assertTrue("expected Finished, got $state", state is BackendExecutionState.Finished)
+        val result = (state as BackendExecutionState.Finished).result
         assertTrue("expected Ok, got $result", result is FlowResult.Ok)
         val evidence = (result as FlowResult.Ok).evidence
         assertEquals("ok", evidence["debug_probe"])
@@ -119,14 +119,14 @@ class DebugProbeHostSmokeTest {
             }
         }
         /* 第二次 run：新 host 进程；persist 覆盖写后仍存在且含 done。 */
-        val secondDispatch = BackendRunDispatcher.dispatch(spec, decision, context) { }
+        val secondDispatch = BackendRunDispatcher.dispatch(spec, decision, context, executor) { }
         assertTrue(
             "second dispatcher did not execute: $secondDispatch",
             secondDispatch is BackendRunDispatch.Executed,
         )
         val secondState = (secondDispatch as BackendRunDispatch.Executed).state
-        assertTrue("second run must finish: $secondState", secondState is BackendRunUiState.Finished)
-        val secondResult = (secondState as BackendRunUiState.Finished).result
+        assertTrue("second run must finish: $secondState", secondState is BackendExecutionState.Finished)
+        val secondResult = (secondState as BackendExecutionState.Finished).result
         assertTrue("second run must be Ok: $secondResult", secondResult is FlowResult.Ok)
         val secondEvidence = (secondResult as FlowResult.Ok).evidence
         val secondPid = secondEvidence["host_pid"]
@@ -144,9 +144,6 @@ class DebugProbeHostSmokeTest {
             "app probe ok pid=$hostPid rerunPid=$secondPid persist=$persistPath lines=${output.size}",
         )
         Unit
-        } finally {
-            runCatching { ExecutorPreference.set(context, previousMode) }
-        }
     }
 
     @Test
@@ -167,8 +164,8 @@ class DebugProbeHostSmokeTest {
         val state = launcher.run(probeSymbol, emptyMap(), null) { line ->
             output += line
         }
-        assertTrue("expected Finished, got $state", state is BackendRunUiState.Finished)
-        val result = (state as BackendRunUiState.Finished).result
+        assertTrue("expected Finished, got $state", state is BackendExecutionState.Finished)
+        val result = (state as BackendExecutionState.Finished).result
         assertTrue("expected Ok, got $result", result is FlowResult.Ok)
         val evidence = (result as FlowResult.Ok).evidence
         assertEquals("2000", evidence["host_uid"])

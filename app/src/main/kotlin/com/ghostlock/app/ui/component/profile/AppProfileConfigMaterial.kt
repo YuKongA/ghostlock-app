@@ -6,7 +6,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.ghostlock.app.ui.Natives
 import com.ghostlock.app.R
 import com.ghostlock.app.ui.component.material.SegmentedColumn
 import com.ghostlock.app.ui.component.material.SegmentedSwitchItem
@@ -17,8 +16,9 @@ fun AppProfileConfigMaterial(
     modifier: Modifier = Modifier,
     fixedName: Boolean,
     enabled: Boolean,
-    profile: Natives.Profile,
-    onProfileChange: (Natives.Profile) -> Unit,
+    profile: ProfileDraft,
+    defaultUmountModules: Boolean,
+    onProfileChange: (ProfileDraft) -> Unit,
 ) {
     Column(modifier = modifier) {
         if (!fixedName) {
@@ -45,7 +45,7 @@ fun AppProfileConfigMaterial(
                     checked = if (enabled) {
                         profile.umountModules
                     } else {
-                        Natives.isDefaultUmountModules()
+                        defaultUmountModules
                     },
                     enabled = enabled,
                     onCheckedChange = {

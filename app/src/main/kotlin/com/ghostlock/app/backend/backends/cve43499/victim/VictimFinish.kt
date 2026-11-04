@@ -71,7 +71,7 @@ internal object VictimProtocol {
     /** 脚本路径最大长度（防止协议行异常长）。 */
     const val MAX_SCRIPT_PATH_LENGTH: Int = 4096
 
-    /** 默认 finish 有界等待（毫秒）；与既有 `FinishExecution.DEFAULT_TIMEOUT_MS` 同值。 */
+    /** 默认 rooted-victim finish 有界等待（毫秒）。 */
     const val DEFAULT_FINISH_TIMEOUT_MS: Long = 30_000L
 
     /** session 侧在 victim 内 watchdog 到期后再给的排空余量（毫秒）。 */

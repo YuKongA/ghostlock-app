@@ -1,87 +1,134 @@
 package com.ghostlock.app.ui.viewmodel
 
-import android.os.Build
-import android.system.Os
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ghostlock.app.domain.backend.GetBackendCatalogUseCase
+import com.ghostlock.app.domain.device.ReadDeviceStatusUseCase
+import com.ghostlock.app.domain.settings.ObserveUiPreferencesUseCase
+import com.ghostlock.app.domain.privilege.AttackExecutorKind
+import com.ghostlock.app.domain.privilege.ExecutorSelectionResult
+import com.ghostlock.app.domain.privilege.ObservePrivilegeUseCase
+import com.ghostlock.app.domain.privilege.PrivilegeState
+import com.ghostlock.app.domain.privilege.RefreshPrivilegeUseCase
+import com.ghostlock.app.domain.privilege.SelectPrivilegeExecutorUseCase
+import com.ghostlock.app.domain.update.AppUpdateInfo
+import com.ghostlock.app.domain.update.CheckAppUpdateUseCase
+import com.ghostlock.app.ui.screen.home.HomeUiState
+import com.ghostlock.app.ui.screen.home.PrivilegeUiState
+import com.ghostlock.app.ui.screen.home.SelectedBackendUiState
+import com.ghostlock.app.ui.screen.home.SystemInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.ghostlock.app.ui.BuildConfig
-import com.ghostlock.app.ui.Natives
-import com.ghostlock.app.ui.data.repository.SettingsRepository
-import com.ghostlock.app.ui.data.repository.SettingsRepositoryImpl
-import com.ghostlock.app.ui.getKernelVersion
-import com.ghostlock.app.ui.ksuApp
-import com.ghostlock.app.ui.screen.home.HomeUiState
-import com.ghostlock.app.ui.screen.home.SystemInfo
-import com.ghostlock.app.ui.screen.home.getManagerVersion
-import com.ghostlock.app.ui.util.checkNewVersion
-import com.ghostlock.app.ui.util.getSELinuxStatusRaw
-import com.ghostlock.app.ui.util.module.LatestVersionInfo
-import com.ghostlock.app.ui.util.resolveDeviceName
-import com.ghostlock.app.ui.util.rootAvailable
 
+/**
+ * Builds renderer-neutral home state from injected device/settings facts and the backend registry.
+ *
+ * @param readDeviceStatus Device-status use case owned by AppContainer.
+ * @param getBackendCatalog Backend-catalog use case owned by AppContainer.
+ * @param observeUiPreferences Application-shell preference use case owned by AppContainer.
+ * @param checkAppUpdate Application update use case owned by AppContainer.
+ * @param observePrivilege Live executor and Shizuku facts owned by the application data adapter.
+ * @param refreshPrivilege Explicit foreground refresh command for live privilege facts.
+ * @param selectPrivilegeExecutor Executor selection and permission-request command.
+ * @param appVersionName Build version label supplied by the composition root.
+ * @param appVersionCode Build version code supplied by the composition root.
+ * @param isPrBuild Whether this application build is a pull-request build.
+ */
 class HomeViewModel(
-    private val settingsRepo: SettingsRepository = SettingsRepositoryImpl()
+    private val readDeviceStatus: ReadDeviceStatusUseCase,
+    private val getBackendCatalog: GetBackendCatalogUseCase,
+    observeUiPreferences: ObserveUiPreferencesUseCase,
+    private val checkAppUpdate: CheckAppUpdateUseCase,
+    observePrivilege: ObservePrivilegeUseCase,
+    private val refreshPrivilege: RefreshPrivilegeUseCase,
+    private val selectPrivilegeExecutor: SelectPrivilegeExecutorUseCase,
+    private val appVersionName: String,
+    private val appVersionCode: Long,
+    private val isPrBuild: Boolean,
 ) : ViewModel() {
+    private val preferences = observeUiPreferences()
+    private val privilege = observePrivilege()
+    private val mutableUiState = MutableStateFlow(buildState())
+    val uiState: StateFlow<HomeUiState> = mutableUiState.asStateFlow()
 
-    private val _uiState = MutableStateFlow(buildState())
-    val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
-
-    fun refresh() {
+    init {
         viewModelScope.launch {
-            val baseState = withContext(Dispatchers.IO) { buildState() }
-            _uiState.update { baseState }
-            if (baseState.checkUpdateEnabled) {
-                val latestVersionInfo = withContext(Dispatchers.IO) { checkNewVersion() }
-                _uiState.update { it.copy(latestVersionInfo = latestVersionInfo) }
+            privilege.collectLatest { state ->
+                mutableUiState.update { current -> current.copy(privilege = state.toUiState()) }
             }
         }
     }
 
-    private fun buildState(): HomeUiState {
-        val kernelVersion = getKernelVersion()
-        val isManager = Natives.isManager
-        val ksuVersion = if (isManager) Natives.version else null
-        val kernelUAPIVersion = if (isManager) Natives.kernelUAPIVersion else null
-        val managerUAPIVersion = Natives.managerUAPIVersion
-        val lkmMode = ksuVersion?.let { if (kernelVersion.isGKI()) Natives.isLkmMode else null }
-        val isRootAvailable = rootAvailable()
-        val managerVersion = getManagerVersion(ksuApp)
+    /** Refreshes device/backend facts and optionally performs the configured update check. */
+    fun refresh() {
+        mutableUiState.update { current ->
+            current.copy(selectedBackend = selectedBackendState())
+        }
+        refreshPrivilege()
+        viewModelScope.launch {
+            val baseState = withContext(Dispatchers.IO) { buildState() }
+            mutableUiState.value = baseState
+            if (baseState.checkUpdateEnabled) {
+                val latestVersionInfo = withContext(Dispatchers.IO) { checkAppUpdate() }
+                mutableUiState.update { it.copy(latestVersionInfo = latestVersionInfo) }
+            }
+        }
+    }
 
+    /**
+     * Handles one explicit executor choice without exposing storage or Shizuku APIs to presentation.
+     *
+     * @param kind Requested executor family.
+     * @return Exact outcome used to keep the overview or show the Shizuku help page.
+     */
+    fun selectExecutor(kind: AttackExecutorKind): ExecutorSelectionResult =
+        selectPrivilegeExecutor(kind)
+
+    /** @return One current state snapshot without Android or legacy manager presentation globals. */
+    private fun buildState(): HomeUiState {
+        val deviceStatus = readDeviceStatus()
         return HomeUiState(
-            kernelVersion = kernelVersion,
-            ksuVersion = ksuVersion,
-            lkmMode = lkmMode,
-            isLkmBundled = lkmMode == true && Natives.isLkmBundled,
-            isManager = isManager,
-            isManagerPrBuild = BuildConfig.IS_PR_BUILD,
-            isKernelPrBuild = Natives.isPrBuild,
-            requiresNewKernel = isManager && Natives.managerUAPIVersion > Natives.kernelUAPIVersion,
-            requiresNewManager = isManager && Natives.managerUAPIVersion < Natives.kernelUAPIVersion,
-            kernelUAPIVersion = kernelUAPIVersion,
-            managerUAPIVersion = managerUAPIVersion,
-            isRootAvailable = isRootAvailable,
-            isSafeMode = Natives.isSafeMode,
-            isLateLoadMode = Natives.isLateLoadMode,
-            checkUpdateEnabled = settingsRepo.checkUpdate,
-            latestVersionInfo = LatestVersionInfo(),
-            currentManagerVersionCode = managerVersion.versionCode,
+            selectedBackend = selectedBackendState(),
+            isPrBuild = isPrBuild,
+            checkUpdateEnabled = preferences.value.checkUpdate,
+            latestVersionInfo = AppUpdateInfo(),
+            currentAppVersionCode = appVersionCode,
             systemInfo = SystemInfo(
-                kernelVersion = Os.uname().release,
-                managerVersion = "${managerVersion.versionName} (${managerVersion.versionCode}-${managerUAPIVersion})",
-                deviceModel = resolveDeviceName(),
-                fingerprint = Build.FINGERPRINT,
-                selinuxStatus = getSELinuxStatusRaw(),
-                seccompStatus = runCatching {
-                    Os.prctl(21 /* PR_GET_SECCOMP */, 0, 0, 0, 0)
-                }.getOrDefault(-1),
+                kernelVersion = deviceStatus.kernelRelease,
+                appVersion = "$appVersionName ($appVersionCode)",
+                deviceModel = deviceStatus.deviceModel,
+                fingerprint = deviceStatus.fingerprint,
+                selinuxStatus = deviceStatus.selinuxStatus,
+                seccompStatus = deviceStatus.seccompStatus,
             ),
+            privilege = privilege.value.toUiState(),
         )
     }
+
+    /** @return Current selected-backend readiness projected without waiting for device I/O. */
+    private fun selectedBackendState(): SelectedBackendUiState {
+        val selectedBackend = checkNotNull(getBackendCatalog().selectedBackend()) {
+            "backend catalog is empty"
+        }
+        return SelectedBackendUiState(
+            cveLabel = selectedBackend.cveLabel,
+            statusText = selectedBackend.statusText,
+            isReady = selectedBackend.isReady,
+        )
+    }
+
+    /** @return Presentation projection without Android or component-specific types. */
+    private fun PrivilegeState.toUiState(): PrivilegeUiState = PrivilegeUiState(
+        selectedExecutor = selectedExecutor,
+        displayedExecutor = displayedExecutor(),
+        appUid = appUid,
+        shizukuAvailable = shizukuAvailable,
+        shizukuGranted = shizukuGranted,
+    )
 }

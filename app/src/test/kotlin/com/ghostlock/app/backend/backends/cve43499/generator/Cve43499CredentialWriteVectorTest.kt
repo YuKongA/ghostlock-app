@@ -2,9 +2,9 @@ package com.ghostlock.app.backend.backends.cve43499.generator
 
 import com.ghostlock.app.backend.backends.cve43499.flow.Cve43499WriteStageId
 import com.ghostlock.app.backend.backends.cve43499.lifecycle.Cve43499PlacementFacts
-import com.ghostlock.app.data.cve43499.A301SoDebugConfig
-import com.ghostlock.app.data.cve43499.DebugInjection
-import com.ghostlock.app.data.cve43499.DebugPrimitiveKind
+import com.ghostlock.app.backend.backends.cve43499.config.Cve43499DebugConfig
+import com.ghostlock.app.backend.backends.cve43499.config.DebugInjection
+import com.ghostlock.app.backend.backends.cve43499.config.DebugPrimitiveKind
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -19,8 +19,8 @@ import org.junit.Test
  * @note 纯 JVM 单测；不触 Native、不触 Android。
  */
 class Cve43499CredentialWriteVectorTest {
-    private val debug = A301SoDebugConfig.parse(readDebugAsset())
-    private val execution = A301SoDebugConfig.executionParameters()
+    private val debug = Cve43499DebugConfig.parse(readDebugAsset())
+    private val execution = Cve43499DebugConfig.executionParameters()
     private val context = Cve43499GeneratorContext(debug, execution, GHOST_PID)
 
     /* ---------- legacy 目标常量（独立字面量，非配置读取） ---------- */

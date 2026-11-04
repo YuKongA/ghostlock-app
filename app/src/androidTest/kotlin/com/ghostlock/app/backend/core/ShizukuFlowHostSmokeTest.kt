@@ -8,7 +8,7 @@ import com.ghostlock.app.backend.diagnostics.DiagnosticOkFlow
 import com.ghostlock.app.backend.host.FlowHostProtocol
 import com.ghostlock.app.backend.launcher.ShizukuProcessFlowLauncher
 import com.ghostlock.app.core.flow.FlowResult
-import com.ghostlock.app.ui.backend.BackendRunUiState
+import com.ghostlock.app.backend.launcher.BackendExecutionState
 import java.io.File
 import java.util.Collections
 import kotlinx.coroutines.runBlocking
@@ -63,8 +63,8 @@ class ShizukuFlowHostSmokeTest {
         val lines = Collections.synchronizedList(mutableListOf<String>())
         val first = ShizukuProcessFlowLauncher(context)
         val state = first.run(okSymbol(), mapOf("k" to "v"), null) { line -> lines += line }
-        assertTrue("expected Finished, got $state", state is BackendRunUiState.Finished)
-        val result = (state as BackendRunUiState.Finished).result
+        assertTrue("expected Finished, got $state", state is BackendExecutionState.Finished)
+        val result = (state as BackendExecutionState.Finished).result
         assertTrue(result is FlowResult.Ok)
         assertEquals(3, lines.count { it.startsWith("diag:line:") })
         assertEquals("2000", result.evidence["host_uid"])
@@ -86,8 +86,8 @@ class ShizukuFlowHostSmokeTest {
     fun invalidSymbolIsRefused() = runBlocking {
         val state = ShizukuProcessFlowLauncher(context)
             .run("com.ghostlock.app.core.flow.NoSuchFlow#entry", emptyMap(), null) { }
-        assertTrue(state is BackendRunUiState.Refused)
-        val reasons = (state as BackendRunUiState.Refused).reasons
+        assertTrue(state is BackendExecutionState.Refused)
+        val reasons = (state as BackendExecutionState.Refused).reasons
         assertTrue(reasons.any { it.contains("symbol", ignoreCase = true) })
     }
 
@@ -96,8 +96,8 @@ class ShizukuFlowHostSmokeTest {
         val payload = ByteArray(FlowHostProtocol.MAX_PAYLOAD_BYTES + 1)
         val state = ShizukuProcessFlowLauncher(context)
             .run(okSymbol(), emptyMap(), payload) { }
-        assertTrue(state is BackendRunUiState.Refused)
-        val reasons = (state as BackendRunUiState.Refused).reasons
+        assertTrue(state is BackendExecutionState.Refused)
+        val reasons = (state as BackendExecutionState.Refused).reasons
         assertTrue(reasons.any { it.contains("payload", ignoreCase = true) })
     }
 
@@ -105,6 +105,6 @@ class ShizukuFlowHostSmokeTest {
     fun handoffIsNotReportedAsSuccess() = runBlocking {
         val state = ShizukuProcessFlowLauncher(context)
             .run(handoffSymbol(), emptyMap(), null) { }
-        assertEquals(BackendRunUiState.HandoffRequested, state)
+        assertEquals(BackendExecutionState.HandoffRequested, state)
     }
 }

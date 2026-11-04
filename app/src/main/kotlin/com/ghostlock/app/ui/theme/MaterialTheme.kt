@@ -11,7 +11,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.view.WindowInsetsControllerCompat
 
 @Composable
-fun MaterialKernelSUTheme(
+fun MaterialGhostLockTheme(
     appSettings: AppSettings,
     content: @Composable () -> Unit
 ) {
@@ -21,7 +21,7 @@ fun MaterialKernelSUTheme(
     val amoledMode = appSettings.colorMode.isAmoled
     val dynamicColor = appSettings.keyColor == 0
 
-    val colorScheme = rememberKernelSUColorScheme(
+    val colorScheme = rememberGhostLockColorScheme(
         seedColor = if (dynamicColor) Color.Unspecified else Color(appSettings.keyColor),
         isDark = darkTheme,
         isAmoled = amoledMode,

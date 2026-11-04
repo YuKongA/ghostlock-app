@@ -4,7 +4,7 @@ import com.ghostlock.app.BuildConfig
 import com.ghostlock.app.R
 import com.ghostlock.app.backend.registry.Backends
 import com.ghostlock.app.core.flow.FlowSymbol
-import com.ghostlock.app.ui.backend.BackendReadiness
+import com.ghostlock.app.backend.declarations.BackendReadiness
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

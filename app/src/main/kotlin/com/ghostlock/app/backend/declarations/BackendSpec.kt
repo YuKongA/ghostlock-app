@@ -2,22 +2,10 @@ package com.ghostlock.app.backend.declarations
 
 import android.content.Context
 import androidx.annotation.StringRes
-import androidx.compose.runtime.Composable
 import com.ghostlock.app.R
-import com.ghostlock.app.ui.backend.BackendUidRequirement
-import com.ghostlock.app.ui.backend.BackendParameterSchema
-import com.ghostlock.app.ui.backend.BackendConfigSchema
-import com.ghostlock.app.ui.backend.BackendConfigStore
-import com.ghostlock.app.ui.backend.BackendFlowParams
-import com.ghostlock.app.ui.backend.BackendReadiness
-import com.ghostlock.app.ui.backend.BackendRunCapability
-import com.ghostlock.app.ui.backend.ReadinessReason
 import com.ghostlock.app.core.flow.FlowSymbol
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import com.ghostlock.app.backend.registry.Backends
-import com.ghostlock.app.ui.component.backend.DefaultBackendConfigCard
+import com.ghostlock.app.domain.backend.BackendRuntimeSpec
 
 /**
  *  一个 backend 的声明（2026-10-18 用户裁定：每个 backend 一个配置文件）。
@@ -26,6 +14,14 @@ import com.ghostlock.app.ui.component.backend.DefaultBackendConfigCard
  *  新增 backend = 新建一个实现本接口的 .kt 文件并加进 [Backends.all]，界面代码不用改。
  */
 interface BackendSpec {
+    /**
+     * Optional standard interactive-configuration capability.
+     *
+     * @note Null means [rows] is projected as read-only static facts by the outer adapter.
+     */
+    val configurationSpec: BackendConfigurationSpec?
+        get() = null
+
     /**
      * 运行中是否允许用户中止（缺省 true）。true 的中止当前只是页面视觉状态；
      * false（不可中止 backend）时中止按钮不生效——触发后不得 kill/timeout payload。
@@ -67,21 +63,26 @@ interface BackendSpec {
     val selectable: Boolean
         get() = false
 
+    /**
+     * Projects this outer plugin declaration into the immutable domain catalog contract.
+     *
+     * @param resolveString Composition-root localization boundary for Android string resources.
+     * @return Fresh runtime facts; this method does not register, cache, or persist the projection.
+     */
+    fun runtimeSpec(resolveString: (Int) -> String): BackendRuntimeSpec {
+        val currentReadiness = readiness()
+        return BackendRuntimeSpec(
+            key = key,
+            cveLabel = cve,
+            displayName = resolveString(displayNameRes),
+            statusText = resolveString(statusTextRes()),
+            isReady = currentReadiness.isReady,
+            selectable = selectable,
+        )
+    }
+
     /** 这个 backend 的配置项（label 资源 + 已格式化的值）。 */
     fun rows(): List<BackendRow>
-
-    /**
-     * 选定后展示的配置卡（**唯一 UI 入口**）。
-     *
-     * 默认实现渲染 [rows] 的静态行（[DefaultBackendConfigCard]）；需要定制 UI 的 backend
-     * 覆盖本函数。配置页只调用 `ConfigCard(miuix)`，不再有自选卡/rows 双分支。
-     *
-     * @param miuix true=Miuix 风格；false=Material3。
-     */
-    @Composable
-    fun ConfigCard(miuix: Boolean) {
-        DefaultBackendConfigCard(this, miuix)
-    }
 
     /**
      * 当前环境下的运行就绪声明（真实来源；**禁止写死 Ready**）。
@@ -173,39 +174,6 @@ interface BackendSpec {
 
 /** 一行配置：label 用资源，value 已格式化。 */
 data class BackendRow(@param:StringRes val label: Int, val value: String)
-
-/** backend 注册表（顺序即下拉框顺序）。 */
-/** 当前选中的 backend（路径页下拉框与主页 badge 共用）。 */
-object BackendSelection {
-    /** 选中的 backend 稳定 key（动态注册/移除后仍保持选择）。 */
-    var selectedKey: String? by mutableStateOf(null)
-
-    /** @return 当前 key 在 [Backends.all] 的下标；找不到回退 0。 */
-    var index: Int
-        get() {
-            val key = selectedKey
-            val found = Backends.all.indexOfFirst { it.key == key }
-            return if (found >= 0 && Backends.isSelectable(Backends.all[found])) {
-                found
-            } else {
-                Backends.all.indexOfFirst { Backends.isSelectable(it) }.takeIf { it >= 0 } ?: 0
-            }
-        }
-        set(value) {
-            selectedKey = Backends.all.getOrNull(value)?.takeIf { Backends.isSelectable(it) }?.key
-        }
-
-    /**
-     * @param key backend 稳定 key。
-     * @return true=已选中且存在。
-     */
-    fun select(key: String): Boolean {
-        val spec = Backends.all.firstOrNull { it.key == key } ?: return false
-        if (!Backends.isSelectable(spec)) return false
-        selectedKey = spec.key
-        return true
-    }
-}
 
 /**
  * backend 注册表（**动态**）：内置 backend 固定，Lua 等运行时 spec 可注册/注销。

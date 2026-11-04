@@ -8,6 +8,7 @@ import android.os.IBinder
 import com.ghostlock.app.BuildConfig
 import com.ghostlock.app.backend.host.FlowHostProtocol
 import com.ghostlock.app.backend.host.HostProcessExec
+import com.ghostlock.app.domain.backend.BackendRegistryIdentity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -31,7 +32,10 @@ import java.util.concurrent.TimeUnit
  *   失败全部具名 `flow-launcher:shizuku:*`。
  * @note 阶段：B3a（设备 B3b 门禁；A301SO 无 Shizuku 包 ⇒ 本批仅编译/JVM）。
  */
-internal class ShizukuFlowHostClient(context: Context) {
+internal class ShizukuFlowHostClient(
+    context: Context,
+    private val expectedRegistryIdentity: BackendRegistryIdentity? = null,
+) {
     private val appContext: Context = context.applicationContext
 
     /** 本次 run 唯一 tag（Shizuku 用它区分 UserService 实例）。 */
@@ -148,6 +152,9 @@ internal class ShizukuFlowHostClient(context: Context) {
             ?: return@withContext failed("flow-launcher:shizuku:bind-null")
         var keepAlive = false
         try {
+            registryMismatch(host)?.let { reason ->
+                return@withContext failed(reason)
+            }
             runCatching { host.setCallback(callback) }
             val prepared = runCatching { host.prepareFlow(symbol, params, payload, null) }
                 .getOrElse { problem ->
@@ -301,6 +308,30 @@ internal class ShizukuFlowHostClient(context: Context) {
         val probe = ShizukuBackendClient(appContext, "flowhost")
         return probe.availabilityReasons().map { reason ->
             "flow-launcher:shizuku:" + reason.removePrefix("shizuku:")
+        }
+    }
+
+    /**
+     * Compares the app-root registry identity with the shell host before prepareFlow.
+     *
+     * @param host Bound UserService Flow host.
+     * @return Null when comparison is disabled or exact; otherwise a stable refusal reason.
+     */
+    private fun registryMismatch(host: IGhostlockUserService): String? {
+        val expected = expectedRegistryIdentity ?: return null
+        val actualVersion = runCatching { host.getFlowRegistryVersion() }.getOrElse {
+            return "flow-launcher:shizuku:registry-version-unavailable"
+        }
+        if (actualVersion != expected.version) {
+            return "flow-launcher:shizuku:registry-version-mismatch"
+        }
+        val actualHash = runCatching { host.getFlowRegistryContentHash() }.getOrElse {
+            return "flow-launcher:shizuku:registry-hash-unavailable"
+        }
+        return if (actualHash == expected.contentHash) {
+            null
+        } else {
+            "flow-launcher:shizuku:registry-hash-mismatch"
         }
     }
 

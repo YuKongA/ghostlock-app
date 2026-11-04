@@ -10,9 +10,10 @@ import com.ghostlock.app.backend.host.FlowHostProtocol
 import com.ghostlock.app.backend.host.FlowHostService
 import com.ghostlock.app.core.flow.FlowHostParams
 import com.ghostlock.app.core.flow.FlowHostParamsCodec
+import com.ghostlock.app.domain.backend.BackendRegistryIdentity
 import com.ghostlock.app.flow.IFlowHost
 import com.ghostlock.app.flow.IFlowHostCallback
-import com.ghostlock.app.ui.backend.BackendRunUiState
+import com.ghostlock.app.backend.launcher.BackendExecutionState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -33,7 +34,10 @@ import java.util.concurrent.TimeUnit
  * @note G13：绑定期等待为可取消挂起轮询（取消不再延迟 10s）；超时/失败语义不变。
  * @note 阶段：B2a；设备行为（新 pid/旧进程消失/Bundle wire）由 B2b 门禁。
  */
-class AppProcessFlowLauncher(context: Context) {
+class AppProcessFlowLauncher(
+    context: Context,
+    private val expectedRegistryIdentity: BackendRegistryIdentity? = null,
+) {
     private val appContext: Context = context.applicationContext
 
     /** 最近一次 run 的 host 进程 pid（诊断/门禁用；失败为 -1）。 */
@@ -48,14 +52,14 @@ class AppProcessFlowLauncher(context: Context) {
      * @param params 参数 map（B1 白名单/预算；local 先校验，避免无谓跨进程）。
      * @param payload 可选 payload（≤512 KiB）。
      * @param onLine 过程日志回调（Binder 线程调用；实现方负责切线程）。
-     * @return [BackendRunUiState]（Finished/HandoffRequested/Refused）。
+     * @return [BackendExecutionState]（Finished/HandoffRequested/Refused）。
      */
     suspend fun run(
         symbol: String,
         params: Map<String, Any?>,
         payload: ByteArray?,
         onLine: (String) -> Unit,
-    ): BackendRunUiState = withContext(Dispatchers.IO) {
+    ): BackendExecutionState = withContext(Dispatchers.IO) {
         lastHostPid = -1
         val validated = runCatching { FlowHostParams.of(params) }.getOrElse { problem ->
             return@withContext refuse(
@@ -80,6 +84,9 @@ class AppProcessFlowLauncher(context: Context) {
                 return@withContext refuse("flow-launcher:app:bind-timeout")
             }
             host = connection.host ?: return@withContext refuse("flow-launcher:app:bind-null")
+            registryMismatch(host)?.let { reason ->
+                return@withContext refuse(reason)
+            }
             host.setCallback(object : IFlowHostCallback.Stub() {
                 override fun onLine(line: String?) {
                     runCatching { onLine(line.orEmpty()) }
@@ -181,8 +188,32 @@ class AppProcessFlowLauncher(context: Context) {
     }
 
     /** @return Refused 状态（单原因）。 */
-    private fun refuse(reason: String): BackendRunUiState =
-        BackendRunUiState.Refused(listOf(reason))
+    private fun refuse(reason: String): BackendExecutionState =
+        BackendExecutionState.Refused(listOf(reason))
+
+    /**
+     * Compares the app-root registry identity with the newly bound host before prepare.
+     *
+     * @param host Bound one-shot host.
+     * @return Null when comparison is disabled or exact; otherwise a stable refusal reason.
+     */
+    private fun registryMismatch(host: IFlowHost): String? {
+        val expected = expectedRegistryIdentity ?: return null
+        val actualVersion = runCatching { host.registryVersion }.getOrElse {
+            return "flow-launcher:app:registry-version-unavailable"
+        }
+        if (actualVersion != expected.version) {
+            return "flow-launcher:app:registry-version-mismatch"
+        }
+        val actualHash = runCatching { host.registryContentHash }.getOrElse {
+            return "flow-launcher:app:registry-hash-unavailable"
+        }
+        return if (actualHash == expected.contentHash) {
+            null
+        } else {
+            "flow-launcher:app:registry-hash-mismatch"
+        }
+    }
 
     /** @return 稳定码名（日志/原因用）。 */
     private fun codeName(code: Int): String = when (code) {

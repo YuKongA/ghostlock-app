@@ -2,7 +2,7 @@ package com.ghostlock.app.backend.backends.cve43499glued
 
 import com.ghostlock.app.core.flow.FlowHostEnv
 import com.ghostlock.app.core.flow.FlowHostParams
-import com.ghostlock.app.ui.backend.BackendFlowParams
+import com.ghostlock.app.backend.declarations.BackendFlowParams
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

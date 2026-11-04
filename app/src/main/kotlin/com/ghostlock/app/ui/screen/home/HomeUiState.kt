@@ -1,67 +1,58 @@
 package com.ghostlock.app.ui.screen.home
 
 import androidx.compose.runtime.Immutable
-import com.ghostlock.app.ui.KernelVersion
-import com.ghostlock.app.ui.util.module.LatestVersionInfo
+import com.ghostlock.app.domain.privilege.AttackExecutorKind
+import com.ghostlock.app.domain.update.AppUpdateInfo
 
+/** Semantic summary of the currently selected GhostLock backend. */
 @Immutable
-data class HomeUiState(
-    val kernelVersion: KernelVersion,
-    val ksuVersion: Int?,
-    val managerUAPIVersion: Int,
-    val kernelUAPIVersion: Int?,
-    val lkmMode: Boolean?,
-    val isLkmBundled: Boolean,
-    val isManager: Boolean,
-    val isManagerPrBuild: Boolean,
-    val isKernelPrBuild: Boolean,
-    val requiresNewKernel: Boolean,
-    val requiresNewManager: Boolean,
-    val isRootAvailable: Boolean,
-    val isSafeMode: Boolean,
-    val isLateLoadMode: Boolean,
-    val checkUpdateEnabled: Boolean,
-    val latestVersionInfo: LatestVersionInfo,
-    val currentManagerVersionCode: Long,
-    val systemInfo: SystemInfo,
+data class SelectedBackendUiState(
+    val cveLabel: String,
+    val statusText: String,
+    val isReady: Boolean,
+)
+
+/** Renderer-neutral executor facts shared by the home summary and privilege dialog. */
+@Immutable
+data class PrivilegeUiState(
+    val selectedExecutor: AttackExecutorKind,
+    val displayedExecutor: AttackExecutorKind,
+    val appUid: Int,
+    val shizukuAvailable: Boolean,
+    val shizukuGranted: Boolean,
 ) {
-    val isSELinuxPermissive: Boolean
-        get() = systemInfo.selinuxStatus == "Permissive"
+    /** @return Stable executor label consumed by existing localized format resources. */
+    val displayedLabel: String
+        get() = if (displayedExecutor == AttackExecutorKind.SHIZUKU) "shizuku" else "app"
 
-    val showGkiWarning: Boolean
-        get() = ksuVersion != null && lkmMode == false
+    /** @return Persisted executor label used by the semantic dialog selection marker. */
+    val selectedLabel: String
+        get() = if (selectedExecutor == AttackExecutorKind.SHIZUKU) "shizuku" else "app"
 
-    val showLkmUpdate: Boolean
-        get() = isManager &&
-                lkmMode == true &&
-                isLkmBundled &&
-                ksuVersion?.toLong() != currentManagerVersionCode &&
-                !requiresNewKernel &&
-                !requiresNewManager
-
-    // Jailbreak mode runs on locked bootloaders, so flashing a boot image would brick the device.
-    val canInstallKernelUpdate: Boolean
-        get() = lkmMode == true && !isLateLoadMode
-
-    val showCustomLkmBadge: Boolean
-        get() = lkmMode == true && !isLkmBundled
-
-    val showRootWarning: Boolean
-        get() = ksuVersion != null && !isRootAvailable
-
-    val showManagerPrBuildWarning: Boolean
-        get() = isManager && isManagerPrBuild
-
-    val showKernelPrBuildWarning: Boolean
-        get() = isManager && !isManagerPrBuild && isKernelPrBuild
-
-    val hasUpdate: Boolean
-        get() = latestVersionInfo.versionCode > currentManagerVersionCode
+    /** @return Linux uid displayed for the currently usable compact-summary executor. */
+    val displayedUid: Int
+        get() = if (displayedExecutor == AttackExecutorKind.SHIZUKU) 2000 else appUid
 }
 
+/** Renderer-neutral home-page state shared by Material and Miuix implementations. */
+@Immutable
+data class HomeUiState(
+    val selectedBackend: SelectedBackendUiState,
+    val isPrBuild: Boolean,
+    val checkUpdateEnabled: Boolean,
+    val latestVersionInfo: AppUpdateInfo,
+    val currentAppVersionCode: Long,
+    val systemInfo: SystemInfo,
+    val privilege: PrivilegeUiState,
+) {
+    /** @return True when the update source reports a newer application build. */
+    val hasUpdate: Boolean
+        get() = latestVersionInfo.versionCode > currentAppVersionCode
+}
+
+/** Renderer callbacks that remain external to the immutable home state. */
 @Immutable
 data class HomeActions(
-    val onInstallClick: () -> Unit,
     val onOpenUrl: (String) -> Unit,
-    val onJailbreakClick: () -> Unit = {},
+    val onOpenPrivilege: () -> Unit,
 )

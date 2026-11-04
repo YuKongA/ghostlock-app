@@ -2,7 +2,7 @@ package com.ghostlock.app.backend.backends.cve43499glued
 
 import android.content.Context
 import com.ghostlock.app.core.flow.FlowHostEnv
-import com.ghostlock.app.ui.backend.BackendFlowParams
+import com.ghostlock.app.backend.declarations.BackendFlowParams
 
 /**
  * 43499-Glued 的 Flow 参数构造/解码（B4a 附录 §2）。

@@ -4,8 +4,8 @@ import com.ghostlock.app.backend.backends.cve43499.flow.Cve43499TargetAcquisitio
 import com.ghostlock.app.backend.backends.cve43499.flow.Cve43499TargetEvidence
 import com.ghostlock.app.backend.backends.cve43499.flow.Cve43499VictimContext
 import com.ghostlock.app.backend.backends.cve43499.flow.Cve43499WriteTargetSource
-import com.ghostlock.app.data.cve43499.DebugExecutionParameters
-import com.ghostlock.app.data.cve43499.DebugPerfParameters
+import com.ghostlock.app.backend.backends.cve43499.config.DebugExecutionParameters
+import com.ghostlock.app.backend.backends.cve43499.config.DebugPerfParameters
 import com.ghostlock.app.jni.Native43499CloseResult
 import com.ghostlock.app.jni.Native43499Jni
 import com.ghostlock.app.jni.Native43499PerfCollectResult

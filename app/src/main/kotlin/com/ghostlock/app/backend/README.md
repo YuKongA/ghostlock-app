@@ -7,7 +7,7 @@
 
 ```
 app/src/main/kotlin/com/ghostlock/app/backend/
-  declarations/   框架契约：BackendSpec/BackendRow/BackendSelection、FlowEntryRegistryAssembly、@UnfinishedBackend
+  declarations/   外层契约：BackendSpec/BackendRow、Flow/Readiness/Config contracts、@UnfinishedBackend
   registry/       唯一注册表 Backends
   host/           FlowHostService/FlowHostProtocol/FlowEntryParams/HostProcessExec/HostRunPaths
   launcher/       App/Shizuku 进程启动器
@@ -16,7 +16,7 @@ app/src/main/kotlin/com/ghostlock/app/backend/
     cve43499glued/  package ...backends.cve43499glued（可运行）
     cve43284glued/  package ...backends.cve43284glued（可运行）
     debugprobe/     package ...backends.debugprobe（仅 debug 注册/可选）
-    cve43499/       package ...backends.cve43499（含 victim/flow/generator/... 子包；@UnfinishedBackend）
+    cve43499/       package ...backends.cve43499（含 config/request/victim/flow/generator/... 子包；@UnfinishedBackend）
     cve43284/       package ...backends.cve43284（含 flow；@UnfinishedBackend）
     lua/            package ...backends.lua（@UnfinishedBackend）
 ```
@@ -29,16 +29,16 @@ app/src/main/kotlin/com/ghostlock/app/backend/
 - 2026-11-03 用户裁定：「没必要区分active和unfinished，统一放在backends，未完成的用注解标记」。
 - 目录只表达“backend 实现位置”；**是否可运行**由 `BackendSpec.selectable` + `BackendSpec.flowSymbol` 决定：
   - 可运行：`selectable=true` 且 `flowSymbol` 已接线；
-  - 未完工：`selectable=false`（菜单灰显/不可选），实现与配置卡保留，用 `@UnfinishedBackend` 标记。
+  - 未完工：`selectable=false`（菜单灰显/不可选），实现与标准 configuration capability 保留，用 `@UnfinishedBackend` 标记。
 - `debugprobe` 是 debug-only 可运行 backend（`selectable=BuildConfig.DEBUG`，release 不注册），**不是**未完工，不标注。
 
 ## 3 未完工 backend（@UnfinishedBackend，不是弃用）
 
 - 语义：未完工、暂未接线；**不表示弃用**。被标记 backend 的实现、测试、`Backends.all` 注册项、
-  配置卡（`BackendSpec.ConfigCard`）全部保留，菜单中灰显/不可选；`readiness()/statusTextRes()`
-  表达未就绪原因。
+  配置 schema/状态与标准 `BackendSpec.configurationSpec` capability 全部保留，菜单中灰显/不可选；
+  `readiness()/statusTextRes()` 表达未就绪原因。
 - **禁止**：以「清理/弃用/归档」为名删除、裁剪、注释掉或移出 `backends/` 的任何被标记实现/测试；
-  禁止把未完工 backend 改成不可达（注册与配置卡必须仍可解析到实现）。
+  禁止把未完工 backend 改成不可达（注册与标准 configuration capability 必须仍可解析到实现）。
 - 不变量由 `UnfinishedBackendAnnotationTest` 守卫：
   - builtin 中 `selectable=false` ⇒ 必须带注解；
   - 带注解 ⇒ 必须 `selectable=false`；
@@ -52,12 +52,19 @@ app/src/main/kotlin/com/ghostlock/app/backend/
 
 - 所有 Kotlin 文件 `package` 与目录一致（门禁：package/dir mismatch = 0）。
 - `backend/backends/<name>[/<子包>]` ⇒ `com.ghostlock.app.backend.backends.<name>[.<子包>]`。
-- `declarations/` 只放框架契约（BackendSpec/BackendRow/BackendSelection、FlowEntryRegistryAssembly、
+- `declarations/` 只放外层契约（BackendSpec/BackendRow、FlowEntryRegistryAssembly、
   `@UnfinishedBackend`）；具体 backend 声明不得再放回 `declarations/`。
 - 迁移/改名时同步更新 main、test、androidTest 的 package/import/FQN（含 `FlowSymbol` 字符串与测试断言），
   并保持行为不变。
 
-## 5 变更流程（摘要）
+## 5 标准 configuration capability
+
+- `BackendSpec` 是 Android outer plugin contract；`Backends.all` 是唯一 membership authority。UI/domain/core 不持有具体 backend，也不按 backend key/class 分支。
+- 只有需要交互配置的 backend 实现 nullable `BackendSpec.configurationSpec`。capability 只投影/接收 `Static`、`Toggle`、`ChoiceDocument`、`Document` 及其标准 mutation；`AndroidBackendConfigurationAdapter` 只负责 captured spec lookup、异常归一化与刷新。
+- presentation 只按上述 semantic subtype 选择 generic renderer。具体 profile/Lua/finish 字段规则、验证、持久化和 runtime mirror 更新留在各 backend-private capability 中；不得把 `A301SO`、profile codec、Lua store 或 concrete backend object 引回 UI/data/core。
+- CVE-2026-43499 的 A301SO/Mondrian 配置 owner 固定为 `backends/cve43499/config/Cve43499DebugConfig.kt`；其 finish request owner 固定为 `backends/cve43499/request/Cve43499RequestFactory.kt`。它们是攻击实现私有类型，不是 frontend/data contract。
+
+## 6 变更流程（摘要）
 
 1. 先读在办计划，判定无冲突/重复/被推翻；
 2. 备份改动/搬迁文件（可回滚），再移动+改包；

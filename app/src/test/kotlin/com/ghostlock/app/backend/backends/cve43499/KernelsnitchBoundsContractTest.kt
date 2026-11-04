@@ -1,6 +1,6 @@
 package com.ghostlock.app.backend.backends.cve43499
 
-import com.ghostlock.app.data.cve43499.A301SoDebugConfig
+import com.ghostlock.app.backend.backends.cve43499.config.Cve43499DebugConfig
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -57,8 +57,8 @@ class KernelsnitchBoundsContractTest {
     @Test
     fun `a301so and mondrian execution parameters match detector bounds`() {
         for (asset in listOf(A301SO_ASSET, MONDRIAN_ASSET)) {
-            val debug = A301SoDebugConfig.parse(readAsset(asset))
-            val execution = A301SoDebugConfig.executionParameters(debug)
+            val debug = Cve43499DebugConfig.parse(readAsset(asset))
+            val execution = Cve43499DebugConfig.executionParameters(debug)
             assertEquals("$asset scanLowerBound", EXPECTED_START.toLong(),
                 execution.scanLowerBound)
             assertEquals("$asset scanUpperBound", EXPECTED_END.toLong(),

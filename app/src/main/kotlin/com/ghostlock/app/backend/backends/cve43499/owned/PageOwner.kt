@@ -21,14 +21,14 @@ import com.ghostlock.app.jni.Native43499PrimitiveSpec
  * @param waiterCpu waiter 线程 CPU；`-1`=NO_PIN，其它负值拒绝。
  * @param consumerCpu consumer 线程 CPU；必须 ≥0（不 pin 无法保证 PI 窗口消费者）。
  * @return null=通过；否则具名 reason（`actor-cpu:owner|waiter|consumer`）。
- * @note 不触 Native；与 `A301SoDebugConfig.NO_PIN_CPU` 同值（-1）。
+ * @note 不触 Native；与 `Cve43499DebugConfig.NO_PIN_CPU` 同值（-1）。
  */
 internal fun precheckActorCpuPinning(
     ownerCpu: Int,
     waiterCpu: Int,
     consumerCpu: Int,
 ): String? {
-    val noPin = com.ghostlock.app.data.cve43499.A301SoDebugConfig.NO_PIN_CPU
+    val noPin = com.ghostlock.app.backend.backends.cve43499.config.Cve43499DebugConfig.NO_PIN_CPU
     if (consumerCpu < 0) return "actor-cpu:consumer"
     if (ownerCpu < noPin) return "actor-cpu:owner"
     if (waiterCpu < noPin) return "actor-cpu:waiter"

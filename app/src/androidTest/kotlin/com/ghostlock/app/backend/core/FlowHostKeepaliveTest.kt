@@ -6,7 +6,7 @@ import com.ghostlock.app.backend.diagnostics.DiagnosticKeepaliveFlow
 import com.ghostlock.app.backend.diagnostics.DiagnosticOkFlow
 import com.ghostlock.app.backend.launcher.AppProcessFlowLauncher
 import com.ghostlock.app.core.flow.FlowResult
-import com.ghostlock.app.ui.backend.BackendRunUiState
+import com.ghostlock.app.backend.launcher.BackendExecutionState
 import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -41,8 +41,8 @@ class FlowHostKeepaliveTest {
         var hostPid = -1
         try {
             val state = launcher.run(keepaliveSymbol(), emptyMap(), null) { }
-            assertTrue("expected Finished, got $state", state is BackendRunUiState.Finished)
-            val result = (state as BackendRunUiState.Finished).result
+            assertTrue("expected Finished, got $state", state is BackendExecutionState.Finished)
+            val result = (state as BackendExecutionState.Finished).result
             assertTrue("expected Failed, got $result", result is FlowResult.Failed)
             val failed = result as FlowResult.Failed
             assertEquals("diag:keepalive", failed.reason)
@@ -81,8 +81,8 @@ class FlowHostKeepaliveTest {
 
         val fresh = AppProcessFlowLauncher(context)
         val freshState = fresh.run(okSymbol(), emptyMap(), null) { }
-        assertTrue("fresh run must finish: $freshState", freshState is BackendRunUiState.Finished)
-        val freshResult = (freshState as BackendRunUiState.Finished).result
+        assertTrue("fresh run must finish: $freshState", freshState is BackendExecutionState.Finished)
+        val freshResult = (freshState as BackendExecutionState.Finished).result
         assertTrue("fresh run must be Ok: $freshResult", freshResult is FlowResult.Ok)
         val freshPid = fresh.lastHostPid
         assertTrue("fresh run must report host pid", freshPid > 0)

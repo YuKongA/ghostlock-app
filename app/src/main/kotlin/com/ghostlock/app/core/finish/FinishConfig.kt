@@ -6,9 +6,6 @@ import com.ghostlock.app.core.payload.*
 import com.ghostlock.app.backend.declarations.*
 
 import android.content.Context
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import java.util.Base64
 
 /**
@@ -103,7 +100,7 @@ object FinishConfig {
     /** 持久化格式版本：1 是四布尔旧格式，2 是载荷实例表。 */
     private const val FORMAT_VERSION = "2"
 
-    var state by mutableStateOf(FinishState())
+    var state: FinishState = FinishState()
         private set
 
     /**

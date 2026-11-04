@@ -1,6 +1,20 @@
 package com.ghostlock.app.ui.component.bottombar
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.pager.PagerState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Route
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Route
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.rounded.Cottage
+import androidx.compose.material.icons.rounded.PlayArrow as RoundedPlayArrow
+import androidx.compose.material.icons.rounded.Route as RoundedRoute
+import androidx.compose.material.icons.rounded.Settings as RoundedSettings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
@@ -10,6 +24,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import com.ghostlock.app.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.job
@@ -81,25 +97,42 @@ fun rememberMainPagerState(
 
 @Immutable
 data class NavigationBadgeState(
-    val superuserCount: Int = 0,
-    val moduleEnabledCount: Int = 0,
-    val moduleUpdatableCount: Int = 0,
+    val byPage: Map<Int, NavigationBadge> = emptyMap(),
 )
+
+/** Neutral badge model keyed by the caller-owned page index. */
+@Immutable
+data class NavigationBadge(
+    val count: Int,
+    val accent: Boolean = false,
+)
+
+/** Shared destination model rendered by both Material and Miuix navigation chrome. */
+enum class MainNavigationDestination(
+    @get:StringRes val label: Int,
+    val materialSelectedIcon: ImageVector,
+    val materialUnselectedIcon: ImageVector,
+    val miuixIcon: ImageVector,
+) {
+    Home(R.string.home, Icons.Filled.Home, Icons.Outlined.Home, Icons.Rounded.Cottage),
+    Backend(R.string.paths, Icons.Filled.Route, Icons.Outlined.Route, Icons.Rounded.RoundedRoute),
+    Run(R.string.run_page_title, Icons.Filled.PlayArrow, Icons.Outlined.PlayArrow, Icons.Rounded.RoundedPlayArrow),
+    Settings(R.string.settings, Icons.Filled.Settings, Icons.Outlined.Settings, Icons.Rounded.RoundedSettings),
+}
 
 internal enum class BadgeTone { Alert, Accent }
 
 @Immutable
 internal data class NavBadge(val count: Int, val tone: BadgeTone)
 
-/**
- * 在旧 Module/SuperUser 页移除期间关闭导航 badge。
- *
- * @param index 当前导航位置；保留于组件契约，本阶段不读取。
- * @param state 当前 badge 状态；保留于组件契约，本阶段不读取。
- * @return 始终返回 null，表示不显示 badge。
- * @note 无失败分支；前提是新导航页尚未定义 badge 语义。
- */
-internal fun badgeFor(@Suppress("UNUSED_PARAMETER") index: Int, @Suppress("UNUSED_PARAMETER") state: NavigationBadgeState): NavBadge? = null
+/** Resolves one caller-owned page badge into the shared renderer model. */
+internal fun badgeFor(index: Int, state: NavigationBadgeState): NavBadge? {
+    val badge = state.byPage[index]?.takeIf { it.count > 0 } ?: return null
+    return NavBadge(
+        count = badge.count,
+        tone = if (badge.accent) BadgeTone.Accent else BadgeTone.Alert,
+    )
+}
 
 @Composable
 fun useNavigationRail(enableFloatingBottomBar: Boolean): Boolean {
@@ -111,21 +144,58 @@ fun BottomBar(
     blurBackdrop: LayerBackdrop?,
     backdrop: Backdrop,
     navigationBadge: NavigationBadgeState,
+    destinations: List<MainNavigationDestination>,
+    pageCount: Int,
+    fullFeatured: Boolean,
     modifier: Modifier = Modifier,
 ) {
     when (LocalUiMode.current) {
-        UiMode.Miuix -> BottomBarMiuix(blurBackdrop, backdrop, navigationBadge, modifier)
-        UiMode.Material -> BottomBarMaterial(navigationBadge)
+        UiMode.Miuix -> BottomBarMiuix(
+            blurBackdrop = blurBackdrop,
+            backdrop = backdrop,
+            navigationBadge = navigationBadge,
+            destinations = destinations,
+            pageCount = pageCount,
+            fullFeatured = fullFeatured,
+            modifier = modifier,
+        )
+        UiMode.Material -> BottomBarMaterial(
+            navigationBadge = navigationBadge,
+            destinations = destinations,
+            pageCount = pageCount,
+            fullFeatured = fullFeatured,
+        )
     }
 }
 
 @Composable
 fun SideRail(
     navigationBadge: NavigationBadgeState,
+    destinations: List<MainNavigationDestination>,
+    pageCount: Int,
+    fullFeatured: Boolean,
+    expanded: Boolean,
+    onExpandedChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     when (LocalUiMode.current) {
-        UiMode.Miuix -> NavigationRailMiuix(navigationBadge, modifier)
-        UiMode.Material -> NavigationRailMaterial(navigationBadge, modifier)
+        UiMode.Miuix -> NavigationRailMiuix(
+            navigationBadge = navigationBadge,
+            destinations = destinations,
+            pageCount = pageCount,
+            fullFeatured = fullFeatured,
+            expanded = expanded,
+            onExpandedChanged = onExpandedChanged,
+            modifier = modifier,
+        )
+        UiMode.Material -> NavigationRailMaterial(
+            navigationBadge = navigationBadge,
+            destinations = destinations,
+            pageCount = pageCount,
+            fullFeatured = fullFeatured,
+            expanded = expanded,
+            onExpandedChanged = onExpandedChanged,
+            modifier = modifier,
+        )
     }
 }

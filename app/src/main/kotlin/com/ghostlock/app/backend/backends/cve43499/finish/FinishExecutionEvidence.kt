@@ -4,7 +4,7 @@ import com.ghostlock.app.core.victim.VictimIdentity
 import java.util.concurrent.TimeUnit
 
 /**
- * 收尾脚本的实际执行证据（由 UI 侧 `FinishExecution` 产生；后端只校验）。
+ * 收尾脚本的实际执行证据（由 rooted victim 执行路径产生；后端只校验）。
  *
  * @property runId 本次运行 id；必须与 handoff/验收输入一致（marker 内容绑定）。
  * @property exitCode 进程退出码；null 表示未拿到（启动失败/超时）。

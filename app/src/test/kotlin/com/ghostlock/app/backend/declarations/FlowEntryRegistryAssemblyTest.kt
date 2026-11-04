@@ -14,11 +14,15 @@ import com.ghostlock.app.core.flow.FlowEntryRegistry
 import com.ghostlock.app.core.flow.FlowEntryResolution
 import com.ghostlock.app.core.flow.FlowSymbol
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** G9：BackendSpec→registry 组装可信性（纯 JVM；无设备/Robolectric）。 */
 class FlowEntryRegistryAssemblyTest {
+    /** @return Immutable registry membership for one assertion transaction. */
+    private fun snapshot(): List<BackendSpec> = Backends.all.toList()
+
     @Test
     fun `production symbols come only from spec flowSymbols`() {
         val expected = buildList {
@@ -28,15 +32,15 @@ class FlowEntryRegistryAssemblyTest {
                 add(requireNotNull(BackendDebugProbe.flowSymbol) { "debug probe must expose flowSymbol in debug" })
             }
         }
-        assertEquals(expected, FlowEntryRegistryAssembly.productionSymbols())
+        assertEquals(expected, FlowEntryRegistryAssembly.productionSymbols(snapshot()))
         assertEquals(
             "debug probe must only be registered in debug builds",
             BuildConfig.DEBUG,
-            FlowEntryRegistryAssembly.productionSymbols().contains(BackendDebugProbe.flowSymbol),
+            FlowEntryRegistryAssembly.productionSymbols(snapshot()).contains(BackendDebugProbe.flowSymbol),
         )
         assertTrue(
             "diagnostic fixtures must not be production symbols",
-            FlowEntryRegistryAssembly.productionSymbols().none { symbol ->
+            FlowEntryRegistryAssembly.productionSymbols(snapshot()).none { symbol ->
                 symbol == diagnosticSymbols().first()
             },
         )
@@ -44,7 +48,7 @@ class FlowEntryRegistryAssemblyTest {
 
     @Test
     fun `production registry resolves migrated specs and rejects diagnostics`() {
-        val registry = FlowEntryRegistryAssembly.productionRegistry()
+        val registry = FlowEntryRegistryAssembly.productionRegistry(snapshot())
         val glued = buildList {
             add(requireNotNull(BackendCve43499Glued.flowSymbol))
             add(requireNotNull(BackendCve43284Glued.flowSymbol))
@@ -67,9 +71,9 @@ class FlowEntryRegistryAssemblyTest {
 
     @Test
     fun `host registry follows debug flag`() {
-        val production = FlowEntryRegistryAssembly.productionSymbols().toSet()
+        val production = FlowEntryRegistryAssembly.productionSymbols(snapshot()).toSet()
         val diagnostics = diagnosticSymbols().toSet()
-        val host = FlowEntryRegistryAssembly.hostRegistry()
+        val host = FlowEntryRegistryAssembly.hostRegistry(snapshot())
         if (BuildConfig.DEBUG) {
             assertEquals(production + diagnostics, host.symbols)
             for (symbol in diagnostics) {
@@ -91,7 +95,7 @@ class FlowEntryRegistryAssemblyTest {
 
     @Test
     fun `every selectable spec is registered bidirectionally`() {
-        val symbols = FlowEntryRegistryAssembly.productionSymbols()
+        val symbols = FlowEntryRegistryAssembly.productionSymbols(snapshot())
         for (spec in Backends.all.filter { it.selectable }) {
             val symbol = spec.flowSymbol
             assertTrue("selectable spec without flowSymbol: " + spec.key, symbol != null)
@@ -103,6 +107,18 @@ class FlowEntryRegistryAssemblyTest {
         for (symbol in symbols) {
             assertTrue("symbol without spec: $symbol", specBySymbol.containsKey(symbol))
         }
+    }
+
+    @Test
+    fun `registry identity is deterministic and order sensitive`() {
+        val entries = snapshot()
+        val first = BackendRegistryIdentityFactory.capture(entries)
+        val repeated = BackendRegistryIdentityFactory.capture(entries.toList())
+        val reordered = BackendRegistryIdentityFactory.capture(entries.reversed())
+
+        assertEquals(first, repeated)
+        assertNotEquals(first, reordered)
+        assertTrue(first.contentHash.matches(Regex("[0-9a-f]{64}")))
     }
 
     @Test

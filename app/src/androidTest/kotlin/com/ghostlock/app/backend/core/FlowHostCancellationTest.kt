@@ -8,7 +8,7 @@ import com.ghostlock.app.backend.diagnostics.DiagnosticSlowFlow
 import com.ghostlock.app.backend.launcher.AppProcessFlowLauncher
 import com.ghostlock.app.backend.launcher.ShizukuProcessFlowLauncher
 import com.ghostlock.app.core.flow.FlowResult
-import com.ghostlock.app.ui.backend.BackendRunUiState
+import com.ghostlock.app.backend.launcher.BackendExecutionState
 import java.io.File
 import java.util.Collections
 import kotlinx.coroutines.Dispatchers
@@ -63,8 +63,8 @@ class FlowHostCancellationTest {
 
         val fresh = AppProcessFlowLauncher(context)
         val state = fresh.run(okSymbol(), emptyMap(), null) { }
-        assertTrue("fresh run must finish: $state", state is BackendRunUiState.Finished)
-        val result = (state as BackendRunUiState.Finished).result
+        assertTrue("fresh run must finish: $state", state is BackendExecutionState.Finished)
+        val result = (state as BackendExecutionState.Finished).result
         assertTrue("fresh run must be Ok: $result", result is FlowResult.Ok)
         val freshPid = fresh.lastHostPid
         assertTrue("fresh run must report host pid", freshPid > 0)
@@ -111,11 +111,11 @@ class FlowHostCancellationTest {
 
         val fresh = ShizukuProcessFlowLauncher(context)
         val state = fresh.run(okSymbol(), emptyMap(), null) { }
-        assertTrue("fresh run must finish: $state", state is BackendRunUiState.Finished)
+        assertTrue("fresh run must finish: $state", state is BackendExecutionState.Finished)
         assertEquals(
             "fresh run must be Ok",
             true,
-            (state as BackendRunUiState.Finished).result is FlowResult.Ok,
+            (state as BackendExecutionState.Finished).result is FlowResult.Ok,
         )
         val freshPid = fresh.lastHostPid
         assertTrue("fresh run must report shell pid", freshPid > 0)

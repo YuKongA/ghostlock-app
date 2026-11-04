@@ -1,26 +1,8 @@
 package com.ghostlock.app.ui.screen.module.backends
 
-import com.ghostlock.app.core.finish.*
-import com.ghostlock.app.core.payload.*
-
-import android.content.Context
-import android.content.Intent
-import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -46,51 +28,35 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.AdminPanelSettings
-import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Extension
-import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.HelpOutline
-import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material3.CheckableDropdownMenuItem
-import androidx.compose.material3.DropdownMenuGroup
-import androidx.compose.material3.DropdownMenuPopup
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SelectableDropdownMenuItem
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -107,138 +73,146 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ghostlock.app.GhostLockApp
 import com.ghostlock.app.R
+import com.ghostlock.app.domain.finish.FinishPayloadKind
+import com.ghostlock.app.domain.finish.FinishPayloadSlot
+import com.ghostlock.app.domain.finish.FinishRootManagerOption
 import com.ghostlock.app.ui.component.dialog.ContentDialogMaterial
 import com.ghostlock.app.ui.component.dialog.ContentDialogMiuix
-import com.ghostlock.app.ui.PageChrome
+import com.ghostlock.app.ui.LocalUiMode
+import com.ghostlock.app.ui.UiMode
 import com.ghostlock.app.ui.component.AppIconImage
 import com.ghostlock.app.ui.component.material.ExpressiveScaffold
 import com.ghostlock.app.ui.component.material.SegmentedColumn
 import com.ghostlock.app.ui.component.material.SegmentedListItem
 import com.ghostlock.app.ui.component.material.TonalCard
 import com.ghostlock.app.ui.component.material.expressiveTopAppBarColors
+import com.ghostlock.app.ui.viewmodel.FinishEditorViewModel
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold as MiuixScaffold
 import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 import top.yukonga.miuix.kmp.basic.TopAppBar as MiuixTopAppBar
 import top.yukonga.miuix.kmp.preference.ArrowPreference
-import top.yukonga.miuix.kmp.preference.RadioButtonLocation
-import top.yukonga.miuix.kmp.preference.RadioButtonPreference
-import top.yukonga.miuix.kmp.preference.SwitchPreference
 import kotlin.math.roundToInt
 
 /* ---------------- payload metadata ---------------- */
 
 /** 载荷类型对应的标题文案。 */
 @Composable
-private fun payloadTitle(kind: PayloadKind): String = stringResource(
+private fun payloadTitle(kind: FinishPayloadKind): String = stringResource(
     when (kind) {
-        PayloadKind.Root -> R.string.finish_root_manager
-        PayloadKind.Command -> R.string.finish_script
-        PayloadKind.Lkm -> R.string.finish_lkm
+        FinishPayloadKind.Root -> R.string.finish_root_manager
+        FinishPayloadKind.Command -> R.string.finish_script
+        FinishPayloadKind.Lkm -> R.string.finish_lkm
     },
 )
 
 /** 载荷类型对应的图标。 */
-private fun payloadIcon(kind: PayloadKind) = when (kind) {
-    PayloadKind.Root -> Icons.Filled.AdminPanelSettings
-    PayloadKind.Command -> Icons.Filled.Terminal
-    PayloadKind.Lkm -> Icons.Filled.Extension
+private fun payloadIcon(kind: FinishPayloadKind) = when (kind) {
+    FinishPayloadKind.Root -> Icons.Filled.AdminPanelSettings
+    FinishPayloadKind.Command -> Icons.Filled.Terminal
+    FinishPayloadKind.Lkm -> Icons.Filled.Extension
 }
 
 /* ---------------- entry card ---------------- */
 
 @Composable
-fun FinishCard(miuix: Boolean, onOpen: () -> Unit) {
-    val context = LocalContext.current
-    val state = FinishConfig.state
-    val enabled = state.payloads.filter { it.enabled }.map { payloadTitle(it.kind) }
-    val summary = when (enabled.size) {
+private fun finishSummary(state: FinishEditorUiState): String {
+    val enabled = state.editor.payloads.filter { it.enabled }.map { payloadTitle(it.kind) }
+    return when (enabled.size) {
         0 -> stringResource(R.string.finish_none)
         1 -> enabled.first()
         else -> stringResource(R.string.finish_multiple)
     }
-    if (miuix) {
-        top.yukonga.miuix.kmp.basic.Card(modifier = Modifier.fillMaxWidth()) {
-            ArrowPreference(
-                title = stringResource(R.string.payload_title),
-                summary = summary,
-                onClick = { FinishConfig.load(context); onOpen() },
-                startAction = {
-                    Icon(
-                        imageVector = Icons.Filled.CheckCircle,
-                        contentDescription = null,
-                        tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground,
-                    )
-                },
-            )
-        }
-    } else {
-        TonalCard(modifier = Modifier.fillMaxWidth()) {
-            SegmentedColumn(Modifier.fillMaxWidth()) {
-                item {
-                    SegmentedListItem(
-                        onClick = { FinishConfig.load(context); onOpen() },
-                        leadingContent = { Icon(Icons.Filled.CheckCircle, contentDescription = null) },
-                        headlineContent = { Text(stringResource(R.string.payload_title)) },
-                        supportingContent = { Text(summary) },
-                    )
-                }
+}
+
+/** Renders the Material path-page finish summary from shared semantic state. */
+@Composable
+fun FinishCardMaterial(state: FinishEditorUiState, onOpen: () -> Unit) {
+    TonalCard(modifier = Modifier.fillMaxWidth()) {
+        SegmentedColumn(Modifier.fillMaxWidth()) {
+            item {
+                SegmentedListItem(
+                    onClick = onOpen,
+                    leadingContent = { Icon(Icons.Filled.CheckCircle, contentDescription = null) },
+                    headlineContent = { Text(stringResource(R.string.payload_title)) },
+                    supportingContent = { Text(finishSummary(state)) },
+                )
             }
         }
+    }
+}
+
+/** Renders the Miuix path-page finish summary from the same semantic state. */
+@Composable
+fun FinishCardMiuix(state: FinishEditorUiState, onOpen: () -> Unit) {
+    top.yukonga.miuix.kmp.basic.Card(modifier = Modifier.fillMaxWidth()) {
+        ArrowPreference(
+            title = stringResource(R.string.payload_title),
+            summary = finishSummary(state),
+            onClick = onOpen,
+            startAction = {
+                Icon(
+                    imageVector = Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground,
+                )
+            },
+        )
     }
 }
 
 /* ---------------- page ---------------- */
 
 @Composable
-fun FinishPage(miuix: Boolean, bottomInnerPadding: Dp, onBack: () -> Unit) {
-    DisposableEffect(Unit) {
-        PageChrome.hideBottomBar = true
-        onDispose { PageChrome.hideBottomBar = false }
+fun FinishPage(bottomInnerPadding: Dp, onBack: () -> Unit) {
+    val viewModel = finishEditorViewModel()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { viewModel.openEditor() }
+    val actions = FinishEditorActions(
+        onBack = onBack,
+        onToggleEditMode = viewModel::toggleEditMode,
+        onSetAddDialogVisible = viewModel::setAddDialogVisible,
+        onUpdatePayload = viewModel::updatePayload,
+        onDeletePayload = viewModel::deletePayload,
+        onMovePayloads = viewModel::movePayloads,
+        onAddPayload = viewModel::addPayload,
+        onSetRootManager = viewModel::setRootManager,
+        onSetSafeMode = viewModel::setSafeMode,
+        onSavePreview = viewModel::savePreview,
+    )
+    when (LocalUiMode.current) {
+        UiMode.Material -> FinishPageMaterial(bottomInnerPadding, state, actions)
+        UiMode.Miuix -> FinishPageMiuix(bottomInnerPadding, state, actions)
     }
-    FinishMain(miuix, bottomInnerPadding, onBack)
 }
 
 /* ---------------- main ---------------- */
 
+/** Renders the Miuix finish editor from shared semantic state and actions. */
 @Composable
-private fun FinishMain(
-    miuix: Boolean,
+private fun FinishPageMiuix(
     bottomInnerPadding: Dp,
-    onBack: () -> Unit,
+    state: FinishEditorUiState,
+    actions: FinishEditorActions,
 ) {
     val context = LocalContext.current
-    var state by remember { mutableStateOf(FinishConfig.state) }
-    /* 2026-10-19 用户裁定：右上角从「排序」改为「编辑」；载荷可重复添加/删除。 */
-    var editMode by remember { mutableStateOf(false) }
-    /* 编辑模式的底部按钮改成「添加载荷」，点开是四选一弹窗（2026-10-19）。 */
-    var showAdd by remember { mutableStateOf(false) }
-    /* 未填完整的启用项：标红，且普通模式禁止保存脚本（2026-10-19 用户裁定）。 */
-    val hasIncomplete = state.payloads.any { it.enabled && !it.isComplete() }
-    fun commit(next: FinishState) {
-        state = next
-        FinishConfig.update(context, next)
-    }
-    fun updateSlot(slot: PayloadSlot) {
-        commit(state.copy(payloads = state.payloads.map { if (it.id == slot.id) slot else it }))
-    }
-    fun deleteSlot(id: String) {
-        commit(state.copy(payloads = state.payloads.filterNot { it.id == id }))
-    }
-    fun addSlot(kind: PayloadKind) {
-        commit(state.copy(payloads = state.payloads + newPayloadSlot(kind)))
-    }
+    val editor = state.editor
+    val editMode = state.editMode
+    val showAdd = state.showAddDialog
+    val hasIncomplete = editor.hasIncompletePayload
 
-    if (miuix) {
-        val scrollBehavior = MiuixScrollBehavior()
-        MiuixScaffold(
+    val scrollBehavior = MiuixScrollBehavior()
+    MiuixScaffold(
             topBar = {
                 MiuixTopAppBar(
                     title = stringResource(R.string.payload_title),
-                    navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground) } },
+                    navigationIcon = { IconButton(onClick = actions.onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground) } },
                     actions = {
-                        IconButton(onClick = { editMode = !editMode }) {
+                        IconButton(onClick = actions.onToggleEditMode) {
                             Icon(
                                 imageVector = if (editMode) Icons.Filled.Check else Icons.Filled.Edit,
                                 contentDescription = stringResource(if (editMode) R.string.payload_edit_done else R.string.payload_edit),
@@ -264,27 +238,28 @@ private fun FinishMain(
                 ) {
                     if (editMode) {
                         /* 编辑模式只做三件事：加、排序、删；参数区不出现（2026-10-19 用户裁定）。 */
-                        if (state.payloads.isNotEmpty()) {
+                        if (editor.payloads.isNotEmpty()) {
                             PayloadEditList(
                                 miuix = true,
-                                slots = state.payloads,
-                                rootManager = state.rootManager,
-                                onDelete = ::deleteSlot,
-                                onMove = { next -> commit(state.copy(payloads = next)) },
+                                slots = editor.payloads,
+                                rootManager = editor.rootManager,
+                                onDelete = actions.onDeletePayload,
+                                onMove = actions.onMovePayloads,
                             )
                         }
                     } else {
-                        if (state.payloads.isEmpty()) PayloadEmptyCard(miuix = true)
-                        state.payloads.forEach { slot ->
+                        if (editor.payloads.isEmpty()) PayloadEmptyCard(miuix = true)
+                        editor.payloads.forEach { slot ->
                             PayloadSlotCard(
                                 miuix = true,
                                 slot = slot,
                                 incomplete = slot.enabled && !slot.isComplete(),
-                                rootManager = state.rootManager,
-                                safeMode = state.safeMode,
-                                onChange = ::updateSlot,
-                                onRootManager = { name -> commit(state.copy(rootManager = name)) },
-                                onSafeMode = { on -> commit(state.copy(safeMode = on)) },
+                                rootManager = editor.rootManager,
+                                safeMode = editor.safeMode,
+                                rootManagers = editor.rootManagers,
+                                onChange = actions.onUpdatePayload,
+                                onRootManager = actions.onSetRootManager,
+                                onSafeMode = actions.onSetSafeMode,
                             )
                         }
                     }
@@ -295,10 +270,10 @@ private fun FinishMain(
                     enabled = editMode || !hasIncomplete,
                     onClick = {
                         if (editMode) {
-                            showAdd = true
+                            actions.onSetAddDialogVisible(true)
                         } else {
-                            val file = FinishScriptStore.preview(context, state)
-                            android.widget.Toast.makeText(context, context.getString(R.string.finish_saved, file.absolutePath), android.widget.Toast.LENGTH_LONG).show()
+                            val path = actions.onSavePreview()
+                            android.widget.Toast.makeText(context, context.getString(R.string.finish_saved, path), android.widget.Toast.LENGTH_LONG).show()
                         }
                     },
                 ) {
@@ -308,16 +283,35 @@ private fun FinishMain(
                 }
             }
         }
-    } else {
-        val contextM = LocalContext.current
-        val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
-        ExpressiveScaffold(
+
+    AddPayloadDialog(
+        miuix = true,
+        show = showAdd,
+        onDismiss = { actions.onSetAddDialogVisible(false) },
+        onAdd = actions.onAddPayload,
+    )
+}
+
+/** Renders the Material finish editor from shared semantic state and actions. */
+@Composable
+private fun FinishPageMaterial(
+    bottomInnerPadding: Dp,
+    state: FinishEditorUiState,
+    actions: FinishEditorActions,
+) {
+    val context = LocalContext.current
+    val editor = state.editor
+    val editMode = state.editMode
+    val showAdd = state.showAddDialog
+    val hasIncomplete = editor.hasIncompletePayload
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    ExpressiveScaffold(
             topBar = {
                 LargeFlexibleTopAppBar(
                     title = { Text(stringResource(R.string.payload_title)) },
-                    navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } },
+                    navigationIcon = { IconButton(onClick = actions.onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } },
                     actions = {
-                        IconButton(onClick = { editMode = !editMode }) {
+                        IconButton(onClick = actions.onToggleEditMode) {
                             Icon(
                                 imageVector = if (editMode) Icons.Filled.Check else Icons.Filled.Edit,
                                 contentDescription = stringResource(if (editMode) R.string.payload_edit_done else R.string.payload_edit),
@@ -344,27 +338,28 @@ private fun FinishMain(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     if (editMode) {
-                        if (state.payloads.isNotEmpty()) {
+                        if (editor.payloads.isNotEmpty()) {
                             PayloadEditList(
                                 miuix = false,
-                                slots = state.payloads,
-                                rootManager = state.rootManager,
-                                onDelete = ::deleteSlot,
-                                onMove = { next -> commit(state.copy(payloads = next)) },
+                                slots = editor.payloads,
+                                rootManager = editor.rootManager,
+                                onDelete = actions.onDeletePayload,
+                                onMove = actions.onMovePayloads,
                             )
                         }
                     } else {
-                        if (state.payloads.isEmpty()) PayloadEmptyCard(miuix = false)
-                        state.payloads.forEach { slot ->
+                        if (editor.payloads.isEmpty()) PayloadEmptyCard(miuix = false)
+                        editor.payloads.forEach { slot ->
                             PayloadSlotCard(
                                 miuix = false,
                                 slot = slot,
                                 incomplete = slot.enabled && !slot.isComplete(),
-                                rootManager = state.rootManager,
-                                safeMode = state.safeMode,
-                                onChange = ::updateSlot,
-                                onRootManager = { name -> commit(state.copy(rootManager = name)) },
-                                onSafeMode = { on -> commit(state.copy(safeMode = on)) },
+                                rootManager = editor.rootManager,
+                                safeMode = editor.safeMode,
+                                rootManagers = editor.rootManagers,
+                                onChange = actions.onUpdatePayload,
+                                onRootManager = actions.onSetRootManager,
+                                onSafeMode = actions.onSetSafeMode,
                             )
                         }
                     }
@@ -374,10 +369,10 @@ private fun FinishMain(
                     enabled = editMode || !hasIncomplete,
                     onClick = {
                         if (editMode) {
-                            showAdd = true
+                            actions.onSetAddDialogVisible(true)
                         } else {
-                            val file = FinishScriptStore.preview(contextM, state)
-                            android.widget.Toast.makeText(contextM, contextM.getString(R.string.finish_saved, file.absolutePath), android.widget.Toast.LENGTH_LONG).show()
+                            val path = actions.onSavePreview()
+                            android.widget.Toast.makeText(context, context.getString(R.string.finish_saved, path), android.widget.Toast.LENGTH_LONG).show()
                         }
                     },
                 ) {
@@ -385,9 +380,13 @@ private fun FinishMain(
                 }
             }
         }
-    }
 
-    AddPayloadDialog(miuix = miuix, show = showAdd, onDismiss = { showAdd = false }, onAdd = ::addSlot)
+    AddPayloadDialog(
+        miuix = false,
+        show = showAdd,
+        onDismiss = { actions.onSetAddDialogVisible(false) },
+        onAdd = actions.onAddPayload,
+    )
 }
 
 /* ---------------- payload cards ---------------- */
@@ -401,15 +400,15 @@ private fun FinishMain(
 @Composable
 private fun PayloadSlotCard(
     miuix: Boolean,
-    slot: PayloadSlot,
+    slot: FinishPayloadSlot,
     incomplete: Boolean,
     rootManager: String,
     safeMode: Boolean,
-    onChange: (PayloadSlot) -> Unit,
+    rootManagers: List<FinishRootManagerOption>,
+    onChange: (FinishPayloadSlot) -> Unit,
     onRootManager: (String) -> Unit,
     onSafeMode: (Boolean) -> Unit,
 ) {
-    val context = LocalContext.current
     val scriptPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         onChange(slot.copy(scriptUri = uri?.toString()))
     }
@@ -424,14 +423,14 @@ private fun PayloadSlotCard(
             /* 开关关掉时只留头部：参数区隐藏，脚本生成也会跳过这条。 */
             if (slot.enabled) {
                 when (slot.kind) {
-                    PayloadKind.Root -> {
-                        FinishConfig.rootManagers.forEach { spec ->
-                            val installedPkgs = FinishConfig.installedPackages(context, spec)
-                            val installed = installedPkgs.isNotEmpty()
+                    FinishPayloadKind.Root -> {
+                        rootManagers.forEach { spec ->
+                            val installed = spec.installed
                             PayloadRow(
                                 miuix = miuix,
                                 title = spec.name,
-                                summary = if (installed) installedPkgs.first() else stringResource(R.string.finish_manager_missing, spec.name),
+                                summary = spec.installedPackage
+                                    ?: stringResource(R.string.finish_manager_missing, spec.name),
                                 enabled = installed,
                                 onClick = if (installed) ({ onRootManager(spec.name) }) else null,
                                 leading = { ManagerIcon(miuix, spec) },
@@ -439,7 +438,7 @@ private fun PayloadSlotCard(
                             )
                         }
                         /* 安全模式只在支持 ksud late-load 的管理器上出现（FolkPatch 是 launchOnly）。 */
-                        if (FinishConfig.spec(rootManager)?.launchOnly != true) {
+                        if (rootManagers.firstOrNull { it.name == rootManager }?.launchOnly != true) {
                             PayloadRow(
                                 miuix = miuix,
                                 title = stringResource(R.string.safe_mode_label),
@@ -459,7 +458,7 @@ private fun PayloadSlotCard(
                         }
                     }
 
-                    PayloadKind.Command -> {
+                    FinishPayloadKind.Command -> {
                         PayloadRow(
                             miuix = miuix,
                             title = stringResource(R.string.finish_mode_command),
@@ -492,7 +491,7 @@ private fun PayloadSlotCard(
                         }
                     }
 
-                    PayloadKind.Lkm -> {
+                    FinishPayloadKind.Lkm -> {
                         PayloadRow(
                             miuix = miuix,
                             title = stringResource(R.string.finish_lkm_pick),
@@ -602,9 +601,9 @@ private fun PayloadRow(
 @Composable
 private fun PayloadHeader(
     miuix: Boolean,
-    slot: PayloadSlot,
+    slot: FinishPayloadSlot,
     incomplete: Boolean,
-    onChange: (PayloadSlot) -> Unit,
+    onChange: (FinishPayloadSlot) -> Unit,
 ) {
     PayloadRow(
         miuix = miuix,
@@ -701,15 +700,15 @@ private fun PayloadTextField(
  * @return 单行文本；未配置时给占位文案。
  */
 @Composable
-private fun payloadEditSubtitle(slot: PayloadSlot, rootManager: String): String = when (slot.kind) {
-    PayloadKind.Root -> rootManager
-    PayloadKind.Command -> if (slot.scriptMode == 0) {
+private fun payloadEditSubtitle(slot: FinishPayloadSlot, rootManager: String): String = when (slot.kind) {
+    FinishPayloadKind.Root -> rootManager
+    FinishPayloadKind.Command -> if (slot.scriptMode == 0) {
         slot.command.ifBlank { stringResource(R.string.payload_not_configured) }
     } else {
         slot.scriptUri?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
             ?: stringResource(R.string.finish_script_none)
     }
-    PayloadKind.Lkm -> slot.lkmUri?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+    FinishPayloadKind.Lkm -> slot.lkmUri?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
         ?: stringResource(R.string.finish_lkm_none)
 }
 
@@ -720,10 +719,10 @@ private fun payloadEditSubtitle(slot: PayloadSlot, rootManager: String): String 
 @Composable
 private fun PayloadEditList(
     miuix: Boolean,
-    slots: List<PayloadSlot>,
+    slots: List<FinishPayloadSlot>,
     rootManager: String,
     onDelete: (String) -> Unit,
-    onMove: (List<PayloadSlot>) -> Unit,
+    onMove: (List<FinishPayloadSlot>) -> Unit,
 ) {
     val rowHeight = 72.dp
     val rowPx = with(LocalDensity.current) { rowHeight.toPx() }
@@ -893,11 +892,11 @@ private fun AddPayloadDialog(
     miuix: Boolean,
     show: Boolean,
     onDismiss: () -> Unit,
-    onAdd: (PayloadKind) -> Unit,
+    onAdd: (FinishPayloadKind) -> Unit,
 ) {
     if (!show) return
-    val kinds = listOf(PayloadKind.Root, PayloadKind.Command, PayloadKind.Lkm)
-    val pick: (PayloadKind) -> Unit = { kind ->
+    val kinds = listOf(FinishPayloadKind.Root, FinishPayloadKind.Command, FinishPayloadKind.Lkm)
+    val pick: (FinishPayloadKind) -> Unit = { kind ->
         onAdd(kind)
         onDismiss()
     }
@@ -946,17 +945,17 @@ private fun AddPayloadDialog(
 /* ---------------- helpers ---------------- */
 
 @Composable
-private fun ManagerIcon(miuix: Boolean, spec: FinishConfig.RootManagerSpec) {
-    val context = LocalContext.current
-    val installed = FinishConfig.installedPackages(context, spec)
-    val pkg = installed.firstOrNull() ?: spec.packages.first()
-    val info = remember(pkg) { runCatching { context.packageManager.getApplicationInfo(pkg, 0) }.getOrNull() }
-    if (info != null) {
-        AppIconImage(Modifier.size(36.dp), info, info.loadLabel(context.packageManager).toString())
+private fun ManagerIcon(miuix: Boolean, spec: FinishRootManagerOption) {
+    if (spec.installed) {
+        AppIconImage(
+            modifier = Modifier.size(36.dp),
+            packageName = spec.iconPackage,
+            label = spec.name,
+        )
     } else {
         Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
             Icon(
-                imageVector = Icons.Filled.HelpOutline,
+                imageVector = Icons.AutoMirrored.Filled.HelpOutline,
                 contentDescription = null,
                 modifier = Modifier.size(20.dp),
                 tint = if (miuix) {
@@ -967,4 +966,11 @@ private fun ManagerIcon(miuix: Boolean, spec: FinishConfig.RootManagerSpec) {
             )
         }
     }
+}
+
+/** @return Activity-scoped injected finish-editor ViewModel shared by the summary card and page. */
+@Composable
+private fun finishEditorViewModel(): FinishEditorViewModel {
+    val app = LocalContext.current.applicationContext as GhostLockApp
+    return viewModel(factory = app.container.viewModelFactory)
 }

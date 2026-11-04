@@ -2,9 +2,9 @@ package com.ghostlock.app.backend.backends.cve43499.generator
 
 import com.ghostlock.app.backend.backends.cve43499.flow.Cve43499PostPlacementGenerator
 import com.ghostlock.app.backend.backends.cve43499.flow.Cve43499WritePlanner
-import com.ghostlock.app.data.cve43499.A301SoDebugParameters
-import com.ghostlock.app.data.cve43499.DebugExecutionParameters
-import com.ghostlock.app.data.cve43499.DebugPrimitiveKind
+import com.ghostlock.app.backend.backends.cve43499.config.Cve43499DebugParameters
+import com.ghostlock.app.backend.backends.cve43499.config.DebugExecutionParameters
+import com.ghostlock.app.backend.backends.cve43499.config.DebugPrimitiveKind
 
 /**
  * 三路 generator 的唯一工厂（R3b）。
@@ -26,7 +26,7 @@ internal object Cve43499RouteGeneratorFactory {
      * @throws Cve43499GeneratorException ghostPid 非法（其余参数在解析期已 fail-closed）。
      */
     fun create(
-        debug: A301SoDebugParameters,
+        debug: Cve43499DebugParameters,
         execution: DebugExecutionParameters,
         ghostPid: Int,
     ): Cve43499PostPlacementGenerator {
@@ -55,7 +55,7 @@ internal object Cve43499RouteGeneratorFactory {
      * @throws Cve43499GeneratorException ghostPid 非法。
      */
     fun createPlanner(
-        debug: A301SoDebugParameters,
+        debug: Cve43499DebugParameters,
         execution: DebugExecutionParameters,
         ghostPid: Int,
     ): Cve43499WritePlanner {

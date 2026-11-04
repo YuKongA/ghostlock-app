@@ -1,34 +1,26 @@
 package com.ghostlock.app.ui.component.rebootlistpopup
 
-import android.content.Context
-import android.os.PowerManager
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.res.stringResource
-import com.ghostlock.app.ui.Natives
 import com.ghostlock.app.R
 import com.ghostlock.app.ui.LocalUiMode
 import com.ghostlock.app.ui.UiMode
+import com.ghostlock.app.ui.component.CapabilityGate
 import com.ghostlock.app.ui.component.dialog.rememberConfirmDialog
-import com.ghostlock.app.ui.util.reboot
 
 data class RebootListOption(
     @param:StringRes val labelRes: Int,
     val reason: String,
 )
 
-@Composable
-fun getRebootListOption(): List<RebootListOption> {
-    val pm = LocalContext.current.getSystemService(Context.POWER_SERVICE) as PowerManager?
-
-    @Suppress("DEPRECATION")
-    val isRebootingUserspaceSupported = pm?.isRebootingUserspaceSupported == true
-
+fun getRebootListOption(supportsUserspaceReboot: Boolean): List<RebootListOption> {
     return buildList {
         add(RebootListOption(R.string.reboot, ""))
-        if (isRebootingUserspaceSupported) {
+        if (supportsUserspaceReboot) {
             add(RebootListOption(R.string.reboot_userspace, "userspace"))
         }
         add(RebootListOption(R.string.reboot_soft, "soft_reboot"))
@@ -39,28 +31,43 @@ fun getRebootListOption(): List<RebootListOption> {
     }
 }
 
-/** Reboots on selection, but confirms first in jailbreak mode where a plain reboot drops root. */
+/** Wraps a caller-owned reboot action with optional confirmation for a plain reboot. */
 @Composable
-fun rememberRebootAction(): (String) -> Unit {
+fun rememberRebootAction(
+    confirmPlainReboot: Boolean,
+    onReboot: (String) -> Unit,
+): (String) -> Unit {
     val title = stringResource(R.string.reboot)
     val message = stringResource(R.string.jailbreak_reboot_warning)
-    val confirmDialog = rememberConfirmDialog(onConfirm = { reboot() })
+    val currentOnReboot by rememberUpdatedState(onReboot)
+    val confirmDialog = rememberConfirmDialog(onConfirm = { currentOnReboot("") })
 
-    return remember(title, message, confirmDialog) {
+    return remember(title, message, confirmDialog, confirmPlainReboot) {
         { reason ->
-            if (Natives.isLateLoadMode && reason.isEmpty()) {
+            if (confirmPlainReboot && reason.isEmpty()) {
                 confirmDialog.showConfirm(title = title, content = message)
             } else {
-                reboot(reason)
+                currentOnReboot(reason)
             }
         }
     }
 }
 
 @Composable
-fun RebootListPopup() {
-    when (LocalUiMode.current) {
-        UiMode.Miuix -> RebootListPopupMiuix()
-        UiMode.Material -> RebootListPopupMaterial()
+fun RebootListPopup(
+    available: Boolean,
+    supportsUserspaceReboot: Boolean,
+    confirmPlainReboot: Boolean,
+    onReboot: (String) -> Unit,
+) {
+    val options = remember(supportsUserspaceReboot) {
+        getRebootListOption(supportsUserspaceReboot)
+    }
+    val guardedReboot = rememberRebootAction(confirmPlainReboot, onReboot)
+    CapabilityGate(available) {
+        when (LocalUiMode.current) {
+            UiMode.Miuix -> RebootListPopupMiuix(options = options, onReboot = guardedReboot)
+            UiMode.Material -> RebootListPopupMaterial(options = options, onReboot = guardedReboot)
+        }
     }
 }

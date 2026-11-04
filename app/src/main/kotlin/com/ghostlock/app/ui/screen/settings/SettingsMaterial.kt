@@ -46,10 +46,6 @@ import androidx.compose.ui.unit.dp
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.ghostlock.app.R
-import com.ghostlock.app.attack.AttackSettings
-import com.ghostlock.app.attack.BootSettings
-import com.ghostlock.app.log.LogLevel
-import com.ghostlock.app.log.LogSettings
 import com.ghostlock.app.ui.UiMode
 import com.ghostlock.app.ui.component.material.ExpressiveScaffold
 import com.ghostlock.app.ui.component.material.SegmentedColumn
@@ -115,8 +111,8 @@ fun SettingPagerMaterial(uiState: SettingsUiState, actions: SettingsScreenAction
                 ),
             )
 
-            LogSettingsCard()
-            AttackSettingsCard()
+            LogPreferencesCard(uiState, actions)
+            RunPreferencesCard(uiState, actions)
 
             SegmentedColumn(
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
@@ -141,7 +137,11 @@ fun SettingPagerMaterial(uiState: SettingsUiState, actions: SettingsScreenAction
             Spacer(Modifier.height(bottomInnerPadding))
 
             if (showSendLog) {
-                SendLogBottomSheet(onDismiss = { showSendLog = false }, snackbarHostState = snackBarHost)
+                SendLogBottomSheet(
+                    onDismiss = { showSendLog = false },
+                    snackbarHostState = snackBarHost,
+                    createReport = actions.createDiagnosticReport,
+                )
             }
         }
     }
@@ -158,18 +158,23 @@ private fun TopBar(scrollBehavior: TopAppBarScrollBehavior?) {
 }
 
 @Composable
-fun LogSettingsCard() {
+fun LogPreferencesCard(uiState: SettingsUiState, actions: SettingsScreenActions) {
     val context = LocalContext.current
     val fontPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { LogSettings.setFont(context, it) }
+        uri?.let { actions.onSelectTerminalFont(it.toString()) }
     }
     val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        val path = uri?.let(LogSettings::exportLocationFromTree)
-        if (path != null) LogSettings.setExportLocation(context, path)
-        else android.widget.Toast.makeText(context, R.string.settings_log_export_location_invalid, android.widget.Toast.LENGTH_SHORT).show()
+        val accepted = uri?.let { actions.onSelectLogExportDirectory(it.toString()) } == true
+        if (!accepted && uri != null) {
+            android.widget.Toast.makeText(
+                context,
+                R.string.settings_log_export_location_invalid,
+                android.widget.Toast.LENGTH_SHORT,
+            ).show()
+        }
     }
-    val levels = LogLevel.entries
-    val fontSummary = LogSettings.fontPath?.let { java.io.File(it).name } ?: stringResource(R.string.settings_log_font_default)
+    val fontSummary = uiState.terminalFontName
+        ?: stringResource(R.string.settings_log_font_default)
     SegmentedColumn(
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
         content = listOf(
@@ -178,9 +183,9 @@ fun LogSettingsCard() {
                     icon = Icons.AutoMirrored.Filled.Article,
                     title = stringResource(R.string.settings_log_level),
                     summary = stringResource(R.string.settings_log_level_summary),
-                    items = levels.map { it.token },
-                    selectedIndex = levels.indexOf(LogSettings.level).coerceAtLeast(0),
-                    onItemSelected = { index -> LogSettings.setLevel(context, levels[index]) },
+                    items = uiState.logLevelOptions,
+                    selectedIndex = uiState.selectedLogLevelIndex,
+                    onItemSelected = actions.onSetLogLevelIndex,
                 )
             },
             {
@@ -197,8 +202,8 @@ fun LogSettingsCard() {
                     icon = Icons.Filled.Info,
                     title = stringResource(R.string.settings_log_timestamp),
                     summary = stringResource(R.string.settings_log_timestamp_summary),
-                    checked = LogSettings.showTimestamp,
-                    onCheckedChange = { LogSettings.setShowTimestamp(context, it) },
+                    checked = uiState.showLogTimestamp,
+                    onCheckedChange = actions.onSetShowLogTimestamp,
                 )
             },
             {
@@ -206,15 +211,15 @@ fun LogSettingsCard() {
                     icon = Icons.Filled.SaveAlt,
                     title = stringResource(R.string.settings_log_auto_export),
                     summary = stringResource(R.string.settings_log_auto_export_summary),
-                    checked = LogSettings.autoExport,
-                    onCheckedChange = { LogSettings.setAutoExport(context, it) },
+                    checked = uiState.autoExportLogs,
+                    onCheckedChange = actions.onSetAutoExportLogs,
                 )
             },
             {
                 SegmentedListItem(
                     onClick = { exportPicker.launch(null) },
                     headlineContent = { Text(stringResource(R.string.settings_log_export_location)) },
-                    supportingContent = { Text(LogSettings.exportLocation) },
+                    supportingContent = { Text(uiState.logExportLocation) },
                     leadingContent = { Icon(Icons.Filled.Folder, null) },
                     trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) },
                 )
@@ -224,8 +229,7 @@ fun LogSettingsCard() {
 }
 
 @Composable
-fun AttackSettingsCard() {
-    val context = LocalContext.current
+fun RunPreferencesCard(uiState: SettingsUiState, actions: SettingsScreenActions) {
     val retryItems = (0..10).map { it.toString() }
     SegmentedColumn(
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
@@ -235,8 +239,8 @@ fun AttackSettingsCard() {
                     icon = Icons.Filled.Security,
                     title = stringResource(R.string.settings_attack_warn),
                     summary = stringResource(R.string.settings_attack_warn_summary),
-                    checked = AttackSettings.warnOnRerun,
-                    onCheckedChange = { AttackSettings.setWarnOnRerun(context, it) },
+                    checked = uiState.warnOnRerun,
+                    onCheckedChange = actions.onSetWarnOnRerun,
                 )
             },
             {
@@ -244,8 +248,8 @@ fun AttackSettingsCard() {
                     icon = Icons.Filled.SystemUpdate,
                     title = stringResource(R.string.settings_boot_attack),
                     summary = stringResource(R.string.settings_boot_attack_summary),
-                    checked = BootSettings.autoAttackOnBoot,
-                    onCheckedChange = { BootSettings.setAutoAttackOnBoot(context, it) },
+                    checked = uiState.autoAttackOnBoot,
+                    onCheckedChange = actions.onSetAutoAttackOnBoot,
                 )
             },
             {
@@ -254,8 +258,8 @@ fun AttackSettingsCard() {
                     title = stringResource(R.string.settings_boot_retry),
                     summary = stringResource(R.string.settings_boot_retry_summary),
                     items = retryItems,
-                    selectedIndex = BootSettings.bootRetryCount,
-                    onItemSelected = { BootSettings.setBootRetryCount(context, it) },
+                    selectedIndex = uiState.bootRetryCount,
+                    onItemSelected = actions.onSetBootRetryCount,
                 )
             },
         ),

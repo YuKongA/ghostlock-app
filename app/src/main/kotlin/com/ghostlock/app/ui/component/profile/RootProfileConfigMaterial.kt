@@ -21,25 +21,20 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.ghostlock.app.ui.Natives
 import com.ghostlock.app.R
-import com.ghostlock.app.ui.profile.Capabilities
-import com.ghostlock.app.ui.profile.Groups
-import com.ghostlock.app.ui.toRawFlags
-import com.ghostlock.app.ui.toRootProfileFlags
 import com.ghostlock.app.ui.component.material.SegmentedColumn
 import com.ghostlock.app.ui.component.material.SegmentedListItem
 import com.ghostlock.app.ui.component.material.SegmentedTextField
 import com.ghostlock.app.ui.component.profile.dialogs.MultiSelectDialog
 import com.ghostlock.app.ui.component.profile.dialogs.SingleSelectDialog
-import com.ghostlock.app.ui.util.isSepolicyValid
 
 @Composable
 fun RootProfileConfigMaterial(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    profile: Natives.Profile,
-    onProfileChange: (Natives.Profile) -> Unit
+    profile: ProfileDraft,
+    isPolicyValid: (String) -> Boolean = { true },
+    onProfileChange: (ProfileDraft) -> Unit
 ) {
     Column(
         modifier = modifier.padding(bottom = 13.dp),
@@ -89,11 +84,11 @@ fun RootProfileConfigMaterial(
 
         RootProfileFlagPanel(
             enabled = enabled,
-            selected = profile.flags.toRootProfileFlags(),
+            selected = profile.flags.toProfileFlags(),
             onSelectionChange = {
                 onProfileChange(
                     profile.copy(
-                        flags = it.toRawFlags(),
+                        flags = it.toRawProfileFlags(),
                     )
                 )
             }
@@ -103,6 +98,7 @@ fun RootProfileConfigMaterial(
             enabled = enabled,
             context = profile.context,
             rules = profile.rules,
+            isPolicyValid = isPolicyValid,
             onContextChange = { domain ->
                 onProfileChange(profile.copy(context = domain, rootUseDefault = false))
             },
@@ -262,25 +258,25 @@ private fun MountNameSpacePanel(
 @Composable
 private fun RootProfileFlagPanel(
     enabled: Boolean,
-    selected: List<Natives.Profile.RootProfileFlag>,
-    onSelectionChange: (flags: List<Natives.Profile.RootProfileFlag>) -> Unit
+    selected: List<ProfileFlag>,
+    onSelectionChange: (flags: List<ProfileFlag>) -> Unit
 ) {
     val showDialog = remember { mutableStateOf(false) }
 
     val selectedFlags = remember(selected) {
         selected.mapNotNull { flag ->
-            Natives.Profile.RootProfileFlag.entries.find { it.ordinal == flag.ordinal }
+            ProfileFlag.entries.find { it.bit == flag.bit }
         }
     }
 
     val flags = remember {
-        Natives.Profile.RootProfileFlag.entries.sortedBy { it.display }
+        ProfileFlag.entries.sortedBy { it.display }
     }
 
     if (showDialog.value) {
         MultiSelectDialog(
             title = stringResource(R.string.profile_flags),
-            subtitle = "${selectedFlags.size} / ${Natives.Profile.RootProfileFlag.entries.size}",
+            subtitle = "${selectedFlags.size} / ${ProfileFlag.entries.size}",
             items = flags,
             selectedItems = selectedFlags.toSet(),
             itemTitle = { it.display },
@@ -372,6 +368,7 @@ private fun SELinuxPanel(
     enabled: Boolean,
     context: String,
     rules: String,
+    isPolicyValid: (String) -> Boolean,
     onContextChange: (String) -> Unit,
     onRulesChange: (String) -> Unit
 ) {
@@ -381,6 +378,7 @@ private fun SELinuxPanel(
         SELinuxDialog(
             domain = context,
             rules = rules,
+            isPolicyValid = isPolicyValid,
             onConfirm = { domain, r ->
                 onContextChange(domain)
                 onRulesChange(r)
@@ -408,6 +406,7 @@ private fun SELinuxPanel(
 private fun SELinuxDialog(
     domain: String,
     rules: String,
+    isPolicyValid: (String) -> Boolean,
     onConfirm: (String, String) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -418,7 +417,7 @@ private fun SELinuxDialog(
         val regex = Regex("^[a-z_]+:[a-z0-9_]+:[a-z0-9_]+(:[a-z0-9_]+)?$")
         currentDomain.matches(regex)
     }
-    val isRulesValid = remember(currentRules) { isSepolicyValid(currentRules) }
+    val isRulesValid = remember(currentRules, isPolicyValid) { isPolicyValid(currentRules) }
 
     AlertDialog(
         onDismissRequest = onDismiss,

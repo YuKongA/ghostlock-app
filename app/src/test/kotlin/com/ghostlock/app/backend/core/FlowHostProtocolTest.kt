@@ -2,7 +2,7 @@ package com.ghostlock.app.backend.core
 
 import com.ghostlock.app.backend.host.FlowHostProtocol
 import com.ghostlock.app.core.flow.FlowResult
-import com.ghostlock.app.ui.backend.BackendRunUiState
+import com.ghostlock.app.backend.launcher.BackendExecutionState
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -62,7 +62,7 @@ class FlowHostProtocolTest {
         )
         val decoded = FlowHostProtocol.decodeVerify(bytes)
         assertEquals(FlowHostProtocol.TerminalResult.HANDOFF, decoded.result)
-        assertEquals(BackendRunUiState.HandoffRequested, FlowHostProtocol.mapTerminal(decoded))
+        assertEquals(BackendExecutionState.HandoffRequested, FlowHostProtocol.mapTerminal(decoded))
     }
 
     @Test
@@ -120,8 +120,8 @@ class FlowHostProtocolTest {
             FlowHostProtocol.decodeVerify(okBytes),
             profileIdentity = "profile-1",
         )
-        assertTrue(okState is BackendRunUiState.Finished)
-        val okResult = (okState as BackendRunUiState.Finished).result
+        assertTrue(okState is BackendExecutionState.Finished)
+        val okResult = (okState as BackendExecutionState.Finished).result
         assertTrue(okResult is FlowResult.Ok)
         assertEquals("v", okResult.evidence["k"])
         assertEquals("profile-1", okResult.evidence["profileIdentity"])
@@ -130,8 +130,8 @@ class FlowHostProtocolTest {
             FlowResult.Failed("r", null, emptyList(), mapOf("e" to "1")),
         )
         val failedState = FlowHostProtocol.mapTerminal(FlowHostProtocol.decodeVerify(failedBytes))
-        assertTrue(failedState is BackendRunUiState.Finished)
-        val failedResult = (failedState as BackendRunUiState.Finished).result
+        assertTrue(failedState is BackendExecutionState.Finished)
+        val failedResult = (failedState as BackendExecutionState.Finished).result
         assertTrue(failedResult is FlowResult.Failed)
         val failed = failedResult as FlowResult.Failed
         assertEquals("r", failed.reason)

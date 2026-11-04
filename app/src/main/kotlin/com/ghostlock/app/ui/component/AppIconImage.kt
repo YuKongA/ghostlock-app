@@ -87,6 +87,35 @@ fun AppIconImage(
     }
 }
 
+/**
+ * Resolves and renders an installed application icon from a caller-supplied package identity.
+ *
+ * @param modifier Layout modifier for the icon slot.
+ * @param packageName Android package identity projected by an outer adapter.
+ * @param label Accessibility label used when the package icon is available.
+ * @note Missing or invisible packages render the same reusable placeholder and never throw.
+ */
+@Composable
+fun AppIconImage(
+    modifier: Modifier = Modifier,
+    packageName: String,
+    label: String,
+) {
+    val context = LocalContext.current
+    val applicationInfo = remember(packageName) {
+        runCatching { context.packageManager.getApplicationInfo(packageName, 0) }.getOrNull()
+    }
+    if (applicationInfo == null) {
+        PlaceHolderBox(modifier)
+        return
+    }
+    AppIconImage(
+        modifier = modifier,
+        applicationInfo = applicationInfo,
+        label = label,
+    )
+}
+
 @Composable
 fun AppIconImage(
     modifier: Modifier = Modifier,

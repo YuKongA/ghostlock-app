@@ -7,12 +7,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.dropUnlessResumed
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ghostlock.app.GhostLockApp
 import com.materialkolor.PaletteStyle
 import com.materialkolor.dynamiccolor.ColorSpec
-import com.ghostlock.app.ui.KernelSUApplication
 import com.ghostlock.app.ui.LocalUiMode
 import com.ghostlock.app.ui.UiMode
 import com.ghostlock.app.ui.navigation3.LocalNavigator
+import com.ghostlock.app.ui.platform.setPredictiveBackCallbackEnabled
 import com.ghostlock.app.ui.theme.ColorMode
 import com.ghostlock.app.ui.viewmodel.SettingsViewModel
 
@@ -21,7 +22,8 @@ fun ColorPaletteScreen() {
     val navigator = LocalNavigator.current
     val context = LocalContext.current
     val activity = LocalActivity.current
-    val viewModel = viewModel<SettingsViewModel>()
+    val app = context.applicationContext as GhostLockApp
+    val viewModel = viewModel<SettingsViewModel>(factory = app.container.viewModelFactory)
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val currentPaletteStyle = try {
         PaletteStyle.valueOf(uiState.colorStyle)
@@ -53,13 +55,12 @@ fun ColorPaletteScreen() {
         onSetEnableNavigationBadge = viewModel::setEnableNavigationBadge,
         onSetEnablePredictiveBack = {
             viewModel.setEnablePredictiveBack(it)
-            KernelSUApplication.setEnableOnBackInvokedCallback(context.applicationInfo, it)
+            setPredictiveBackCallbackEnabled(context.applicationInfo, it)
             activity?.recreate()
         },
         onSetEnableSwipeDismiss = viewModel::setEnableSwipeDismiss,
         onSetPagerInterceptionMode = viewModel::setPagerInterceptionMode,
         onSetPageScale = viewModel::setPageScale,
-        onSetModuleDescriptionMaxLines = viewModel::setModuleDescriptionMaxLines,
     )
 
     when (LocalUiMode.current) {

@@ -9,7 +9,6 @@ import com.ghostlock.app.ui.UiMode
 data class SettingsUiState(
     val uiMode: String = UiMode.DEFAULT_VALUE,
     val checkUpdate: Boolean = true,
-    val checkModuleUpdate: Boolean = true,
     val themeMode: Int = 0,
     val miuixMonet: Boolean = false,
     val keyColor: Int = 0,
@@ -23,63 +22,30 @@ data class SettingsUiState(
     val enableFloatingBottomBarBlur: Boolean = false,
     val enableNavigationBadge: Boolean = true,
     val pageScale: Float = 1.0f,
-    val moduleDescriptionMaxLines: Int = 4,
-    val enableWebDebugging: Boolean = false,
-
-    // Su Compat
-    val suCompatStatus: String = "",
-    val suCompatMode: Int = 0, // 0: enable default, 1: disable until reboot, 2: disable always
-    val isSuEnabled: Boolean = false,
-
-    // Kernel Umount
-    val kernelUmountStatus: String = "",
-    val isKernelUmountEnabled: Boolean = false,
-
-    // SELinux Hide
-    val selinuxHideStatus: String = "",
-    val isSelinuxHideEnabled: Boolean = false,
-
-    // SU Log
-    val sulogStatus: String = "",
-    val isSulogEnabled: Boolean = false,
-
-    // Umount Modules
-    val isDefaultUmountModules: Boolean = false,
-
-    // ADB Root
-    val adbRootStatus: String = "",
-    val isAdbRootEnabled: Boolean = false,
-
-    // Shell SU ADB Only
-    val shellSuAdbOnlyStatus: String = "",
-    val isShellSuAdbOnlyEnabled: Boolean = false,
-
-    val isLkmMode: Boolean = false,
-    val isLateLoadMode: Boolean = false,
-
-    // Auto Jailbreak
-    val autoJailbreak: Boolean = false,
-
-    // Soft Reboot
-    val useSoftReboot: Boolean = false
+    val logLevelOptions: List<String> = listOf("verbose", "debug", "info", "warn", "error"),
+    val selectedLogLevelIndex: Int = 2,
+    val terminalFontName: String? = null,
+    val showLogTimestamp: Boolean = false,
+    val autoExportLogs: Boolean = true,
+    val logExportLocation: String = "Download/ghostlock-log",
+    val warnOnRerun: Boolean = true,
+    val autoAttackOnBoot: Boolean = false,
+    val bootRetryCount: Int = 1,
 )
 
 @Immutable
 data class SettingsScreenActions(
     val onSetCheckUpdate: (Boolean) -> Unit,
-    val onSetCheckModuleUpdate: (Boolean) -> Unit,
     val onOpenTheme: () -> Unit,
     val onSetUiModeIndex: (Int) -> Unit,
-    val onOpenProfileTemplate: () -> Unit,
-    val onSetSuCompatMode: (Int) -> Unit,
-    val onSetKernelUmountEnabled: (Boolean) -> Unit,
-    val onSetSelinuxHideEnabled: (Boolean) -> Unit,
-    val onSetSulogEnabled: (Boolean) -> Unit,
-    val onSetAdbRootEnabled: (Boolean) -> Unit,
-    val onSetShellSuAdbOnlyEnabled: (Boolean) -> Unit,
-    val onSetDefaultUmountModules: (Boolean) -> Unit,
-    val onSetEnableWebDebugging: (Boolean) -> Unit,
-    val onSetAutoJailbreak: (Boolean) -> Unit,
-    val onSetUseSoftReboot: (Boolean) -> Unit,
     val onOpenAbout: () -> Unit,
+    val onSetLogLevelIndex: (Int) -> Unit,
+    val onSelectTerminalFont: (String) -> Unit,
+    val onSetShowLogTimestamp: (Boolean) -> Unit,
+    val onSetAutoExportLogs: (Boolean) -> Unit,
+    val onSelectLogExportDirectory: (String) -> Boolean,
+    val onSetWarnOnRerun: (Boolean) -> Unit,
+    val onSetAutoAttackOnBoot: (Boolean) -> Unit,
+    val onSetBootRetryCount: (Int) -> Unit,
+    val createDiagnosticReport: suspend () -> java.io.File,
 )

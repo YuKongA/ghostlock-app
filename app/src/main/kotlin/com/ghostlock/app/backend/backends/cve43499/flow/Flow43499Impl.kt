@@ -1549,7 +1549,7 @@ class Flow43499Impl internal constructor(
      *    Refused），再经 `VictimFinish`（victim `execScript`）执行，记录
      *    exit/timedOut/output SHA/markers；
      * 2. victim 未 rooted/不可用 ⇒ **不执行** App/su 路径（不触碰 `finishExecutor` /
-     *    FinishExecution / `su -c`），直接返回具名 Refused
+     *    App-side finish executor / `su -c`），直接返回具名 Refused
      *    `cve43499:finish.execute:su-fallback-refused`。
      *
      * @param run 本次运行状态。

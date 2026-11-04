@@ -4,7 +4,7 @@ import com.ghostlock.app.R
 import com.ghostlock.app.core.flow.FlowSymbol
 import com.ghostlock.app.backend.declarations.BackendRow
 import com.ghostlock.app.backend.declarations.BackendSpec
-import com.ghostlock.app.ui.backend.BackendReadiness
+import com.ghostlock.app.backend.declarations.BackendReadiness
 
 /** Selectable 43284 backend that launches the unmodified upstream executable. */
 object BackendCve43284Glued : BackendSpec {

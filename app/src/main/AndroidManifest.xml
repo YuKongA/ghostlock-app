@@ -35,10 +35,10 @@
              组件清单从此只保留这一个 activity；恢复生产 UI 时另开批次。
              旧注释块（Shizuku service / TempLaunchActivity / ui.MainActivity）此前是**注释嵌套**，
              在 XML 里非法 ⇒ 解析在第 37 行失败 ⇒ :app:processDebugMainManifest 一直是红的。 -->
-        <!-- 正式 UI（2026-10-18 用户裁定）：整体使用移植的 KernelSU 管理器界面（未接线）。 -->
+        <!-- GhostLock production UI：同一语义页面按 LocalUiMode 选择 Material/Miuix renderer。 -->
         <activity
             android:name="com.ghostlock.app.ui.MainActivity"
-            android:theme="@style/Theme.KernelSU.Starting"
+            android:theme="@style/Theme.GhostLock.Starting"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>

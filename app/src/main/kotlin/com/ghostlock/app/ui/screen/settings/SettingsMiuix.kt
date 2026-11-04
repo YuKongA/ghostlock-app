@@ -38,10 +38,6 @@ import androidx.compose.ui.unit.dp
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.ghostlock.app.R
-import com.ghostlock.app.attack.AttackSettings
-import com.ghostlock.app.attack.BootSettings
-import com.ghostlock.app.log.LogLevel
-import com.ghostlock.app.log.LogSettings
 import com.ghostlock.app.ui.UiMode
 import com.ghostlock.app.ui.component.dialog.rememberLoadingDialog
 import com.ghostlock.app.ui.component.miuix.SendLogDialog
@@ -110,8 +106,8 @@ fun SettingPagerMiuix(uiState: SettingsUiState, actions: SettingsScreenActions, 
                         )
                     }
                 }
-                item { LogSettingsCardMiuix() }
-                item { AttackSettingsCardMiuix() }
+                item { LogPreferencesCardMiuix(uiState, actions) }
+                item { RunPreferencesCardMiuix(uiState, actions) }
                 item {
                     Card(modifier = Modifier.padding(top = 12.dp, bottom = 12.dp).fillMaxWidth()) {
                         ArrowPreference(
@@ -123,6 +119,7 @@ fun SettingPagerMiuix(uiState: SettingsUiState, actions: SettingsScreenActions, 
                             show = showSendLog,
                             onDismissRequest = { showSendLog = false },
                             loadingDialog = loadingDialog,
+                            createReport = actions.createDiagnosticReport,
                         )
                         ArrowPreference(
                             title = stringResource(R.string.about),
@@ -138,26 +135,31 @@ fun SettingPagerMiuix(uiState: SettingsUiState, actions: SettingsScreenActions, 
 }
 
 @Composable
-fun LogSettingsCardMiuix() {
+fun LogPreferencesCardMiuix(uiState: SettingsUiState, actions: SettingsScreenActions) {
     val context = LocalContext.current
     val fontPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { LogSettings.setFont(context, it) }
+        uri?.let { actions.onSelectTerminalFont(it.toString()) }
     }
     val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        val path = uri?.let(LogSettings::exportLocationFromTree)
-        if (path != null) LogSettings.setExportLocation(context, path)
-        else android.widget.Toast.makeText(context, R.string.settings_log_export_location_invalid, android.widget.Toast.LENGTH_SHORT).show()
+        val accepted = uri?.let { actions.onSelectLogExportDirectory(it.toString()) } == true
+        if (!accepted && uri != null) {
+            android.widget.Toast.makeText(
+                context,
+                R.string.settings_log_export_location_invalid,
+                android.widget.Toast.LENGTH_SHORT,
+            ).show()
+        }
     }
-    val levels = LogLevel.entries
-    val fontSummary = LogSettings.fontPath?.let { java.io.File(it).name } ?: stringResource(R.string.settings_log_font_default)
+    val fontSummary = uiState.terminalFontName
+        ?: stringResource(R.string.settings_log_font_default)
     Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
         OverlayDropdownPreference(
             startAction = { MiuixLeading(Icons.AutoMirrored.Filled.Article) },
             title = stringResource(R.string.settings_log_level),
             summary = stringResource(R.string.settings_log_level_summary),
-            items = levels.map { it.token },
-            selectedIndex = levels.indexOf(LogSettings.level).coerceAtLeast(0),
-            onSelectedIndexChange = { index -> LogSettings.setLevel(context, levels[index]) },
+            items = uiState.logLevelOptions,
+            selectedIndex = uiState.selectedLogLevelIndex,
+            onSelectedIndexChange = actions.onSetLogLevelIndex,
         )
         ArrowPreference(
             startAction = { MiuixLeading(Icons.Filled.Description) },
@@ -169,50 +171,49 @@ fun LogSettingsCardMiuix() {
             startAction = { MiuixLeading(Icons.Rounded.Info) },
             title = stringResource(R.string.settings_log_timestamp),
             summary = stringResource(R.string.settings_log_timestamp_summary),
-            checked = LogSettings.showTimestamp,
-            onCheckedChange = { LogSettings.setShowTimestamp(context, it) },
+            checked = uiState.showLogTimestamp,
+            onCheckedChange = actions.onSetShowLogTimestamp,
         )
         SwitchPreference(
             startAction = { MiuixLeading(Icons.Filled.SaveAlt) },
             title = stringResource(R.string.settings_log_auto_export),
             summary = stringResource(R.string.settings_log_auto_export_summary),
-            checked = LogSettings.autoExport,
-            onCheckedChange = { LogSettings.setAutoExport(context, it) },
+            checked = uiState.autoExportLogs,
+            onCheckedChange = actions.onSetAutoExportLogs,
         )
         ArrowPreference(
             startAction = { MiuixLeading(Icons.Filled.Folder) },
             title = stringResource(R.string.settings_log_export_location),
-            summary = LogSettings.exportLocation,
+            summary = uiState.logExportLocation,
             onClick = { exportPicker.launch(null) },
         )
     }
 }
 
 @Composable
-fun AttackSettingsCardMiuix() {
-    val context = LocalContext.current
+fun RunPreferencesCardMiuix(uiState: SettingsUiState, actions: SettingsScreenActions) {
     Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
         SwitchPreference(
             startAction = { MiuixLeading(Icons.Rounded.Security) },
             title = stringResource(R.string.settings_attack_warn),
             summary = stringResource(R.string.settings_attack_warn_summary),
-            checked = AttackSettings.warnOnRerun,
-            onCheckedChange = { AttackSettings.setWarnOnRerun(context, it) },
+            checked = uiState.warnOnRerun,
+            onCheckedChange = actions.onSetWarnOnRerun,
         )
         SwitchPreference(
             startAction = { MiuixLeading(Icons.Rounded.SystemUpdate) },
             title = stringResource(R.string.settings_boot_attack),
             summary = stringResource(R.string.settings_boot_attack_summary),
-            checked = BootSettings.autoAttackOnBoot,
-            onCheckedChange = { BootSettings.setAutoAttackOnBoot(context, it) },
+            checked = uiState.autoAttackOnBoot,
+            onCheckedChange = actions.onSetAutoAttackOnBoot,
         )
         OverlayDropdownPreference(
             startAction = { MiuixLeading(Icons.Rounded.RestartAlt) },
             title = stringResource(R.string.settings_boot_retry),
             summary = stringResource(R.string.settings_boot_retry_summary),
             items = (0..10).map { it.toString() },
-            selectedIndex = BootSettings.bootRetryCount,
-            onSelectedIndexChange = { BootSettings.setBootRetryCount(context, it) },
+            selectedIndex = uiState.bootRetryCount,
+            onSelectedIndexChange = actions.onSetBootRetryCount,
         )
     }
 }

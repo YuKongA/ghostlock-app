@@ -1,19 +1,14 @@
 package com.ghostlock.app.ui.screen.run
 
-import android.content.Context
-import android.content.Intent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.core.content.FileProvider
-import java.io.File
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.displayCutout
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
@@ -22,15 +17,16 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.HourglassEmpty
+import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,56 +35,36 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ghostlock.app.GhostLockApp
 import com.ghostlock.app.R
-import com.ghostlock.app.attack.AttackSettings
-import com.ghostlock.app.core.flow.FlowResult
-import com.ghostlock.app.ui.backend.BackendRunDispatch
-import com.ghostlock.app.ui.backend.BackendRunDispatcher
-import com.ghostlock.app.ui.backend.BackendRunGate
-import com.ghostlock.app.ui.backend.RunPageContext
-import com.ghostlock.app.backend.declarations.BackendSelection
-import com.ghostlock.app.backend.registry.Backends
-import com.ghostlock.app.ui.backend.BackendRunUiState
-import com.ghostlock.app.ui.viewmodel.BackendRunViewModel
-import com.ghostlock.app.log.LogLevel
-import com.ghostlock.app.log.LogOrigin
-import com.ghostlock.app.log.LogSettings
-import com.ghostlock.app.log.elapsedText
+import com.ghostlock.app.ui.LocalUiMode
+import com.ghostlock.app.ui.UiMode
 import com.ghostlock.app.ui.component.dialog.rememberConfirmDialog
-import com.ghostlock.app.log.originLabel
-import com.ghostlock.app.log.log
 import com.ghostlock.app.ui.component.material.ExpressiveScaffold
 import com.ghostlock.app.ui.component.material.expressiveTopAppBarColors
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.Channel
+import com.ghostlock.app.ui.viewmodel.RunViewModel
+import java.util.Locale
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.launch
-import androidx.compose.material3.BasicAlertDialog
-import androidx.compose.material3.Surface
-import androidx.compose.material3.TextButton
-import top.yukonga.miuix.kmp.window.WindowDialog
-import top.yukonga.miuix.kmp.basic.TextButton as MiuixTextButton
 import top.yukonga.miuix.kmp.basic.Button as MiuixButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold as MiuixScaffold
@@ -96,56 +72,23 @@ import top.yukonga.miuix.kmp.basic.Text as MiuixText
 import top.yukonga.miuix.kmp.basic.TopAppBar as MiuixTopAppBar
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- *  「执行」页（2026-10-18 用户裁定）：
- *  · 页面本身不滚动，只有终端内部滚动；
- *  · 终端填满「执行」标题与底栏之间的区域；
- *  · 右下角按钮三态：开始执行（▶）→ 执行中（⏸ 紧急中止）→ 已完成（✓）；
- *  · 按钮与终端同一 12dp 圆角；miuix 下用同款深色终端卡 + 圆角按钮。
- */
-private val TerminalBg = Color(0xFF101418)
-private val TerminalFg = Color(0xFF9BE7A0)
-private val TerminalDim = Color(0xFF5F7A64)
-private val Corner = 12.dp
+/** Shared terminal background retained from the existing Material and Miuix pages. */
+private val TerminalBackground = Color(0xFF101418)
 
-private enum class RunState { Idle, Running, Aborting, Aborted, Done, RerunReady }
-
-/** 终端的一行：级别决定括号颜色；正文放在第二个 Text 里，换行自动悬挂缩进。 */
-private data class TerminalEntry(
-    val origin: LogOrigin,
-    val level: com.ghostlock.app.log.LogLevel,
-    val message: String,
-    val elapsedMs: Long = 0L,
-)
-
-private fun levelColor(level: com.ghostlock.app.log.LogLevel): Color = when (level) {
-    com.ghostlock.app.log.LogLevel.Error -> Color(0xFFFF5252)
-    com.ghostlock.app.log.LogLevel.Warn -> Color(0xFFFFD740)
-    com.ghostlock.app.log.LogLevel.Info -> Color(0xFF9BE7A0)
-    com.ghostlock.app.log.LogLevel.Debug -> Color(0xFFFFFFFF)
-    com.ghostlock.app.log.LogLevel.Verbose -> Color(0xFF9E9E9E)
-}
-
-private fun stateIcon(state: RunState) = when (state) {
-    RunState.Idle -> Icons.Filled.PlayArrow
-    RunState.Running -> Icons.Filled.Pause
-    RunState.Aborting -> Icons.Filled.HourglassEmpty
-    RunState.Aborted -> Icons.Filled.Check
-    RunState.Done -> Icons.Filled.Check
-    RunState.RerunReady -> Icons.Filled.Refresh
-}
+/** Shared run-page terminal/button corner radius. */
+private val RunCorner = 12.dp
 
 /**
- * 执行页文案（2026-10-19 本地化）：两套 UI 共用一份，资源只在 Composable 里读。
+ * Localized strings resolved once by the renderer shell.
  *
- * @property title 顶栏标题。
- * @property clearLog 顶栏「清除日志」的无障碍描述。
- * @property shareLog 顶栏「导出终端」的无障碍描述。
- * @property shareChooser 系统分享菜单的标题。
- * @property rerunTitle 二次执行确认框标题。
- * @property rerunMessage 二次执行确认框正文。
- * @property confirm 确认按钮。
- * @property dismiss 取消按钮。
+ * @property title Top app-bar title.
+ * @property clearLog Clear-terminal accessibility label.
+ * @property shareLog Share-terminal accessibility label.
+ * @property shareChooser Android chooser title.
+ * @property rerunTitle Rerun confirmation title.
+ * @property rerunMessage Rerun confirmation body.
+ * @property confirm Confirmation label.
+ * @property dismiss Dismiss label.
  */
 private data class RunLabels(
     val title: String,
@@ -158,7 +101,13 @@ private data class RunLabels(
     val dismiss: String,
 )
 
-/** 读一次执行页资源；onClick 闭包里不再调用 stringResource。 */
+/** State/actions pair acquired from the injected activity-scoped ViewModel. */
+private data class RunBinding(
+    val state: RunUiState,
+    val actions: RunActions,
+)
+
+/** Resolves the shared run-page strings inside composition. */
 @Composable
 private fun runLabels(): RunLabels = RunLabels(
     title = stringResource(R.string.run_page_title),
@@ -171,146 +120,214 @@ private fun runLabels(): RunLabels = RunLabels(
     dismiss = stringResource(android.R.string.cancel),
 )
 
-/** 按钮文案随状态走（资源见 values/strings.xml 与 values-zh-rCN/strings.xml）。 */
+/** @return Localized primary-button text for the semantic phase. */
 @Composable
-private fun runLabel(state: RunState): String = stringResource(
-    when (state) {
-        RunState.Idle -> R.string.run_state_start
-        RunState.Running -> R.string.run_state_abort
-        RunState.Aborting -> R.string.run_state_aborting
-        RunState.Aborted -> R.string.run_state_aborted
-        RunState.Done -> R.string.run_state_done
-        RunState.RerunReady -> R.string.run_state_rerun
+private fun runLabel(phase: RunUiPhase): String = stringResource(
+    when (phase) {
+        RunUiPhase.Idle -> R.string.run_state_start
+        RunUiPhase.Running -> R.string.run_state_abort
+        RunUiPhase.Aborting -> R.string.run_state_aborting
+        RunUiPhase.Aborted -> R.string.run_state_aborted
+        RunUiPhase.Done,
+        RunUiPhase.HandoffRequested -> R.string.run_state_done
+
+        RunUiPhase.RerunReady -> R.string.run_state_rerun
     },
 )
 
+/** @return Material primary-button icon for the semantic phase. */
+private fun stateIcon(phase: RunUiPhase) = when (phase) {
+    RunUiPhase.Idle -> Icons.Filled.PlayArrow
+    RunUiPhase.Running -> Icons.Filled.Pause
+    RunUiPhase.Aborting -> Icons.Filled.HourglassEmpty
+    RunUiPhase.Aborted,
+    RunUiPhase.Done,
+    RunUiPhase.HandoffRequested -> Icons.Filled.Check
 
+    RunUiPhase.RerunReady -> Icons.Filled.Refresh
+}
 
-@Composable
-fun RunPageMaterial(bottomInnerPadding: Dp) {
-    var state by remember { mutableStateOf(RunState.Idle) }
-    var runStartedAt by remember { mutableLongStateOf(0L) }
-    val entries = remember {
-        mutableStateListOf(
-            TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, "ghostlock terminal", 0L),
-            TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, "waiting for execution", 0L),
-        )
+/** @return Miuix textual icon retained from the existing rounded button. */
+private fun stateGlyph(phase: RunUiPhase): String = when (phase) {
+    RunUiPhase.Idle -> "▶  "
+    RunUiPhase.Running -> "⏸  "
+    RunUiPhase.Aborting -> "…  "
+    RunUiPhase.Aborted,
+    RunUiPhase.Done,
+    RunUiPhase.HandoffRequested -> "✓  "
+
+    RunUiPhase.RerunReady -> "↻  "
+}
+
+/** @return Existing terminal color mapping shared by both renderers. */
+private fun terminalColor(level: RunTerminalLevel): Color = when (level) {
+    RunTerminalLevel.Error -> Color(0xFFFF5252)
+    RunTerminalLevel.Warn -> Color(0xFFFFD740)
+    RunTerminalLevel.Info -> Color(0xFF9BE7A0)
+    RunTerminalLevel.Debug -> Color(0xFFFFFFFF)
+    RunTerminalLevel.Verbose -> Color(0xFF9E9E9E)
+}
+
+/** @return Existing single-character level marker. */
+private fun levelMark(level: RunTerminalLevel): Char = when (level) {
+    RunTerminalLevel.Verbose -> 'V'
+    RunTerminalLevel.Debug -> '~'
+    RunTerminalLevel.Info -> '*'
+    RunTerminalLevel.Warn -> '-'
+    RunTerminalLevel.Error -> '!'
+}
+
+/** @return Existing origin bracket and level prefix. */
+private fun originLabel(entry: RunTerminalEntry): String {
+    val mark = levelMark(entry.level)
+    return when (entry.origin) {
+        RunTerminalOrigin.Kotlin -> "<$mark> "
+        RunTerminalOrigin.Native -> "[$mark] "
+        RunTerminalOrigin.Shell -> "($mark) "
     }
-    val channel = remember { Channel<TerminalEntry>(Channel.UNLIMITED) }
-    LaunchedEffect(Unit) { for (entry in channel) entries += entry }
-    val scroll = rememberScrollState()
-    val scope = rememberCoroutineScope()
-    val context = LocalContext.current
-    val backendRunViewModel: BackendRunViewModel = viewModel()
-    val backendSpec = backendRunViewModel.selectedSpec()
-    val backendReadiness = backendRunViewModel.readiness()
-    val backendRunState = backendRunViewModel.runState
-    /* task-25：唯一 allow/deny 决策点（含运行页上下文）。 */
-    val backendDecision = BackendRunGate.decide(
-        backendSpec,
-        backendReadiness,
-        RunPageContext(
-            backendRunInProgress = backendRunState is BackendRunUiState.Running,
-            executor = com.ghostlock.app.ui.backend.currentAttackExecutorState(),
-        ),
-    )
-    fun startAttack() {
-        /* Gate 拒绝时禁用：不改变状态、不写日志（点击无效）。 */
-        if (!backendDecision.allowed) return
-        entries.clear()
-        runStartedAt = android.os.SystemClock.elapsedRealtime()
-        channel.trySend(
-            TerminalEntry(
-                LogOrigin.KOTLIN,
-                LogLevel.Info,
-                "backend run: " + (backendSpec?.cve ?: "-"),
-                0L,
-            ),
-        )
-        state = RunState.Running
-        scope.launch {
-            /* task-32：UI 只做状态 holder；门禁通过后经 Dispatcher 直接调用 Flow（无 Controller/Run 中间层）。 */
-            backendRunViewModel.runState = BackendRunUiState.Running
-            val dispatch = BackendRunDispatcher.dispatch(backendSpec, backendDecision, context) { line ->
-                channel.trySend(TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, line, 0L))
-            }
-            val elapsed = android.os.SystemClock.elapsedRealtime() - runStartedAt
-            when (dispatch) {
-                is BackendRunDispatch.Blocked -> {
-                    backendRunViewModel.runState = BackendRunUiState.Idle
-                    for (reason in dispatch.reasons) {
-                        channel.trySend(
-                            TerminalEntry(
-                                LogOrigin.KOTLIN,
-                                LogLevel.Warn,
-                                context.getString(reason.messageRes),
-                                elapsed,
-                            ),
-                        )
-                    }
-                    state = RunState.Idle
+}
+
+/** @return Existing seconds.milliseconds elapsed format. */
+private fun elapsedText(elapsedMs: Long): String = String.format(
+    Locale.US,
+    "%02d.%03d",
+    elapsedMs / 1000L,
+    elapsedMs % 1000L,
+)
+
+/**
+ * Shared semantic terminal rows; only the final text primitive/style differs by renderer family.
+ *
+ * @param state Single ViewModel-owned run state.
+ * @param modifier Shared scrolling and padding geometry.
+ * @param text Renderer-specific text primitive preserving current typography.
+ */
+@Composable
+private fun RunTerminalRows(
+    state: RunUiState,
+    modifier: Modifier,
+    text: @Composable (String, Modifier, Color, FontFamily) -> Unit,
+) {
+    val font = state.terminalFontFamily
+    SelectionContainer {
+        Column(
+            modifier = modifier,
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            state.entries.forEach { entry ->
+                val prefix = if (state.showTimestamp) {
+                    elapsedText(entry.elapsedMs) + " " + originLabel(entry)
+                } else {
+                    originLabel(entry)
                 }
-                is BackendRunDispatch.Executed -> {
-                    backendRunViewModel.runState = dispatch.state
-                    when (val runState = dispatch.state) {
-                        BackendRunUiState.Idle -> channel.trySend(
-                            TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, "backend run: idle", elapsed),
-                        )
-                        BackendRunUiState.Running -> channel.trySend(
-                            TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, "backend run: running", elapsed),
-                        )
-                        is BackendRunUiState.Refused -> for (reason in runState.reasons) {
-                            channel.trySend(
-                                TerminalEntry(LogOrigin.KOTLIN, LogLevel.Warn, reason, elapsed),
-                            )
-                        }
-                        BackendRunUiState.HandoffRequested -> channel.trySend(
-                            TerminalEntry(
-                                LogOrigin.KOTLIN,
-                                LogLevel.Info,
-                                "backend run: handoff-requested",
-                                elapsed,
-                            ),
-                        )
-                        is BackendRunUiState.Finished -> when (val result = runState.result) {
-                            is FlowResult.Ok -> {
-                                channel.trySend(
-                                    TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, "backend run: ok", elapsed),
-                                )
-                                for ((key, value) in result.evidence) {
-                                    channel.trySend(
-                                        TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, key + " = " + value, elapsed),
-                                    )
-                                }
-                            }
-                            is FlowResult.Failed -> {
-                                channel.trySend(
-                                    TerminalEntry(
-                                        LogOrigin.KOTLIN,
-                                        LogLevel.Warn,
-                                        "backend run: failed: " + result.reason,
-                                        elapsed,
-                                    ),
-                                )
-                                for ((key, value) in result.evidence) {
-                                    channel.trySend(
-                                        TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, key + " = " + value, elapsed),
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    state = RunState.Done
+                val color = terminalColor(entry.level)
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    text(prefix, Modifier, color, font)
+                    text(entry.message, Modifier.weight(1f), color, font)
                 }
             }
         }
     }
-    val confirmDialog = rememberConfirmDialog(onConfirm = { startAttack() })
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
-    val labels = runLabels()
+}
 
-    /* 终端跟随：内容高度一变就贴底。snapshotFlow 在布局后拿到新的 maxValue，
-       用即时 scrollTo 而不是 animateScrollTo —— 后者会被下一行打断成每几百毫秒一跳（2026-10-19）。 */
+/** Hosts the current-theme rerun dialog while the ViewModel owns confirmation state. */
+@Composable
+private fun RunRerunDialog(
+    state: RunUiState,
+    actions: RunActions,
+    labels: RunLabels,
+) {
+    val dialog = rememberConfirmDialog(
+        onConfirm = actions.onConfirmRerun,
+        onDismiss = actions.onDismissRerun,
+    )
+    LaunchedEffect(state.showRerunConfirmation, labels) {
+        if (state.showRerunConfirmation) {
+            dialog.showConfirm(
+                title = labels.rerunTitle,
+                content = labels.rerunMessage,
+                confirm = labels.confirm,
+                dismiss = labels.dismiss,
+            )
+        } else if (dialog.isShown) {
+            dialog.hide()
+        }
+    }
+}
+
+/**
+ * Acquires the single injected state/actions contract used by either page-level renderer branch.
+ *
+ * @param isCurrentPage Whether the main-pager controller currently selects the run page.
+ * @note The pager keeps every main page composed, so controller selection must refresh the
+ * authoritative backend gate instead of waiting for the transition to settle.
+ */
+@Composable
+private fun runBinding(isCurrentPage: Boolean): RunBinding {
+    val application = LocalContext.current.applicationContext as GhostLockApp
+    val runViewModel: RunViewModel = viewModel(factory = application.container.viewModelFactory)
+    val state by runViewModel.uiState.collectAsStateWithLifecycle()
+    val latestIsCurrentPage by rememberUpdatedState(isCurrentPage)
+    val initialResumeHandled = rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(isCurrentPage, runViewModel) {
+        if (isCurrentPage) {
+            runViewModel.refresh()
+        }
+    }
+    LifecycleResumeEffect(runViewModel) {
+        if (initialResumeHandled.value && latestIsCurrentPage) {
+            runViewModel.refresh()
+        }
+        initialResumeHandled.value = true
+        onPauseOrDispose { }
+    }
+    val actions = remember(runViewModel) {
+        RunActions(
+            onPrimaryAction = runViewModel::onPrimaryAction,
+            onClearTerminal = runViewModel::clearTerminal,
+            onShareTerminal = runViewModel::shareTerminal,
+            onConfirmRerun = runViewModel::confirmRerun,
+            onDismissRerun = runViewModel::dismissRerun,
+        )
+    }
+    return RunBinding(state, actions)
+}
+
+/**
+ * Production entry that binds state/actions once before selecting the page-level appearance.
+ *
+ * @param bottomInnerPadding Bottom navigation inset supplied by the existing activity shell.
+ * @param isCurrentPage Whether the main-pager controller currently selects the run page.
+ */
+@Composable
+fun RunPage(
+    bottomInnerPadding: Dp,
+    isCurrentPage: Boolean = true,
+) {
+    val binding = runBinding(isCurrentPage)
+    when (LocalUiMode.current) {
+        UiMode.Material -> RunPageMaterial(binding.state, binding.actions, bottomInnerPadding)
+        UiMode.Miuix -> RunPageMiuix(binding.state, binding.actions, bottomInnerPadding)
+    }
+}
+
+/**
+ * Pure production Material renderer seam used by both the real page and deterministic UI tests.
+ *
+ * @param state Shared semantic state.
+ * @param actions Shared semantic actions.
+ * @param bottomInnerPadding Bottom navigation inset supplied by the existing activity shell.
+ */
+@Composable
+internal fun RunPageMaterial(
+    state: RunUiState,
+    actions: RunActions,
+    bottomInnerPadding: Dp,
+) {
+    val labels = runLabels()
+    val scroll = rememberScrollState()
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    RunRerunDialog(state, actions, labels)
     LaunchedEffect(scroll) {
         snapshotFlow { scroll.maxValue }.collect { target -> scroll.scrollTo(target) }
     }
@@ -320,19 +337,23 @@ fun RunPageMaterial(bottomInnerPadding: Dp) {
             LargeFlexibleTopAppBar(
                 title = { Text(labels.title) },
                 colors = expressiveTopAppBarColors(),
-                windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
+                windowInsets = WindowInsets.safeDrawing.only(
+                    WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+                ),
                 scrollBehavior = scrollBehavior,
                 actions = {
-                    IconButton(onClick = { entries.clear() }) {
+                    IconButton(onClick = actions.onClearTerminal) {
                         Icon(Icons.Filled.Delete, contentDescription = labels.clearLog)
                     }
-                    IconButton(onClick = { shareTerminal(context, entries, labels.shareChooser) }) {
+                    IconButton(onClick = { actions.onShareTerminal(labels.shareChooser) }) {
                         Icon(Icons.Filled.IosShare, contentDescription = labels.shareLog)
                     }
                 },
             )
         },
-        contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
+        contentWindowInsets = WindowInsets.safeDrawing.only(
+            WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+        ),
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -345,234 +366,73 @@ fun RunPageMaterial(bottomInnerPadding: Dp) {
                     .weight(1f)
                     .padding(horizontal = 16.dp)
                     .padding(top = 8.dp, bottom = bottomInnerPadding + 12.dp)
-                    .clip(RoundedCornerShape(Corner))
-                    .background(TerminalBg),
+                    .clip(RoundedCornerShape(RunCorner))
+                    .background(TerminalBackground),
             ) {
-            SelectionContainer {
-                Column(
+                RunTerminalRows(
+                    state = state,
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(scroll)
                         .padding(12.dp)
                         .padding(bottom = 72.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    entries.forEach { entry ->
-                        Row(modifier = Modifier.fillMaxWidth()) {
-                            Text(
-                                text = (if (LogSettings.showTimestamp) elapsedText(entry.elapsedMs) + " " else "") + originLabel(entry.origin, entry.level),
-                                color = levelColor(entry.level),
-                                fontFamily = LogSettings.fontFamily(),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                            Text(
-                                text = entry.message,
-                                modifier = Modifier.weight(1f),
-                                color = levelColor(entry.level),
-                                fontFamily = LogSettings.fontFamily(),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                    }
-                }
-            }
-            val startBlocked = !backendDecision.allowed &&
-                (state == RunState.Idle || state == RunState.RerunReady)
-            ExtendedFloatingActionButton(
-                modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
-                shape = RoundedCornerShape(Corner),
-                containerColor = if (startBlocked) {
-                    MaterialTheme.colorScheme.surfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.primaryContainer
-                },
-                contentColor = if (startBlocked) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                },
-                onClick = {
-                    /* NotReady：Start 禁用不可点；点击无状态变化、无日志。 */
-                    val blockedNow = !backendDecision.allowed &&
-                        (state == RunState.Idle || state == RunState.RerunReady)
-                    if (!blockedNow) {
-                        when (state) {
-                            RunState.Idle -> {
-                                startAttack()
-                            }
-                            RunState.Running -> {
-                                /* 不可中止 backend：触发后不得 kill/timeout payload。 */
-                                if (backendSpec?.abortable == false) {
-                                    channel.trySend(
-                                        TerminalEntry(
-                                            LogOrigin.KOTLIN,
-                                            LogLevel.Warn,
-                                            context.getString(R.string.run_abort_disabled),
-                                            0L,
-                                        ),
-                                    )
-                                } else {
-                                    state = RunState.Aborted
-                                }
-                            }
-                            RunState.Aborting -> Unit
-                            RunState.Aborted, RunState.Done -> state = RunState.RerunReady
-                            RunState.RerunReady -> {
-                                if (AttackSettings.warnOnRerun) {
-                                    confirmDialog.showConfirm(
-                                        title = labels.rerunTitle,
-                                        content = labels.rerunMessage,
-                                        confirm = labels.confirm,
-                                        dismiss = labels.dismiss,
-                                    )
-                                } else {
-                                    startAttack()
-                                }
-                            }
-                        }
-                        scope.launch { scroll.animateScrollTo(scroll.maxValue) }
-                    }
-                },
-                icon = {
-                    Icon(
-                        imageVector = stateIcon(state),
-                        contentDescription = null,
+                ) { value, modifier, color, font ->
+                    Text(
+                        text = value,
+                        modifier = modifier,
+                        color = color,
+                        fontFamily = font,
+                        style = MaterialTheme.typography.bodySmall,
                     )
-                },
-                text = {
-                    Text(runLabel(state))
-                },
-            )
+                }
+                ExtendedFloatingActionButton(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(12.dp),
+                    shape = RoundedCornerShape(RunCorner),
+                    containerColor = if (state.startBlocked) {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.primaryContainer
+                    },
+                    contentColor = if (state.startBlocked) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    },
+                    onClick = {
+                        if (!state.startBlocked) actions.onPrimaryAction()
+                    },
+                    icon = {
+                        Icon(
+                            imageVector = stateIcon(state.phase),
+                            contentDescription = null,
+                        )
+                    },
+                    text = { Text(runLabel(state.phase)) },
+                )
             }
         }
     }
 }
 
+/**
+ * Pure production Miuix renderer seam using the same semantic state/actions as Material.
+ *
+ * @param state Shared semantic state.
+ * @param actions Shared semantic actions.
+ * @param bottomInnerPadding Bottom navigation inset supplied by the existing activity shell.
+ */
 @Composable
-fun RunPageMiuix(bottomInnerPadding: Dp) {
-    var state by remember { mutableStateOf(RunState.Idle) }
-    var runStartedAt by remember { mutableLongStateOf(0L) }
-    val entries = remember {
-        mutableStateListOf(
-            TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, "ghostlock terminal", 0L),
-            TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, "waiting for execution", 0L),
-        )
-    }
-    val channel = remember { Channel<TerminalEntry>(Channel.UNLIMITED) }
-    LaunchedEffect(Unit) { for (entry in channel) entries += entry }
-    val scroll = rememberScrollState()
-    val scope = rememberCoroutineScope()
-    val context = LocalContext.current
-    val backendRunViewModel: BackendRunViewModel = viewModel()
-    val backendSpec = backendRunViewModel.selectedSpec()
-    val backendReadiness = backendRunViewModel.readiness()
-    val backendRunState = backendRunViewModel.runState
-    /* task-25：唯一 allow/deny 决策点（含运行页上下文）。 */
-    val backendDecision = BackendRunGate.decide(
-        backendSpec,
-        backendReadiness,
-        RunPageContext(
-            backendRunInProgress = backendRunState is BackendRunUiState.Running,
-            executor = com.ghostlock.app.ui.backend.currentAttackExecutorState(),
-        ),
-    )
-    fun startAttack() {
-        /* Gate 拒绝时禁用：不改变状态、不写日志（点击无效）。 */
-        if (!backendDecision.allowed) return
-        entries.clear()
-        runStartedAt = android.os.SystemClock.elapsedRealtime()
-        channel.trySend(
-            TerminalEntry(
-                LogOrigin.KOTLIN,
-                LogLevel.Info,
-                "backend run: " + (backendSpec?.cve ?: "-"),
-                0L,
-            ),
-        )
-        state = RunState.Running
-        scope.launch {
-            /* task-32：UI 只做状态 holder；门禁通过后经 Dispatcher 直接调用 Flow（无 Controller/Run 中间层）。 */
-            backendRunViewModel.runState = BackendRunUiState.Running
-            val dispatch = BackendRunDispatcher.dispatch(backendSpec, backendDecision, context) { line ->
-                channel.trySend(TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, line, 0L))
-            }
-            val elapsed = android.os.SystemClock.elapsedRealtime() - runStartedAt
-            when (dispatch) {
-                is BackendRunDispatch.Blocked -> {
-                    backendRunViewModel.runState = BackendRunUiState.Idle
-                    for (reason in dispatch.reasons) {
-                        channel.trySend(
-                            TerminalEntry(
-                                LogOrigin.KOTLIN,
-                                LogLevel.Warn,
-                                context.getString(reason.messageRes),
-                                elapsed,
-                            ),
-                        )
-                    }
-                    state = RunState.Idle
-                }
-                is BackendRunDispatch.Executed -> {
-                    backendRunViewModel.runState = dispatch.state
-                    when (val runState = dispatch.state) {
-                        BackendRunUiState.Idle -> channel.trySend(
-                            TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, "backend run: idle", elapsed),
-                        )
-                        BackendRunUiState.Running -> channel.trySend(
-                            TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, "backend run: running", elapsed),
-                        )
-                        is BackendRunUiState.Refused -> for (reason in runState.reasons) {
-                            channel.trySend(
-                                TerminalEntry(LogOrigin.KOTLIN, LogLevel.Warn, reason, elapsed),
-                            )
-                        }
-                        BackendRunUiState.HandoffRequested -> channel.trySend(
-                            TerminalEntry(
-                                LogOrigin.KOTLIN,
-                                LogLevel.Info,
-                                "backend run: handoff-requested",
-                                elapsed,
-                            ),
-                        )
-                        is BackendRunUiState.Finished -> when (val result = runState.result) {
-                            is FlowResult.Ok -> {
-                                channel.trySend(
-                                    TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, "backend run: ok", elapsed),
-                                )
-                                for ((key, value) in result.evidence) {
-                                    channel.trySend(
-                                        TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, key + " = " + value, elapsed),
-                                    )
-                                }
-                            }
-                            is FlowResult.Failed -> {
-                                channel.trySend(
-                                    TerminalEntry(
-                                        LogOrigin.KOTLIN,
-                                        LogLevel.Warn,
-                                        "backend run: failed: " + result.reason,
-                                        elapsed,
-                                    ),
-                                )
-                                for ((key, value) in result.evidence) {
-                                    channel.trySend(
-                                        TerminalEntry(LogOrigin.KOTLIN, LogLevel.Info, key + " = " + value, elapsed),
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    state = RunState.Done
-                }
-            }
-        }
-    }
-    val confirmDialog = rememberConfirmDialog(onConfirm = { startAttack() })
-    val scrollBehavior = MiuixScrollBehavior()
+internal fun RunPageMiuix(
+    state: RunUiState,
+    actions: RunActions,
+    bottomInnerPadding: Dp,
+) {
     val labels = runLabels()
-
-    /* 终端跟随：内容高度一变就贴底。snapshotFlow 在布局后拿到新的 maxValue，
-       用即时 scrollTo 而不是 animateScrollTo —— 后者会被下一行打断成每几百毫秒一跳（2026-10-19）。 */
+    val scroll = rememberScrollState()
+    val scrollBehavior = MiuixScrollBehavior()
+    RunRerunDialog(state, actions, labels)
     LaunchedEffect(scroll) {
         snapshotFlow { scroll.maxValue }.collect { target -> scroll.scrollTo(target) }
     }
@@ -583,17 +443,14 @@ fun RunPageMiuix(bottomInnerPadding: Dp) {
                 title = labels.title,
                 scrollBehavior = scrollBehavior,
                 actions = {
-                    val context = LocalContext.current
-                    IconButton(onClick = { entries.clear() }) {
-                        /* Miuix 的 TopAppBar 不给 actions 注入 LocalContentColor，暗色下 Icon 默认取黑色；
-                         * 显式给 onBackground（与 AboutMiuix / FinishUi 同口径，2026-10-19）。 */
+                    IconButton(onClick = actions.onClearTerminal) {
                         Icon(
                             Icons.Filled.Delete,
                             contentDescription = labels.clearLog,
                             tint = MiuixTheme.colorScheme.onBackground,
                         )
                     }
-                    IconButton(onClick = { shareTerminal(context, entries, labels.shareChooser) }) {
+                    IconButton(onClick = { actions.onShareTerminal(labels.shareChooser) }) {
                         Icon(
                             Icons.Filled.IosShare,
                             contentDescription = labels.shareLog,
@@ -603,7 +460,9 @@ fun RunPageMiuix(bottomInnerPadding: Dp) {
                 },
             )
         },
-        contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout).only(WindowInsetsSides.Horizontal),
+        contentWindowInsets = WindowInsets.systemBars
+            .add(WindowInsets.displayCutout)
+            .only(WindowInsetsSides.Horizontal),
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -616,116 +475,39 @@ fun RunPageMiuix(bottomInnerPadding: Dp) {
                     .weight(1f)
                     .padding(horizontal = 16.dp)
                     .padding(top = 8.dp, bottom = bottomInnerPadding + 12.dp)
-                    .clip(RoundedCornerShape(Corner))
-                    .background(TerminalBg),
+                    .clip(RoundedCornerShape(RunCorner))
+                    .background(TerminalBackground),
             ) {
-            SelectionContainer {
-                Column(
+                RunTerminalRows(
+                    state = state,
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(scroll)
                         .padding(12.dp)
                         .padding(bottom = 72.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    entries.forEach { entry ->
-                        Row(modifier = Modifier.fillMaxWidth()) {
-                            MiuixText(
-                                text = (if (LogSettings.showTimestamp) elapsedText(entry.elapsedMs) + " " else "") + originLabel(entry.origin, entry.level),
-                                color = levelColor(entry.level),
-                                fontFamily = LogSettings.fontFamily(),
-                                style = MiuixTheme.textStyles.footnote1,
-                            )
-                            MiuixText(
-                                text = entry.message,
-                                modifier = Modifier.weight(1f),
-                                color = levelColor(entry.level),
-                                fontFamily = LogSettings.fontFamily(),
-                                style = MiuixTheme.textStyles.footnote1,
-                            )
-                        }
-                    }
+                ) { value, modifier, color, font ->
+                    MiuixText(
+                        text = value,
+                        modifier = modifier,
+                        color = color,
+                        fontFamily = font,
+                        style = MiuixTheme.textStyles.footnote1,
+                    )
                 }
-            }
-            val startBlocked = !backendDecision.allowed &&
-                (state == RunState.Idle || state == RunState.RerunReady)
-            MiuixButton(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(12.dp)
-                    .clip(RoundedCornerShape(Corner)),
-                enabled = !startBlocked,
-                onClick = {
-                    /* NotReady：Start 禁用不可点；点击无状态变化、无日志。 */
-                    val blockedNow = !backendDecision.allowed &&
-                        (state == RunState.Idle || state == RunState.RerunReady)
-                    if (!blockedNow) {
-                        when (state) {
-                            RunState.Idle -> {
-                                startAttack()
-                            }
-                            RunState.Running -> {
-                                /* 不可中止 backend：触发后不得 kill/timeout payload。 */
-                                if (backendSpec?.abortable == false) {
-                                    channel.trySend(
-                                        TerminalEntry(
-                                            LogOrigin.KOTLIN,
-                                            LogLevel.Warn,
-                                            context.getString(R.string.run_abort_disabled),
-                                            0L,
-                                        ),
-                                    )
-                                } else {
-                                    state = RunState.Aborted
-                                }
-                            }
-                            RunState.Aborting -> Unit
-                            RunState.Aborted, RunState.Done -> state = RunState.RerunReady
-                            RunState.RerunReady -> {
-                                if (AttackSettings.warnOnRerun) {
-                                    confirmDialog.showConfirm(
-                                        title = labels.rerunTitle,
-                                        content = labels.rerunMessage,
-                                        confirm = labels.confirm,
-                                        dismiss = labels.dismiss,
-                                    )
-                                } else {
-                                    startAttack()
-                                }
-                            }
-                        }
-                    }
-                },
-            ) {
-                MiuixText(
-                    text = when (state) {
-                        RunState.Idle -> "▶  " + runLabel(state)
-                        RunState.Running -> "⏸  " + runLabel(state)
-                        RunState.Aborting -> "…  " + runLabel(state)
-                        RunState.Aborted -> "✓  " + runLabel(state)
-                        RunState.Done -> "✓  " + runLabel(state)
-                        RunState.RerunReady -> "↻  " + runLabel(state)
-                    },
-                    style = MiuixTheme.textStyles.button,
-                )
-            }
+                MiuixButton(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(12.dp)
+                        .clip(RoundedCornerShape(RunCorner)),
+                    enabled = !state.startBlocked,
+                    onClick = actions.onPrimaryAction,
+                ) {
+                    MiuixText(
+                        text = stateGlyph(state.phase) + runLabel(state.phase),
+                        style = MiuixTheme.textStyles.button,
+                    )
+                }
             }
         }
     }
-}
-
-
-/** 把终端文本写成 .log 文件，再交给 Android 分享菜单。 */
-private fun shareTerminal(context: Context, entries: List<TerminalEntry>, chooserTitle: String) {
-    val dir = File(context.cacheDir, "logs").apply { mkdirs() }
-    val file = File(dir, "ghostlock-terminal-" + System.currentTimeMillis() + ".log")
-    file.writeText(entries.joinToString("\n") { log.format(it.level, it.message) } + "\n")
-    val uri = FileProvider.getUriForFile(context, context.packageName + ".ghostlock.fileprovider", file)
-    val send = Intent(Intent.ACTION_SEND).apply {
-        type = "text/x-log"
-        putExtra(Intent.EXTRA_STREAM, uri)
-        putExtra(Intent.EXTRA_TITLE, file.name)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }
-    context.startActivity(Intent.createChooser(send, chooserTitle))
 }

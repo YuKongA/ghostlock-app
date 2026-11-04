@@ -72,6 +72,12 @@ interface IGhostlockUserService {
     /** 读取 Flow 内存日志片段；越界参数返回空数组。 */
     byte[] readFlowLog(long offset, int maxBytes) = 18;
 
+    /** @return shell host 捕获的 backend registry 64-bit content version。 */
+    long getFlowRegistryVersion() = 19;
+
+    /** @return shell host 捕获的 backend registry SHA-256 content hash。 */
+    String getFlowRegistryContentHash() = 20;
+
     /** Shizuku 保留 destroy 事务；backend 清理自有资源后 UserService 退出， detached payload 策略由 backend 决定。 */
     void destroy() = 16777114;
 }

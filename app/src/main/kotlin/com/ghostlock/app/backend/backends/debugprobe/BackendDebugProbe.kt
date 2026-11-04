@@ -5,9 +5,9 @@ import com.ghostlock.app.R
 import com.ghostlock.app.backend.declarations.BackendRow
 import com.ghostlock.app.backend.declarations.BackendSpec
 import com.ghostlock.app.core.flow.FlowSymbol
-import com.ghostlock.app.ui.backend.BackendReadiness
-import com.ghostlock.app.ui.backend.BackendUidRequirement
-import com.ghostlock.app.ui.backend.ReadinessReason
+import com.ghostlock.app.backend.declarations.BackendReadiness
+import com.ghostlock.app.backend.declarations.BackendUidRequirement
+import com.ghostlock.app.backend.declarations.ReadinessReason
 
 /**
  * Debug Probe backend（debug 构建专用；无攻击副作用）。

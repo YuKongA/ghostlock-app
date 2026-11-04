@@ -1,7 +1,6 @@
 package com.ghostlock.app.backend.declarations
 
 import com.ghostlock.app.BuildConfig
-import com.ghostlock.app.backend.registry.Backends
 import com.ghostlock.app.backend.diagnostics.DiagnosticFlowEntries
 import com.ghostlock.app.core.flow.FlowEntryRegistry
 import com.ghostlock.app.core.flow.FlowSymbol
@@ -13,10 +12,8 @@ import com.ghostlock.app.core.flow.FlowSymbol
  * 两个 host（app `:flowhost` / Shizuku `GhostlockUserService`）只消费本组装结果；
  * **debug** 构建额外追加无副作用诊断 fixture，**release** 不含诊断符号。
  *
- * @note 不缓存、不持有可变全局：每次调用重新从 [Backends.all] 取 spec 并构造 registry；
- *   registry 构造本身 fail-closed（非法/重复符号抛具名异常，调用方保持 `flow-symbol:*` 失败）。
- * @note 动态 backend（Lua）若进入 [Backends.all] 且声明 `flowSymbol` 会自动纳入；未声明者不会
- *   被 host 接受（B5 Lua 迁移需提供注册路径）。
+ * @note 不缓存、不持有可变全局：每个 app/host composition root 必须显式传入其一次性
+ *   registry membership snapshot；registry 构造本身 fail-closed。
  * @note 阶段：G9（B4b 后收口）。
  */
 object FlowEntryRegistryAssembly {
@@ -25,8 +22,8 @@ object FlowEntryRegistryAssembly {
      *
      * @return 稳定顺序的生产 Flow 符号列表；不含诊断 fixture。
      */
-    fun productionSymbols(): List<FlowSymbol> =
-        Backends.all.asSequence()
+    fun productionSymbols(registryEntries: List<BackendSpec>): List<FlowSymbol> =
+        registryEntries.asSequence()
             .mapNotNull { it.flowSymbol }
             .distinct()
             .toList()
@@ -36,15 +33,18 @@ object FlowEntryRegistryAssembly {
      *
      * @return [FlowEntryRegistry]；非法/重复符号抛具名异常（fail-closed）。
      */
-    fun productionRegistry(): FlowEntryRegistry = FlowEntryRegistry.of(productionSymbols())
+    fun productionRegistry(registryEntries: List<BackendSpec>): FlowEntryRegistry =
+        FlowEntryRegistry.of(productionSymbols(registryEntries))
 
     /**
      * host 实际使用的 allowlist：release=生产；debug=生产+诊断 fixture。
      *
      * @return [FlowEntryRegistry]；诊断 fixture 仅 debug 可解析。
      */
-    fun hostRegistry(): FlowEntryRegistry {
-        if (!BuildConfig.DEBUG) return productionRegistry()
-        return FlowEntryRegistry.of(productionSymbols() + DiagnosticFlowEntries.symbols)
+    fun hostRegistry(registryEntries: List<BackendSpec>): FlowEntryRegistry {
+        if (!BuildConfig.DEBUG) return productionRegistry(registryEntries)
+        return FlowEntryRegistry.of(
+            productionSymbols(registryEntries) + DiagnosticFlowEntries.symbols,
+        )
     }
 }

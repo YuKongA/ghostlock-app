@@ -1,9 +1,9 @@
 package com.ghostlock.app.backend.backends.cve43499.generator
 
 import com.ghostlock.app.backend.backends.cve43499.lifecycle.Cve43499PlacementFacts
-import com.ghostlock.app.data.cve43499.A301SoDebugConfig
-import com.ghostlock.app.data.cve43499.DebugInjection
-import com.ghostlock.app.data.cve43499.DebugPrimitiveKind
+import com.ghostlock.app.backend.backends.cve43499.config.Cve43499DebugConfig
+import com.ghostlock.app.backend.backends.cve43499.config.DebugInjection
+import com.ghostlock.app.backend.backends.cve43499.config.DebugPrimitiveKind
 import com.ghostlock.app.jni.Native43499MulticastSpec
 import com.ghostlock.app.jni.Native43499PselectSpec
 import com.ghostlock.app.jni.Native43499TcpZerocopySpec
@@ -24,8 +24,8 @@ import org.junit.Test
  * @note 纯 JVM 单测；不触 Native、不触 Android。
  */
 class Cve43499GeneratorVectorTest {
-    private val debug = A301SoDebugConfig.parse(readDebugAsset())
-    private val execution = A301SoDebugConfig.executionParameters()
+    private val debug = Cve43499DebugConfig.parse(readDebugAsset())
+    private val execution = Cve43499DebugConfig.executionParameters()
 
     /* ---------- legacy 目标常量（独立字面量，非配置读取） ---------- */
 
@@ -147,8 +147,8 @@ class Cve43499GeneratorVectorTest {
 
     @Test
     fun `mondrian legacy2 host byte diff payload and stamp`() {
-        val mondrian = A301SoDebugConfig.parse(readMondrianAsset())
-        val mondrianExecution = A301SoDebugConfig.executionParameters(mondrian)
+        val mondrian = Cve43499DebugConfig.parse(readMondrianAsset())
+        val mondrianExecution = Cve43499DebugConfig.executionParameters(mondrian)
         val context = Cve43499GeneratorContext(mondrian, mondrianExecution, GHOST_PID)
         val generated = Cve43499MulticastInputGenerator(context).generate(facts)
         val spec = generated.primitive as Native43499MulticastSpec

@@ -8,14 +8,18 @@ import android.os.ParcelFileDescriptor
 import android.os.Process
 import android.os.RemoteException
 import android.util.Log
+import com.ghostlock.app.backend.declarations.BackendRegistryIdentityFactory
 import com.ghostlock.app.backend.declarations.FlowEntryRegistryAssembly
+import com.ghostlock.app.backend.registry.Backends
 import com.ghostlock.app.core.flow.FlowEntryResolution
+import com.ghostlock.app.core.flow.FlowEntryRegistry
 import com.ghostlock.app.core.flow.FlowEntrySpec
 import com.ghostlock.app.core.flow.FlowHostEnv
 import com.ghostlock.app.core.flow.FlowHostParams
 import com.ghostlock.app.core.flow.FlowHostParamsCodec
 import com.ghostlock.app.core.flow.FlowResult
 import com.ghostlock.app.core.flow.FlowSymbols
+import com.ghostlock.app.domain.backend.BackendRegistryIdentity
 import com.ghostlock.app.flow.IFlowHost
 import com.ghostlock.app.flow.IFlowHostCallback
 import java.io.FileOutputStream
@@ -37,6 +41,23 @@ import java.util.concurrent.atomic.AtomicInteger
  * @note 阶段：B2a；设备行为（每次 run 新 pid、旧进程消失）由 B2b 门禁。
  */
 class FlowHostService : Service() {
+    /** Process-local immutable registry membership captured once by this host composition root. */
+    private val backendRegistryEntries by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        Backends.all.toList()
+    }
+
+    /** Process-local identity calculated from the same captured membership as [hostRegistry]. */
+    private val backendRegistryIdentity: BackendRegistryIdentity by lazy(
+        LazyThreadSafetyMode.SYNCHRONIZED,
+    ) {
+        BackendRegistryIdentityFactory.capture(backendRegistryEntries)
+    }
+
+    /** Process-local immutable allowlist assembled once from [backendRegistryEntries]. */
+    private val hostRegistry: FlowEntryRegistry by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        FlowEntryRegistryAssembly.hostRegistry(backendRegistryEntries)
+    }
+
     /** 进程内状态机（IDLE→PREPARED→RUNNING→TERMINAL）；只由本 Service 实例持有。 */
     private val state = AtomicInteger(FlowHostProtocol.IDLE)
 
@@ -124,6 +145,10 @@ class FlowHostService : Service() {
             cancelled.set(true)
         }
 
+        override fun getRegistryVersion(): Long = backendRegistryIdentity.version
+
+        override fun getRegistryContentHash(): String = backendRegistryIdentity.contentHash
+
         override fun destroy() {
             destroyHost()
         }
@@ -173,7 +198,7 @@ class FlowHostService : Service() {
                 FlowHostProtocol.ERR_SYMBOL,
                 "flow-host:symbol:malformed",
             )
-        val registry = runCatching { FlowEntryRegistryAssembly.hostRegistry() }
+        val registry = runCatching { hostRegistry }
             .getOrElse { problem ->
                 return@synchronized fail(
                     FlowHostProtocol.ERR_SYMBOL,

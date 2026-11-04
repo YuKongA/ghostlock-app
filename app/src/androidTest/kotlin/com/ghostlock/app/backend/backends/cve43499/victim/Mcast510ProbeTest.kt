@@ -11,7 +11,7 @@ import com.ghostlock.app.backend.backends.cve43499.generator.Cve43499WriteReques
 import com.ghostlock.app.backend.backends.cve43499.generator.Cve43499WriteGenerator
 import com.ghostlock.app.backend.backends.cve43499.lifecycle.Cve43499Lifecycle
 import com.ghostlock.app.backend.backends.cve43499.owned.PlacementConfig
-import com.ghostlock.app.data.cve43499.A301SoDebugConfig
+import com.ghostlock.app.backend.backends.cve43499.config.Cve43499DebugConfig
 import com.ghostlock.app.jni.Native43499ActorSetup
 import com.ghostlock.app.jni.Native43499Jni
 import com.ghostlock.app.jni.Native43499MulticastSpec
@@ -75,15 +75,15 @@ class Mcast510ProbeTest {
                 "|uid=${android.os.Process.myUid()}|target_arg=$targetArg" +
                 "|preserve_child=$preserveChild|pi_waiter=$piWaiter" +
                 "|owner=$owner|requeue=$requeue|page_base_mode=$pageBaseMode"
-            val debug = A301SoDebugConfig.load(context)
-            val execution = A301SoDebugConfig.executionParameters(debug)
+            val debug = Cve43499DebugConfig.load(context)
+            val execution = Cve43499DebugConfig.executionParameters(debug)
             val ghostPid = android.os.Process.myPid()
             val generator = Cve43499RouteGeneratorFactory.create(debug, execution, ghostPid)
                 as? Cve43499WriteGenerator
                 ?: error("generator 非 WriteGenerator: ${debug.injection.primitive}")
             val planner = Cve43499RouteGeneratorFactory.createPlanner(debug, execution, ghostPid)
             val policy = Cve43499WriteChainPolicy.fromDebug(
-                A301SoDebugConfig.writeChainParameters(),
+                Cve43499DebugConfig.writeChainParameters(),
                 debug.injection.primitive,
             )
             val placement = PlacementConfig(

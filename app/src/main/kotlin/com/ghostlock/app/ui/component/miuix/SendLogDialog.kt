@@ -24,10 +24,10 @@ import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.ghostlock.app.ui.BuildConfig
+import com.ghostlock.app.BuildConfig
 import com.ghostlock.app.R
 import com.ghostlock.app.ui.component.dialog.LoadingDialogHandle
-import com.ghostlock.app.ui.util.getBugreportFile
+import java.io.File
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
@@ -43,6 +43,8 @@ fun SendLogDialog(
     show: Boolean,
     onDismissRequest: () -> Unit,
     loadingDialog: LoadingDialogHandle,
+    createReport: suspend () -> File,
+    exportFilePrefix: String = "GhostLock_diagnostic",
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -55,7 +57,7 @@ fun SendLogDialog(
         scope.launch(Dispatchers.IO) {
             loadingDialog.show()
             context.contentResolver.openOutputStream(uri)?.use { output ->
-                getBugreportFile(context).inputStream().use {
+                createReport().inputStream().use {
                     it.copyTo(output)
                 }
             }
@@ -93,7 +95,7 @@ fun SendLogDialog(
                 onClick = {
                     val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH_mm")
                     val current = LocalDateTime.now().format(formatter)
-                    exportBugreportLauncher.launch("KernelSU_bugreport_${current}.tar.gz")
+                    exportBugreportLauncher.launch("${exportFilePrefix}_${current}.tar.gz")
                     onDismissRequest()
                 },
                 insideMargin = PaddingValues(horizontal = 24.dp, vertical = 12.dp)
@@ -113,7 +115,7 @@ fun SendLogDialog(
                         onDismissRequest()
                         val bugreport = loadingDialog.withLoading {
                             withContext(Dispatchers.IO) {
-                                getBugreportFile(context)
+                                createReport()
                             }
                         }
 

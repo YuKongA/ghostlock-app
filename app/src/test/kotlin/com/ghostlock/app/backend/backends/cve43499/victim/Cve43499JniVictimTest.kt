@@ -12,8 +12,8 @@ import com.ghostlock.app.core.victim.VictimProtocol
 import com.ghostlock.app.core.victim.VictimResult
 import com.ghostlock.app.core.victim.VictimSpawnRequest
 import com.ghostlock.app.core.victim.VictimSpawned
-import com.ghostlock.app.data.cve43499.A301SoDebugConfig
-import com.ghostlock.app.data.cve43499.DebugPerfParameters
+import com.ghostlock.app.backend.backends.cve43499.config.Cve43499DebugConfig
+import com.ghostlock.app.backend.backends.cve43499.config.DebugPerfParameters
 import java.io.File
 import java.util.ArrayDeque
 import org.junit.Assert.assertEquals
@@ -199,7 +199,7 @@ class Cve43499JniVictimTest {
         val source = Cve43499JniVictimTargetSource(
             samplerProvider = { sampler },
             perf = perf,
-            execution = A301SoDebugConfig.executionParameters(),
+            execution = Cve43499DebugConfig.executionParameters(),
             permissiveProbe = { true },
         )
         val acquisition = source.acquire(context())
@@ -224,7 +224,7 @@ class Cve43499JniVictimTest {
         val source = Cve43499JniVictimTargetSource(
             samplerProvider = { samplerOf(sample(ring)) },
             perf = debugPerf(),
-            execution = A301SoDebugConfig.executionParameters(),
+            execution = Cve43499DebugConfig.executionParameters(),
             permissiveProbe = { true },
         )
         val acquisition = source.acquire(context())
@@ -240,7 +240,7 @@ class Cve43499JniVictimTest {
         val source = Cve43499JniVictimTargetSource(
             samplerProvider = { FakeSampler(emptyList()) },
             perf = debugPerf(),
-            execution = A301SoDebugConfig.executionParameters(),
+            execution = Cve43499DebugConfig.executionParameters(),
             permissiveProbe = { false },
         )
         val acquisition = source.acquire(context())
@@ -256,7 +256,7 @@ class Cve43499JniVictimTest {
         val source = Cve43499JniVictimTargetSource(
             samplerProvider = { null },
             perf = debugPerf(),
-            execution = A301SoDebugConfig.executionParameters(),
+            execution = Cve43499DebugConfig.executionParameters(),
             permissiveProbe = { true },
         )
         val acquisition = source.acquire(context())
@@ -272,7 +272,7 @@ class Cve43499JniVictimTest {
         val timeout = Cve43499JniVictimTargetSource(
             samplerProvider = { FakeSampler(listOf(VictimResult.failed(VictimError.TIMEOUT.token))) },
             perf = debugPerf(),
-            execution = A301SoDebugConfig.executionParameters(),
+            execution = Cve43499DebugConfig.executionParameters(),
             permissiveProbe = { true },
         )
         val timeoutAcquisition = timeout.acquire(context())
@@ -287,7 +287,7 @@ class Cve43499JniVictimTest {
         val truncated = Cve43499JniVictimTargetSource(
             samplerProvider = { samplerOf(sample(ring).copy(truncated = true)) },
             perf = debugPerf(),
-            execution = A301SoDebugConfig.executionParameters(),
+            execution = Cve43499DebugConfig.executionParameters(),
             permissiveProbe = { true },
         )
         val truncatedAcquisition = truncated.acquire(context())
@@ -311,7 +311,7 @@ class Cve43499JniVictimTest {
         val source = Cve43499JniVictimTargetSource(
             samplerProvider = { sampler },
             perf = debugPerf(),
-            execution = A301SoDebugConfig.executionParameters(),
+            execution = Cve43499DebugConfig.executionParameters(),
             permissiveProbe = { true },
         )
         val acquisition = source.acquire(context())
@@ -329,11 +329,11 @@ class Cve43499JniVictimTest {
 
     /** @return 每次采样环容量（pageSize × ring_pages）。 */
     private fun ringBytes(): Long =
-        A301SoDebugConfig.executionParameters().pageSize * debugPerf().ringPages
+        Cve43499DebugConfig.executionParameters().pageSize * debugPerf().ringPages
 
     /** @return debug perf 参数（enabled=1；测试阈值放宽以匹配小样本）。 */
     private fun debugPerf(): DebugPerfParameters {
-        val parsed = A301SoDebugConfig.parse(readDebugAsset())
+        val parsed = Cve43499DebugConfig.parse(readDebugAsset())
         return requireNotNull(parsed.perf).copy(
             enabled = 1,
             minVotesFloor = 1L,

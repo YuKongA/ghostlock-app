@@ -21,22 +21,35 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ghostlock.app.GhostLockApp
 import com.ghostlock.app.R
+import com.ghostlock.app.ui.LocalUiMode
+import com.ghostlock.app.ui.UiMode
 import com.ghostlock.app.ui.component.material.ExpressiveScaffold
 import com.ghostlock.app.ui.component.material.SegmentedColumn
 import com.ghostlock.app.ui.component.material.SegmentedDropdownItem
 import com.ghostlock.app.ui.component.material.TonalCard
 import com.ghostlock.app.ui.component.material.expressiveTopAppBarColors
-import com.ghostlock.app.backend.registry.Backends
+import com.ghostlock.app.ui.backend.BackendConfigRenderer
 import com.ghostlock.app.ui.viewmodel.PathViewModel
-import com.ghostlock.app.ui.screen.module.backends.FinishCard
-import com.ghostlock.app.ui.screen.module.backends.FinishSettingsCard
+import com.ghostlock.app.ui.viewmodel.FinishEditorViewModel
+import com.ghostlock.app.ui.viewmodel.FinishSettingsViewModel
+import com.ghostlock.app.ui.screen.module.backends.FinishCardMaterial
+import com.ghostlock.app.ui.screen.module.backends.FinishCardMiuix
+import com.ghostlock.app.ui.screen.module.backends.FinishEditorUiState
+import com.ghostlock.app.ui.screen.module.backends.FinishSettingsCardMaterial
+import com.ghostlock.app.ui.screen.module.backends.FinishSettingsCardMiuix
+import com.ghostlock.app.ui.screen.module.backends.FinishSettingsUiState
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold as MiuixScaffold
@@ -47,6 +60,57 @@ import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
+/** Selects the page-level renderer while preserving the existing LocalUiMode appearance branch. */
+@Composable
+fun BackendPager(
+    bottomInnerPadding: Dp,
+    isCurrentPage: Boolean = true,
+    onOpenFinish: () -> Unit,
+    onOpenFinishSettings: () -> Unit,
+) {
+    val context = LocalContext.current
+    val app = context.applicationContext as GhostLockApp
+    val pathViewModel = viewModel<PathViewModel>(factory = app.container.viewModelFactory)
+    val finishEditorViewModel = viewModel<FinishEditorViewModel>(factory = app.container.viewModelFactory)
+    val finishSettingsViewModel = viewModel<FinishSettingsViewModel>(factory = app.container.viewModelFactory)
+    val state by pathViewModel.uiState.collectAsStateWithLifecycle()
+    val finishEditorState by finishEditorViewModel.uiState.collectAsStateWithLifecycle()
+    val finishSettingsState by finishSettingsViewModel.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(isCurrentPage) {
+        if (isCurrentPage) {
+            pathViewModel.refresh()
+            finishEditorViewModel.refresh()
+            finishSettingsViewModel.refresh()
+        }
+    }
+    val actions = BackendPageActions(
+        onSelectBackend = pathViewModel::selectBackend,
+        onOpenFinish = {
+            finishEditorViewModel.openEditor()
+            onOpenFinish()
+        },
+        onOpenFinishSettings = onOpenFinishSettings,
+    )
+    when (LocalUiMode.current) {
+        UiMode.Material -> BackendPageMaterial(
+            state = state,
+            actions = actions,
+            finishEditorState = finishEditorState,
+            finishSettingsState = finishSettingsState,
+            configRenderer = app.container.backendConfigRenderer,
+            bottomInnerPadding = bottomInnerPadding,
+        )
+        UiMode.Miuix -> BackendPageMiuix(
+            state = state,
+            actions = actions,
+            finishEditorState = finishEditorState,
+            finishSettingsState = finishSettingsState,
+            configRenderer = app.container.backendConfigRenderer,
+            bottomInnerPadding = bottomInnerPadding,
+        )
+    }
+}
+
 /**
  *  「路径」页：顶部展示全部 backend；仅 selectable spec 可选择，disabled spec 灰显。
  *
@@ -56,11 +120,16 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  *  统一决定 allow/deny（本页不再有 CVE-43499 运行卡）。
  */
 @Composable
-fun BackendPageMaterial(bottomInnerPadding: Dp) {
-    val pathViewModel: PathViewModel = viewModel()
-    val selected = pathViewModel.selectedIndex
-    val specs = Backends.all
-    val titles = specs.map { stringResource(it.displayNameRes) }
+fun BackendPageMaterial(
+    state: BackendPageUiState,
+    actions: BackendPageActions,
+    finishEditorState: FinishEditorUiState,
+    finishSettingsState: FinishSettingsUiState,
+    configRenderer: BackendConfigRenderer,
+    bottomInnerPadding: Dp,
+) {
+    val selected = state.selectedIndex
+    val titles = state.options.map { it.title }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
 
     ExpressiveScaffold(
@@ -89,40 +158,47 @@ fun BackendPageMaterial(bottomInnerPadding: Dp) {
                     SegmentedDropdownItem(
                         icon = Icons.Filled.Memory,
                         title = stringResource(R.string.backend_label),
-                        summary = titles[selected],
+                        summary = titles.getOrElse(selected) { "" },
                         items = titles,
                         selectedIndex = selected,
-                        itemEnabled = { specs.getOrNull(it)?.let { spec -> Backends.isSelectable(spec) } == true },
-                        onItemSelected = { pathViewModel.selectBackend(it) },
+                        itemEnabled = { state.options.getOrNull(it)?.selectable == true },
+                        onItemSelected = { index ->
+                            state.options.getOrNull(index)?.let { actions.onSelectBackend(it.key) }
+                        },
                     )
                 }
             }
-            FinishCard(miuix = false, onOpen = { com.ghostlock.app.ui.PageChrome.showFinish = true })
-            FinishSettingsCard(miuix = false, onOpen = { com.ghostlock.app.ui.PageChrome.showFinishSettings = true })
+            FinishCardMaterial(finishEditorState, actions.onOpenFinish)
+            FinishSettingsCardMaterial(finishSettingsState, actions.onOpenFinishSettings)
             TonalCard {
                 /* 唯一渲染路径：backend 自己的 ConfigCard（默认卡内部读 rows）。 */
-                specs[selected].ConfigCard(miuix = false)
+                configRenderer.render(state.selectedKey)
             }
         }
     }
 }
 
 @Composable
-fun BackendPageMiuix(bottomInnerPadding: Dp) {
-    val pathViewModel: PathViewModel = viewModel()
-    val selected = pathViewModel.selectedIndex
-    val specs = Backends.all
+fun BackendPageMiuix(
+    state: BackendPageUiState,
+    actions: BackendPageActions,
+    finishEditorState: FinishEditorUiState,
+    finishSettingsState: FinishSettingsUiState,
+    configRenderer: BackendConfigRenderer,
+    bottomInnerPadding: Dp,
+) {
+    val selected = state.selectedIndex
     val backendEntry = DropdownEntry(
-        items = specs.mapIndexed { index, spec ->
+        items = state.options.mapIndexed { index, option ->
             DropdownItem(
-                text = stringResource(spec.displayNameRes),
-                enabled = Backends.isSelectable(spec),
+                text = option.title,
+                enabled = option.selectable,
                 selected = index == selected,
-                onClick = { if (Backends.isSelectable(spec)) pathViewModel.selectBackend(index) },
+                onClick = { if (option.selectable) actions.onSelectBackend(option.key) },
             )
         },
     )
-    val selectedTitle = specs.getOrNull(selected)?.let { stringResource(it.displayNameRes) }.orEmpty()
+    val selectedTitle = state.options.getOrNull(selected)?.title.orEmpty()
     val scrollBehavior = MiuixScrollBehavior()
 
     MiuixScaffold(
@@ -159,11 +235,11 @@ fun BackendPageMiuix(bottomInnerPadding: Dp) {
                     entry = backendEntry,
                 )
             }
-            FinishCard(miuix = true, onOpen = { com.ghostlock.app.ui.PageChrome.showFinish = true })
-            FinishSettingsCard(miuix = true, onOpen = { com.ghostlock.app.ui.PageChrome.showFinishSettings = true })
+            FinishCardMiuix(finishEditorState, actions.onOpenFinish)
+            FinishSettingsCardMiuix(finishSettingsState, actions.onOpenFinishSettings)
             Card(modifier = Modifier.fillMaxWidth()) {
                 /* 唯一渲染路径：backend 自己的 ConfigCard（默认卡内部读 rows）。 */
-                specs[selected].ConfigCard(miuix = true)
+                configRenderer.render(state.selectedKey)
             }
 
         }

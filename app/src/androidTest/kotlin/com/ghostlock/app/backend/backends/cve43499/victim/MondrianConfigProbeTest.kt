@@ -2,9 +2,9 @@ package com.ghostlock.app.backend.backends.cve43499.victim
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.ghostlock.app.data.cve43499.A301SoDebugConfig
-import com.ghostlock.app.data.cve43499.DebugPrimitiveKind
-import com.ghostlock.app.data.cve43499.DebugVictimTransport
+import com.ghostlock.app.backend.backends.cve43499.config.Cve43499DebugConfig
+import com.ghostlock.app.backend.backends.cve43499.config.DebugPrimitiveKind
+import com.ghostlock.app.backend.backends.cve43499.config.DebugVictimTransport
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -36,8 +36,8 @@ class MondrianConfigProbeTest {
 
         val report = File(context.filesDir, REPORT_FILE)
         try {
-            val identity = A301SoDebugConfig.detectDeviceIdentity()
-            val asset = A301SoDebugConfig.selectAssetPath(identity)
+            val identity = Cve43499DebugConfig.detectDeviceIdentity()
+            val asset = Cve43499DebugConfig.selectAssetPath(identity)
             record(
                 "E0|device|device=${identity.device}|model=${identity.model}" +
                     "|fingerprint=${identity.fingerprint}|kernel_release=${identity.kernelRelease}",
@@ -71,10 +71,10 @@ class MondrianConfigProbeTest {
             record("E0|selected_asset=$asset")
             assertEquals(
                 "E0|mondrian 设备必须选择 debug-mondrian.conf",
-                A301SoDebugConfig.ASSET_PATH_MONDRIAN,
+                Cve43499DebugConfig.ASSET_PATH_MONDRIAN,
                 asset,
             )
-            val debug = A301SoDebugConfig.load(context)
+            val debug = Cve43499DebugConfig.load(context)
             assertEquals("5.10.252-gki-gabcbe4b2bc10", debug.release)
             assertEquals(5, debug.kernelMajor)
             record(
@@ -139,7 +139,7 @@ class MondrianConfigProbeTest {
             assertEquals(256L, debug.generator.payload.writeValueOffset)
             assertEquals(16L, debug.generator.payload.pageAcceptBit)
             assertEquals(264L, debug.generator.multicast.frameSize)
-            val execution = A301SoDebugConfig.executionParameters(debug)
+            val execution = Cve43499DebugConfig.executionParameters(debug)
             record(
                 "E0|execution|allocation=${execution.allocationSize}|mm_struct=${execution.mmStructSize}" +
                     "|objects_per_slab=${execution.objectsPerSlab}" +

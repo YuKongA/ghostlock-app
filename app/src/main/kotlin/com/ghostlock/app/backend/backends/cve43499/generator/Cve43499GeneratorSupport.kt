@@ -1,10 +1,10 @@
 package com.ghostlock.app.backend.backends.cve43499.generator
 
 import com.ghostlock.app.backend.backends.cve43499.lifecycle.Cve43499PlacementFacts
-import com.ghostlock.app.data.cve43499.A301SoDebugParameters
-import com.ghostlock.app.data.cve43499.DebugAddressModel
-import com.ghostlock.app.data.cve43499.DebugExecutionParameters
-import com.ghostlock.app.data.cve43499.DebugPayloadLayout
+import com.ghostlock.app.backend.backends.cve43499.config.Cve43499DebugParameters
+import com.ghostlock.app.backend.backends.cve43499.config.DebugAddressModel
+import com.ghostlock.app.backend.backends.cve43499.config.DebugExecutionParameters
+import com.ghostlock.app.backend.backends.cve43499.config.DebugPayloadLayout
 import com.ghostlock.app.backend.backends.cve43499.owned.LandingConfig
 
 /**
@@ -211,7 +211,7 @@ internal data class Cve43499PayloadResult(
  * @note 阶段：R3b；真机未验证，不得据此宣称可攻击/supported。
  */
 internal data class Cve43499GeneratorContext(
-    val debug: A301SoDebugParameters,
+    val debug: Cve43499DebugParameters,
     val execution: DebugExecutionParameters,
     val ghostPid: Int,
 ) {

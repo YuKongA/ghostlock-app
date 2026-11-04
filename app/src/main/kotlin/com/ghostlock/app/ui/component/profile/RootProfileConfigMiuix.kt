@@ -26,14 +26,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import com.ghostlock.app.ui.Natives
 import com.ghostlock.app.R
-import com.ghostlock.app.ui.profile.Capabilities
-import com.ghostlock.app.ui.profile.Groups
-import com.ghostlock.app.ui.toRawFlags
-import com.ghostlock.app.ui.toRootProfileFlags
 import com.ghostlock.app.ui.component.miuix.SuperEditArrow
-import com.ghostlock.app.ui.util.isSepolicyValid
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
@@ -50,8 +44,9 @@ fun RootProfileConfigMiuix(
     modifier: Modifier = Modifier,
     fixedName: Boolean,
     enabled: Boolean = true,
-    profile: Natives.Profile,
-    onProfileChange: (Natives.Profile) -> Unit,
+    profile: ProfileDraft,
+    isPolicyValid: (String) -> Boolean = { true },
+    onProfileChange: (ProfileDraft) -> Unit,
 ) {
     Column(
         modifier = modifier
@@ -130,15 +125,19 @@ fun RootProfileConfigMiuix(
             )
         }
 
-        RootProfileFlagPanel(enabled = enabled, selected = profile.flags.toRootProfileFlags()) {
+        RootProfileFlagPanel(enabled = enabled, selected = profile.flags.toProfileFlags()) {
             onProfileChange(
                 profile.copy(
-                    flags = it.toRawFlags(),
+                    flags = it.toRawProfileFlags(),
                 )
             )
         }
 
-        SELinuxPanel(enabled = enabled, profile = profile, onSELinuxChange = { domain, rules ->
+        SELinuxPanel(
+            enabled = enabled,
+            profile = profile,
+            isPolicyValid = isPolicyValid,
+            onSELinuxChange = { domain, rules ->
             onProfileChange(
                 profile.copy(
                     context = domain,
@@ -250,7 +249,7 @@ private fun GroupsPanel(
 @Composable
 private fun MountNameSpacePanel(
     enabled: Boolean,
-    profile: Natives.Profile,
+    profile: ProfileDraft,
     onMntNamespaceChange: (namespaceType: Int) -> Unit
 ) {
     OverlayDropdownPreference(
@@ -270,13 +269,13 @@ private fun MountNameSpacePanel(
 @Composable
 private fun RootProfileFlagPanel(
     enabled: Boolean,
-    selected: List<Natives.Profile.RootProfileFlag>,
-    closeSelection: (selection: List<Natives.Profile.RootProfileFlag>) -> Unit
+    selected: List<ProfileFlag>,
+    closeSelection: (selection: List<ProfileFlag>) -> Unit
 ) {
     val showDialog = remember { mutableStateOf(false) }
 
     val caps = remember {
-        Natives.Profile.RootProfileFlag.entries.toTypedArray().sortedBy { it.display }
+        ProfileFlag.entries.toTypedArray().sortedBy { it.display }
     }
 
     val currentSelection = remember(selected) { mutableStateOf(selected.toSet()) }
@@ -292,7 +291,7 @@ private fun RootProfileFlagPanel(
                     items(caps) { cap ->
                         CheckboxPreference(
                             title = cap.display,
-                            summary = stringResource(cap.desc),
+                            summary = stringResource(cap.description),
                             insideMargin = PaddingValues(horizontal = 30.dp, vertical = 16.dp),
                             checkboxLocation = CheckboxLocation.End,
                             checked = currentSelection.value.contains(cap),
@@ -442,7 +441,8 @@ private fun CapsPanel(
 @Composable
 private fun SELinuxPanel(
     enabled: Boolean,
-    profile: Natives.Profile,
+    profile: ProfileDraft,
+    isPolicyValid: (String) -> Boolean,
     onSELinuxChange: (domain: String, rules: String) -> Unit
 ) {
     val showDialog = remember { mutableStateOf(false) }
@@ -454,7 +454,7 @@ private fun SELinuxPanel(
         val regex = Regex("^[a-z_]+:[a-z0-9_]+:[a-z0-9_]+(:[a-z0-9_]+)?$")
         domain.matches(regex)
     }
-    val isRulesValid = remember(rules) { isSepolicyValid(rules) }
+    val isRulesValid = remember(rules, isPolicyValid) { isPolicyValid(rules) }
 
     OverlayDialog(
         show = showDialog.value,

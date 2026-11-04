@@ -8,8 +8,8 @@ import com.ghostlock.app.backend.backends.cve43499.perf.Cve43499PerfParseConfig
 import com.ghostlock.app.backend.backends.cve43499.perf.Cve43499PerfPass
 import com.ghostlock.app.backend.backends.cve43499.perf.Cve43499PerfSampleFormat
 import com.ghostlock.app.backend.backends.cve43499.perf.Cve43499PerfSampleParser
-import com.ghostlock.app.data.cve43499.DebugExecutionParameters
-import com.ghostlock.app.data.cve43499.DebugPerfParameters
+import com.ghostlock.app.backend.backends.cve43499.config.DebugExecutionParameters
+import com.ghostlock.app.backend.backends.cve43499.config.DebugPerfParameters
 import com.ghostlock.app.core.victim.VictimCapabilities
 import com.ghostlock.app.core.victim.VictimCapability
 import com.ghostlock.app.core.victim.VictimError

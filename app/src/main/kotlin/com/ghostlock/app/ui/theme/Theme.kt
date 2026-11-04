@@ -6,8 +6,7 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
 import com.materialkolor.PaletteStyle
 import com.materialkolor.dynamiccolor.ColorSpec
-import com.ghostlock.app.ui.data.repository.SettingsRepository
-import com.ghostlock.app.ui.data.repository.SettingsRepositoryImpl
+import com.ghostlock.app.domain.settings.UiPreferences
 import com.ghostlock.app.ui.LocalUiMode
 import com.ghostlock.app.ui.UiMode
 
@@ -64,13 +63,21 @@ fun ColorSpec.SpecVersion.effectiveFor(style: PaletteStyle): ColorSpec.SpecVersi
         this
     }
 
+/** Maps storage-neutral preference values into the existing renderer theme contract. */
 object ThemeController {
-    fun getAppSettings(repo: SettingsRepository = SettingsRepositoryImpl()): AppSettings {
-        val uiMode = repo.uiMode
-        var colorModeValue = repo.themeMode
+    /**
+     * Builds renderer settings without reading Android storage from presentation.
+     *
+     * @param preferences Domain preference snapshot; defaults preserve preview behavior.
+     * @return Existing AppSettings consumed by Material and Miuix themes.
+     * @note Unknown palette/spec names retain the historical fallback values.
+     */
+    fun getAppSettings(preferences: UiPreferences = UiPreferences()): AppSettings {
+        val uiMode = preferences.uiMode
+        var colorModeValue = preferences.themeMode
 
         if (uiMode == "miuix") {
-            val miuixMonet = repo.miuixMonet
+            val miuixMonet = preferences.miuixMonet
             val colorMode = ColorMode.fromValue(colorModeValue)
             colorModeValue = if (!miuixMonet && colorMode.isMonet) {
                 colorMode.toNonMonetMode()
@@ -82,14 +89,14 @@ object ThemeController {
         }
 
         val colorMode = ColorMode.fromValue(colorModeValue)
-        val keyColor = repo.keyColor
-        val paletteStyleStr = repo.colorStyle
+        val keyColor = preferences.keyColor
+        val paletteStyleStr = preferences.colorStyle
         val paletteStyle = try {
             PaletteStyle.valueOf(paletteStyleStr)
         } catch (_: Exception) {
             PaletteStyle.TonalSpot
         }
-        val colorSpecStr = repo.colorSpec
+        val colorSpecStr = preferences.colorSpec
         val colorSpec = try {
             ColorSpec.SpecVersion.valueOf(colorSpecStr)
         } catch (_: Exception) {
@@ -101,19 +108,19 @@ object ThemeController {
 }
 
 @Composable
-fun KernelSUTheme(
+fun GhostLockAppTheme(
     appSettings: AppSettings = ThemeController.getAppSettings(),
     uiMode: UiMode = LocalUiMode.current,
     content: @Composable () -> Unit
 ) {
 
     when (uiMode) {
-        UiMode.Miuix -> MiuixKernelSUTheme(
+        UiMode.Miuix -> MiuixGhostLockTheme(
             appSettings = appSettings,
             content = content
         )
 
-        UiMode.Material -> MaterialKernelSUTheme(
+        UiMode.Material -> MaterialGhostLockTheme(
             appSettings = appSettings,
             content = content
         )
@@ -139,5 +146,3 @@ val LocalEnableFloatingBottomBar = staticCompositionLocalOf { false }
 val LocalEnableFloatingBottomBarBlur = staticCompositionLocalOf { false }
 
 val LocalEnableNavigationBadge = staticCompositionLocalOf { true }
-
-val LocalModuleDescriptionMaxLines = staticCompositionLocalOf { 4 }

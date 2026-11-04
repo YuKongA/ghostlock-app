@@ -29,12 +29,10 @@ import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.ghostlock.app.BuildConfig
 import com.ghostlock.app.R
 import com.ghostlock.app.ui.component.material.ExpressiveScaffold
 import com.ghostlock.app.ui.component.material.SegmentedColumn
@@ -44,8 +42,7 @@ import com.ghostlock.app.ui.component.material.expressiveTopAppBarColors
 
 /** 关于页（与其他页同一套页面骨架：标准 TopAppBar + 16dp 内容卡片）。 */
 @Composable
-fun AboutScreenMaterial(onBack: () -> Unit) {
-    val uriHandler = LocalUriHandler.current
+fun AboutScreenMaterial(state: AboutUiState, actions: AboutActions) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     ExpressiveScaffold(
         topBar = {
@@ -55,7 +52,7 @@ fun AboutScreenMaterial(onBack: () -> Unit) {
                 windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
                 scrollBehavior = scrollBehavior,
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = actions.onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
@@ -81,7 +78,7 @@ fun AboutScreenMaterial(onBack: () -> Unit) {
                         Column(modifier = Modifier.padding(start = 12.dp)) {
                             Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge)
                             Text(
-                                "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                                state.versionLabel,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -89,51 +86,21 @@ fun AboutScreenMaterial(onBack: () -> Unit) {
                     }
                 }
             }
-            item { SectionTitle(stringResource(R.string.about_project)) }
-            item {
-                LinkGroup {
-                    LinkRow(stringResource(R.string.about_source_code), "github.com/YuKongA/ghostlock-app") {
-                        uriHandler.openUri("https://github.com/YuKongA/ghostlock-app")
-                    }
-                }
-            }
-            item { SectionTitle(stringResource(R.string.about_origins)) }
-            item {
-                LinkGroup {
-                    LinkRow("CyberMeowfia", "github.com/NebuSec/CyberMeowfia") {
-                        uriHandler.openUri("https://github.com/NebuSec/CyberMeowfia")
-                    }
-                    LinkRow("ghostlock-oneplus", "github.com/JoinChang/ghostlock-oneplus") {
-                        uriHandler.openUri("https://github.com/JoinChang/ghostlock-oneplus")
-                    }
-                    LinkRow("CVE-2026-43499-popsicle", "github.com/x-spy/CVE-2026-43499-popsicle") {
-                        uriHandler.openUri("https://github.com/x-spy/CVE-2026-43499-popsicle")
-                    }
-                }
-            }
-            item { SectionTitle(stringResource(R.string.about_open_source)) }
-            item {
-                LinkGroup {
-                    LinkRow("Apache License 2.0", "github.com/YuKongA/ghostlock-app/LICENSE") {
-                        uriHandler.openUri("https://github.com/YuKongA/ghostlock-app/blob/main/LICENSE")
-                    }
-                    LinkRow("miuix", "github.com/compose-miuix-ui/miuix") {
-                        uriHandler.openUri("https://github.com/compose-miuix-ui/miuix")
-                    }
-                    LinkRow("Shizuku", "github.com/RikkaApps/Shizuku") {
-                        uriHandler.openUri("https://github.com/RikkaApps/Shizuku")
-                    }
-                    LinkRow("Typesafe Config", "github.com/lightbend/config") {
-                        uriHandler.openUri("https://github.com/lightbend/config")
-                    }
-                    LinkRow("Apache Commons Compress", "commons.apache.org/proper/commons-compress") {
-                        uriHandler.openUri("https://commons.apache.org/proper/commons-compress/")
+            state.sections.forEach { section ->
+                item { SectionTitle(section.title) }
+                item {
+                    LinkGroup {
+                        section.links.forEach { link ->
+                            LinkRow(link.title, link.summary) {
+                                actions.onOpenUrl(link.url)
+                            }
+                        }
                     }
                 }
             }
             item {
                 Text(
-                    text = stringResource(R.string.opensource_info),
+                    text = state.openSourceInfo,
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

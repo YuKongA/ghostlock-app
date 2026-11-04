@@ -51,10 +51,6 @@ import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.material3.contentColorFor
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,18 +64,12 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.ghostlock.app.ui.KernelVersion
-import com.ghostlock.app.ui.Natives
 import com.ghostlock.app.R
+import com.ghostlock.app.domain.privilege.AttackExecutorKind
 import com.ghostlock.app.ui.component.WarningLevel
 import com.ghostlock.app.ui.component.dialog.rememberConfirmDialog
 import com.ghostlock.app.ui.LocalMainPagerState
-import com.ghostlock.app.backend.declarations.BackendSelection
-import com.ghostlock.app.backend.registry.Backends
-import com.ghostlock.app.ui.backend.statusTone
 import com.ghostlock.app.ui.component.material.ExpressiveScaffold
-import com.ghostlock.app.ui.component.statuscard.BackendStatusCard
-import com.ghostlock.app.ui.component.statuscard.BackendStatusCardModel
 import com.ghostlock.app.ui.component.material.SegmentedColumn
 import com.ghostlock.app.ui.component.material.SegmentedListItem
 import com.ghostlock.app.ui.component.material.TonalCard
@@ -109,51 +99,17 @@ fun HomePagerMaterial(
             if (state.checkUpdateEnabled) {
                 UpdateCard(state = state, actions = actions)
             }
-            if (state.showManagerPrBuildWarning) {
+            if (state.isPrBuild) {
                 WarningCard(stringResource(id = R.string.home_pr_build_warning), level = WarningLevel.Notice)
-            } else if (state.showKernelPrBuildWarning) {
-                WarningCard(stringResource(id = R.string.home_pr_kernel_warning), level = WarningLevel.Notice)
             }
-            if (state.showGkiWarning) {
-                WarningCard(stringResource(id = R.string.home_gki_warning), level = WarningLevel.Notice)
-            }
-            if (state.requiresNewKernel) {
-                WarningCard(
-                    stringResource(
-                        id = if (state.canInstallKernelUpdate) R.string.require_kernel_version else R.string.require_kernel_version_gki
-                    ),
-                    onClick = if (state.canInstallKernelUpdate) actions.onInstallClick else null
-                )
-            }
-            if (state.requiresNewManager) {
-                WarningCard(
-                    stringResource(
-                        id = R.string.require_manager_version
-                    )
-                )
-            }
-            if (state.showLkmUpdate) {
-                WarningCard(
-                    message = stringResource(R.string.home_lkm_update_available),
-                    level = WarningLevel.Notice,
-                    onClick = actions.onInstallClick,
-                )
-            }
-            if (state.showRootWarning) {
-                WarningCard(stringResource(id = R.string.grant_root_failed))
-            }
-            StatusCard(
-                state = state,
-                actions = actions,
+            HomeBackendStatusCard(state)
+            InfoCard(
+                systemInfo = state.systemInfo,
+                privilege = state.privilege,
+                onOpenPrivilege = actions.onOpenPrivilege,
             )
-            InfoCard(systemInfo = state.systemInfo)
             SupportLinks(onOpenUrl = actions.onOpenUrl)
-            Spacer(
-                Modifier.height(
-                    bottomInnerPadding + if (!Natives.isFullFeatured())
-                        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() else 0.dp
-                )
-            )
+            Spacer(Modifier.height(bottomInnerPadding))
         }
     }
 }
@@ -164,8 +120,8 @@ private fun UpdateCard(
     actions: HomeActions,
 ) {
     val newVersion = state.latestVersionInfo
-    val title = stringResource(id = R.string.module_changelog)
-    val updateText = stringResource(id = R.string.module_update)
+    val title = stringResource(id = R.string.app_changelog)
+    val updateText = stringResource(id = R.string.app_update)
 
     AnimatedVisibility(
         visible = state.hasUpdate,
@@ -204,130 +160,31 @@ private fun TopBar(
     )
 }
 
-@Composable
-private fun StatusCard(
-    state: HomeUiState,
-    actions: HomeActions,
-) {
-    val mainPager = LocalMainPagerState.current
-    val ksuActive = state.ksuVersion != null
-    if (ksuActive) {
-        /* task-23：状态卡组件化（ui/component/statuscard）。
-         * 文本来自 backend 的 statusTextRes()；框架只按 readiness 映射 tone 选图标/颜色。 */
-        val selectedBackend = Backends.all[BackendSelection.index]
-        val backendReadiness = selectedBackend.readiness()
-        BackendStatusCard(
-            model = BackendStatusCardModel(
-                cveLabel = selectedBackend.cve,
-                statusTextRes = selectedBackend.statusTextRes(),
-                tone = backendReadiness.statusTone,
-                navigationTextRes = if (backendReadiness.isReady) {
-                    R.string.home_nav_run
-                } else {
-                    R.string.home_nav_paths
-                },
-                stateTags = buildList {
-                    if (state.isSafeMode) add(stringResource(R.string.safe_mode))
-                    if (state.isLateLoadMode) add(stringResource(R.string.jailbreak_mode))
-                },
-                extraTags = if (state.showCustomLkmBadge) {
-                    listOf(stringResource(R.string.home_lkm_custom))
-                } else {
-                    emptyList()
-                },
-                onClick = {
-                    mainPager.animateToPage(if (backendReadiness.isReady) 2 else 1)
-                },
-            ),
-        )
-        return
-    }
-
-    /* 非 KSU 分支保持原语义：未安装（GKI）→ 安装/越狱提示；其它 → 不支持。 */
-    val notInstalled = state.kernelVersion.isGKI()
-    val containerColor = MaterialTheme.colorScheme.errorContainer
-    val contentColor = MaterialTheme.colorScheme.contentColorFor(containerColor)
-    val statusIcon = if (notInstalled) Icons.Rounded.Warning else Icons.Rounded.Block
-    val statusTitle = if (notInstalled) {
-        stringResource(R.string.home_not_installed)
-    } else {
-        stringResource(R.string.home_unsupported)
-    }
-    val navText = stringResource(R.string.home_nav_paths)
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = containerColor,
-        contentColor = contentColor,
-        shape = MaterialTheme.shapes.large,
-        onClick = { mainPager.animateToPage(1) },
-    ) {
-        ListItem(
-            modifier = Modifier,
-            leadingContent = { Icon(statusIcon, contentDescription = statusTitle) },
-            trailingContent = if (notInstalled && state.isSELinuxPermissive) {
-                {
-                    Button(
-                        onClick = actions.onJailbreakClick,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error,
-                            contentColor = MaterialTheme.colorScheme.onError,
-                        ),
-                    ) {
-                        Text(stringResource(R.string.home_jailbreak))
-                    }
-                }
-            } else {
-                null
-            },
-            overlineContent = null,
-            supportingContent = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Row(
-                        modifier = Modifier
-                            .weight(1f, fill = false)
-                            .clickable { mainPager.animateToPage(1) },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(text = navText, style = MaterialTheme.typography.bodyMedium)
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-                }
-            },
-            verticalAlignment = Alignment.CenterVertically,
-            colors = ListItemDefaults.colors(
-                containerColor = Color.Transparent,
-                contentColor = contentColor,
-                leadingContentColor = contentColor,
-                trailingContentColor = contentColor,
-                supportingContentColor = contentColor.copy(alpha = 0.7f),
-            ),
-            elevation = ListItemDefaults.elevation(),
-            content = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = statusTitle,
-                        style = MaterialTheme.typography.titleMediumEmphasized,
-                    )
-                }
-            },
-        )
-    }
-}
-
+/**
+ * Renders a semantic error or notice card and optionally overrides only its container role.
+ *
+ * @param message Localized card message.
+ * @param level Semantic level used when [containerColorOverride] is absent.
+ * @param containerColorOverride Theme role reserved for a presentation-only exception. Its content
+ * color is resolved by [contentColorFor], so `surfaceContainerHigh` pairs with `onSurface`.
+ * @param onClick Optional whole-card action; a null action keeps the card non-clickable. It remains
+ * the final parameter so existing trailing-lambda call sites retain their action semantics.
+ * @return Unit after emitting the card into the current composition.
+ * @note Requires an active [MaterialTheme]. It performs no I/O and introduces no fallback action.
+ * Stage: V0.4b visual correction.
+ */
 @Composable
 private fun WarningCard(
     message: String,
     level: WarningLevel = WarningLevel.Error,
-    onClick: (() -> Unit)? = null
+    containerColorOverride: Color? = null,
+    onClick: (() -> Unit)? = null,
 ) {
-    val containerColor = when (level) {
+    val semanticContainerColor = when (level) {
         WarningLevel.Error -> MaterialTheme.colorScheme.errorContainer
         WarningLevel.Notice -> MaterialTheme.colorScheme.tertiaryContainer
     }
+    val containerColor = containerColorOverride ?: semanticContainerColor
     val content = @Composable {
         Row(
             modifier = Modifier
@@ -353,16 +210,16 @@ private fun SupportLinks(
     onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val learnMoreUrl = stringResource(R.string.home_learn_kernelsu_url)
+    val learnMoreUrl = stringResource(R.string.home_learn_ghostlock_url)
 
     SegmentedColumn(modifier = modifier.fillMaxWidth()) {
         item {
             SegmentedListItem(
                 onClick = { onOpenUrl(learnMoreUrl) },
-                headlineContent = { Text(stringResource(R.string.home_learn_kernelsu)) },
-                supportingContent = { Text(stringResource(R.string.home_click_to_learn_kernelsu)) },
+                headlineContent = { Text(stringResource(R.string.home_learn_ghostlock)) },
+                supportingContent = { Text(stringResource(R.string.home_click_to_learn_ghostlock)) },
                 leadingContent = {
-                    Icon(Icons.AutoMirrored.Filled.MenuBook, stringResource(R.string.home_learn_kernelsu))
+                    Icon(Icons.AutoMirrored.Filled.MenuBook, stringResource(R.string.home_learn_ghostlock))
                 },
                 trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) },
             )
@@ -373,6 +230,8 @@ private fun SupportLinks(
 @Composable
 private fun InfoCard(
     systemInfo: SystemInfo,
+    privilege: PrivilegeUiState = previewPrivilegeState,
+    onOpenPrivilege: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     @Composable
@@ -402,9 +261,11 @@ private fun InfoCard(
         "Disabled" -> stringResource(R.string.selinux_status_disabled)
         else -> stringResource(R.string.selinux_status_unknown)
     }
-    val appUid = androidx.compose.ui.platform.LocalContext.current.applicationInfo.uid
-    val PrivilegeStatus = currentExecutorLabel()
-    var showPrivilege by remember { mutableStateOf(false) }
+    val privilegeStatus = stringResource(
+        R.string.privilege_subtitle_format,
+        privilege.displayedLabel,
+        privilege.displayedUid,
+    )
 
     Column(
         modifier = modifier,
@@ -415,7 +276,7 @@ private fun InfoCard(
                 InfoCardItem(
                     icon = Icons.Filled.Tag,
                     label = stringResource(R.string.home_manager_version),
-                    content = systemInfo.managerVersion,
+                    content = systemInfo.appVersion,
                 )
             }
             item {
@@ -444,58 +305,44 @@ private fun InfoCard(
             item {
                 /* 权限状态改成可点行：右侧箭头进子菜单（2026-10-18 用户裁定）。 */
                 SegmentedListItem(
-                    onClick = { showPrivilege = true },
+                    onClick = onOpenPrivilege,
                     leadingContent = { Icon(Icons.Filled.SupervisorAccount, contentDescription = null) },
                     headlineContent = { Text(stringResource(R.string.home_privilege_status)) },
-                    supportingContent = { Text(PrivilegeStatus) },
+                    supportingContent = { Text(privilegeStatus) },
                     trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
                 )
             }
         }
-        PrivilegeDialog(show = showPrivilege, onDismiss = { showPrivilege = false }, miuix = false)
     }
 }
 
-@Preview(name = "Activated")
+@Preview(name = "Backend Ready")
 @Composable
-private fun StatusCardActivatedPreview() {
-    StatusCard(
-        state = previewHomeScreenState(ksuVersion = 12345, lkmMode = true),
-        actions = HomeActions({}, {})
-    )
+private fun StatusCardReadyPreview() {
+    HomeBackendStatusCard(previewHomeScreenState(isReady = true))
 }
 
-@Preview(name = "Not Activated")
+@Preview(name = "Backend Not Ready")
 @Composable
-private fun StatusCardNotActivatedPreview() {
-    StatusCard(state = previewHomeScreenState(ksuVersion = null, lkmMode = null), actions = HomeActions({}, {}))
-}
-
-@Preview(name = "Permissive")
-@Composable
-private fun StatusCardPermissivePreview() {
-    StatusCard(
-        state = previewHomeScreenState(ksuVersion = null, lkmMode = null, selinuxStatus = "Permissive"),
-        actions = HomeActions({}, {})
-    )
-}
-
-@Preview(name = "Jailbreak")
-@Composable
-private fun StatusCardJailbreakPreview() {
-    StatusCard(
-        state = previewHomeScreenState(ksuVersion = 12345, lkmMode = true, isLateLoadMode = true),
-        actions = HomeActions({}, {})
-    )
+private fun StatusCardNotReadyPreview() {
+    HomeBackendStatusCard(previewHomeScreenState(isReady = false))
 }
 
 private val previewSystemInfo = SystemInfo(
     kernelVersion = "6.1.0-android14-0-g123456789000-ab12345678",
-    managerVersion = "3.0.0 (30000)",
+    appVersion = "3.0.0 (30000)",
     deviceModel = "Google Pixel 6 Pro",
     fingerprint = "google/raven/raven:14/AP1A.240305.019:user/release-keys",
     selinuxStatus = "Enforcing",
     seccompStatus = 2
+)
+
+private val previewPrivilegeState = PrivilegeUiState(
+    selectedExecutor = AttackExecutorKind.APP,
+    displayedExecutor = AttackExecutorKind.APP,
+    appUid = 10231,
+    shizukuAvailable = false,
+    shizukuGranted = false,
 )
 
 private val previewUriHandler = object : UriHandler {
@@ -504,10 +351,7 @@ private val previewUriHandler = object : UriHandler {
 
 @Composable
 private fun HomeScreenPreviewContent(
-    ksuVersion: Int?,
-    lkmMode: Boolean?,
-    isSafeMode: Boolean = false,
-    isLateLoadMode: Boolean = false,
+    isReady: Boolean,
     selinuxStatus: String = "Enforcing",
 ) {
     CompositionLocalProvider(LocalUriHandler provides previewUriHandler) {
@@ -515,16 +359,8 @@ private fun HomeScreenPreviewContent(
             modifier = Modifier.padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            val actions = HomeActions({}, {})
-            StatusCard(
-                state = previewHomeScreenState(
-                    ksuVersion = ksuVersion,
-                    lkmMode = lkmMode,
-                    isSafeMode = isSafeMode,
-                    isLateLoadMode = isLateLoadMode,
-                    selinuxStatus = selinuxStatus,
-                ),
-                actions = actions
+            HomeBackendStatusCard(
+                previewHomeScreenState(isReady = isReady, selinuxStatus = selinuxStatus),
             )
             InfoCard(previewSystemInfo.copy(selinuxStatus = selinuxStatus))
             SupportLinks(onOpenUrl = {})
@@ -532,53 +368,37 @@ private fun HomeScreenPreviewContent(
     }
 }
 
-@Preview(name = "Home Activated", showBackground = true)
+@Preview(name = "Home Ready", showBackground = true)
 @Composable
-private fun HomeScreenActivatedPreview() {
-    HomeScreenPreviewContent(ksuVersion = 12345, lkmMode = true)
+private fun HomeScreenReadyPreview() {
+    HomeScreenPreviewContent(isReady = true)
 }
 
-@Preview(name = "Home Not Activated", showBackground = true)
+@Preview(name = "Home Not Ready", showBackground = true)
 @Composable
-private fun HomeScreenNotActivatedPreview() {
-    HomeScreenPreviewContent(ksuVersion = null, lkmMode = null)
+private fun HomeScreenNotReadyPreview() {
+    HomeScreenPreviewContent(isReady = false)
 }
 
 @Preview(name = "Home Permissive", showBackground = true)
 @Composable
 private fun HomeScreenPermissivePreview() {
-    HomeScreenPreviewContent(ksuVersion = null, lkmMode = null, selinuxStatus = "Permissive")
-}
-
-@Preview(name = "Home Jailbreak", showBackground = true)
-@Composable
-private fun HomeScreenJailbreakPreview() {
-    HomeScreenPreviewContent(ksuVersion = 12345, lkmMode = true, isLateLoadMode = true)
+    HomeScreenPreviewContent(isReady = false, selinuxStatus = "Permissive")
 }
 
 private fun previewHomeScreenState(
-    ksuVersion: Int?,
-    lkmMode: Boolean?,
-    isSafeMode: Boolean = false,
-    isLateLoadMode: Boolean = false,
+    isReady: Boolean,
     selinuxStatus: String = "Enforcing",
 ) = HomeUiState(
-    kernelVersion = KernelVersion(6, 1, 0),
-    ksuVersion = ksuVersion,
-    lkmMode = lkmMode,
-    isLkmBundled = lkmMode == true,
-    isManager = true,
-    isManagerPrBuild = false,
-    isKernelPrBuild = false,
-    requiresNewKernel = false,
-    requiresNewManager = false,
-    isRootAvailable = ksuVersion != null,
-    isSafeMode = isSafeMode,
-    isLateLoadMode = isLateLoadMode,
+    selectedBackend = SelectedBackendUiState(
+        cveLabel = "CVE-2026-98260",
+        statusText = if (isReady) "Ready" else "Not ready",
+        isReady = isReady,
+    ),
+    isPrBuild = false,
     checkUpdateEnabled = false,
-    latestVersionInfo = com.ghostlock.app.ui.util.module.LatestVersionInfo(),
-    currentManagerVersionCode = 10000,
+    latestVersionInfo = com.ghostlock.app.domain.update.AppUpdateInfo(),
+    currentAppVersionCode = 10000,
     systemInfo = previewSystemInfo.copy(selinuxStatus = selinuxStatus),
-    kernelUAPIVersion = 1,
-    managerUAPIVersion = 1,
+    privilege = previewPrivilegeState,
 )

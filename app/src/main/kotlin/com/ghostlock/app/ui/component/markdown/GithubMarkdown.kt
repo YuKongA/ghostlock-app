@@ -22,13 +22,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.WebViewAssetLoader
-import com.ghostlock.app.ui.ksuApp
 import com.ghostlock.app.ui.LocalUiMode
 import com.ghostlock.app.ui.UiMode
 import com.ghostlock.app.ui.theme.isInDarkTheme
@@ -58,7 +58,7 @@ fun GithubMarkdown(
     onLoadingChange: (Boolean) -> Unit = {},
     containerColor: androidx.compose.ui.graphics.Color? = null,
     /**
-     * Site root of untrusted, already sanitized remote HTML (e.g. KernelSU Modules readmes and
+     * Site root of untrusted, already sanitized remote HTML (for example remote module readmes and
      * changelogs). When set, the WebView runs locked down: JavaScript and DOM storage are off,
      * no JS bridge, no file/content access, no mixed content, sub-resources only from this
      * site's host (plus bundled assets), relative URLs resolve against it, raw HTML in Markdown
@@ -68,6 +68,7 @@ fun GithubMarkdown(
     restrictedBaseUrl: String? = null,
 ) {
     val restricted = restrictedBaseUrl != null
+    val assets = LocalContext.current.assets
 
     val density = LocalDensity.current
     val systemDensity = LocalResources.current.displayMetrics.density
@@ -85,9 +86,9 @@ fun GithubMarkdown(
     val fgDefault = colors.fgDefault
     val fgLink = colors.fgLink
 
-    val template = remember(isDark) {
+    val template = remember(isDark, assets) {
         val name = if (isDark) "webview/template_dark.html" else "webview/template.html"
-        ksuApp.assets.open(name).bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
+        assets.open(name).bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
     }
     val extensions = remember {
         listOf(

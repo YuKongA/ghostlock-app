@@ -41,10 +41,10 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.ghostlock.app.ui.BuildConfig
+import com.ghostlock.app.BuildConfig
 import com.ghostlock.app.R
 import com.ghostlock.app.ui.component.dialog.rememberLoadingDialog
-import com.ghostlock.app.ui.util.getBugreportFile
+import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
@@ -60,6 +60,8 @@ private tailrec fun Context.findComponentActivity(): ComponentActivity? {
 fun SendLogBottomSheet(
     onDismiss: () -> Unit,
     snackbarHostState: SnackbarHostState,
+    createReport: suspend () -> File,
+    exportFilePrefix: String = "GhostLock_diagnostic",
 ) {
     val context = LocalContext.current
     val activity = context.findComponentActivity()
@@ -87,7 +89,7 @@ fun SendLogBottomSheet(
             try {
                 withContext(Dispatchers.IO) {
                     context.contentResolver.openOutputStream(uri)?.use { output ->
-                        getBugreportFile(context).inputStream().use {
+                        createReport().inputStream().use {
                             it.copyTo(output)
                         }
                     }
@@ -116,7 +118,7 @@ fun SendLogBottomSheet(
                             haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
                             val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH_mm")
                             val current = LocalDateTime.now().format(formatter)
-                            exportBugreportLauncher.launch("KernelSU_bugreport_${current}.tar.gz")
+                            exportBugreportLauncher.launch("${exportFilePrefix}_${current}.tar.gz")
                         }) {
                         Icon(
                             Icons.Filled.Save,
@@ -142,7 +144,7 @@ fun SendLogBottomSheet(
                             scope.launch {
                                 val bugreport = loadingDialog.withLoading {
                                     withContext(Dispatchers.IO) {
-                                        getBugreportFile(context)
+                                        createReport()
                                     }
                                 }
 
