@@ -1,6 +1,6 @@
 # 附件 A2：P2 关键符号与使用点（48 头）
 
-> 分析类（**≤8192 B**；本件与 A1 均由原单件附件**按配额拆分**而来）。**配套**：[contract-layer-p2-spec](contract-layer-p2-spec.md)（§1）· [附件 A1](contract-layer-p2-spec-annex-a1.md)（48 头依赖面全表）。判据形式 = D1。
+> 分析类；本件与 A1 均由原单件附件按职责拆分，不设字节或篇幅门。**配套**：[contract-layer-p2-spec](contract-layer-p2-spec.md)（§1）· [附件 A1](contract-layer-p2-spec-annex-a1.md)（48 头依赖面全表）。判据形式 = D1。
 
 ## §A2 关键符号与使用点（逐头；其余头以 backend 实际 `grep` 使用点为准）
 

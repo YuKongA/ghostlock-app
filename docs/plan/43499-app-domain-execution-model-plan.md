@@ -131,7 +131,7 @@ Kotlin NEW：`core/victim/*`（6 类，backend-agnostic、无 43499 常量）；
 ### 8.5 P0c 顺序（F3/E5）+技术债/I4
 
 **P0c 顺序**：①I1 parser 小修→②E0/E1→③E2/E2b/E2'/E3/E4→④J 实现批→**⑤E5 JNI 全链复现（J 后、生产启用前）**→⑥W2/W3+finish 冷机门禁→⑦生产启用硬门（G1'）。**E5 step**：W1(JNI)→helper self-perf→Kotlin 解析/投票/选址→JNI W2/W3→finish→enforce 恢复；每 step 独立 PASS/FAIL，任一 FAIL 停并归档；依赖 E1–E4，失败不降级生产启用。
-**技术债**：helper exec 许可待 E4；JNI app 域零历史物证；G1 门禁条件错（Lead）；legacy2 存档缺口（U4 已确认、后续补档）；旧跨任务清理（Lead）。**I4**：approval >16 KiB⇒**冻结 §6.8 正文、只 append 行**，后续拆 approval 附件（另批、owner=Lead）；本设计不再扩 approval。
+**技术债**：helper exec 许可待 E4；JNI app 域零历史物证；G1 门禁条件错（Lead）；legacy2 存档缺口（U4 已确认、后续补档）；旧跨任务清理（Lead）。**I4**：approval §6.8 正文保持冻结、后续只 append 行；需要拆附件时只按职责与权威边界处理，不设字节或篇幅门。
 
 ## 9. 不做 / UNVERIFIED
 

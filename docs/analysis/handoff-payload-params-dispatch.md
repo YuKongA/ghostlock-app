@@ -1,6 +1,6 @@
 # 参数与分派：三层分工 · 两来源合成 · 编译期策略
 
-> 分析类（≤8 KB）。配套 [b0](handoff-payload-b0-contract.md) §3/§4、[b1b2](handoff-payload-b1b2-runtime.md) §B1.1、[kotlin](handoff-payload-kotlin.md) §3、[ops](handoff-payload-ops.md) §1。**自包含，不引用任何外部计划**。
+> 分析类。配套 [b0](handoff-payload-b0-contract.md) §3/§4、[b1b2](handoff-payload-b1b2-runtime.md) §B1.1、[kotlin](handoff-payload-kotlin.md) §3、[ops](handoff-payload-ops.md) §1。**自包含，不引用任何外部计划**。
 
 ## 1. 不用父类 / 虚基（三条理由）
 

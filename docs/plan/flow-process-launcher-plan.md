@@ -1,6 +1,7 @@
 # Flow 进程启动器计划（L · v5 · 已生效）
 
 > 状态：**已生效（2026-11-02）**：v4 经 design-critic task-140 判「可进用户批准 gate（阻断 0）」；用户以 goal「实现新进程攻击机制」下达实现指令，D1–D7 按推荐值生效；执行通道取代/指针动作按 §7 执行（exec-glue-plan 已更新）。B1 起实现，B2+ 待设备门禁。
+> 2026-11-03 指针更新：Clean Architecture 纵切把 UI ownership 改为 RunViewModel + application-scoped RunCoordinator + BackendRunSessionAdapter；本文出现的 BackendRunViewModel/旧 presentation wiring 只作当时实施清单，当前权威类图见 `docs/development/full-process-uml.md` §11.9–11.10。Flow/launcher/host 的新进程与资源语义不因此改变。
 > 需求来源（用户 2026-11-02 原话）：
 > 「现在有新架构：攻击一律启动新进程：1.UI选定指定的后端，保存指定的flow入口的reflection symbol和参数；
 > 2.将reflection symbol和参数传入到进程启动器（包含一般app进程和shizuku进程）3.进程启动器调用对应的symbol执行。
@@ -117,7 +118,7 @@ UI 选 backend（BackendSpec 声明 flowSymbol + paramsSchema）
 1. `exec-glue-plan.md` 头部：标「执行通道 §3/§5 被本计划取代（指针+日期）；payload/finish/root handoff/logger 证据继续有效」；不再自称唯一；
 2. `execution-architecture.md`：Flow-app-only 事实标历史并指向本计划；ADR-0022 不改（D5=A 除外）；
 3. `98260-user-requirements-summary.md`：A4/A5/§2.1 加沿革注记；
-4. `full-process-uml.md` 更新流程/序列图；plan 索引/approval 表补本计划行；quota 复核（≤16KiB）；
+4. `full-process-uml.md` 更新流程/序列图；plan 索引/approval 表补本计划行；复核单一权威、链接与判据完整性；
 5. 旧 launcher/host 删除清单与回退（file:line）记录在 B4a/B5c。
 
 ## 8 现状差距（2026-11-02）

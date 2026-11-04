@@ -117,4 +117,4 @@
 | F4 | §4 A0 当前工作树 hash 快照字段+命令+实测值；98260 R1a/R1e 未批/未冻结风险；approval 适配行标注 |
 | I1 | G01/G08=approval:182、G06/G07=approval:180、G05=approval:183/186；G05 未冻结不作闭合依赖；parked/detach 入 G05/E5 回归 |
 | I2 | Q2 L0 有意 defer+TD（§1/§6/§7） |
-| I3 | approval 追加本 plan 行+§6 索引；>16 KiB 文档债 owner/处置记录（approval append-only） |
+| I3 | approval 追加本 plan 行+§6 索引；approval append-only，文档不设字节或篇幅门 |

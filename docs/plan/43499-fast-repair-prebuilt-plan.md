@@ -2,7 +2,7 @@
 
 - 状态：**L 设计 v3（2026-10-28，task-71），只写文档+approval append、零实现、不 commit**；v2 二轮复核判不可（B1 阻断；I1/I2/I4/I5）→本件修订，待三轮复核。
 - 约束：不改 Native ABI/不加逻辑；只 Kotlin 生命周期/Flow；不碰 98260；保持 W1/W1b/W2/W3 语义，只前移 fast-repair 的 placement/landing。
-- **B1 详细矩阵/时序/负例见附件** [43499-fast-repair-prebuilt-plan-annex.md](43499-fast-repair-prebuilt-plan-annex.md)（≤16 KiB；本件只留最小指针与摘要，主件不得超 16 KiB）。
+- **B1 详细矩阵/时序/负例见附件** [43499-fast-repair-prebuilt-plan-annex.md](43499-fast-repair-prebuilt-plan-annex.md)；本件只留指针与摘要，按职责分离且不设字节或篇幅门。
 - 依据：审计 `43499-syscall-reaudit-20261027.md:17`（≈1.4–1.5 s）；review `43499-three-route-line-review-20261027.md:144,153,173`；approval §6.6 的 **G06 行（`P1a parity`）**/**G01 行（`P1b-1`）**（append-only，行号随追加漂移，按标签检索；快照约 :180/:182）。
 - 术语：**预建页**=W2 cred 写前完成 repair 链 placement+landing 并保留 owner；**最小事务**=W2 成功后只 `prepareActor`+`executeActor`（+clean close）。
 
@@ -13,7 +13,7 @@
 3. **B2 保持 v2**：clean failure（discard 成功）⇒W1 继续；full fallback 须 `allowFullFallback=1`+evidence（`w2RepairMode=full-fallback`）+明确 panic 窗口不改善；dirty/retained⇒W1 立即 fail-stop（G01），不进 W1b/W2、不 fallback；closeAll 顺序 **active→prebuilt→victim**。
 4. **I1**：引用改现行 **approval §6.6 的 G06 行/G01 行**（`P1a parity`/`P1b-1`，快照约 :180/:182，按标签检索）；G05 前置判据=G06/G01 **实现通过 + E6 真机 evidence**，未跑真机不得当已通过。
 5. **I2**：E6 的 `t_afterW2` 补 **activation 子项**（activate 前→prepareActor 前），另报 prepare/execute/close；其余冻结口径保留（`SystemClock.elapsedRealtimeNanos`、含/不含 close、VmHWM App/helper、每 run 原始值、先基线再 3/3、p95=max）。
-6. **I4**：主件 16,384 B 零余量 ⇒ B1 矩阵入新附件；主件只最小指针；approval 只 append（文档债 owner=Lead/偿还=三轮通过后合入/按需拆分）。
+6. **I4**：B1 矩阵按职责置于附件，主件只留最小指针；主件、附件与 approval 均不设字节或篇幅门，approval 只 append。
 7. **I5**：G01 冻结口径=**代码/单测层冻结**（`FailStopController`+Flow 触发+debug conf+单测，approval:180 记录 205/0/0）≠真机门禁闭合；用户令暂不编译 ⇒ 当前只能“可编码准备”，不得称实现门禁已闭；E6 必须含 **G01 close-retained 真机负例**；E5/⑥未过不标 supported；G08 现状=已实现 no-pin sentinel（真机 UNVERIFIED）。
 8. **保持**：Q1 默认 B（W1b 后/W2 前）、Q5 `fastRepairPrebuildEnabled=false`、Native 零改动/ABI 不变、E6 PASS/FAIL/UNVERIFIED。
 

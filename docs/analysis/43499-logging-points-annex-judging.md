@@ -1,6 +1,6 @@
 # 附件：判据的过滤规则（可执行形式）· 43499 日志点设计
 
-> 分析类（≤8 KiB）。**从主件 [43499-logging-points-design.md](43499-logging-points-design.md) §8 迁出**（配额纪律：单份 ≤8 KB）。
+> **从主件 [43499-logging-points-design.md](43499-logging-points-design.md) §8 按判据职责迁出**；不设字节或篇幅门。
 > 规则一句话：**判据只认 native 行** —— 先剔出带来源标记的行，再计数。
 
 ## A. 规则与来源标记

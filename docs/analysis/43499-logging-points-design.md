@@ -87,7 +87,7 @@
     覆盖：§2 的 A/B/C/D/E/F 各段逐条有落点；§1 的 C1 与 C3 的每一分支都有。
     三线门禁：check 109 PASS 起只增不减 / android 零告警 / lint 0（`--rerun-tasks`）。
     真机：日志行数只作参考；**判据改为逐键覆盖**（见 §7），且判据只认 native 行（见 §8）。
-    归档：docs/analysis/device-gates/*.md（单份 <= 8 KB）。
+    归档：docs/analysis/device-gates/*.md（证据完整，不设篇幅门）。
 
     失败模式（证伪）：删掉 §6 表任一点位（**或 PI 后打印的等价行**；环已撤除）后重跑真机 ⇒ 对应键计数 0 ⇒ 判据红。
     参考指标（不判定）：日志总行数（实测 3464 行）。
@@ -105,7 +105,7 @@
 
 ## 6. 现存点位清单（file:line，实测 18 处）
 
-- **整表已迁出**（配额）⇒ 见 **[43499-logging-points-annex-points.md](43499-logging-points-annex-points.md)**（18 处点位 + 覆盖分组）。
+- **整表已按点位清单职责迁出** ⇒ 见 **[43499-logging-points-annex-points.md](43499-logging-points-annex-points.md)**（18 处点位 + 覆盖分组）。
 
 ## 7. L4 与 L11 整改：覆盖式验收（判据，可失败）
 
@@ -119,5 +119,5 @@
 
 ## 8. 判据的过滤规则：只认 native 行
 
-- **可执行形式（命令 · 码表 · 自检与真机输出）已迁出** ⇒ 见 **[43499-logging-points-annex-judging.md](43499-logging-points-annex-judging.md)**（配额纪律：单份 ≤8 KB）。
+- **可执行形式（命令 · 码表 · 自检与真机输出）已按判据职责迁出** ⇒ 见 **[43499-logging-points-annex-judging.md](43499-logging-points-annex-judging.md)**。
 - **返回值语义**：`0` 通过 · **`2` 失败**（标记行混入判据计数）· `1` 用法错误。

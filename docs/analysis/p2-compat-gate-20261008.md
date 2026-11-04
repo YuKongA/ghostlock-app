@@ -1,6 +1,6 @@
 # P2 兼容面门禁证据（2026-10-08）
 
-> **记录类**（≤8 KiB）。范围：**P2 新契约层的兼容门禁**（[contract-layer-p2-spec](contract-layer-p2-spec.md) §6 判据 ①–④）。
+> **记录类**。范围：**P2 新契约层的兼容门禁**（[contract-layer-p2-spec](contract-layer-p2-spec.md) §6 判据 ①–④）；不设字节或篇幅门。
 > 判据形式 = D1（黑盒/白盒 + 极端值）；**全部结果为本次原始复跑**（除标注「引述」者）。
 > 上游：spec §6（判据）· [A1](contract-layer-p2-spec-annex-a1.md)（48 头全表）· [A2](contract-layer-p2-spec-annex-a2.md)（符号使用点）。
 

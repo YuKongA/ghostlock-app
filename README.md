@@ -14,6 +14,14 @@ For the complete device-porting workflow, kernel-family template links, and tuni
 
 Rows explicitly marked **Shizuku required** run through a shell UserService. Start Shizuku with ADB and tap the status card to grant access; all other rows use the app's normal execution path.
 
+## Android application architecture
+
+The Kotlin application is organized as a Clean Architecture boundary: pure `domain/**` models, ports, and use cases are implemented by Android/backend adapters in `data/**`, and application-scoped wiring lives in `AppContainer`. Screens and ViewModels consume immutable semantic state plus action contracts; they do not read backend, logging, attack, or persistence globals directly. `LocalUiMode` still selects the page-level Material or Miuix renderer, so both skins share behavior without flattening their existing components or geometry.
+
+Physical runs are owned by the application-scoped `RunCoordinator` and continue when a renderer or ViewModel observer is recreated; only an explicit abort can enter the existing launcher-cancellation path. Real KernelSU/`ksud` references remain only where they implement guard, payload, finish, package-visibility, or handoff behavior. Reusable `ui/component/**` code is retained and receives caller-owned semantic inputs.
+
+`BackendSpec` is the single Android outer plugin contract, while `Backends.all` remains the sole membership authority. Interactive backend configuration is exposed only through the nullable standard `BackendSpec.configurationSpec` capability and its neutral `Static`, `Toggle`, `ChoiceDocument`, or `Document` state. The data adapter delegates to that capability without importing concrete backends, and presentation uses generic semantic renderers. Device-specific A301SO/Mondrian configuration and the CVE-2026-43499 request factory remain private to that backend; UI, domain, and core contain no concrete-backend dependency.
+
 ## Quick Start
 
 Open **GhostLock** and tap **Run**. KernelSU (`me.weishu.kernelsu`), ReSukiSU (`com.resukisu.resukisu`), or KowSU (`com.kowx712.supermanager`) provides `ksud` for module loading; without it, W1/W2 still grant uid 0 but no module is loaded.

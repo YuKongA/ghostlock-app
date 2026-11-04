@@ -1,6 +1,6 @@
 # Handoff / Payload 决策：划掉项存档（历史全表）
 
-> 分析类（≤8 KB）。**主表在 [handoff-payload-decisions.md](handoff-payload-decisions.md)**（裁决 + 近一轮划掉项 + 沿革）；本文件保存**历史划掉项全表与自纠记录**，不删历史。
+> 分析类历史归档。旧 ≤8 KB 配额已于 2026-11-03 取消；**主表在 [handoff-payload-decisions.md](handoff-payload-decisions.md)**（裁决 + 近一轮划掉项 + 沿革）；本文件保存**历史划掉项全表与自纠记录**，不删历史。
 > 自包含，不引用任何外部计划。
 
 ## 1. 被推翻的提法（全表，20 条）

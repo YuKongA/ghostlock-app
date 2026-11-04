@@ -50,7 +50,7 @@
 
 - 每个 stage 一条真机判据（含具名失败）；
 - 终态对齐 B5-9h：`id` = uid=0 + `getenforce` = Enforcing + `/proc/modules` 含 kernelsu；
-- 归档 `docs/analysis/device-gates/`（单份 ≤8 KB），commit 信息写明 stage 与退出码。
+- 完整归档 `docs/analysis/device-gates/`，commit 信息写明 stage 与退出码；不设字节或篇幅门。
 
 ## 六、待用户确认
 

@@ -34,7 +34,7 @@
 ## 5 门禁判据与归档
 
 - 通过条件（单次）：①新进程通道选中且 host pid≠app pid；②生产 entry 被执行（argv/exit/evidence 与真实 ELF 匹配）；③声明的攻击阶段证据（43499: W1/W2/W3/handoff 实际日志；43284: IpSec/DFRoot/Finish）与设备事实一致；④无伪造成功；⑤报告记录 panic/重启（如有）。
-- 归档 `docs/analysis/device-gates/<日期>-<backend>-real.md`（≤8KB）+ 原始 logcat/run.log/dmesg；单列「已验证/未验证」。
+- 完整归档 `docs/analysis/device-gates/<日期>-<backend>-real.md` + 原始 logcat/run.log/dmesg；不设篇幅门，单列「已验证/未验证」。
 - 未获授权不得运行；门禁只证明该设备/该构建/该 profile 的单次结果，不构成 supported 结论。
 
 ## 6 当前环境与待批

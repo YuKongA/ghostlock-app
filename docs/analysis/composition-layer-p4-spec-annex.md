@@ -1,6 +1,6 @@
 # 附件：P4 `plan_gate` 优先级与里程碑 B 登记
 
-> 分析类（≤8192 B）。**配套**：[P4 规格](../archive/20261017-1835-composition-layer-p4-spec.md) §3（指针指向本件）· [rewrite-plan](../archive/20261017-1835-rewrite-plan.md) §8.1（偏差台账）。判据形式 = D1。
+> 分析类。**配套**：[P4 规格](../archive/20261017-1835-composition-layer-p4-spec.md) §3（指针指向本件）· [rewrite-plan](../archive/20261017-1835-rewrite-plan.md) §8.1（偏差台账）。判据形式 = D1；文档不设字节或篇幅门。
 
 ## §A1 `plan_gate` 判定优先级（**单一权威表**；测试按表断言，**不改代码顺序**）
 

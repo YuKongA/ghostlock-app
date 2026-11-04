@@ -2,7 +2,7 @@
 
 - 主体：[43499-perf-leak-primitive-plan.md](43499-perf-leak-primitive-plan.md)（唯一设计权威；本附件只承载明细，不另立结论）。CBN/风险/裁定记录见 [附件 B](43499-perf-leak-primitive-plan-annex-b.md)。
 - 日期 2026-10-27（修订 3，H1/H2/H3=ABA 已并入）；作者 writer r3e-impl（task-43）；快照 HEAD `a9af5482`+R1–R3d 未提交工作树。
-- 配额例外：Lead 2026-10-27 批准「主件 ≤16 KiB；附件各自 ≤16 KiB」。
+- 沿革：Lead 2026-10-27 曾批准主件/附件 16 KiB 配额；2026-11-03 用户已取消，现只按职责边界组织。
 
 ## A. ABI 明细
 

@@ -14,6 +14,14 @@
 
 明确标记为**需要 Shizuku**的固件通过 shell UserService 执行。先使用 ADB 启动 Shizuku，再点击顶部支持状态区域授权；其余固件沿用应用内执行路径。
 
+## Android 应用架构
+
+Kotlin 应用按 Clean Architecture 边界整理：纯 `domain/**` 保存模型、port 与 use case，`data/**` 提供 Android/backend adapter，应用级依赖统一由 `AppContainer` 组装。Screen 与 ViewModel 只消费不可变语义 state 和 action contract，不再直接读取 backend、日志、攻击或持久化全局对象。`LocalUiMode` 仍在页面级选择 Material/Miuix renderer，因此两套皮肤共享行为语义，但保留现有组件、几何和视觉差异。
+
+物理 run 由 application-scoped `RunCoordinator` 持有；renderer 或 ViewModel observer 重建不会取消执行，只有显式 abort 才进入既有 launcher cancellation 路径。KernelSU/`ksud` 字面仅保留在真实 guard、payload、finish、package visibility 与 handoff 实现中；可复用 `ui/component/**` 完整保留并改由 caller 注入语义输入。
+
+`BackendSpec` 是唯一 Android outer plugin contract，`Backends.all` 仍是唯一 membership authority。可交互的 backend 配置只通过 nullable 标准能力 `BackendSpec.configurationSpec` 暴露，并只投影中性的 `Static`、`Toggle`、`ChoiceDocument` 或 `Document` 状态；data adapter 不 import 具体 backend，只委派该能力，presentation 只使用 generic semantic renderer。A301SO/Mondrian 设备配置与 CVE-2026-43499 request factory 保持 backend-private，UI、domain、core 不再依赖具体 backend。
+
 ## 快速开始
 
 打开 **GhostLock** 点击 **执行**。需先装 KernelSU（`me.weishu.kernelsu`）、ReSukiSU（`com.resukisu.resukisu`）或 KowSU（`com.kowx712.supermanager`）以提供 `ksud`；缺 `ksud` 时 W1/W2 仍可拿到 uid 0，但不会加载模块。

@@ -85,7 +85,7 @@
 | N1b | **native 路径已实现**：`device_write_43499` 加 mode/preserve；`KernelAccess43499` → `WriteRequest`；`WordLanding/Window/RouteExec` 带 form；`write43499` 保持 legacy 零调用。**JNI 能力探针 + K1 接线在 N2** | 攻击路径：**N1b+N2+N3 同一真机门禁批**，冷机、固定 CPU 对、单 route；未过门禁不进 N4 |
 | N2 | access 装配 + 每步事务 + 页准备 + route 类型修正；Init 单权威；**Kotlin 端口扩展** | 同上 |
 | N3 | 五个设备槽：prepare/discover/spawn/probe/finish（retire/park；handoff 拒绝） | 同上 |
-| N4 | 端到端 w1→w2→w3 + `victim uid=0`；日志归档 | `docs/analysis/device-gates/43499-*.md` ≤8 KB |
+| N4 | 端到端 w1→w2→w3 + `victim uid=0`；日志归档 | `docs/analysis/device-gates/43499-*.md` 证据完整且不设字节或篇幅门 |
 
 **N2 Kotlin 改动（S3/T1/T2）**：`Native43499.kt` 新增 `initializeAccess43499`（out 返回 accessId）/`capabilityProbe` 的 `external fun`；`AndroidNative43499Api` 增加对应委托；`Native43499Api`（新增 `capabilityProbe/initializeAccess/writeWord/shutdownAccess/destroyAccess`，无 `makeAccess`）、`JniBackend43499Port`（能力门读探针；`writeStep` 保存 `out[0]` 并在所有出口 shutdown/destroy）、对应 `JniBackend43499PortTest`/`KernelMemoryEngineTest`。`KernelMemoryEngine`/`KernelMemoryRun`/`Facts43499` 的语义不变。
 

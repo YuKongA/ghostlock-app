@@ -47,7 +47,7 @@
 · 三线门禁：`make -C core -j1 check`（起 109 PASS，只增不减 ✓）／`make -C core -B android`（**零告警** ✓）／`markdownlint` ✓
 · **异步**的验证：日志文件里**时间戳单调** ✓ 且**主路径不被写盘阻塞** ✓（⇒ 打点前后 `park/requeue` 的读数不变 ✓）
 · 真机：`main: victim uid=0`（本目标 ✓）／日志文件含**步骤前**的每条打点 ✓
-· 归档：`docs/analysis/device-gates/*.md`（≤8 KB ✓）
+· 归档：`docs/analysis/device-gates/*.md`（证据完整、不设字节或篇幅门 ✓）
 ```
 
 ## 5. 风险与有序性

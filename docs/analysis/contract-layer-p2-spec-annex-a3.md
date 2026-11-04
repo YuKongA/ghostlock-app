@@ -1,6 +1,6 @@
 # 附件 A3：include 闭包的 10 个传递头（交付集合 = **58**）
 
-> 分析类（≤8192 B）。**配套**：[contract-layer-p2-spec](contract-layer-p2-spec.md)（§1 / §6）· [A1](contract-layer-p2-spec-annex-a1.md)（48 直接依赖头）· [A2](contract-layer-p2-spec-annex-a2.md)（符号使用点）。判据形式 = D1。
+> 分析类。**配套**：[contract-layer-p2-spec](contract-layer-p2-spec.md)（§1 / §6）· [A1](contract-layer-p2-spec-annex-a1.md)（48 直接依赖头）· [A2](contract-layer-p2-spec-annex-a2.md)（符号使用点）。判据形式 = D1；不设字节或篇幅门。
 > **口径**：**交付头集合 == 58** = **48 个直接依赖头**（A1）+ **10 个 include 闭包必需的传递头**（本表）。依据：实现提交 **`97173d9f`**（"58 same-name headers"）。
 
 ## §A4 十个传递头（P2 交付面）

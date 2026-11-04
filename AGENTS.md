@@ -24,6 +24,7 @@
 - 按批次：**一批一类事**，上批验过再进；**同批门禁连续失败 2 次即停，回 debug**。
 - **新实验从生产路径启动**，禁止加 CLI 旗标/旁路；仅服务实验的入口同批登记清理计划（默认技术债）。
 - **计划前先查活跃计划（2026-10-10 用户裁定 · 强制）**：改或建计划前先读在办计划，判定「无冲突／重复／被推翻」：重复则并入、推翻则标注取代关系，**禁两份并存**。
+- **最小必要证据与禁止空转（2026-11-03 用户裁定 · 强制）**：检查只服务于下一项实现或验收决策；同一事实只检查一次，输入、文件或外部状态未变化时不得重复扫描、轮询、评审或汇报。SHA 仅用于 APK/ELF/profile/golden 等身份敏感产物及本批实际改变的关键文件，禁止给未变化的计划、附件和普通源码反复算 SHA。每轮优先产生代码、测试、manifest、运行结果或关闭一个真实阻断；遇到需用户裁定的唯一阻断只简短询问一次并停止，不得以重复检查冒充进度。批准用最短无歧义表达即可（如“继续 D0”）；报告只保留“改动、验证、结果、下一步”，子智能体长输出须由 Lead 压缩为影响决策的结论。checkbox 跟踪开发交付项，不跟踪算 hash、复读状态、再次评审等流程动作。
 
 ## 3. 代码修改流程：注释套旧码 · 新码标注 · 标准化注释（2026-10-07 用户指令 · 强制）
 
@@ -67,6 +68,7 @@
 - **死代码**：跨进程/第三方契约成员须先查外部调用方（如 Shizuku 会调 `destroy()`）。
 - **禁用而非删除用最可逆形式**（用户字面要求优先）；恢复清单到 file:line。
 - **禁止改变工作树的 git 命令与等效写回**（`checkout`/`restore`/`stash`/`reset`/`clean`、`git show REV:path > path`）；只读形式：`git show <rev>:<path>`、`git diff <rev> -- <path>`、`git log`。
+- **禁止 rollback 准备（2026-11-03 用户裁定）**：不得创建 `ROLLBACK.sh`、`MODIFIED_FILE`、`DIFF_FILE`、`VERIFICATION.txt`、baseline/rollback fixture 或做回滚演练；Git 历史与 Time Machine 仅是用户/owner 的恢复来源，不授权智能体执行上一条禁用的 git 写命令。
 - **禁止分片读 + 全文写回**；确需写回须核对字节/行数并报告。真机门禁归档于 `device-gates/`；子智能体返回原始日志与退出码。
 
 ## 7. 设计与规划审查岗 design-critic（2026-10-07 用户裁定 · 强制）
@@ -74,21 +76,22 @@
 - 常驻 teammate，**只读**（不写文件/不跑门禁/不碰代码）；同岗固定同一成员。
 - 对象：L 级设计、ADR、批次计划、wire/profile 契约、新增组件/功能/结构提案。依据：`design-review-principles.md`；权威序 **守则 > AGENTS > engineering-standards/design-philosophy > analysis**。
 - 规则：非作者评审；**冻结快照**（记 HEAD/哈希/时间；期间有 writer 记「不覆盖」并复跑）；输出＝`编号|严重度|位置|问题|必须怎么改|依据` + 总判 + 单列「验证/未验证」；依据可核验（file:line）；严重度＝阻断/重要/建议，**阻断未关不得进批准 gate**；设计者**逐条回应**；强制越权须核沿革与技术债；触发＝L 级定稿前·批次计划变更·原则更新；每次留一行记录（时间·版本·总判·阻断数）。
-- 分工：原则/简并＝design-critic；native＝native-core；Kotlin/配置＝kotlin-app；文档/配额＝docs-uml；冲突以原则与物证裁决。
+- 分工：原则/简并＝design-critic；native＝native-core；Kotlin/配置＝kotlin-app；文档/结构图＝docs-uml；冲突以原则与物证裁决。
 
 ## 8. 验证门槛
 
 - **守卫/断言须证「能失败」**（造错 → 预期失败 → 撤回并核验无残留）。*2026-10-07：由 D1 取代，保留为可选手段。*
 - 证伪/验证实验一律 **`make -B`**；实验后 **`rm -f <artifact>` + `make -B` 复核**（源码回位 ≠ 产物回位）。
 - **数产物不数目录**；**失败数全量读 `build/test-results/**/*.xml`**（三桶计数以 XML 为准）。
-- 普通改动：`make -C core check`（host 测试）+ `make -C core android`（NDK 零告警）。
-- 攻击关键路径：① **真机门禁**（冷机、固定 CPU 对、单 route、KernelSU 未加载）② 设备 `Download/ghostlock-debug-log/<时间>/*.log.txt`（含 `profile.conf`/`profile.bin`）确认 route 命中与写验证 ③ 归档 `docs/analysis/device-gates/*.md`（单份 ≤8 KB）。
+- 普通改动：`./gradlew nativeTestHost --console=plain`（current-tree host CTest 聚合）+ `./gradlew nativeBuildAndroid --console=plain`（AGP merged native artifact/ABI/JNI 精确门）。旧 `make -C core check/android` 随 2.0.5 删除的 `core/` 构建树退役，不得恢复路径名冒充当前门禁。
+- 攻击关键路径：① **真机门禁**（冷机、固定 CPU 对、单 route、KernelSU 未加载）② 设备 `Download/ghostlock-debug-log/<时间>/*.log.txt`（含 `profile.conf`/`profile.bin`）确认 route 命中与写验证 ③ 归档 `docs/analysis/device-gates/*.md`。
 - `KERNEL-PANIC-01` 已知环境/时序：同构建可 PASS/panic/PASS；判因果须同构建复现 + 冷机复跑。**新 profile 未过真机不得标 supported。**
 
 ## 9. 文档约定
 
 - 规范见 `docs/development/documentation-standards.md`。**结构性改动必须同批更新 UML**：`docs/development/full-process-uml.md`（IPO/状态机/Class/Sequence），提交信息写明「更新了哪张图」；一处结构只留一处权威图。
-- 双语：`README.md` + `README_ZH.md`；`*_ZH.md` 保持同步。**本文件 ≤12 KB。**
+- **取消文档长度限制（2026-11-03 用户裁定）**：任何文档、计划、分析、门禁记录与附件均不得以字节数、页数、行数或篇幅设准入/准出上限；只按职责、读者与权威边界拆分，且不得为缩短文档删减判据、证据或沿革。运行时协议、Binder、资源与载荷的容量上限不属于文档长度限制，保持各自合同。
+- 双语：`README.md` + `README_ZH.md`；`*_ZH.md` 保持同步。
 - 历史文档在 `docs/archive/`（命名 `YYYYMMDD-HHMM-原名`，头部四要素）；索引 `docs/archive/INDEX-device-gates.md`；兜底 `git show <commit>:<path>`；**不得删历史**。
 
 ## 10. 排障 · 提交

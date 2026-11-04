@@ -1,6 +1,6 @@
 # 事故归档：AGENTS.md 回退 + requirements.md 丢失（2026-10-07）
 
-> 分析类（≤8 KiB）。本文件是**本次事故的唯一权威归档**；早先的 `agents-revert-incident.md` 已改为指向本文件的指针。依据：守则记录义务 + `AGENTS.md`「最高思想与质疑义务」。
+> 分析类历史归档；旧 ≤8 KiB 配额已于 2026-11-03 取消。本文件是**本次事故的唯一权威归档**；早先的 `agents-revert-incident.md` 已改为指向本文件的指针。依据：守则记录义务 + `AGENTS.md`「最高思想与质疑义务」。
 
 ## 1. 时间线（America/Toronto，2026-10-07）
 

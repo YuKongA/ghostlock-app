@@ -3,7 +3,7 @@
 - 状态：**只读交付（task-61），零生产代码改动、不 commit**。合并既有四路审计，补齐「Flow step→JNI→Native core→每 syscall/libc（file:line+参数/顺序/返回）→ legacy 对照」矩阵。
 - 快照：2026-10-28T12:4x EDT，HEAD `a9af5482`+工作树（task-52..60 未 commit）。**写者 r3e-impl 已停手**；`jni43499.c` sha256=`d5353842…`（N01 已确认）。风险见 §7。
 - L1=legacy（C++ refactor）、L2=legacy2（2.0.8 core）、VL=very_legacy。严重度 S1/S2/S3；证据 `DEV(E0/E4报告)`/`source-only`/`UNVERIFIED`。
-- 附件（各 ≤16 KiB，完整有序调用表）：[M multicast](43499-w1-w3-three-route-call-matrix-20261028-annex-multicast.md)、[P pselect](43499-w1-w3-three-route-call-matrix-20261028-annex-pselect.md)、[T tcp](43499-w1-w3-three-route-call-matrix-20261028-annex-tcp.md)。
+- 附件（完整有序调用表，不设字节或篇幅门）：[M multicast](43499-w1-w3-three-route-call-matrix-20261028-annex-multicast.md)、[P pselect](43499-w1-w3-three-route-call-matrix-20261028-annex-pselect.md)、[T tcp](43499-w1-w3-three-route-call-matrix-20261028-annex-tcp.md)。
 - 已有审计（不重复）：[四路逐 syscall](43499-syscall-reaudit-20261027.md)、[三路 review](43499-three-route-line-review-20261027.md)、[perf-G1](device-gates/perf-g1-20261027.md)、[perf 设计](plan/43499-perf-leak-primitive-plan.md)。增量=J helper 链、W1b/fast-repair、J 自采样/raw relay、victim/finish、cleanup。
 
 ## 0. 结论摘要

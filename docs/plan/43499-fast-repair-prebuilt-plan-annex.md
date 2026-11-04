@@ -1,7 +1,7 @@
 # 附件 A：G05 B1 close/retained 全收口（v3，2026-10-28）
 
 - 父件：[43499-fast-repair-prebuilt-plan.md](43499-fast-repair-prebuilt-plan.md)（v3，主件只留最小指针；本附件为 B1 唯一细则权威）。状态：**只写文档、零实现、不 commit**；待三轮 critic。
-- 范围：W2 cred 写成功后所有 close/retained 统一合同、7 类 close 矩阵、时序/步骤边界、负例矩阵、reason/step/failStop stage、文档债。B2/Q1/Q5/Native 零改动以主件为准。
+- 范围：W2 cred 写成功后所有 close/retained 统一合同、7 类 close 矩阵、时序/步骤边界、负例矩阵、reason/step/failStop stage、文档组织。B2/Q1/Q5/Native 零改动以主件为准。
 
 ## A. 统一合同 `requireCleanCloseAfterCred(stage)`
 
@@ -83,9 +83,9 @@ W2 cred write success（Flow:774 前）
 | T8 W1 dirty（discard retained） | W1 prebuild discard retained | W1 Failed；无 W1b/W2；无 fallback；failStop stage=`write.w1.prebuilt-retained`；`enabled=0` 仍 Failed |
 | T9 helper 单测 | null/clean receipt、retained receipt、enabled=0 | null→null；retained→reason+failStop(fake)；enabled=0 仍 reason；无 close 被跳过（静态断言 7 类调用点） |
 
-## F. 文档债/配额（I4）
+## F. 文档组织（I4）
 
-- 主件 ≤16 KiB、本附件独立 ≤16 KiB；approval 只 append（G05 v3 状态+索引行），文档债 owner=Lead、偿还=三轮通过后按需合入/拆分；主件只保留指针与摘要，B1 细节以本附件为准。
+- 主件/附件不设字节或篇幅门；approval 只 append（G05 v3 状态+索引行）。主件只保留指针与摘要、B1 细节以本附件为准，是职责拆分而非体量拆分。
 
 ## G. UNVERIFIED
 

@@ -48,7 +48,7 @@ runDir/log 由本次流程保留；后续独立 preflight 仅在确认执行者�
 ## 4. 允许修改范围
 - 43499：profile codec/Flow、backend-specific root-script generator、common FinishScript/PayloadRequests strict-path 接口、run-file stager/process/host。
 - 43284：允许最小、可追溯修改上游 lkm/dfroot.c（KO）、exp.c（argv/cleanup 结果）、必要的 libcxx.S，以及新增 Glue root-worker；允许对应 CMake、provenance manifest、Flow/host/stager。
-- 对应 JVM/Android tests；状态变更涉及 BackendRunUiState、BackendRunGate、BackendRunViewModel 与 Material/Miuix 两处 RunPage；同批更新 full-process-uml.md exec/Finish sequence 与资源生命周期图。logger-only 批仅可改 `common/gl_log.{c,h}`、`43284glued/{CMakeLists.txt,exp.c,elf_parser.c,bootstrap.c}`、共享 logger host test、日志点文档及 UML 的日志流说明；M0 fixture 和外部 DFRoot checkout 冻结。
+- 对应 JVM/Android tests；2026-11-03 Kotlin 纵切后，状态变更涉及 BackendRunUiState outer mapping、RunCoordinator、RunViewModel 与 Material/Miuix 两处 RunPage production renderer；已删除的 BackendRunViewModel 仅属本计划历史。仍须同批更新 full-process-uml.md exec/Finish sequence 与资源生命周期图。logger-only 批仅可改 `common/gl_log.{c,h}`、`43284glued/{CMakeLists.txt,exp.c,elf_parser.c,bootstrap.c}`、共享 logger host test、日志点文档及 UML 的日志流说明；M0 fixture 和外部 DFRoot checkout 冻结。
 - 保留 UI 布局、原版 backend、43499 上游 C/C++、LegacyProfileConverter 转换语义、现有 LKM Finish 路径；43284 pristine upstream 与原始 manifest 哈希保留，Glued 改动不得覆盖来源副本。
 
 ## 5. 设计与实现门

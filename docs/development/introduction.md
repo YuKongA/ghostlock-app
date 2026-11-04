@@ -37,22 +37,22 @@ core/src/
 
 | 层 | 位置 | 产物 | 说明 |
 | --- | --- | --- | --- |
-| Android | `app/` | APK | Kotlin/Compose；**唯一生产编排层**（kt-step）；HOCON profile 解析/合并；Shizuku UserService；日志 |
-| Native | `core/src/` + `core/CMakeLists.txt` | 静态核心库 + **JNI 动态库** | C++23；**没有可执行体**（CLI 已删） |
-| Extractor | `tools/extract_rs/` | `libextract.so` / CLI | Rust；boot.img/OTA → `--format conf` / `--format json` |
+| Android | `app/` | APK | Kotlin/Compose；生产编排、profile 解析、Shizuku UserService 与日志 |
+| Native | `app/src/main/cpp/` | DSO + 以 `lib*.so` 打包的 PIE payload | AGP `externalNativeBuild` 是 Android 生产构建权威；默认图由 CMake manifest 自导出 |
+| Host native tests | `app/src/main/cpp/backends/43499glued/tests/`、`tools/tests/`、`tools/avbcheck/` | 33 个 CTest | module-local CMake 拥有 TU mapping；root Gradle 只组合三组门 |
+| Extractor | `tools/extract_rs/` | 既有 Rust CLI/库 | 新 KMP extractor 尚在独立计划中，不属于本节 current native gate |
 
-CMake 目标（`core/CMakeLists.txt`）：
+当前 Android CMake authority 是 `app/src/main/cpp/CMakeLists.txt`，顺序 include `common/`、`glgeneral/`、
+`backends/`。默认 debug target graph 实得四件 arm64 artifact；具体 target/artifact/type/JNI 列表由
+`build/app/native-artifacts/debug/manifest.tsv` 在 CMake 配置期从当前 target/source graph 生成，Gradle
+不得再维护第二份名单。`verifyDebugNativeArtifacts` 从 AGP `SingleArtifact.MERGED_NATIVE_LIBS` Provider
+取得实际 merged 目录，并用同一 AGP NDK Provider 下的 `llvm-readelf`/`llvm-nm` 检查 exact set、
+non-empty regular file、ELF64/AArch64 与逐件 JNI export。
 
-| 目标 | 形态 | 用途 |
-| --- | --- | --- |
-| `ghostlock_core` | STATIC | 全部纯逻辑/协议/设备编排的宿主可测核心 |
-| `ghostlock_jni` | SHARED | 43284 侧 JNI：helper / raw_esp / protocol |
-| `gl43499syscalls` | SHARED | **43499 生产**：逐 syscall 薄包装（K1） |
-| `gl43499native` | SHARED | 43499 actor batch / attempt / discover / prepare（AVD 探针与 N3 实验用） |
-| `ghostlock43499` | SHARED | 43499 legacy 逻辑面；**默认不进 APK**（K0a 隔离） |
-
-- `libghostlock43284.so` 由 `prepareGhostlockJniLibs` 从 `build/native/` 就位；`core/CMakeLists.txt` 无同名 target
-  （生成链不在本文件断言）。
+- Host module build trees 分别为 `build/cmake/host-43499glued/`、`build/cmake/host-contracts/` 与
+  `build/avbcheck-host/`；每次 `nativeTestHost` 都重新 configure/build/CTest，不能用 cached test 结果过门。
+- `tools/tests/native-test-disposition.tsv` 是 current-tree native test/probe disposition 的 machine authority；
+  root inventory 扫 suffix/prefix test 与具名 probe，module CMake 再把 host status 与实际 registration 对拍。
 - 内置 profile 在 `app/src/main/assets/profile/`：`index.conf`（`schema_version`）、`common/`、`43499/`；格式 HOCON（支持 `include`）。
   **native 不读 profile**：Kotlin 解析后以参数/字节数组过 JNI（kt-step 不变量）。
 - 43284 侧同样由 Kotlin 编排阶段（`engine/pagecache/stage/`），C++ 只留纯函数（`lib/raw_esp`、`lib/helper`）。
@@ -61,29 +61,23 @@ CMake 目标（`core/CMakeLists.txt`）：
 
 ```sh
 # Native
-./gradlew nativeTestHost          # 配置 + 构建 + 跑全部 CTest（含结构性检查）
-./gradlew nativeBuildHost         # 只构建宿主（build/cmake/host，CTest 不跑）
-./gradlew nativeBuildAndroid      # NDK 构建 -> build/native/*.so
-./gradlew prepareGhostlockJniLibs # 把 JNI 库复制进 app 的 jniLibs/arm64-v8a
-./gradlew verifyJniLibs           # 三库符号互不重叠
-./gradlew exportJniProtocolManifest  # 导出跨端协议表到 app/build（Kotlin 侧对拍读它）
+./gradlew verifyNativeTestInventory --console=plain # 43 项 candidate/disposition exact-set
+./gradlew nativeTestHost --console=plain            # 27 + 5 + 1 = 33 个 host CTest
+./gradlew nativeBuildAndroid --console=plain        # AGP build/merge + 4 件 ELF/ABI/JNI exact gate
+./gradlew :app:verifyDebugUnitTestXml --console=plain # 全量 XML 四桶 exact gate
 
 # 汇总
-./gradlew checkAll                # nativeTestHost + :app:testDebugUnitTest + verifyJniLibs
-./gradlew gateAll                 # checkAll + deviceGate（真机）
+./gradlew checkAll --console=plain # host 33 + Android native artifacts + Kotlin XML 459/0/0/0
 
 # Android / 提取器
 ./gradlew :app:assembleDebug
 ./gradlew :app:testDebugUnitTest
-./gradlew buildGhostlockExtract   # Rust 交叉编译（tools/extract_rs）
 cargo test --release              # 在 tools/extract_rs 下
 ```
 
 - **已失效的命令名**：`make -C core check` / `make -C core android`（`core/Makefile` 已删）⇒ 分别对应
-  `nativeTestHost` / `nativeBuildAndroid`；`./gradlew markdownlint`（仓内无此 task，grep 0 命中）；
-  `./gradlew :profile-core:exportProfiles`（`:profile-core` 已禁用，`settings.gradle.kts` 有注释）。
-- **技术债 T4**（MASTER-PLAN §13）：`exportJniProtocolManifest` 依赖的生成器 `build/host/jni_protocol_manifest`
-  已不存在，`:app:testDebugUnitTest` 目前需 `-x` 才能跑；未偿还前全量门禁不能称绿。
+  `nativeTestHost` / `nativeBuildAndroid`。旧 `nativeConfigureHost`、`nativeBuildHost`、`prepareGhostlockJniLibs`、
+  `verifyJniLibs` 与 `exportJniProtocolManifest` 同样不属于 current-tree task graph，不得作为验收命令复用。
 - 生成物统一在仓库内真实 `build/` 下；**禁止任何链接**；跨端列表由 native 导出，不得手抄。
 
 ## 三、契约面（`core/src/contract/`）
@@ -187,8 +181,9 @@ cargo test --release              # 在 tools/extract_rs 下
 - **攻击状态零可写全局**：43499/43284 的 `llvm-nm` `b/B` = 0，会话由调用方持有；剩余 `d` 为 `.data.rel.ro` 常量，libc 的 `fini_array_with_sentinels` 除外。
   例外（2026-10-22）：日志子系统 4 个 DSO-local `d` 见 [ADR-0020](../analysis/adr/0020-gl-log-exception.md)（Proposed）；长期改 session API（T-LOG）。
 - **R1 include 防火墙**：`core/src/tests/include_firewall_test.cpp`，白名单当前为空；越层 include 与 stale 条目皆 FAIL。
-- **跨端对拍**：`core/src/tests/{combination,payload,surface}-manifest.pin.tsv`；生成/校验入口是
-  `exportJniProtocolManifest` 与 Kotlin 侧 `NativeProtocolTest`（T4 债务见 §二）。
+- **current native 对拍**：host candidate/disposition 由 `verifyNativeTestInventory` + module CMake registration guard
+  双侧核验；Android artifact/JNI 由 app CMake manifest + AGP merged-artifact verifier 双侧核验。两者都由
+  `checkAll` 组合，root Gradle 不复制 module test list 或 artifact list。
 - **步骤数据无虚表/无继承**：`StepSpec`/`StepPlan` 是数据；backend 差异用目录表与端口，不用子类。
 - **PI 窗口内**：零分配、零打印、零间接分派、零 JNI 回调；`sched_setattr` 只在窗口外调用。
 - **owner 在 Kotlin**：fd / 映射 / actor 线程 / child 进程的创建与释放都在 Kotlin；C++ 不缓存 fd/指针。

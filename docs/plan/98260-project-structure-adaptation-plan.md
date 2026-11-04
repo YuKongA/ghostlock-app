@@ -1,7 +1,7 @@
 # CVE-2026-98260 backend 适配项目公用结构（L 计划 v2.1）
 
 > 日期 2026-10-28。级别：L（结构/跨端契约/攻击关键路径）。
-> 关系：本件是 [98260-backend-plan.md](98260-backend-plan.md) **结构适配补编**（rev4 方向）；指针落账**尚未完成**（主计划余 263 B 需先压缩，见 §8；实现批前落账），不推翻安全不变量。
+> 关系：本件是 [98260-backend-plan.md](98260-backend-plan.md) **结构适配补编**（rev4 方向）；指针落账**尚未完成**（见 §8；实现批前落账），不推翻安全不变量。主计划与补编均不设字节或篇幅门。
 > 基线（树身份）：`dev-nocpp` @ `a9af5482` + 未提交 B1–B3 + 在途 task-32 混合工作树（dirty 227）；R1 门禁在最终树或隔离 worktree 跑。既有 5 红项=`PayloadRequestsTest`(3)/`ScriptRenderTest`(2)（owner=在途 finish 批次，证据见 B4 gate §3）。
 > 用户要求（2026-10-28）：「将其改造适配为本项目的结构，包括公用 victim，log，payload，finish，flow funner」。
 > v2 变更：**R2 移出本批准位；按 critic S-01/S-02 重做 finish/victim 设计；flow runner 改 `BackendSpec.runner`**；逐条响应见 §0。
@@ -17,7 +17,7 @@
 | S-05 重要 攻击路径 | 已改 | R1d 单列攻击路径变更：重跑 B1 native 门禁/payload 参数矩阵并更新 `98260-b1-gate-*`；真机 finish gate pending+用户知情确认；声明只改 finish 脚本来源/执行入口，不改 trigger/leak/fake-cred、不改变 park 时序 |
 | S-06 重要 物证行号 | 已改 | 引用改 `victim_helper.c:619`（超时 SIGKILL）/`:693`（错误清理） |
 | S-07 重要 R2 | 已改 | R2 **移出本计划**，不列入本批准位；另立 L plan（R1 通过+有设备后），须先做 fd3/4 冲突/协议线程-UAF 窗口分析、G14 定义、UserService 加载 victim JNI 验证（见 §5） |
-| S-08 重要 流程/配额 | 已改（R-07：指针待落账） | 指针目标=主计划头/§11/§13/§14 + `REMAINING-PLAN.md`；**当前未实际写入**（主计划余 263 B，需先压缩一小段），列为实现批前置（§8）；树身份/5 红项已写 |
+| S-08 重要 流程/指针 | 已改（R-07：指针待落账） | 指针目标=主计划头/§11/§13/§14 + `REMAINING-PLAN.md`；当前未实际写入，列为实现批前置（§8）；不再因旧字节配额压缩，树身份/5 红项已写 |
 | S-09 重要 payload 命名 | 已改 | 改名 **`Cve98260ExploitPayload`**（与项目 finish payload 不同义，KDoc 明示）；sha/身份只在 RequestFactory/readiness 快照缓存计算，`rows()` 只读缓存 |
 | S-10 建议 origin | 已改 | 映射表：service native fd 行=`NATIVE`；payload 行经 service JNI gl_log→NATIVE；fallback app 行=SHELL；终端=FlowProgress；一行一次 write/ASCII/禁密钥 |
 | S-11 建议 文件清单 | 已改 | §6 每批列精确文件:节（AIDL 方法码/CMake target/proguard/strings）与依赖顺序 |
@@ -82,7 +82,7 @@ R2=payload 实现 victim 协议 fd3/4 + service 用 `core/victim.VictimSession` 
 - **TD-R1-4** `Cve98260VictimPort` 为临时 seam（审批通过后存在，R2 完成删除）；R2 前不得在它上面加后端语义。
 - **TD-R2-1**（R2）UserService 加载 victim JNI/fd3/4 冲突待验证。
 - **沿革**：本计划守则/AGENTS 无强制越权；R1d 攻击路径门禁 pending 需用户知情确认（device-gate-pending 已确认口径延用）。
-- **配额**：本计划 ≤16 KiB；指针写入主计划（余 263 B 以上需压缩一小段后写入）；delta/附录 B 仅必要关系行，先压旧沿革。
+- **文档组织**：不设字节或篇幅门；指针直接写入主计划。delta/附件只按职责与权威边界拆分，不为文件大小压缩判据或沿革。
 
 ## 8. 批准位、残留关闭表与指针
 
@@ -94,7 +94,7 @@ R2=payload 实现 victim 协议 fd3/4 + service 用 `core/victim.VictimSession` 
   - R1b 前：R-05 raw fd 关闭/fallback native sink、R-06 G14 定义（log fd；R2 用 G15）；
   - R1d 前：R-02 脚本步骤表（ksud/SELinux/uid/ok-fail marker）、worker exit/timeout/runId marker、R-03 中性本地 evidence DTO（不跨用 43499）、ksud `--version` 执行机制、R-10 timeout 只杀脚本 child 用例、R-11 binder 上限重算；
   - R1d/R1e 前：R-08 §6 文件清单补 Flow/Request/Factory/迁移测试；
-  - 批准/实现前：R-07 指针实际落账（主计划压缩一段后写“补编指针+批次行”，`REMAINING-PLAN.md` 索引行）。
-- **指针方案**：主计划头（关系行）+ §11（R1a–R1d 批次/写范围）+ §13（批准记录）+ §14（进度）；`REMAINING-PLAN.md` 索引行；delta 余 83 B 不写（由主计划兜底）。
+  - 批准/实现前：R-07 指针实际落账（主计划直接写“补编指针+批次行”，`REMAINING-PLAN.md` 写索引行）。
+- **指针方案**：主计划头（关系行）+ §11（R1a–R1d 批次/写范围）+ §13（批准记录）+ §14（进度）；`REMAINING-PLAN.md` 索引行；delta 只按职责承载内容，不以文件余量决定是否写入。
 - **验证状态口径**：R1 全部 `device-gate-pending`（G14/R1d finish），未过真机不得 supported。
 - **强制确认沿革**：debug-only profile、device-gate-pending（沿用主计划 §13）。

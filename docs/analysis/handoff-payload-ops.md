@@ -1,6 +1,6 @@
 # Handoff / Payload 操作细则（ops）
 
-> 分析类（≤8 KB）。配套 [plan](handoff-payload-plan.md)、[params](handoff-payload-params.md)、[**ops-words**](handoff-payload-ops-words.md)（op 词表）。**自包含，不引用任何外部计划**。
+> 分析类。配套 [plan](handoff-payload-plan.md)、[params](handoff-payload-params.md)、[**ops-words**](handoff-payload-ops-words.md)（op 词表）。**自包含，不引用任何外部计划**。
 
 ## 1. 操作词表
 

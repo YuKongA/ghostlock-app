@@ -82,7 +82,7 @@ C++ libgl43499syscalls.so：
 | K0b | 最小 actor-batch PI spike，验证逐 syscall/actor 粒度 | **PI 探针 PASS（AVD 2026-10-20）**：`requeue=1`/`wait=0`；`page/root=false`，不标 supported |
 | K3 | **部分实现（离线）**：`KotlinPiRace`/`FutexWord` + `SyscallFutexWord`/`KernelFutexWords`/`PiSpike` + `KotlinPiActors` 三线程骨架 + `PiActorsKernelRoute`/`PiProbeRunner` 诊断 + `PageWriter`/`K3PageFixture` 边界 + uid 校验（33 测）；route/page 写入未做；C++ actor batch 待批准 | 真机：冷机、固定 CPU 对、单 route；固定读数 |
 | K4 | **待用户批准**：Kotlin prepare/discover/victim 编排；C++ victim child helper（fork/pipe/probe/kill/wait） | 真机：prepare/discover 有值；probe uid/comm；child 全出口关闭 |
-| K5 | 端到端 `victim uid=0` + 收尾；归档 | `docs/analysis/device-gates/43499-kt-step-*.md` ≤8 KB |
+| K5 | 端到端 `victim uid=0` + 收尾；归档 | `docs/analysis/device-gates/43499-kt-step-*.md` 证据完整且不设字节或篇幅门 |
 
 **K1 文件清单**：
 

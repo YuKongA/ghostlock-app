@@ -25,8 +25,8 @@
 ## §2 阶段门与硬约束（不可越）
 
 - **G1 宿主**：`./gradlew nativeTestHost` + `./gradlew :app:testDebugUnitTest`；失败数读 `build/test-results/**/*.xml` 全量。
-- **G2 设备**：`./gradlew nativeBuildAndroid`（NDK 零告警）+ 真机/AVD 门禁记录归档 `docs/analysis/device-gates/*.md`（单份 ≤8 KB）。
-- **G3 文档**：UML/ADR/索引/配额同批更新；一处结构只留一处权威。
+- **G2 设备**：`./gradlew nativeBuildAndroid`（NDK 零告警）+ 真机/AVD 门禁记录归档 `docs/analysis/device-gates/*.md`。
+- **G3 文档**：UML/ADR/索引同批更新；一处结构只留一处权威。
 - **动攻击路径 ⇒ 真机门禁 + 归档**，缺一不可；**未过 N5/uid=0 不得标 supported**。
 - **单写流**：同一时刻只有一个 writer 改被门禁覆盖的文件；共享 `build/**` 与 Gradle 门禁串行。
 - **一批一类事**；同批门禁连续失败 2 次即停，回 debug。
@@ -59,7 +59,7 @@
 
 - 攻击路径项：**真机/AVD 判据通过 + 门禁记录归档**；未过不标 supported。
 - 结构项：权威图/权威表各一处；superseded 文档有指针，历史不删。
-- 文档项：G3 绿；计划 ≤16 KiB、分析 ≤8 KiB；链接无悬空。
+- 文档项：G3 绿；事实与判据完整、一处权威、链接无悬空；不设字节或篇幅门。
 - 临时物：同批清零（AGENTS §3「有界性」）。
 
 ## §6 指针

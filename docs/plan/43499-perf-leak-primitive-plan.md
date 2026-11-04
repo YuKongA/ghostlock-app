@@ -3,7 +3,7 @@
 - 状态：**L 设计 修订 3（已实现）**。方向已获用户批准（[approval-status](43499-approval-status.md) §6.6「方案 1批准」）；critic R3e 复核 B1–B5/I1–I4/S1–S2 已修订；**H1/H2/H3 用户裁定「ABA」并已记 approval §6.6**（§12）；实现待第三轮复核阻断 0 + 批准（AGENTS §2）。**本批零实现写入**。
 - 日期 2026-10-27；作者 writer r3e-impl（task-43）；快照 HEAD `a9af5482`+R1–R3d 未提交工作树；解除 [review](43499-three-route-line-review-20261027.md) §6.4 阻断 A 的设计入口，不取代任何计划。
 - 参考：legacy `legacy/attack/ops.cpp:434-513`、very_legacy `main.c:844-965`、退役 seam（`git show d5a46686:…/perf_{seam,seam_linux,ring,vote}*.hpp`）。
-- **配额例外（I2，Lead 2026-10-27 批准）**：主件 ≤16 KiB；附件各自 ≤16 KiB。附件：[A](43499-perf-leak-primitive-plan-annex.md)（ABI/解析/证据/生命周期/影响文件）、[B](43499-perf-leak-primitive-plan-annex-b.md)（CBN/风险/裁定记录与实现批义务）。附件不另立结论。
+- **文档组织（I2）**：2026-11-03 用户取消旧 16 KiB 配额；主件与附件只按职责边界分工。附件：[A](43499-perf-leak-primitive-plan-annex.md)（ABI/解析/证据/生命周期/影响文件）、[B](43499-perf-leak-primitive-plan-annex-b.md)（CBN/风险/裁定记录与实现批义务）。附件不另立结论。
 
 ## 0. 结论摘要
 
@@ -15,7 +15,7 @@
 
 **目标**：取 victim 内核 `task_struct` 基址，经 `Cve43499WriteTargetSource` 交 W2/W3 planner，替代 legacy victim 内 `perf_find_task()`（legacy2 同形 `attack.cpp.disabled:443-522`）；解 W2/W3 P0c 阻断 A（review §6.4:171-172）。**范围**：Native 采样机制 + Kotlin 解析/目标源 + debug 配置 + 测试 + 真机门禁计划。
 
-不变量：**I1** W1-only 路径/字符串不变（`writeChain=null`；`Flow43499Impl.kt:171-172`）；**I2** 三路 generator/W2/W3 布局语义不变（review §6.1 R3d-2）；**I3** Native 零业务逻辑/零状态机——**无状态句柄（H3-a）**，close 唯一性由 Kotlin owner 保证；**I4** ABI v4 既有结构零改动/`struct_size` 严格；**I5** victim/ 冻结、不改 legacy/legacy2/very_legacy；**I6** 不在 PI 窗口内 syscall；**I7** 不加旁路/CLI、不 commit；**I8** 附件配额例外已记录。
+不变量：**I1** W1-only 路径/字符串不变（`writeChain=null`；`Flow43499Impl.kt:171-172`）；**I2** 三路 generator/W2/W3 布局语义不变（review §6.1 R3d-2）；**I3** Native 零业务逻辑/零状态机——**无状态句柄（H3-a）**，close 唯一性由 Kotlin owner 保证；**I4** ABI v4 既有结构零改动/`struct_size` 严格；**I5** victim/ 冻结、不改 legacy/legacy2/very_legacy；**I6** 不在 PI 窗口内 syscall；**I7** 不加旁路/CLI、不 commit；**I8** 主件与附件只按职责边界组织，不设字节或篇幅门。
 
 ## 2. 机制-only Native 边界
 
@@ -77,7 +77,7 @@ CBN 明细（收益/成本/边际/翻转全表）见 [附件 B §F](43499-perf-l
 
 **影响文件（实现批 write scope；本批不动）**：Native=`core/perf.{h,c}`(NEW)、`core/api.h`、`jni43499.c`；Kotlin=`jni/Native43499Jni.kt`、`backend/cve43499/perf/*`(NEW)、`flow/{Cve43499WriteChain,Flow43499Impl}.kt`、`A301SoDebugConfig.kt`、`FinishHandoffAdapter.kt`；资产 `debug-a301so.conf`；测试 3 新/2 改+androidTest 探针；工具 `tools/{scan_native_literals.py,abi_layout_probe.c}`；全清单附件 A §E，其余冻结（C1）。
 
-**文档/approval**：本件=唯一设计权威；实现批同批更新 approval §6.6/review/v2 plan。本批已完成：approval §6.6「ABA」引用+§6 索引+配额例外；review §6.4 设计入口（修订 3）。**不 commit**。**明确不做**：不改 legacy/legacy2/very_legacy；不在 Native 加解析/选择/状态机/重试/状态校验；不改 victim/；不新增其他泄漏机制；不改既有 ABI/错误码；不启用生产默认（`perf.enabled=0`）；本批不写实现代码；不碰 KernelSnitch/43284/UI。
+**文档/approval**：本件=唯一设计权威；实现批同批更新 approval §6.6/review/v2 plan。本批已完成：approval §6.6「ABA」引用+§6 索引+文档组织记录；review §6.4 设计入口（修订 3）。**不 commit**。**明确不做**：不改 legacy/legacy2/very_legacy；不在 Native 加解析/选择/状态机/重试/状态校验；不改 victim/；不新增其他泄漏机制；不改既有 ABI/错误码；不启用生产默认（`perf.enabled=0`）；本批不写实现代码；不碰 KernelSnitch/43284/UI。
 
 ## 11. UNVERIFIED（第三轮复核与 G1 核对）
 

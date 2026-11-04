@@ -5,7 +5,7 @@
 > **2026-10-22 冻结**：very_legacy 拆分路线判定成本过高；JNI 重写改见 [43499-43284-jni-rewrite-plan.md](43499-43284-jni-rewrite-plan.md)（待批）。
 > **边界裁定（C1，v4，已批准）**：本件修改现有 app-owned `ghostlock43499`/`ghostlock43284` target；`externalNativeBuild` 会打包为 `lib*.so`，属生产路径改动。用户已在测试分支批准；每批真机门禁仍是合入前提，未过只标 `device-gate-pending`。`jni-two-backend-plan` 仅历史参考。
 > **快照**：HEAD `d2778a1a`，2026-10-21T20:30Z。基线：`build/app/intermediates/cxx/Debug/12l21261/obj/arm64-v8a/libghostlock43499.so` sha256 `e0fc7fe5…f9c475`；`libghostlock43284.so` sha256 `5d922ffb…c8b9f4`。两者均带调试符号（`llvm-nm` 可见 `waiter_thread`/`patch_hook`），非 stripped。
-> **附件**：[核心清单与全局/字面量盘点](../analysis/43499-43284-core-inventory.md)（≤8 KiB）。本件只留决策与指针。
+> **附件**：[核心清单与全局/字面量盘点](../analysis/43499-43284-core-inventory.md)。本件只留决策与指针；拆分依据是职责边界，不是文件大小。
 
 ## 0. 目标与完成定义
 
@@ -121,7 +121,7 @@ jint  glk43284Destroy(jlong handle);
 - 构建：`./gradlew :app:externalNativeBuildDebug --offline` 退出码 0；P1 起 C 目标加 `-Wall -Wextra -Wconversion -Wsign-conversion`，新码零告警。
 - 静态：getenv 只允许 `GHOSTLOCK_HOME`/`TMPDIR`/`GHOSTLOCK_KSU_LOG`；`llvm-nm -S` 的 `b/B/d/D` 段最终必须为空（目标零可写全局）；字面量 TSV 逐行分类。
 - cmp_disasm：P0 自比 smoke；每批 baseline vs candidate 的 strict/reviewed 差异分类；禁止差异（控制流/顺序）即停批。
-- 真机：43499 冷机/固定 CPU 对/单 route/KSU 未加载；43284 按 B 系列；归档 ≤8 KB/份。无真机只到 P0，P1+ 标 `device-gate-pending`。
+- 真机：43499 冷机/固定 CPU 对/单 route/KSU 未加载；43284 按 B 系列；门禁记录完整归档且不设篇幅门。无真机只到 P0，P1+ 标 `device-gate-pending`。
 - 文档：full-process-uml 与 introduction §一/§五/§八 同批更新。
 
 ## 5. CBN
@@ -163,8 +163,8 @@ jint  glk43284Destroy(jlong handle);
 | C10 | 重要：CMake/打包 | P5 指定 target/输出/排除/符号验收 |
 | C11 | 重要：计数/字段 | 43284 改 6 全局；g_seq 归 Runtime；bootstrap/root script 补入附件 |
 | C13 | 重要：命名 | §2.2 canonical 表；无别名 |
-| C14 | 建议：配额 | 清单移附件；计划 ≤16 KiB |
-| C15 | 重要：版本标识 | 标题/记录统一为 v3；冻结哈希以审查记录/提交为准（本文件约 14.9 KB） |
+| C14 | 建议：文档组织 | 清单按职责移附件；不设字节或篇幅门 |
+| C15 | 重要：版本标识 | 标题/记录统一为 v3；冻结哈希以审查记录/提交为准 |
 | C16 | 重要：pipefd 泄漏 | D4 例外 `leak-on-stuck`；用户 2026-10-21 临时接受；代码注释 `TODO(temp-20261021)` |
 | C17 | 重要：stop 指令数 | **事实不成立**：`kernel5_resident_stop` 35 insn（0x8c/4=35；cmp_disasm 35）；140 是字节数 |
 | C18 | 阻断：P0 分类未完成 | P0b 已清：`?`=0，104 manual，E 抽检；P0a/P0b 完成 |

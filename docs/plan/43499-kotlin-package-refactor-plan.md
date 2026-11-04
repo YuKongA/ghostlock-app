@@ -1,9 +1,9 @@
 # Kotlin package refactor plan — backend separation
 
-Status: design-critic approved final revision with no blocking issues (2026-10-20). No code moved in this batch.
+Status: frozen after backend-directory-cleanup M5; target packages are stale and require a new baseline/review before any implementation. No code moved by this plan.
 
 > **2026-10-21**：批准状态见 [43499-approval-status.md](43499-approval-status.md)（唯一权威）；执行结构见 [execution-architecture.md](execution-architecture.md)。
-> 本件（包结构重构）**设计已批准**，包移动分批。
+> 本件历史设计不再构成实施授权；当前目录权威是 `backend-directory-cleanup.md` 的 M1-M5，后续如需继续必须重基线并重新批准。
 
 ## 1. Problem
 

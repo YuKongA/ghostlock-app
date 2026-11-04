@@ -1,7 +1,7 @@
 # 附件 T：tcp route 完整有序调用表（W1→W3，2026-10-28）
 
 - 父件：[主矩阵](43499-w1-w3-three-route-call-matrix-20261028.md)（S 编号）。本附件=T route 的完整有序调用表（主件 S02–S19 的 tcp 分支展开）。
-- 快照/证据规则同父件（source-only；`DEV(E0/E4)` 仅机制报告）。行数 **18**（T01–T18）。≤16 KiB。
+- 快照/证据规则同父件（source-only；`DEV(E0/E4)` 仅机制报告）。行数 **18**（T01–T18）；不设字节或篇幅门。
 - 列：`# | 阶段 | Kotlin/JNI | Native 函数 | syscall/libc 有序（file:line；参数/返回要点） | legacy（L2/L1/VL） | 差异/严重度/证据`。
 
 | # | 阶段 | Kotlin→JNI | Native 函数 | syscall/libc 有序（file:line；参数/返回） | legacy 对照 | 差异/严重度/证据 |

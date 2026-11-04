@@ -107,7 +107,7 @@ ref 的 disarm/destroy **无条件** ⇒ 否则 `bring_up` 中途失败将**无�
 ② `make -C core -B android NDK_TOOLCHAIN=…` ⇒ **0 error / 0 warning**；
 ③ `./gradlew markdownlint` ⇒ 0；
 ④ 真机：`adb push` ＋ `./ghostlock < wire-43499-collide-F.framed` ⇒ 判据 **`main: victim uid=0`**；
-⑤ 归档 `docs/analysis/device-gates/*.md`（≤8 KB）。
+⑤ 完整归档 `docs/analysis/device-gates/*.md`（不设字节或篇幅门）。
 ```
 
 ## 9. ⑬ 步骤层唯一化：设计与硬约束（2026-10-12）
@@ -195,7 +195,7 @@ ref 的 disarm/destroy **无条件** ⇒ 否则 `bring_up` 中途失败将**无�
 ```
 · host：`make -C core -j1 check` ⇒ 起 **109 PASS**，只增不减 ✓ ；android 零告警 ✓ ；markdownlint 0 ✓
 · 真机：`main: victim uid=0`（⇒ `adb push build/native/ghostlock /data/local/tmp/` ＋ 跑 fixture ✓）
-· 归档：`docs/analysis/device-gates/*.md`（≤8 KB ✓）
+· 归档：`docs/analysis/device-gates/*.md`（证据完整、不设字节或篇幅门 ✓）
 ```
 
 ## 11. ㉓ 搬迁：按后端切三批（2026-10-12，量自 `main.cpp` ✓）

@@ -1,6 +1,6 @@
 # 全流程 host 组装测试计划（三端打通 · R8）
 
-> 分析类（≤8 KiB）。**自包含**：只引用本仓文件与规则编号。**边界**：本计划**不是真机判据**（每个用例的输出固定打印 `非真机判据`）；不覆盖内核行为 / PI 时序 / W1–W3 / LKM / handoff。
+> 分析类。**自包含**：只引用本仓文件与规则编号。**边界**：本计划**不是真机判据**（每个用例的输出固定打印 `非真机判据`）；不覆盖内核行为 / PI 时序 / W1–W3 / LKM / handoff。
 > 判据形式依据：[design-review-principles](../development/design-review-principles.md) **D1** + [handoff-payload-verification](handoff-payload-verification.md) §1（黑盒/白盒 + 极端输入值；不可能用例不测）。
 > 沿革：取代 `docs/archive/20261007-2237-host-assembled-integration-test-plan.md`（v2）——保留「与真机同形」「extractor 纳入上游」，判据改写为现行形式并补三处实测缺口（§3）。
 

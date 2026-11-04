@@ -1,6 +1,6 @@
 # 脚本调用下落为 op 的三条规则
 
-> 分析类（≤8 KiB）· 权威来源：**design-critic 裁定**（2026-10-08，R3 确认）+ `docs/analysis/handoff-script-layer-p5-spec.md` §3；
+> 分析类 · 权威来源：**design-critic 裁定**（2026-10-08，R3 确认）+ `docs/analysis/handoff-script-layer-p5-spec.md` §3；
 > 本件只把该裁定落成可检索的条文，**不新增决定** ✓。
 
 脚本的调用经 staged 计划**下落**为**计划侧**的 op 条目（`pipeline::plan_gate` 消费 ✓）。三条规则缺一不可：

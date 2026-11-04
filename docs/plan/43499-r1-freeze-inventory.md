@@ -4,7 +4,7 @@
 - **权威**：[43499-native-parameterization-v2-plan.md](43499-native-parameterization-v2-plan.md) §10 + [approval-status](43499-approval-status.md) §6.5（R0 方案 A + ABI v4 删 reserved + A 决策）。
 - **快照/基线**：HEAD `a9af5482`；当前工作树含 P0a/P0b 半成品（“待复核未交付”，R2 丢弃重建，见 §5）。
 - **writer**：R1=coding-agent；R2=impl-43499（单一 writer；coding-agent 会话预算耗尽停手且未留半成品）。
-- **本件为索引**（≤16 KiB）：逐字段/ABI/校验明细拆附件，避免配额截断。
+- **本件为索引**：逐字段/ABI/校验明细按职责拆附件；不设字节或篇幅门，不得为体量删减判据。
 
 ## 1. 交付物清单（本次修订）
 

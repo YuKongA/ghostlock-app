@@ -1,6 +1,6 @@
 # Handoff / Payload 同批动作清单（UML · ADR · 需求 · 测试 · 批次）
 
-> 分析类（≤8 KB）。配套 [plan](handoff-payload-plan.md) §10 与 **§9.1 配额策略**、[b0](handoff-payload-b0-contract.md)、[b1b2](handoff-payload-b1b2-runtime.md)、[kotlin](handoff-payload-kotlin.md)、[kotlin-io](handoff-payload-kotlin-io.md)、[params-dispatch](handoff-payload-params-dispatch.md)、[ops](handoff-payload-ops.md)、[plugin-lua](../archive/20261017-1835-handoff-plugin-lua.md)、[ADR README](adr/README.md)。
+> 分析类。配套 [plan](handoff-payload-plan.md) §10 与 **§9.1 增补策略**、[b0](handoff-payload-b0-contract.md)、[b1b2](handoff-payload-b1b2-runtime.md)、[kotlin](handoff-payload-kotlin.md)、[kotlin-io](handoff-payload-kotlin-io.md)、[params-dispatch](handoff-payload-params-dispatch.md)、[ops](handoff-payload-ops.md)、[plugin-lua](../archive/20261017-1835-handoff-plugin-lua.md)、[ADR README](adr/README.md)。
 > **本文是「同批动作」的唯一权威**（B6 关闭件）：只给**目标文件/章节 + 一句话改什么**，不复述条文。**自包含，不引用任何外部计划**。
 
 ## 1. UML 同批（`docs/development/full-process-uml.md`，逐图）
@@ -40,7 +40,7 @@
 
 **超限拆分（独立待办，本轮不动）**：
 
-1. `adr/0004`（16624 B）：拆「正文（决策+判据）+ 附录（迁移批次与证据表）」；附录另存 `adr/0004-appendix.md`，正文 ≤8 KB 留指针。
+1. `adr/0004`：按职责拆为「正文（决策+判据）+ 附录（迁移批次与证据表）」；附录另存 `adr/0004-appendix.md`，正文留指针；不设字节或篇幅门。
 2. `adr/0001`（20190 B）：A–I findings 明细移交既有 `architecture-findings-register.md`，正文只留分层结论表 + 指针。
 3. `adr/0003`（8512 B）：仅超 320 B ⇒ 压缩/移除已 stale 的 GLK1 v2 段落即可。
 
@@ -85,5 +85,5 @@
 | **N*** | native 面项 | b0 §3/§6/§7、b1b2 §B1.2 |
 | **B6** | 同批动作清单 | 本文 §1–§5 |
 | **D-G** | 执行关键字段 `required` 口径 | params §2、b0 §2 |
-| **Q1–Q3** | 配额/引用/单位 | plan §9.1 |
+| **Q1–Q3** | 文档组织/引用/单位 | plan §9.1 |
 | **C1–C10** | design-critic 项 | queue-schema §1/§2/§7、plan §3/§9.1、b1b2 §B1.2、kotlin §1/§9 |

@@ -1,6 +1,6 @@
 # P2 设计规格：新契约层（兼容面 + 新架构面）
 
-> 分析类（≤8 KiB）。**自包含**。P2 唯一权威规格：目标 = **既有 `backend/**` 零改动可编译**（[rewrite-plan](../archive/20261017-1835-rewrite-plan.md) §5 硬判据）。
+> 分析类。**自包含**。P2 唯一权威规格：目标 = **既有 `backend/**` 零改动可编译**（[rewrite-plan](../archive/20261017-1835-rewrite-plan.md) §5 硬判据）。
 > 全量表 = [A1](contract-layer-p2-spec-annex-a1.md)（48 头 × 次数 × 职责）+ [A2](contract-layer-p2-spec-annex-a2.md)（符号使用点）。判据 = D1。
 
 ## §1 兼容契约（**实测**：48 个头 / 59 个 backend 文件）

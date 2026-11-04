@@ -3,13 +3,13 @@
 - 日期：2026-10-21
 - 状态：AI 生成 UI 的默认规范
 - 快照：HEAD `d2778a1a`；范围 `app/src/main/kotlin/com/ghostlock/app/ui/component/**`、`ui/kit/**` 与四个根页面
-- 原则：**共享状态 + 双套件实现 + 语义 facade**。禁止复制控件、禁止只写一套、禁止使用未接线 `LocalUiKit`。
+- 原则：**共享状态 + 双套件实现 + 语义 facade**。禁止复制业务状态、禁止只写一套；`LocalUiKit` 只能作为由 `LocalUiMode` 派生的 component/plugin skin，不能成为第二 selector。
 
 ---
 
 ## 1. 先记住三件事
 
-1. **生产入口是 `UiMode` + `LocalUiMode`**，不是 `UiKit` / `LocalUiKit`。
+1. **生产 selector 只有 `UiMode` + `LocalUiMode`**；`LocalUiKit` 由该 selector 在 composition root 同步提供。
 2. 根页面必须同时提供 Material/Miuix 两个实现：`XScreen.kt` + `XMaterial.kt` + `XMiuix.kt`。
 3. 共享代码（Screen、UiState、Actions、通用组件）不得 import 具体 Material3/Miuix 控件；主题控件只在对应实现文件里出现。
 
@@ -21,13 +21,12 @@ MainActivity
        └─ XMiuix.kt         // Miuix
 ```
 
-`LocalUiKit` 当前没有 Provider，调用会直接 `error("UiKit not provided")`。AI 新代码不得使用：
+页面级 renderer 继续按 `LocalUiMode` 分支；只有需要单一 plugin/component 入口时读取已提供的 `LocalUiKit`。新代码不得自行创建第二 mode store/controller：
 
 ```text
-LocalUiKit
-MaterialKit
-MiuixKit
-AndroidUiKitStore / UiKitController（除非完成全仓迁移）
+AndroidUiKitStore
+UiKitController
+独立于 LocalUiMode 的 MaterialKit/MiuixKit selector
 ```
 
 ---
@@ -40,7 +39,7 @@ AndroidUiKitStore / UiKitController（除非完成全仓迁移）
 |---|---|---|
 | `AppIconImage` | 应用图标，按 mode 调色 | `ui/component/AppIconImage.kt` |
 | `KeyEventBlocker` | 拦截按键 | `ui/component/KeyEventBlocker.kt` |
-| `KsuValidCheck` | 根状态校验包装 | `ui/component/KsuValidCheck.kt` |
+| `CapabilityGate` | caller 注入 capability 后决定是否展示内容 | `ui/component/CapabilityGate.kt` |
 | `ObserveAsEvents` | Flow → 一次性事件 | `ui/component/ObserveAsEvents.kt` |
 | `ScrollToTopOnChange` | 列表变更回顶 | `ui/component/ScrollToTop.kt` |
 | `SearchStatus` | 搜索栏展开/收起状态 | `ui/component/SearchStatus.kt` |

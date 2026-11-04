@@ -1,6 +1,6 @@
 # 附件：PI 边界锚点引证（原文，只引锚点行）· pi-window-constraints
 
-> 分析类（≤8 KiB）。**从 [pi-window-constraints.md](pi-window-constraints.md) 边界段迁出**（配额：主件并入锚点后超 8192 B）。
+> 分析类。**从 [pi-window-constraints.md](pi-window-constraints.md) 边界段迁出**；历史拆分曾由旧 8192 B 配额触发，2026-11-03 配额取消后仍按锚点引证职责保留。
 > **权威 = 代码里的 `PI-*` 注释标记**；本件只逐行引其原文。**数字截至 2026-10-12，会随改动漂移**（漂移只改这里的数字）。
 
 - **waiter_main / owner_main**：`core/src/backend/cve_2026_43499/landing/multicast_route.hpp`

@@ -1,7 +1,7 @@
 # 98260 backend 计划·附录 B（CBN / 改动清单 / 测试 / 真机门禁 / 债）
 
 > 主计划：[98260-backend-plan.md](98260-backend-plan.md)；附录 A：[98260-backend-plan-annex.md](98260-backend-plan-annex.md)（critic 回应、启动/状态/预检/marker/参数协议）。
-> 配额：附录 B ≤16 KiB；快照同主计划。
+> 附录 B 不设字节或篇幅门；快照同主计划，内容按职责边界组织。
 
 ## B. CBN 完整表（压缩版；收益带数字、成本含边际）
 
@@ -85,7 +85,7 @@ in-flight 文件 sha256 前缀（2026-10-28T08:57 快照；B0 复跑取全值，
 | G6 | 重复性 | ≥3 次冷机，逐次归档（含失败/panic 日志）；`bootreason != kernel_panic` | 记录 PASS/FAIL 全量 |
 | G7 | 副作用 | SELinux enforce 状态、KSU 状态、/data/local/tmp 残留 | 残留⇒文档化并列入清理指引 |
 
-归档：`docs/analysis/device-gates/98260-<date>-<pass|fail>.md`（≤8 KB/份），附原始 logcat/helper 日志 sha256。**未过真机不得标 supported/不得宣称 backend 可用。**
+归档：`docs/analysis/device-gates/98260-<date>-<pass|fail>.md`（证据完整，不设字节或篇幅门），附原始 logcat/helper 日志 sha256。**未过真机不得标 supported/不得宣称 backend 可用。**
 
 ## M. F2 技术债全表（本附录即登记处，主计划互链）
 

@@ -5,7 +5,7 @@
 
 ## 0 v2 改了什么（对二审的逐条处置）
 
-- **逐条处置表已迁出**（配额）⇒ 见 **[script-carriage-design-history.md](script-carriage-design-history.md)**（CAR-1..7 全文，内容未改）。
+- **逐条处置表已迁出**（旧配额触发，2026-11-03 已取消；现按沿革职责保留）⇒ 见 **[script-carriage-design-history.md](script-carriage-design-history.md)**（CAR-1..7 全文，内容未改）。
 
 ## 1 决定（四条）
 

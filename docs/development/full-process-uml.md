@@ -738,7 +738,7 @@ flowchart LR
   G[common STATIC] --> C
   G --> B4
   G --> B2
-  K --> F[FinishExecution/script]
+  K --> F[FinishHandoff + root-manager script]
 ```
 
 禁止边：general↔backend、backend↔backend。route 仅在 Kotlin/Lua。
@@ -1077,7 +1077,9 @@ Shizuku `remove=true` 后，客户端等待 binder-disconnected 回调及其所�
 
 ### 11.8 Glued executable native build and APK packaging
 
-43499-Glued、43284Glued 与 DFRoot bootstrap helper 由同一个 AGP externalNativeBuild CMake variant 构建。自 2026-11-03（CMake chunk 整理）起根 `app/src/main/cpp/CMakeLists.txt` 只做 project/标准设置与 `include()` 组装：`include(common/)`、`include(glgeneral/)`、`include(backends/)`；`backends/CMakeLists.txt` 声明 6 个 per-backend option 并只 include 已开启的 chunk。每个 chunk 顶部 `include_guard(GLOBAL)` 且全部路径用 `${CMAKE_CURRENT_LIST_DIR}`（`include()` 不改变 `CMAKE_CURRENT_SOURCE_DIR`）。`gl_common` 为 **OBJECT** 库（编译成 `.o` 供各目标链接），其余目标类型/输出名不变：DSO 仍 `SHARED`，攻击 payload 仍是 PIE executable（`lib*.so` 仅是 AGP 打包命名）。CMake targets 将输出写入 AGP 的 `CMAKE_LIBRARY_OUTPUT_DIRECTORY`（位于仓库 `build/app/intermediates/cxx/<variant>/<hash>/obj/<abi>`，构型缓存 `app/.cxx/`），AGP 合入 APK；不从 `app/src/main/jniLibs` 拷贝，也不经 Makefile/Copy task。
+43499-Glued、43284Glued 与 DFRoot bootstrap helper 由同一个 AGP externalNativeBuild CMake variant 构建。自 2026-11-03（CMake chunk 整理）起根 `app/src/main/cpp/CMakeLists.txt` 只做 project/标准设置与 `include()` 组装：`include(common/)`、`include(glgeneral/)`、`include(backends/)`；`backends/CMakeLists.txt` 声明 6 个 per-backend option 并只 include 已开启的 chunk。每个 chunk 顶部 `include_guard(GLOBAL)` 且全部路径用 `${CMAKE_CURRENT_LIST_DIR}`（`include()` 不改变 `CMAKE_CURRENT_SOURCE_DIR`）。`gl_common` 为 **OBJECT** 库（编译成 `.o` 供各目标链接），其余目标类型/输出名不变：DSO 仍 `SHARED`，攻击 payload 仍是 PIE executable（`lib*.so` 仅是 AGP 打包命名）。CMake targets 交给 AGP variant producer；不从 `app/src/main/jniLibs` 拷贝，也不经 Makefile/Copy task。
+
+2026-11-04 起，CMake 在全部 include 后从当前 target/source graph 自导出 `target/artifact/type/expected_jni` manifest；app-owned `verifyDebugNativeArtifacts` 直接消费 `SingleArtifact.MERGED_NATIVE_LIBS` Provider，并从同一个 `sdkComponents.ndkDirectory` Provider 取得 `llvm-readelf`/`llvm-nm`。因此 artifact 名单只有 CMake target graph 一个权威，root `nativeBuildAndroid` 只依赖 app public verifier，不读取 AGP task 名或 intermediate 路径。
 
 ```mermaid
 flowchart LR
@@ -1093,26 +1095,58 @@ flowchart LR
   COMMON -->|.o 链接进| T43499["payload/DSO targets"]
   COMMON --> T43284
   COMMON --> GENERAL
+  ROOT --> MANIFEST["CMake target/source-derived manifest"]
   T43499 --> OUT["AGP CMAKE_LIBRARY_OUTPUT_DIRECTORY"]
   T43284 --> OUT
   GENERAL --> OUT
-  OUT --> MERGE["AGP mergeNativeLibs / stripDebugSymbols"]
+  OUT --> MERGE["SingleArtifact.MERGED_NATIVE_LIBS Provider"]
+  MANIFEST --> VERIFY["verifyDebugNativeArtifacts"]
+  MERGE --> VERIFY
+  NDK["sdkComponents.ndkDirectory Provider<br/>llvm-readelf + llvm-nm"] --> VERIFY
+  VERIFY --> ROOT_GATE["root nativeBuildAndroid"]
   MERGE --> APK["APK lib/arm64-v8a/*.so"]
   APK --> INSTALL["installed nativeLibraryDir"]
   INSTALL --> EXEC["Kotlin Flow allowlist ProcessBuilder exec"]
+```
+
+Host CTest 不复用上述 Android production CMake。backend/module 自己拥有最小 TU/stub mapping，root 只做组合；`native-test-disposition.tsv` 同时约束所有 test/probe 的处置，不能把 excluded row 当成测试 PASS。
+
+```mermaid
+flowchart LR
+  SOURCE["app/src/main/cpp + tools<br/>suffix/prefix test + named probe"] --> INVENTORY["verifyNativeTestInventory<br/>43 candidates exact-set"]
+  TSV["native-test-disposition.tsv<br/>machine authority"] --> INVENTORY
+  TSV --> C43499["43499glued/tests/CMakeLists.txt<br/>registration drift guard"]
+  TSV --> CCONTRACT["tools/tests/CMakeLists.txt<br/>registration drift guard"]
+  INVENTORY --> T43499["nativeTest43499GluedHost<br/>configure → build → CTest 27"]
+  C43499 --> T43499
+  INVENTORY --> TCONTRACT["nativeTestContractsHost<br/>configure → build → CTest 5"]
+  CCONTRACT --> TCONTRACT
+  INVENTORY --> TAVB["avbcheck typed task<br/>configure → build → CTest 1"]
+  T43499 --> HOST_GATE["root nativeTestHost<br/>33/33"]
+  TCONTRACT --> HOST_GATE
+  TAVB --> HOST_GATE
+  HOST_GATE --> CHECK_ALL["root checkAll"]
+  ANDROID_GATE["nativeBuildAndroid<br/>merged artifacts 4 / AArch64 / JNI exact"] --> CHECK_ALL
+  XML["verifyDebugUnitTestXml<br/>459 / 0 / 0 / 0"] --> CHECK_ALL
 ```
 
 `libbootstrap.so` 是 DFRoot 的上游 helper entry，不是 Kotlin backend；这张构建图只证明 CMake build/package 链接，不证明 DFRoot 固定路径、Finish 行为或任何漏洞 ELF 可运行。原版 JNI backend 默认关闭：`GHOSTLOCK_BACKEND_43499`/`GHOSTLOCK_BACKEND_43284` 默认继承 legacy `GHOSTLOCK_ENABLE_ORIGINAL_BACKENDS=OFF`；`GHOSTLOCK_BACKEND_98260=ON` 在源缺失时配置期 fail-closed。
 
 ### 11.9 2026-11-02：新进程 Flow 通道（生效架构；取代 §11.7 的执行通道）
 
-自 2026-11-02 起，攻击一律启动新进程：UI 选择 backend 后保存 flow 入口 reflection symbol 与参数；进程启动器（一般 app 进程 `:flowhost` / Shizuku shell 进程）启动新进程并按 symbol 反射执行 Flow。symbol 只能是 `FlowEntryRegistry` 登记的 Flow 入口（`@FlowEntry` 函数，类必须实现 `Flow<*>`）。§11.7 的 `ExecutableBackendProcess`/双 launcher 图、`FlowLaunchParent` 旧执行器与旧 ELF host 通道均已删除（B5c-1/B5c-2）。
+自 2026-11-02 起，攻击一律启动新进程；2026-11-03 的 Kotlin Clean Architecture 纵切又把 UI 与该执行通道隔开。Material/Miuix renderer 只消费 `RunUiState + RunActions`，`RunViewModel` 只调 `RunBackendUseCase`；唯一 outer adapter 才把 pure command/session 映射到既有 gate、dispatcher 与 launcher。物理 run 由 application-scoped `RunCoordinator` 持有，Activity/VM observer 消失只 detach，不 cancel。symbol 仍只能是 `FlowEntryRegistry` 登记的 Flow 入口（`@FlowEntry` 函数，类必须实现 `Flow<*>`）。
 
 ```mermaid
 flowchart LR
-  UI[Backend selector] --> SPEC[BackendSpec.flowSymbol + flowParams]
-  SPEC --> GATE[BackendRunGate]
-  GATE --> DISP[BackendRunDispatcher]
+  UI[Material / Miuix Run renderer] --> SA[RunUiState + RunActions]
+  SA --> VM[RunViewModel]
+  VM --> UC[RunBackendUseCase]
+  UC --> PORT[RunSessionPort]
+  PORT --> ADAPTER[BackendRunSessionAdapter]
+  ADAPTER --> SPEC[Captured BackendSpec + flowParams]
+  ADAPTER --> GATE[BackendRunGate]
+  ADAPTER --> COORD[RunCoordinator application scope]
+  COORD --> DISP[BackendRunDispatcher]
   DISP --> FLP[FlowLaunchParent.launchSymbol]
   FLP -->|APP executor| APL[AppProcessFlowLauncher]
   FLP -->|SHIZUKU executor| SPL[ShizukuProcessFlowLauncher]
@@ -1128,32 +1162,119 @@ flowchart LR
   EXEC1 --> EV[FlowHostProtocol verify evidence]
   EXEC2 --> EV
   EV --> MAP[FlowHostProtocol.mapTerminal]
-  MAP --> UI2[BackendRunUiState: Finished / HandoffRequested / Refused]
+  MAP --> ADAPTER
+  ADAPTER --> SESSION[RunSessionState StateFlow]
+  SESSION --> VM
+  VM --> UI2[同一 state/actions → 两套外观 renderer]
 ```
 
 关键契约：
 - host 注入保留参数 `host.uid/pid/domain/run_dir/native_lib_dir/log_path`；调用方伪造 `host.*` 被拒；run_dir 由 host 创建（app filesDir / shell `/data/local/tmp`）并在终态 evidence 后 best-effort 清理。
 - 43499 entry 为 context-free：params(profile.conf/bin/release) → staging → exec 上游 ELF（stdin + 三环境变量）；43284 entry 使用 host-local `FlowHostEnv.context`（B4b 例外）创建 IpSec runtime，正常退出 close；超时/取消 **不 close**（`ipsec=runtime-leaked` + `host_keepalive=true`，host 跳过自杀/清理，A11）。
 - 每次 run 新进程（app pid / Shizuku 实例与 pid 变化）；one-shot；终态先回传再回收；无 fallback（执行体二选一）。
-- registry 由 `Backends.all.flowSymbol` 生成；仅 debug 构建追加诊断 fixture（release 只允许生产入口）。
+- 显式 abort 且 `abortable=true` 时，coordinator 只取消其持有的 launcher job，沿既有 App/Shizuku cancel/finally 顺序回收；rotation/VM clear 不触发这条路径；handoff 后的 late callback 不再写 session state。
+- registry membership 由 app、`:flowhost`、Shizuku 三个 composition root 各捕获一次 immutable list；`FlowEntryRegistryAssembly` 只接显式 snapshot，不再自行读 `Backends.all`。三端用同一 canonical encoding 生成 64-bit content version + SHA-256；APP/Shizuku launcher 在 `prepare/prepareFlow` 前读取 host AIDL identity，任一 version/hash 不一致即具名拒绝。仅 debug 构建追加诊断 fixture（release 只允许生产入口）；该新 wire 分支已通过 AIDL/Kotlin compile，设备对拍仍未执行。
 
 已交付证据（2026-11-02）：B2 App `:flowhost` 真机 smoke PASS；B4a 43499 / B4b 43284 生产 entry fixture 门禁 PASS（真实 IpSec create/close）；G9 registry 设备回归 PASS；B5c-1/B5c-2 删除旧 runner/双执行体/旧 ELF host 通道，全量单测 470/0/0，debug/androidTest/release 构建 PASS。**未验证**：真实漏洞 ELF 冷机门禁（待用户授权）、Shizuku flavor 真机（设备无 Shizuku）、release APK 运行、98260 legacy host 通道与 Lua 动态 symbol 注册（遗留 B5c-3/B5a/B5b）。
 
 ### 11.9.1 2026-11-02：后端注册表统一（BackendId 删除、单一注册表驱动 UI）
 
-- 每个后端一个 object 实现 `BackendSpec`：`key/selectable/flowSymbol/flowParams/readiness/ConfigCard(miuix)/rows` 同在一个声明里；`ConfigCard` 为必选 UI 入口（接口默认 `DefaultBackendConfigCard(rows)`，可覆盖）。
-- `Backends.all` 是**唯一注册表**：菜单由 `Backends.all` 生成、`enabled=spec.selectable`；选定后的配置卡只经 `spec.ConfigCard(miuix)` 一条路径渲染（`BackendPage` Material/Miuix 均同）；`isSelectable(spec)=spec.selectable`，无对象身份白名单。
+- 每个后端一个 object 实现 Android outer contract `BackendSpec`：`key/selectable/flowSymbol/flowParams/readiness/runtimeSpec/rows/configSchema` 与 nullable `configurationSpec` 同在一个声明里；backend 声明不持有 Composable、renderer 或 frontend state。
+- `Backends.all` 是唯一注册集合；AppContainer 启动期复制一次 membership，同一份 list 显式注入 catalog、selection、semantic configuration adapter 与 run adapter。`BackendSessionStore.selectedKey` 是 application-scoped 选择权威；原 process-global `BackendSelection` 已删除。`AndroidBackendConfigurationAdapter` 只能在 captured membership 中查找 `BackendSpec`，并委派标准 `configurationSpec.snapshot/mutate`；它不 import concrete backend，也不按 key/class 分支。
+- configuration capability 只暴露 `Static/Toggle/ChoiceDocument/Document` 语义 DTO 与标准 mutation。presentation-owned `RegisteredBackendConfigRenderer` 只按语义 subtype 选择 generic renderer；皮肤只从 `LocalUiMode` 派生的 `LocalUiKit` 读取。A301SO/Mondrian config 与 43499 request factory 分别归 `backend/backends/cve43499/config`、`request` 私有 owner，UI/domain/core/data 不持有这些具体类型。`isSelectable(spec)=spec.selectable`，无对象身份白名单。
 - `BackendId` 枚举（旧 `Flow<*>` 绑定）与 `BackendSpec.id`/`customConfig` 已删除；`register` 运行时 fail-closed（空/重复 key、selectable 无 flowSymbol 拒绝）。debug probe 仅 DEBUG 注册，release 菜单不含。
 - 证据：全量 JVM 434/0/0/0；debug/androidTest/release 构建 PASS；设备 A301SO debug 走查菜单 6 项（含 调试探针）、各卡渲染正确、禁用项不可选；release 菜单 5 项无调试探针；probe/B2 设备回归 PASS。
-- 代码布局（M5，2026-11-03；纯目录/包归类 + 未完工注解，无类关系或执行通道变化，上图不变）：所有 backend 平级放在 `backend/backends/`（cve43499glued、cve43284glued、debugprobe 可运行；cve43499、cve43284、lua 未完工）；未完工由 `@UnfinishedBackend(reason)` 标记（不删除、不可选/灰显、配置卡与实现保留、禁止以清理为名删除；debug probe 不标注）；`declarations/` 只留框架契约（BackendSpec/BackendRow/BackendSelection、FlowEntryRegistryAssembly、`@UnfinishedBackend`）。包名与目录一致（`com.ghostlock.app.backend.backends.<name>`），政策见 `app/src/main/kotlin/com/ghostlock/app/backend/README.md`，交付记录见 `docs/plan/backend-directory-cleanup.md` §12。
+- 代码布局（M5，2026-11-03；纯目录/包归类 + 未完工注解，无类关系或执行通道变化，上图不变）：所有 backend 平级放在 `backend/backends/`（cve43499glued、cve43284glued、debugprobe 可运行；cve43499、cve43284、lua 未完工）；未完工由 `@UnfinishedBackend(reason)` 标记（不删除、不可选/灰显、标准 configuration capability 保留、禁止以清理为名删除；debug probe 不标注）；`declarations/` 只留外层契约（BackendSpec/BackendRow、FlowEntryRegistryAssembly、`@UnfinishedBackend`）。包名与目录一致（`com.ghostlock.app.backend.backends.<name>`），政策见 `app/src/main/kotlin/com/ghostlock/app/backend/README.md`，交付记录见 `docs/plan/backend-directory-cleanup.md` §12。
 
 ```mermaid
 flowchart LR
-  REG[Backends.all 唯一注册表] -->|filter selectable| MENU[后端菜单 enabled=selectable]
-  MENU -->|selected spec| CARD[spec.ConfigCard miuix]
+  REG[Backends.all 唯一注册集合] --> ROOT[AppContainer 捕获 immutable membership]
+  ROOT -->|domain projection| MENU[后端菜单 enabled=selectable]
+  MENU -->|stable key| SELECT[BackendSelectionPort]
+  SELECT --> SESSION[BackendSessionStore.selectedKey]
+  ROOT --> CONFIG[AndroidBackendConfigurationAdapter]
+  SPEC[BackendSpec.configurationSpec] --> CONFIG
+  CONFIG --> STATE[BackendConfiguration semantic state]
+  STATE --> CARD[RegisteredBackendConfigRenderer generic subtype dispatch]
+  MODE[LocalUiMode] --> KIT[LocalUiKit]
+  KIT --> CARD
   CARD --> UI[PathPage 配置卡]
-  REG -->|spec.flowSymbol| FL[FlowLaunchParent 新进程入口]
-  REG -->|spec.readiness/flowParams| GATE[BackendRunGate/Dispatcher]
+  ROOT -->|spec.flowSymbol| FL[Run adapter → 新进程入口]
+  ROOT -->|spec.readiness/flowParams| GATE[BackendRunGate/Dispatcher]
 ```
 
 > 注：§11.7 的 exec-glue 类图（含 BackendId/旧 runner）为历史图；本图取代其“UI 选择/卡来源”部分。
+
+### 11.10 2026-11-03：Kotlin Clean Architecture 与统一语义 renderer（D7 source 收口；设备终门待补）
+
+```mermaid
+classDiagram
+  direction LR
+  class Domain {
+    UiPreferences / DeviceStatus / BackendRuntimeSpec
+    OperationalPreferences / PrivilegeState
+    BackendConfiguration / FinishEditorState
+    RunCommand / RunSessionState
+    Ports + UseCases
+  }
+  class DataAdapters {
+    SharedPreferences / Android device facts
+    SharedPreferences operational adapter
+    Backend session-selection-config-run adapters
+    Android privilege adapter
+    Finish config-script adapters
+  }
+  class AppContainer {
+    captured registry membership
+    adapter/use-case ownership
+    AppViewModelFactory
+  }
+  class ViewModels {
+    immutable StateFlow
+    semantic actions
+  }
+  class SemanticUI {
+    Home / Backend / Settings / Finish / Run state+actions
+  }
+  class MaterialRenderer
+  class MiuixRenderer
+  class OuterExecution {
+    BackendSpec / configurationSpec / registry identity
+    gate / dispatcher / launcher / host
+  }
+
+  AppContainer --> DataAdapters : constructs once
+  DataAdapters ..|> Domain : implements ports
+  AppContainer --> ViewModels : injects use cases
+  ViewModels --> Domain : invokes
+  ViewModels --> SemanticUI : publishes state/actions
+  SemanticUI --> MaterialRenderer
+  SemanticUI --> MiuixRenderer
+  DataAdapters --> OuterExecution : maps only at outer boundary
+```
+
+```mermaid
+stateDiagram-v2
+  [*] --> Idle
+  Idle --> Running: explicit Start / gate allowed
+  Running --> Aborting: explicit Abort and abortable
+  Aborting --> Aborted: existing launcher cancellation cleanup returned
+  Running --> Done: success / failure / refusal
+  Running --> HandoffRequested: handoff terminal
+  Done --> RerunReady: first primary action
+  Aborted --> RerunReady: first primary action
+  HandoffRequested --> RerunReady: first primary action
+  RerunReady --> Running: confirm or warn disabled
+```
+
+边界与所有权：
+- `domain/**` 不依赖 Android、Compose、backend/core/data/ui；Android resource、registry object、`FlowResult` 与 package manager 只在 adapter 外层映射。
+- `BackendSessionStore` 是 application-scoped backend selection/config persistence owner；catalog、selection 与 run adapter 读取同一实例，不再经 process-global `BackendSelection`。backend 配置只经 `BackendSpec.configurationSpec` 投影到 `BackendConfigurationPort` 的 `Static/Toggle/ChoiceDocument/Document` 语义状态；UI 不 import backend/data/core，data adapter 不 import concrete backend。
+- A301SO/Mondrian debug config 与 43499 finish request factory 是 cve43499 attack-private owner；旧 `data/cve43499/A301SoDebugConfig.kt`、`core/finish/FinishHandoffAdapter.kt` 与零 caller 的 `core/finish/FinishExecution.kt` 已分别 move/move/delete，不再形成 backend→data 或 core→concrete-backend 倒置。
+- Shizuku binder、permission listener 与 executor preference 只归 `AndroidPrivilegeAdapter`；Home dialog 与 Run gate/launcher 读取同一个 `PrivilegeState` snapshot，presentation 不再直接调用 Shizuku 或 SharedPreferences。
+- Settings 的 log/attack/boot 控件只消费 `OperationalPreferences + SettingsScreenActions`；`SharedPreferencesOperationalPreferencesAdapter` 是既有 `ghostlock.log/attack/boot` store 与 Android picker URI 的唯一 mutable authority。旧 `LogSettings/AttackSettings/BootSettings` singleton 已删除；run adapter 从同一 domain stream 读取 rerun/timestamp/font facts。
+- `RunCoordinator` 拥有 launcher coroutine；VM 只订阅 `StateFlow`。renderer 只读 state 并调用 actions，不能持有/close/cancel host、fd、payload 或 attack child。
+- `FinishEditorAdapter` 只替换 editor-owned payload/root-manager/safe-mode 字段，基于当前 `FinishState.copy(...)` 保留 SELinux、relay、soft-reboot 等 handoff-only 字段；真实 KSU guard/payload/handoff 仍在 core/backend KEEP 集合。
+- page-level `LocalUiMode` 分支继续决定 Material/Miuix 外观；Home/Backend/Run/Settings/About/ColorPalette/Finish/FinishSettings 均先绑定同一语义 state/actions，再进入独立 renderer。Finish 已拆为 `FinishPageMaterial` / `FinishPageMiuix`；共享语义层不抹平两套组件的几何、色彩或 typography。
+- `kotlin_architecture_d0.py verify --section architecture` 对 domain 外向依赖、data/backend 反向 UI 依赖、非 UI Compose、UI 直连 data/backend/core、UI 直连 SharedPreferences/Shizuku，以及 UI/data/core 的 concrete-backend edge fail-closed；当前 live 结果为四条 D7 concrete/reverse count 均 `0`、`ARCH_VIOLATIONS=0`。
+- 当前 software gate 已恢复并在最终树闭环：`nativeTestHost` 连续两次均为 33/33，`nativeBuildAndroid` 为 4 件 AArch64 artifact 且 JNI exact，`checkAll` 同批得到 XML 459 tests / 0 failures / 0 errors / 0 skipped。AVD production renderer walk 仍为 `OK (1 test)`，覆盖 10 surfaces 和四种 configuration DTO。A301SO 当前不在 `adb devices`，所以 43499 冷机攻击门未运行；以上软件证据不宣称真实攻击执行已回归，D7 仍待不可替代的 A301SO device gate。

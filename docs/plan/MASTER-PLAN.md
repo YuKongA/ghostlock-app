@@ -63,14 +63,14 @@
 
 | 工作包 | 目标 | 设计依据 | 写范围（主要） | 验收判据（黑盒/白盒 + 极端值） | 门禁 |
 |---|---|---|---|---|---|
-| **WP-1 设计收敛** | 三族设计定稿并可评审 | `../analysis/handoff-payload-*.md`（plan/b0/b1b2/queue-schema/kotlin/kotlin-io/params/params-dispatch/plugin-lua/verification）、`../analysis/resolved-profile-registry-plan.md` | 仅文档 | design-critic 总判 = 可进批准 gate；外部引用 0；配额内 | G0 |
+| **WP-1 设计收敛** | 三族设计定稿并可评审 | `../analysis/handoff-payload-*.md`（plan/b0/b1b2/queue-schema/kotlin/kotlin-io/params/params-dispatch/plugin-lua/verification）、`../analysis/resolved-profile-registry-plan.md` | 仅文档 | design-critic 总判 = 可进批准 gate；外部引用 0；判据完整且一处权威 | G0 |
 | **WP-2 contract 化与层归属** | 中性 `WriteOutcome`；`pipeline`/`script` 层登记 | `handoff-payload-b0-contract.md` §3/§4 | `contract/write_primitive.hpp`、层表、`Capabilities` → POD | 层边界 = 0；窗口 TU 禁 include（文件级扫描）；概念 `static_assert` | G1（**不动机器码**） |
 | **WP-3 条目 route 选路** | 条目值 → `switch` → 编译期策略 | `b0` §8（B0.3）、`params-dispatch` §4 | `route_policy.hpp` 调用侧 | 白盒：`op_tu_isolation_test`；`cmp` 无间接 call | **G1 + G2（动机器码）** |
 | **WP-4 原语注册 + gate** | `OpSpec`/`OpRegistry` 取代 `StepExecution`；`plan_gate` 10 条 | `b1b2` §B1.1/§B1.2、`ops` §4 | `pipeline/registry.hpp`、`contract/registry_check.hpp` | 极端输入逐条具名（含 `executor-unavailable`）；两处结论冲突 ⇒ 失败（`main.cpp:184`） | G1 |
 | **WP-5 Lua 运行期** | vendored Lua 5.4 + 沙箱 + 预算 + 句柄 + `bin` | `b1b2` §B2、`ADR-0008`、`kotlin-io` §1–§2 | `src/lib/lua`、`script/` 绑定层、`glkv3.hpp` 上限 | 超预算/越权 API/伪造句柄/非脚本键 `bin`/插入段 >64 KB ⇒ 均拒；成员表两侧机器对拍 | G1（+G2 若动写路径） |
 | **WP-6 插件 Lua 形态** | 解冻后：`_ENV` 沙箱 + 独立预算 + manifest 表 | `handoff-plugin-lua.md`、`ADR-0009`、`plan` D31/D32 | 插件宿主与 `script/` | 单插件超限仅自身失败；未知能力位/非法 stage ⇒ 加载期拒；A 读 B 的 `_ENV` ⇒ 不可达 | 解冻门禁（G1+G2+G3） |
 | **WP-7 配置模型收敛** | 三层同形 + 单一读入口 + 注册套件 | `resolved-profile-registry-plan.md` §3–§6 | 按该计划 §4 改动清单 | 见该计划 §6 验证矩阵（3 层同形/路径唯一/行数守恒/单一读入口） | G1（B2 触攻击路径 ⇒ G2） |
-| **WP-8 文档与度量** | 配额、同批动作、归档、度量 | 本文件 §5/§8/§9/§10、`batch-plan` §4 | `docs/**` | 外部计划引用 0；配额内；同批清单逐项落地 | G3 |
+| **WP-8 文档与度量** | 同批动作、归档、度量 | 本文件 §5/§8/§9/§10、`batch-plan` §4 | `docs/**` | 外部计划引用 0；事实与判据完整；同批清单逐项落地 | G3 |
 
 > **判据集（不复制）**：[verification](../analysis/handoff-payload-verification.md) §1 总则 · §2 样例 · §3 扩展点 · §4 技术债 · §5 CBN；本表只列极端输入摘要。
 
@@ -110,7 +110,7 @@ flowchart LR
 | **Lead** | 全局 | 裁决、批次门禁、提交纪律、冲突合并、用户沟通 |
 | **native-core** | `core/src/**` | native 设计/实现/门禁（host/NDK/lint/真机）、`file:line` 取证 |
 | **kotlin-app** | `profile-core/**`、`app/**`、assets | Kotlin/配置/UI 设计实现与对拍；不碰 native |
-| **docs-uml** | `docs/**` | UML/计划/ADR/门禁归档/配额；**唯一文档写者** |
+| **docs-uml** | `docs/**` | UML/计划/ADR/门禁归档；**唯一文档写者** |
 | **design-critic** | **只读** | 非作者评审（`AGENTS.md` 岗位节）：冻结快照 + 固定输出格式 + 总判 |
 
 - 受影响的组（守则 §5.1）：软件工程组 = Lead + 三个常驻流；测试/质量保证 = 门禁命令 + design-critic；配置管理 = docs-uml；文档支持 = docs-uml。
@@ -119,7 +119,7 @@ flowchart LR
 
 | # | 风险/债务 | 影响 | 处置 |
 |---|---|---|---|
-| R-1 | **ADR-0001（20190 B）/ 0003（8512 B）/ 0004（16624 B）超限** | 证据文档超「分析类 ≤8 KiB」 | 独立待办：0001 findings 移交 `architecture-findings-register.md`；0003 压缩 stale 段；0004 拆正文 + 附录 |
+| R-1 | **旧文档配额债已关闭** | 不再构成准出风险 | 2026-11-03 用户取消字节/篇幅配额；ADR 只在职责或权威边界混杂时按语义拆分，不因文件大小拆分 |
 | R-2 | **R1 层表未登记 `pipeline`/`script`** | 层约束无机器守卫 | B0.1 验收项（`include_firewall_test.cpp` 层表 + 空账本） |
 | R-3 | **判据命令可执行性** | 文档判据与真实目标名不一致会失效 | 每批在 CI/本地跑 §5 命令并记录退出码 |
 | R-4 | **payload 白名单触点** | 解冻后 `backend.<id>.payload.*` 会被 fail-closed 拒 | 解冻批次为两个 `Backend*Keys` 增 `payload` + 对拍（`kotlin.md:63`） |
@@ -133,7 +133,7 @@ flowchart LR
 - **沿革**：被推翻的提法**划掉保留** + 一行理由；用户裁决逐条记录（`../analysis/handoff-payload-decisions.md` 与 archive）。
 - **变更控制**：设计者必须**逐条回应**审查（接受并改 / 举证反驳），不得沉默忽略；强制确认的越权须同时有**沿革 + 技术债**登记。
 - **批次纪律**：`engineering-rules.md` **R22/R14**（一批次一类事；判据分层留记录）；未列入改动清单的代码即冻结。
-- **文档配额与增补**：计划 ≤16 KiB、分析 ≤8 KiB（**8 KiB = 8192 B**，`R30`）；**取代而非叠加**；增补策略见 `../analysis/handoff-payload-plan.md` §9.1（冻结清单 + 拆分点 + 命名）。
+- **文档增补**：不设字节/篇幅门；仍须**取代而非叠加**，按职责/读者/权威边界拆分；策略见 `../analysis/handoff-payload-plan.md` §9.1。
 - **同批动作**：UML 逐图/ADR/需求/测试的对应关系见 `../analysis/handoff-payload-batch-plan.md` §1–§5。
 
 ## §9 估计（守则 §5.2 / §5.5(5) / §5.6）
@@ -155,8 +155,8 @@ flowchart LR
 | 设计状态 | **评审已过（可进批准 gate），待用户批准**；阻断 **0** | 批准后回填 |
 | 代码改动 | **B1「KernelAccess 实现面」已交付（2026-10-10）**：43499 路由引擎（三线程 + 平台边策略）· 43499 载荷页构建 · 43284 读面；host `check` **101 PASS**（唯一红 `plan-check`，`main.cpp` 清空所致）· `android` 零告警。**未接线**：引擎/载荷页/读面尚未进 `initialize`/`prepare_page`；临时入口 `run_pipeline_temp.cpp` 仍在 | 按批次推进（下一批＝序 1 接线） |
 | 审查阻断关闭 | **已全部关闭**（评审结论与沿革见 [decisions](../analysis/handoff-payload-decisions.md)、三族文档与 `docs/archive/20261007-2237-branch-plan.md`） | 0 未闭 |
-| 待办计数 | ADR 超限拆分 3 项 · R1 层表登记 1 项 · payload 白名单触点 1 项 · 技术债 6 项 | 按 §7 偿还 |
-| 文档配额 | 家族 15 份 + ADR-0008 全部在上限内；[archive README](../archive/README.md)、[INDEX-device-gates](../archive/INDEX-device-gates.md)、[INDEX-plans](../archive/INDEX-plans.md) 各 ≤8 KiB | 保持 |
+| 待办计数 | R1 层表登记 1 项 · payload 白名单触点 1 项 · 技术债 6 项 | 按 §7 偿还；旧 ADR 配额拆分 3 项已取消 |
+| 文档完整性 | 家族 15 份 + ADR-0008 及三个索引均保留；不按字节数判门 | 核对单一权威、链接、判据与证据完整性 |
 
 ## §11 归档索引
 

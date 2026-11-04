@@ -201,7 +201,7 @@ Native 可以消费上层已决定的数据，但不得自行引入第二套业�
 
 | 变更类型 | 必需验证 |
 |---|---|
-| 文档/契约 | critic、配额、链接、UML、冻结 hash |
+| 文档/契约 | critic、完整性、链接、UML、冻结 hash；不设字节或篇幅门 |
 | 普通 Native | `make -C core check`、`make -C core android`、新码零告警 |
 | Kotlin/JNI | Kotlin unit test、Native build、ABI 对拍、symbol/link map |
 | 资源/并发 | 0/1/MAX、stale/wrong-scope/wrong-DSO、并发 close/cancel |

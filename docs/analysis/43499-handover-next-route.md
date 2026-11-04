@@ -37,7 +37,7 @@
 2. **接线选择器**（`main.cpp` ✓，`available.cve_2026_43499.route == "select_stack"` ✓）⇒ 判据：夹具跑出
    **本 route 自己的报告** ✓（不再是 `route-not-ported` ✓）；
 3. **三级判据**（与 canonical 同一套 ✓）：奇偶/窗口 ✓ ⇒ `enforce` 1→0 ✓ ⇒ `uid=0` ✓；
-4. 归档：`device-gates/` 一份 ≤8 KB ✓ + `check`/`android`/`lint` 全绿 ✓。
+4. 归档：`device-gates/` 证据完整且不设字节或篇幅门 ✓ + `check`/`android`/`lint` 全绿 ✓。
 
 ## 五、交接注意（今晚实测得到的经验 ✓）
 

@@ -64,7 +64,7 @@
 设备 Download/ghostlock-debug-log/<时间>/*.log.txt
 同目录 profile.conf / profile.bin
 判据：route 命中、写验证、child uid=0、无 panic
-归档：docs/analysis/device-gates/*.md（≤8 KB）+ 原始日志路径
+归档：docs/analysis/device-gates/*.md（证据完整、不设字节或篇幅门）+ 原始日志路径
 ```
 
 ## G. verifyJniLibs 处置（N4）

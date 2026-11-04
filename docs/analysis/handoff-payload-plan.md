@@ -92,13 +92,13 @@
     P3 payload：load{modules[]} → exec{scripts[]}（always 条目无条件执行）
     P4 收尾：三层保证（模板后段 / always / 内核兜底）+ 后置条件核验
 
-### 9.1 文档配额与增补策略
+### 9.1 文档增补与单一权威策略
 
-- **上限**：计划 ≤16 KiB、分析 ≤8 KiB（**8 KiB = 8192 B**；依据 `engineering-rules.md` **R30**，守则本身无 KB 配额）；**取代而非叠加**。
-- **冻结增补（22:23 快照；以最新实测为准，集合不变）**：`b0`（0）· `queue-schema`（12）· `batch-plan`（19）· `plan`（22）· `decisions`（22）· `kotlin`（37）⇒ **只可替换/改指针**；`b1b2`（246）与 `ops` 不在列；新内容写 `-ops-words`/`-kotlin-io`/`-params`/`-verification` 或新建文件。
-- **拆分点**：ops 再扩 ⇒ 拆 §1 词表到 `-ops-words.md`；decisions 再扩 ⇒ 拆 §4 沿革到 `-history.md`。
+- **裁定**：2026-11-03 起不设字节、页数或篇幅上限；仍须**取代而非叠加**，不得为凑体量删除判据或证据。
+- **增补**：既有 `b0`、`queue-schema`、`batch-plan`、`plan`、`decisions`、`kotlin` 可按其职责直接更新，不按“剩余字节”冻结；新事实只写入对应唯一权威。
+- **拆分点**：只有读者、职责或权威边界发生分离时才拆；ops 词表可归 `-ops-words.md`，决策历史可归 `-history.md`，但不得仅因文件大小拆分。
 - **代码引用约定**见 [queue-schema](handoff-payload-queue-schema.md) 头部。
-- **命名**：新文件固定 `handoff-payload-<topic>.md`（≤8 KiB）；**一处权威**。
+- **命名**：新文件固定 `handoff-payload-<topic>.md`；**一处权威**。
 
 ## 10. 设计默认（**未决项已全部由此收敛，你只需接受或推翻**）
 

@@ -1,6 +1,6 @@
 # 堆/页管线移植设计 · 沿革（v1 → v3）
 
-> 附件（≤8 KiB）· 主件：[heap-pipeline-port-design](heap-pipeline-port-design.md) · 本件只存**改动记录**，不含设计结论 ✓
+> 历史附件 · 主件：[heap-pipeline-port-design](heap-pipeline-port-design.md) · 本件只存**改动记录**，不含设计结论 ✓；旧 ≤8 KiB 配额已于 2026-11-03 取消。
 
 ## v2 改了什么（逐条对 H1–H5 与三问判定）
 

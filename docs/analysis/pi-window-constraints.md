@@ -1,6 +1,6 @@
 # PI 窗口约束（实证版）
 
-> 分析类（≤8 KiB）。**自包含**。本文是 **PI 窗口内「能做什么 / 不能做什么」的唯一权威**：以 device-gate 实测记录为准，取代原先由 ADR 推下的理论条款（见 §4 沿革）。
+> 分析类。**自包含**。本文是 **PI 窗口内「能做什么 / 不能做什么」的唯一权威**：以 device-gate 实测记录为准，取代原先由 ADR 推下的理论条款（见 §4 沿革）。
 > 配套：`docs/development/design-review-principles.md` **E4**（同批改为指向本文）、`docs/plan/MASTER-PLAN.md` §7 R-6、`docs/analysis/handoff-payload-verification.md`。
 
 ## 1. 证据链（A）

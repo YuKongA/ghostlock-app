@@ -1,6 +1,6 @@
 # 附件：现存日志点位清单（file:line，实测 18 处）
 
-> 分析类（≤8 KiB）。**从主件 [43499-logging-points-design.md](43499-logging-points-design.md) §6 迁出**（配额纪律：单份 ≤8 KB；主件原超）。
+> **从主件 [43499-logging-points-design.md](43499-logging-points-design.md) §6 按点位清单职责迁出**；不设字节或篇幅门。
 > 相关：[判据的过滤规则（可执行形式）](43499-logging-points-annex-judging.md) · 本文表为 §4/§7 判据的**点位来源**。
 
 ## 6. 现存点位清单（file:line，实测 18 处）

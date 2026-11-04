@@ -40,7 +40,7 @@ host 上六条路径的实测输出（fixture 在 `core/fixtures/`）：
 4. 跑**封装步骤**一路：wire 里 `step.backend=cve_2026_43284`、`backend.cve_2026_43284.steps=[patch1,carrier,hook,trigger,wait]`、`targets.*` 与 `execution.*` 按既有真机值；期望：`step door=…` 打印出载体路径，五步依次 `Ran`，`markers.loaded` 出现；
 5. 跑**纯 Lua**二路：wire 的 `code` 用 `procedures/pagecache_load_lkm.lua`；期望：六行调用全部到达（`calls=6`），不改封装接口；
 6. 判据三连（沿用既有）：`su -c id` = `uid=0 context=u:r:ksu:s0`、`su -c getenforce` = `Enforcing`、`grep -c kernelsu /proc/modules` = `1`；
-7. 归档：本文追加"真机结果"节（原始日志 + 退出码），单份 ≤8 KB。
+7. 归档：本文追加“真机结果”节（原始日志 + 退出码），证据完整且不设字节或篇幅门。
 
 ## 四、未决两条（卡住"完整链"的只有它们）
 

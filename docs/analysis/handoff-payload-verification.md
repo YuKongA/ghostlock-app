@@ -1,6 +1,6 @@
 # 判据 · 扩展点 · 技术债 · CBN（按审查原则 v0.2 改造）
 
-> 分析类（≤8 KiB）。配套 [plan](handoff-payload-plan.md)、[b0](handoff-payload-b0-contract.md)、[b1b2](handoff-payload-b1b2-runtime.md)、[queue-schema](handoff-payload-queue-schema.md)、[batch-plan](handoff-payload-batch-plan.md)。依据：`docs/development/design-review-principles.md` **v0.2**（D1 / C2 / C3 / F2）。**本文是「判据形式 / 扩展点 / 技术债预判 / CBN」的唯一权威**。
+> 分析类。配套 [plan](handoff-payload-plan.md)、[b0](handoff-payload-b0-contract.md)、[b1b2](handoff-payload-b1b2-runtime.md)、[queue-schema](handoff-payload-queue-schema.md)、[batch-plan](handoff-payload-batch-plan.md)。依据：`docs/development/design-review-principles.md` **v0.2**（D1 / C2 / C3 / F2）。**本文是「判据形式 / 扩展点 / 技术债预判 / CBN」的唯一权威**。
 
 ## 1. 判据总则（D1 为准）
 

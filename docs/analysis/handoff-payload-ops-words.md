@@ -1,6 +1,6 @@
 # 操作词表（op 词表细则）
 
-> 分析类（≤8 KB）。配套 [ops](handoff-payload-ops.md)（判据/诊断/gate 插入点）、[plan](handoff-payload-plan.md) §3、[b1b2](handoff-payload-b1b2-runtime.md) §B1.1、[queue-schema](handoff-payload-queue-schema.md)。**本文是「op 词表与逐 op 事实」的唯一权威**。**自包含，不引用任何外部计划**。
+> 分析类。配套 [ops](handoff-payload-ops.md)（判据/诊断/gate 插入点）、[plan](handoff-payload-plan.md) §3、[b1b2](handoff-payload-b1b2-runtime.md) §B1.1、[queue-schema](handoff-payload-queue-schema.md)。**本文是「op 词表与逐 op 事实」的唯一权威**。**自包含，不引用任何外部计划**。
 
 ## 1. 操作词表（修正版）
 

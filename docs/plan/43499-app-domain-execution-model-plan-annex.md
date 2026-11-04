@@ -1,9 +1,9 @@
 # 43499 纯 app 域执行模型 L 设计附件（v4 冻结后的 I3/I4/I5 细则）
 
 - 状态：**实现批前置文档收口（task-51），只写设计、零实现、不 commit**。design-critic 第三轮对主件 v4 判 **可进实现批（阻断 0）**；本附件收口 I3（E4 零 fork 证明）、I4（E5 与⑥边界）、I5（file_actions 冻结），**不改变可进结论**。
-- 主件：`docs/plan/43499-app-domain-execution-model-plan.md` **已冻结**（16379 B，sha256 `2a7ff267c3f72630c134a890e5390f062c40d8238747b36021a83dd18f3e76f5`；余量仅 5 B ⇒ 不再扩写）。本附件为 I3/I4/I5 的**唯一细则权威**；与主件冲突时以本附件对 I3/I4/I5 的收紧条款为准，其余以主件为准。
+- 主件：`docs/plan/43499-app-domain-execution-model-plan.md` **已按 v4 权威冻结**（历史身份：16379 B，sha256 `2a7ff267c3f72630c134a890e5390f062c40d8238747b36021a83dd18f3e76f5`；字节数不构成限制）。I3/I4/I5 的职责已移交本附件，因此主件不再扩写；旧 5 B 余量门已于 2026-11-03 取消。本附件为 I3/I4/I5 的**唯一细则权威**；与主件冲突时以本附件对 I3/I4/I5 的收紧条款为准，其余以主件为准。
 - 日期 2026-10-27；作者 routes-impl2；依据：主件 v4、三轮 critic I1–I5、approval §6.8、用户 U1–U4 裁定。
-- 配额：本附件 ≤16 KiB（Lead 批准的附件配额例外，owner=Lead）；主件冻结、approval §6.8 冻结正文/只 append（见 approval 记录）。
+- 文档不设字节或篇幅门；本附件按职责与主件分离。主件冻结、approval §6.8 冻结正文/只 append（见 approval 记录）。
 
 ## A（I3）E4 零 fork 证明：①②③为 PASS 主证明，④仅诊断
 
@@ -62,5 +62,5 @@ fixture 以**命名向量**入实现批单测（host：file_actions 参数/顺�
 
 - **主件冻结**：`43499-app-domain-execution-model-plan.md`（16379 B，sha256 `2a7ff267…`）自 v4 起冻结，不再扩写；后续设计细则只入本附件；实现批若需设计变更须用户/Lead 另批并更新本附件（主件不再动）。
 - **approval 冻结/append**：`43499-approval-status.md` §6.8 **冻结正文、只允许 append 行**；本附件的 bytes/sha 与 I3/I4/I5 收口在 approval 追加一行记录（owner=Lead 复核）。
-- **配额/拆附件**：主件 ≤16 KiB（已用 16379/16384，余 5 B）+ 本附件独立 ≤16 KiB；approval >16 KiB 文档债按既有处置（owner=Lead，后续拆 approval 附件）继续有效；本附件不扩 approval 正文。
+- **拆附件**：2026-11-03 起主件与附件均不设字节/篇幅门；只按职责、读者与权威边界拆分。本附件不扩 approval 正文。
 - **本附件唯一权威范围**：I3（E4 ④定位/辅助断言）、I4（E5 vs ⑥ 边界/依赖/失败关系）、I5（file_actions 方案 A/B/fd 集合/失败码/fixture）；其余仍以主件 v4 为准。

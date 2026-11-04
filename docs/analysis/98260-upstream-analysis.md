@@ -1,6 +1,6 @@
 # 上游分析：YuKongA/CVE-2026-98260（timer / POSIX CPU timer UAF）
 
-> 级别：分析（≤8 KiB）。日期 2026-10-28。对象：`https://github.com/YuKongA/CVE-2026-98260`（单 commit `ad1f4e7`，MIT）。
+> 级别：分析。日期 2026-10-28。对象：`https://github.com/YuKongA/CVE-2026-98260`（单 commit `ad1f4e7`，MIT）。
 > 证据等级：**【码】**=上游源码/注释直接可见；**【推】**=依通用内核实现推断，需对 6.12.69 源码/上游核对；**【读】**=README 声称，仓库无设备日志。
 > 引用：`timer/timer.c:NN` 指上游克隆（只读分析于 `/tmp/CVE-2026-98260`）。
 

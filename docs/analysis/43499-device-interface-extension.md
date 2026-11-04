@@ -42,7 +42,7 @@ Kotlin 侧装配进 `Assembled43499`（与 `Assembled43284` 同形），策略�
 1. `./gradlew checkAll` = 132/132（只增不减）；Android 0 警告；`verifyJniLibs` ✓。
 2. 真机（冷机、固定 CPU 对、单 route、KernelSU 未加载）：`prepare/writeWord/finishVictim` 由 `op-not-wired` 变为**具名推进**；
    任一拒绝都带名字与 errno。
-3. 归档 `docs/analysis/device-gates/`（单份 ≤8 KB）。
+3. 完整归档 `docs/analysis/device-gates/`，不设字节或篇幅门。
 
 ## 6. 与「真实 profile」的关系
 

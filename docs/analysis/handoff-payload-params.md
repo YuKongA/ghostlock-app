@@ -1,6 +1,6 @@
 # 参数来源：两条既有通道（删 `params_ref`）
 
-> 分析类（≤8 KB）。配套 [queue-schema](handoff-payload-queue-schema.md)、[plan](handoff-payload-plan.md) §3/D16、[b1b2](handoff-payload-b1b2-runtime.md) §B1.1、[kotlin](handoff-payload-kotlin.md) §3、[ops](handoff-payload-ops.md) §3。**本文是「参数从哪来」的唯一权威**。**自包含，不引用任何外部计划**。
+> 分析类。配套 [queue-schema](handoff-payload-queue-schema.md)、[plan](handoff-payload-plan.md) §3/D16、[b1b2](handoff-payload-b1b2-runtime.md) §B1.1、[kotlin](handoff-payload-kotlin.md) §3、[ops](handoff-payload-ops.md) §3。**本文是「参数从哪来」的唯一权威**。**自包含，不引用任何外部计划**。
 
 ## 1. 裁决：删 `params_ref` ⇒ 队列元素 7 键
 

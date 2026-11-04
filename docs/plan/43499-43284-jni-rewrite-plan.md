@@ -172,7 +172,7 @@ D3 前必须在现有 annex 完成每个生产 symbol 的 `source file:function 
 
 | 批次 | 内容 | 离线/构建 | 真机 |
 |---|---|---|---|
-| D0 | 同批文档候选 | link/check、字节配额、critic 0阻断 | — |
+| D0 | 同批文档候选 | link/check、完整性、critic 0阻断；不设字节或篇幅门 | — |
 | D1 | schema/wrapper/线性token | `./gradlew :app:testDebugUnitTest`；XML三桶；NDK assemble；nm/readelf/link-map | — |
 | D2 | common/general | DTO-after-close；0/1/MAX batch；backend link-map general symbol=0 | discovery 单功能 |
 | D3 | page/actor/mechanisms | 并发矩阵、全局资源表=0、窗口调用图 | 每 mechanism 冷机单 route |

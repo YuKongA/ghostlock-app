@@ -1,6 +1,6 @@
 # 附件：target/copyop 的目标形态与「禁止名字→值表」（2026-10-08）
 
-> 分析类（≤8192 B）。**配套**：[lua-surface-design](../archive/20261017-1835-lua-surface-design.md)（§1 表 · 开头规则句）· [示例](a6-example-full-flow.md) · [A6 待批单](../archive/20261017-1835-A6-baseline-approval.md)。来源：用户裁定「**至于 `target = "selinux_enforcing"` 中 `selinux_enforcing` 代表什么？是不是要 C++ 里解析成别的参数？禁止这样**」。
+> 分析类。**配套**：[lua-surface-design](../archive/20261017-1835-lua-surface-design.md)（§1 表 · 开头规则句）· [示例](a6-example-full-flow.md) · [A6 待批单](../archive/20261017-1835-A6-baseline-approval.md)。来源：用户裁定「**至于 `target = "selinux_enforcing"` 中 `selinux_enforcing` 代表什么？是不是要 C++ 里解析成别的参数？禁止这样**」。文档不设字节或篇幅门。
 
 ## §C1 规则（完整表述）
 
