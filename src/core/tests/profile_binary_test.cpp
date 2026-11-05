@@ -104,6 +104,7 @@ int32_t main(void) {
     values.misc.compact_waiter = 1;
     values.misc.kernelsnitch_collisions = 4;
     values.misc.mm_struct_sz = 0x400;
+    values.misc.waiter_prio_off = 0x40;
     values.execution.w1_attempts = 15;
     values.execution.race_route_done_timeout_ms = 300000;
     values.execution.handoff_enforce_poll_interval_ms = 100;
@@ -126,6 +127,7 @@ int32_t main(void) {
     assert(parsed.misc.compact_waiter.value_or(0) == 1);
     assert(parsed.misc.kernelsnitch_collisions.value_or(0) == 4);
     assert(parsed.misc.mm_struct_sz.value_or(0) == 0x400);
+    assert(parsed.misc.waiter_prio_off.value_or(0) == 0x40);
     assert(parsed.execution.w1_attempts == 15);
     assert(parsed.execution.race_route_done_timeout_ms == 300000);
     assert(parsed.execution.handoff_enforce_poll_interval_ms == 100);
@@ -173,6 +175,7 @@ int32_t main(void) {
         assert(round_trip(absent, &parsed, release, sizeof(release)) == 0);
         assert(!parsed.geometry.mcast_waiter_off.has_value());
         assert(!parsed.misc.mm_struct_sz.has_value());
+        assert(!parsed.misc.waiter_prio_off.has_value());
         assert(parsed.geometry.mcast_buffer_size.value_or(0) == 264);
     }
 
@@ -229,6 +232,21 @@ int32_t main(void) {
         doc = build_doc(ghostlock::profile::kRouteMulticastWaiter, "empty", {});
         assert(parse_doc(doc, &parsed, release, sizeof(release)) == 0);
         assert(!parsed.geometry.mcast_waiter_off.has_value());
+    }
+
+    /* ---- An unsupported waiter prio offset is rejected before narrowing. ---- */
+    {
+        std::string doc = build_doc(
+            ghostlock::profile::kRouteSelectStack, "6.1.118-android14-11",
+            {{"kernel", {{"waiter_prio_off", 0x48}}}});
+        assert(parse_doc(doc, &parsed, release, sizeof(release)) == -1);
+        doc = build_doc(ghostlock::profile::kRouteSelectStack, "6.1.118-android14-11",
+                        {{"kernel", {{"waiter_prio_off", 0x100}}}});
+        assert(parse_doc(doc, &parsed, release, sizeof(release)) == -1);
+        doc = build_doc(ghostlock::profile::kRouteSelectStack, "6.1.118-android14-11",
+                        {{"kernel", {{"waiter_prio_off", 0x44}}}});
+        assert(parse_doc(doc, &parsed, release, sizeof(release)) == 0);
+        assert(parsed.misc.waiter_prio_off.value_or(0) == 0x44);
     }
 
     /* ---- White box: truncations and lying counts. ---- */

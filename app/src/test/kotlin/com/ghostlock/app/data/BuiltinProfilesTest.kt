@@ -3,6 +3,7 @@ package com.ghostlock.app.data
 import android.app.Application
 import androidx.core.content.edit
 import com.ghostlock.app.domain.model.CpuPair
+import com.ghostlock.app.domain.model.ProfileFieldNode
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -150,6 +151,49 @@ class BuiltinProfilesTest {
             root.deleteRecursively()
         }
     }
+
+    @Test
+    fun `every 5_10 builtin profile states the flat waiter and family stride`() = runBlocking {
+        val root = Files.createTempDirectory("builtin-510").toFile()
+        try {
+            val controller = AndroidProfileConfigController(
+                context = context,
+                filesDir = root,
+                userProfiles = UserProfileStore(
+                    directory = root.resolve("user_profiles"),
+                    assetLoader = AssetConfigLoader(context),
+                ),
+                preferences = context.getSharedPreferences("builtin-510", 0)
+                    .also { it.edit().clear().commit() },
+            )
+            val entries = builtinEntries().filter { it.release.startsWith("5.10.") }
+            assertTrue("index.conf lists no 5.10 profiles", entries.isNotEmpty())
+            for (entry in entries) {
+                val leaves = leafNodes(controller.load(entry.release, pair).roots)
+                    .associateBy { it.path }
+                assertEquals(
+                    "${entry.release}: 5.10 must use the compact waiter",
+                    1L,
+                    leaves["route.select_stack.compact_waiter"]?.value,
+                )
+                assertEquals(
+                    "${entry.release}: 5.10 prio offset",
+                    64L,
+                    leaves["waiter_prio_off"]?.value,
+                )
+                assertEquals(
+                    "${entry.release}: 5.10 stride",
+                    960L,
+                    leaves["kernelsnitch.mm_struct_sz"]?.value,
+                )
+            }
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    private fun leafNodes(nodes: List<ProfileFieldNode>): List<ProfileFieldNode> =
+        nodes.flatMap { node -> if (node.isGroup) leafNodes(node.children) else listOf(node) }
 
     @Test
     fun `legacy shared defaults stay in sync with the bundled 6x templates`() {

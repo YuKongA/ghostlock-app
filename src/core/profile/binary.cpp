@@ -115,6 +115,7 @@ namespace ghostlock::binary_profile {
             OPT("compact_waiter", misc.compact_waiter),
             OPT("kernelsnitch_collisions", misc.kernelsnitch_collisions),
             OPT("mm_struct_sz", misc.mm_struct_sz),
+            OPT("waiter_prio_off", misc.waiter_prio_off),
         };
 
         constexpr Field kExecCpus[] = {
@@ -315,6 +316,12 @@ namespace ghostlock::binary_profile {
                     const uint64_t raw = read_le(p + key_len, 8);
                     p += key_len + 8;
                     if (!section) continue;
+                    /* Prebuilt profiles skip the Kotlin check, and the offset
+                     * reaches an unchecked put32 in the spray. */
+                    if (name == "kernel" && key == "waiter_prio_off" &&
+                        raw != 0x40 && raw != 0x44) {
+                        return -1;
+                    }
                     for (size_t i = 0; i < section->count; i++) {
                         if (section->fields[i].key == key) {
                             section->fields[i].store(*out, raw);

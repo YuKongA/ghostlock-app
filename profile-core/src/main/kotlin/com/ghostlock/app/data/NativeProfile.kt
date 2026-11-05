@@ -30,6 +30,8 @@ data class NativeProfileDocument(
     val compactWaiter: UByte?,
     val kernelsnitchCollisions: UInt?,
     val mmStructSz: UInt?,
+    /** Compact waiter `prio` byte offset; absent keeps the 6.1+ split layout. */
+    val waiterPrioOff: UInt?,
     val execution: ExecutionTuning,
     val safeMode: UInt,
     /** Route-specific configuration; never part of the shared schema. */
@@ -212,6 +214,7 @@ data class NativeProfileDocument(
             compactWaiter?.let { add("compact_waiter" to it.toULong()) }
             kernelsnitchCollisions?.let { add("kernelsnitch_collisions" to it.toULong()) }
             mmStructSz?.let { add("mm_struct_sz" to it.toULong()) }
+            waiterPrioOff?.let { add("waiter_prio_off" to it.toULong()) }
         }
         return if (entries.isEmpty()) null else Section("kernel", entries)
     }
@@ -406,6 +409,7 @@ data class NativeProfileDocument(
                 compactWaiter = vbOrNull("compact_waiter"),
                 kernelsnitchCollisions = vuOrNull("kernelsnitch.collisions"),
                 mmStructSz = vuOrNull("kernelsnitch.mm_struct_sz"),
+                waiterPrioOff = vuOrNull("waiter_prio_off"),
                 execution = ExecutionTuning(
                     recommendedMainCpu = vu("execution.recommended_cpus.main"),
                     recommendedConsumerCpu = vu("execution.recommended_cpus.consumer"),
@@ -454,6 +458,7 @@ data class NativeProfileDocument(
             private var compactWaiter: UByte? = null
             private var kernelsnitchCollisions: UInt? = null
             private var mmStructSz: UInt? = null
+            private var waiterPrioOff: UInt? = null
             private var execution = ExecutionTuning()
             private var routeConfig: RouteConfig = routeKind.emptyConfig()
 
@@ -528,6 +533,7 @@ data class NativeProfileDocument(
                         "compact_waiter" -> compactWaiter = raw.toUByte()
                         "kernelsnitch_collisions" -> kernelsnitchCollisions = raw.toUInt()
                         "mm_struct_sz" -> mmStructSz = raw.toUInt()
+                        "waiter_prio_off" -> waiterPrioOff = raw.toUInt()
                     }
 
                     "execution.recommended_cpus" -> execution = when (key) {
@@ -614,6 +620,7 @@ data class NativeProfileDocument(
                 compactWaiter = compactWaiter,
                 kernelsnitchCollisions = kernelsnitchCollisions,
                 mmStructSz = mmStructSz,
+                waiterPrioOff = waiterPrioOff,
                 execution = execution,
                 safeMode = metaSafeMode,
                 routeConfig = routeConfig,

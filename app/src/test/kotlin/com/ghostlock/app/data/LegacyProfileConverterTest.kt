@@ -175,6 +175,65 @@ class LegacyProfileConverterTest {
         assertTrue(entry.containsKey("route"))
         assertTrue(entry["route"].asValueMap()!!["select_stack"].asValueMap()!!.containsKey("waiter_shift"))
     }
+
+    @Test
+    fun `5_10 report gains the flat select layout and kernel major`() {
+        val entry = valueMapOf(
+            "release" to "5.10.198-android12-9-00085-g226a9632f13d-ab11136126",
+            "pselect_waiter_shift" to -2,
+            "waiter_prio_off" to 64,
+            "mm_struct_sz" to 960,
+            "struct_fields" to valueMapOf("task_prio" to 132),
+            "symbols" to valueMapOf("off_init_task" to 41467584L),
+        )
+
+        LegacyProfileConverter.convertValue(entry)
+
+        assertEquals(5L, entry["kernel_major"])
+        val route = entry["route"].asValueMap()!!["select_stack"].asValueMap()!!
+        assertEquals(-2, route["waiter_shift"])
+        assertEquals(1, route["compact_waiter"])
+        assertEquals(64, entry["waiter_prio_off"])
+        assertEquals(960, entry["kernelsnitch"].asValueMap()!!["mm_struct_sz"])
+    }
+
+    @Test
+    fun `extra struct fields are dropped after the schema keys move`() {
+        val entry = valueMapOf(
+            "release" to "5.10.198-android12-9-00085-g226a9632f13d-ab11136126",
+            "pselect_waiter_shift" to -2,
+            "cred" to valueMapOf("copy_size" to 168, "caps_count" to 3),
+            "struct_fields" to valueMapOf(
+                "task_prio" to 132,
+                "struct_mm_struct" to 992,
+                "waiter_task" to 48,
+            ),
+            "symbols" to valueMapOf("off_init_task" to 41467584L),
+        )
+
+        LegacyProfileConverter.convertValue(entry)
+
+        assertFalse(entry.containsKey("struct_fields"))
+        assertEquals(132, entry["task_struct"].asValueMap()!!["prio"])
+        assertEquals(41467584L, entry["offset"].asValueMap()!!["init_task"])
+        assertEquals(168, entry["cred"].asValueMap()!!["copy_size"])
+        assertEquals(3, entry["cred"].asValueMap()!!["caps_count"])
+    }
+
+    @Test
+    fun `5_15 report keeps the split select layout`() {
+        val entry = valueMapOf(
+            "release" to "5.15.178-android13-8-00021-g6f2f96be86b9-ab13729987",
+            "pselect_waiter_shift" to -2,
+        )
+
+        LegacyProfileConverter.convertValue(entry)
+
+        assertEquals(5L, entry["kernel_major"])
+        val route = entry["route"].asValueMap()!!["select_stack"].asValueMap()!!
+        assertEquals(-2, route["waiter_shift"])
+        assertFalse(route.containsKey("compact_waiter"))
+    }
 }
 
 class SparseOverrideConversionTest {

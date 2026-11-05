@@ -15,6 +15,17 @@ using namespace ghostlock;
 
 
 int32_t main(void) {
+    /* The split waiter packs wake_state and prio into word 10; a flat 5.10
+     * waiter carries prio alone, so the gate reads 140 rather than 3. */
+    assert(ghostlock::route::select_stack::compact_prio_word(true, 140) ==
+           ((uint64_t{140} << 32) | 3));
+    assert(ghostlock::route::select_stack::compact_prio_word(false, 140) == 140);
+    assert(static_cast<int32_t>(
+                   ghostlock::route::select_stack::compact_prio_word(false, 140)) > 120);
+    assert(static_cast<int32_t>(
+                   ghostlock::route::select_stack::compact_prio_word(true, 140) & 0xffffffff) <=
+           120);
+
     ghostlock::race::PiRace race;
     assert(race.reset(0, 0, 1));
     ghostlock::memory::WriteRequest request{};
