@@ -106,6 +106,17 @@ namespace ghostlock::profile {
         uint64_t root_task_group = 0, selinux_enforcing = 0;
         uint64_t selinux_blob_sizes = 0, security_hook_heads = 0;
         uint64_t slide_nfulnl_logger = 0, slide_loggers_0_1 = 0, slide_boot_id = 0;
+        /* Optional (0 = absent): image offset of &__tracepoint_sys_exit->funcs,
+         * i.e. symbol(__tracepoint_sys_exit) + offsetof(struct tracepoint, funcs)
+         * - KIMAGE_TEXT_BASE, precomputed at profile-extraction time. This
+         * deliberately stores the final address offset instead of the raw
+         * struct-layout constants (funcs_off etc.): whether the kernel is built
+         * with CONFIG_HAVE_STATIC_CALL moves funcs by up to 0x28 bytes across
+         * 6.1/6.6/6.12 trees, and the runtime has no read primitive to verify
+         * any layout assumption. When a profile provides it, the vr.ko bypass
+         * NULLs the funcs pointer so no sys_exit probe — vr's kill path
+         * included — runs for any task. */
+        uint64_t sys_exit_tp_funcs = 0;
     };
 
     struct KernelMisc {
