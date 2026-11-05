@@ -64,11 +64,23 @@ internal object LegacyProfileConverter {
     }
 
     private object SelectRouteCodec : LegacyRouteCodec {
-        override fun fillBranch(entry: ValueMap, branch: ValueMap) =
+        override fun fillBranch(entry: ValueMap, branch: ValueMap) {
             moveKey(entry, branch, "pselect_waiter_shift", "waiter_shift")
+            fillFlatWaiter(entry, branch)
+        }
 
-        override fun fillFallback(entry: ValueMap, branch: ValueMap) =
+        override fun fillFallback(entry: ValueMap, branch: ValueMap) {
             moveKey(entry, branch, "pselect_waiter_shift", "waiter_shift")
+            fillFlatWaiter(entry, branch)
+        }
+
+        /* The v1 key means the 6.1 tcp arm, so the 5.10 select branch sets it
+         * here. Without it the imported profile fails 5.10 validation. */
+        private fun fillFlatWaiter(entry: ValueMap, branch: ValueMap) {
+            if ((entry["release"] as? String)?.startsWith("5.10.") == true) {
+                branch["compact_waiter"] = 1
+            }
+        }
     }
 
     private val RouteCodecs: Map<String, LegacyRouteCodec> = mapOf(
@@ -103,11 +115,14 @@ internal object LegacyProfileConverter {
         moveSymbolGroups(entry)
         moveKernelsnitch(entry)
         if (legacy && entry.containsKey("release")) {
-            /* remote/main-era reports carried no kernel_major (they are 6.x
-             * only); when a full legacy document does not state one, default to
-             * 6. A bundled/edited HOCON profile states its own value and wins,
-             * and a sparse override without a release is never seeded. */
-            if (!entry.containsKey("kernel_major")) entry["kernel_major"] = 6L
+            /* Older reports carry no kernel_major. A 5.x release takes 5 and
+             * everything else keeps 6. An existing value wins, and a sparse
+             * override without a release is never seeded. */
+            if (!entry.containsKey("kernel_major")) {
+                val release = entry["release"] as? String
+                entry["kernel_major"] =
+                    if (release?.startsWith("5.") == true) 5L else 6L
+            }
         }
         moveRouteLayout(entry)
         moveFallback(entry)
@@ -166,7 +181,9 @@ internal object LegacyProfileConverter {
         moveKey(structFields, snitch, "kernelsnitch_collisions", "collisions")
         moveKey(structFields, snitch, "mm_struct_sz", "mm_struct_sz")
         if (snitch.isEmpty()) entry.remove("kernelsnitch")
-        if (structFields.isEmpty()) entry.remove("struct_fields")
+        /* Extractor reports also carry BTF-only fields here. A leftover group
+         * would fail the top-level key check. */
+        entry.remove("struct_fields")
     }
 
     private fun moveGroup(
