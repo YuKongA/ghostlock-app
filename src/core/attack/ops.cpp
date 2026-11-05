@@ -391,7 +391,7 @@ namespace ghostlock::attack {
             "  fi\n"
             "  echo \"[*] late-load kmi=$KMI\" >>\"$LOG\"\n"
             "  chmod 755 \"$KSUD\" 2>/dev/null\n"
-            "  \"$KSUD\" late-load --kmi \"$KMI\" --allow-shell >>\"$LOG\" 2>&1\n"
+            "  \"$KSUD\" late-load --kmi \"$KMI\" >>\"$LOG\" 2>&1\n"
             "  echo \"[*] late-load exit=$?\" >>\"$LOG\"\n"
             "fi\n"
             "echo \"[*] temp su uid=$(id -u); watching kernelsu.ko\" >>\"$LOG\"\n"
