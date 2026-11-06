@@ -263,4 +263,8 @@
     <string name="fallback_label">回退路由</string>
     <string name="fallback_none">无</string>
     <string name="field_fallback_to">回退目标</string>
+    <string name="auto_root_on_boot">开机自动提权</string>
+    <string name="auto_root_on_boot_summary">重启后首次解锁时尝试提权一次。如果运行中断，下次开机时自动关闭此功能。</string>
+    <string name="auto_root_on_boot_save_failed">无法保存开机自动提权设置</string>
+    <string name="auto_root_on_boot_running">正在自动提权</string>
 </resources>

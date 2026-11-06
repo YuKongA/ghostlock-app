@@ -116,6 +116,7 @@ data class GhostlockUiState(
     val customCpuPair: CpuPair? = null,
     val safeModeEnabled: Boolean = false,
     val forceAttackTestEnabled: Boolean = false,
+    val autoRootOnBoot: Boolean = false,
     val tcpRouteEnabled: Boolean = true,
     val compact: Boolean = false,
     val executionSheetVisible: Boolean = false,
@@ -197,6 +198,7 @@ interface GhostlockActions {
     fun onCpuPairSelected(index: Int)
     fun onSafeModeChanged(enabled: Boolean)
     fun onForceAttackTestChanged(enabled: Boolean)
+    fun onAutoRootOnBootChanged(enabled: Boolean)
     fun onShizukuChanged(enabled: Boolean)
     fun onOpenManagerPicker()
     fun onCloseManagerPicker()

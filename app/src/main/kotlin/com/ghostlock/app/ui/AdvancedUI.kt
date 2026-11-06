@@ -175,6 +175,16 @@ internal fun AdvancedScreen(
             contentPadding = pageContentPadding(paddingValues),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            item(key = "autoRootOnBoot") {
+                Card {
+                    SwitchPreference(
+                        checked = state.autoRootOnBoot,
+                        onCheckedChange = actions::onAutoRootOnBootChanged,
+                        title = stringResource(R.string.auto_root_on_boot),
+                        summary = stringResource(R.string.auto_root_on_boot_summary),
+                    )
+                }
+            }
             item(key = "forceAttack") {
                 Card {
                     SwitchPreference(
