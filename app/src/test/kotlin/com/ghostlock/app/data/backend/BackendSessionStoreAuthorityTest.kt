@@ -1,70 +1,58 @@
 package com.ghostlock.app.data.backend
 
-import com.ghostlock.app.R
-import com.ghostlock.app.backend.declarations.BackendReadiness
-import com.ghostlock.app.backend.declarations.BackendRow
-import com.ghostlock.app.backend.declarations.BackendSpec
+import com.ghostlock.app.domain.backend.AbortPolicy
+import com.ghostlock.app.domain.backend.BackendConfigurationSpec
+import com.ghostlock.app.domain.backend.BackendParameterRequirements
+import com.ghostlock.app.domain.backend.BackendPresentationIdentity
+import com.ghostlock.app.domain.backend.BackendSelectionPolicy
+import com.ghostlock.app.domain.backend.BackendSpec
+import com.ghostlock.app.domain.backend.ExecutionDomain
+import com.ghostlock.app.domain.run.RunCapability
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Verifies the process-local selection state owned by one backend session store. */
+/** Process-local stable-key selection authority. */
 class BackendSessionStoreAuthorityTest {
-    /** A missing persisted value selects the first selectable captured backend in memory. */
+    /** Restore chooses the first selectable entry and returns null when none exists. */
     @Test
-    fun missingPersistedSelectionUsesCapturedFallback() {
-        val selection = BackendSessionSelection()
-        assertNull(selection.restore(specs(), null))
-        assertEquals("ready-a", selection.selectedKey)
+    fun restoreUsesDeterministicSelectableFallback() {
+        val store = BackendSessionStore()
+        assertEquals("ready-a", store.restore(specs())?.key)
+        assertEquals("ready-a", store.selectedKey)
+        assertNull(BackendSessionStore().restore(listOf(spec("disabled", false))))
     }
 
-    /** A valid persisted value becomes the exact current stable key. */
+    /** Disabled declarations cannot replace the selected key. */
     @Test
-    fun persistedSelectionRestoresExactCapturedBackend() {
-        val entries = specs()
-        val selection = BackendSessionSelection()
-        assertEquals(entries[1], selection.restore(entries, "ready-b"))
-        assertEquals("ready-b", selection.selectedKey)
+    fun disabledSelectionIsRejected() {
+        val store = BackendSessionStore()
+        store.restore(specs())
+        assertFalse(store.select(spec("disabled", false)))
+        assertEquals("ready-a", store.selectedKey)
     }
 
-    /** Explicit selection changes only the same injected authority instance. */
+    /** Selecting a resolved selectable declaration updates exactly this store. */
     @Test
-    fun explicitSelectionUpdatesSessionAuthority() {
-        val entries = specs()
-        val selection = BackendSessionSelection()
-        selection.restore(entries, null)
-        assertTrue(selection.select(entries[1]))
-        assertEquals("ready-b", selection.selectedKey)
+    fun selectableKeyBecomesCurrent() {
+        val store = BackendSessionStore()
+        val second = specs()[1]
+        assertTrue(store.select(second))
+        assertEquals("ready-b", store.selectedKey)
     }
 
-    /** A disabled backend cannot replace the current application-scoped selection. */
-    @Test
-    fun disabledBackendDoesNotMutateSelection() {
-        val entries = specs()
-        val selection = BackendSessionSelection()
-        selection.restore(entries, null)
-        assertFalse(selection.select(entries[2]))
-        assertEquals("ready-a", selection.selectedKey)
-    }
+    private fun specs(): List<BackendSpec> = listOf(spec("ready-a"), spec("ready-b"), spec("disabled", false))
 
-    /** @return Two selectable fixtures and one disabled fixture in registry order. */
-    private fun specs(): List<BackendSpec> = listOf(
-        FakeSpec("ready-a", true),
-        FakeSpec("ready-b", true),
-        FakeSpec("disabled", false),
+    private fun spec(key: String, selectable: Boolean = true): BackendSpec = BackendSpec(
+        key = key,
+        presentation = BackendPresentationIdentity("Test", key),
+        selectionPolicy = if (selectable) BackendSelectionPolicy.SELECTABLE else BackendSelectionPolicy.DISABLED,
+        abortPolicy = AbortPolicy.SAFE_DURING_RUN,
+        executionDomain = ExecutionDomain.APP,
+        configuration = BackendConfigurationSpec(),
+        parameterRequirements = BackendParameterRequirements.EMPTY,
+        runCapability = RunCapability.DIAGNOSTIC_ONLY,
     )
-
-    /** Minimal backend contract used to isolate session selection behavior. */
-    private class FakeSpec(
-        override val key: String,
-        override val selectable: Boolean,
-    ) : BackendSpec {
-        override val cve: String = key
-        override val titleRes: Int = R.string.backend_custom
-        override fun rows(): List<BackendRow> = emptyList()
-        override fun readiness(): BackendReadiness = BackendReadiness.Ready()
-    }
-
 }

@@ -167,3 +167,94 @@
 | 原路径 | 归档路径 | 原因 | 日期 |
 |---|---|---|---|
 | docs/plan/exec-glue-plan.md | docs/archive/20261029-1025-exec-glue-plan-history.md | rev1-rev4 详版历史保留；唯一活动计划压缩至 A3 配额 | 2026-10-29 |
+
+## 十、2026-11-04 Backend root execution 需求重建（**4 件**）
+
+> 用户裁定旧 KBR 把 Payload/Finish 错误设计成 runtime executor，中心控制流失效。旧 KBR 与其已取代的 KC 稿一起归档；新的唯一需求入口为 `docs/plan/backend-root-execution-unification-plan.md`。
+
+| 原路径 | 归档路径 | 归档原因 | 日期 |
+|---|---|---|---|
+| `docs/plan/kotlin-core-backend-vertical-rewrite-plan.md` | `docs/archive/20261104-1935-kotlin-core-backend-vertical-rewrite-plan.md` | **用户裁定失效**：错误引入 Payload/Finish/PostRoot executor，未按单一落盘 root 脚本建模 | 2026-11-04 |
+| `docs/plan/kotlin-core-backend-vertical-rewrite-annex-a.md` | `docs/archive/20261104-1935-kotlin-core-backend-vertical-rewrite-annex-a.md` | **主计划失效**：旧 exact file ledger 不再授权实施 | 2026-11-04 |
+| `docs/plan/kotlin-core-observability-cleanup-plan.md` | `docs/archive/20261104-1935-kotlin-core-observability-cleanup-plan.md` | **被后继需求吸收**：compatibility-first KC 路线不再是活动计划 | 2026-11-04 |
+| `docs/plan/kotlin-core-observability-cleanup-annex-a.md` | `docs/archive/20261104-1935-kotlin-core-observability-cleanup-annex-a.md` | **所属计划被取代**：旧 wire/parity/执行账本只保留沿革 | 2026-11-04 |
+
+## 十一、2026-11-04 Backend root execution authority 收口（**72 件**）
+
+> 用户于 2026-11-04 批准 Backend root execution D1–D9 与 R0→R1。下列 72 件旧活动计划按 exact disposition 归档；正文保留历史，现行唯一后继为 `docs/plan/backend-root-execution-unification-plan.md`。
+> 2026-11-05 后继计划推进至 R4 后，用户纠正 automatic export 是产品能力而非删除项，并批准R4A source重建；归档正文仍只保留历史，不恢复implementation authority。R4A source已落地，R2-R4A gate仍保持NOT_RUN。
+
+| 原路径 | 归档路径 | 原因 | 后继 |
+|---|---|---|---|
+| `docs/plan/43284-b8-b9-b10-plan-v3.md` | `docs/archive/20261104-2030-43284-b8-b9-b10-plan-v3.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43284-kotlin-dynamic-hook-plan.md` | `docs/archive/20261104-2030-43284-kotlin-dynamic-hook-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43284-production-engine-plan.md` | `docs/archive/20261104-2030-43284-production-engine-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43284-reset-batch.md` | `docs/archive/20261104-2030-43284-reset-batch.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-43284-cpp-parameterization-plan.md` | `docs/archive/20261104-2030-43499-43284-cpp-parameterization-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-43284-jni-rewrite-plan.md` | `docs/archive/20261104-2030-43499-43284-jni-rewrite-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-5.10-attack-path-adaptation-plan.md` | `docs/archive/20261104-2030-43499-5.10-attack-path-adaptation-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-agent-coding-and-self-acceptance-guide.md` | `docs/archive/20261104-2030-43499-agent-coding-and-self-acceptance-guide.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-app-domain-execution-model-plan-annex.md` | `docs/archive/20261104-2030-43499-app-domain-execution-model-plan-annex.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-app-domain-execution-model-plan.md` | `docs/archive/20261104-2030-43499-app-domain-execution-model-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-approval-status.md` | `docs/archive/20261104-2030-43499-approval-status.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-c11-header-contract-plan.md` | `docs/archive/20261104-2030-43499-c11-header-contract-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-fast-repair-prebuilt-plan-annex.md` | `docs/archive/20261104-2030-43499-fast-repair-prebuilt-plan-annex.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-fast-repair-prebuilt-plan.md` | `docs/archive/20261104-2030-43499-fast-repair-prebuilt-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-jni-transport-plan.md` | `docs/archive/20261104-2030-43499-jni-transport-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-kotlin-package-refactor-plan.md` | `docs/archive/20261104-2030-43499-kotlin-package-refactor-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-kt-step-plan.md` | `docs/archive/20261104-2030-43499-kt-step-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-ktstep-architecture-plan.md` | `docs/archive/20261104-2030-43499-ktstep-architecture-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-legacy-cpp-jni-migration-guide.md` | `docs/archive/20261104-2030-43499-legacy-cpp-jni-migration-guide.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-legacy-cpp-production-inventory.md` | `docs/archive/20261104-2030-43499-legacy-cpp-production-inventory.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-legacy-cpp-test-inventory.md` | `docs/archive/20261104-2030-43499-legacy-cpp-test-inventory.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-logging-integration-plan.md` | `docs/archive/20261104-2030-43499-logging-integration-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-native-actor-child-plan.md` | `docs/archive/20261104-2030-43499-native-actor-child-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-native-device-ops-plan.md` | `docs/archive/20261104-2030-43499-native-device-ops-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-native-parameterization-v2-plan.md` | `docs/archive/20261104-2030-43499-native-parameterization-v2-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-perf-leak-primitive-plan-annex-b.md` | `docs/archive/20261104-2030-43499-perf-leak-primitive-plan-annex-b.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-perf-leak-primitive-plan-annex.md` | `docs/archive/20261104-2030-43499-perf-leak-primitive-plan-annex.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-perf-leak-primitive-plan.md` | `docs/archive/20261104-2030-43499-perf-leak-primitive-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-prepare-port-plan.md` | `docs/archive/20261104-2030-43499-prepare-port-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-production-engine-plan.md` | `docs/archive/20261104-2030-43499-production-engine-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-production-victim-plan.md` | `docs/archive/20261104-2030-43499-production-victim-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-public-structure-adaptation-plan.md` | `docs/archive/20261104-2030-43499-public-structure-adaptation-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-r1-freeze-abi.md` | `docs/archive/20261104-2030-43499-r1-freeze-abi.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-r1-freeze-fields.md` | `docs/archive/20261104-2030-43499-r1-freeze-fields.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-r1-freeze-inventory.md` | `docs/archive/20261104-2030-43499-r1-freeze-inventory.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-r1-freeze-validation.md` | `docs/archive/20261104-2030-43499-r1-freeze-validation.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-resource-primitives-implementation-plan.md` | `docs/archive/20261104-2030-43499-resource-primitives-implementation-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-route-port-plan.md` | `docs/archive/20261104-2030-43499-route-port-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-tcp-native-port-plan.md` | `docs/archive/20261104-2030-43499-tcp-native-port-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-three-routes-production-plan.md` | `docs/archive/20261104-2030-43499-three-routes-production-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-victim-launch-hoist-adaptation-plan.md` | `docs/archive/20261104-2030-43499-victim-launch-hoist-adaptation-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/43499-w3-hard-gate-plan.md` | `docs/archive/20261104-2030-43499-w3-hard-gate-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/98260-43499-conf-reuse-classification.md` | `docs/archive/20261104-2030-98260-43499-conf-reuse-classification.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/98260-backend-plan-annex-b.md` | `docs/archive/20261104-2030-98260-backend-plan-annex-b.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/98260-backend-plan-annex.md` | `docs/archive/20261104-2030-98260-backend-plan-annex.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/98260-backend-plan-delta-userservice.md` | `docs/archive/20261104-2030-98260-backend-plan-delta-userservice.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/98260-backend-plan.md` | `docs/archive/20261104-2030-98260-backend-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/98260-project-structure-adaptation-plan.md` | `docs/archive/20261104-2030-98260-project-structure-adaptation-plan.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/98260-user-requirements-summary.md` | `docs/archive/20261104-2030-98260-user-requirements-summary.md` | old backend/JNI/execution authority; preserve as history | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/PENDING-DECISIONS.md` | `docs/archive/20261104-2030-PENDING-DECISIONS.md` | superseded overlapping execution/config/rollback authority | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/backend-access-execution-design.md` | `docs/archive/20261104-2030-backend-access-execution-design.md` | superseded overlapping execution/config/rollback authority | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/backend-directory-cleanup.md` | `docs/archive/20261104-2030-backend-directory-cleanup.md` | superseded overlapping execution/config/rollback authority | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/backend-registry-unification.md` | `docs/archive/20261104-2030-backend-registry-unification.md` | superseded overlapping execution/config/rollback authority | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/backends-execution-architecture-plan.md` | `docs/archive/20261104-2030-backends-execution-architecture-plan.md` | superseded overlapping execution/config/rollback authority | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/cmake-backend-chunks.md` | `docs/archive/20261104-2030-cmake-backend-chunks.md` | superseded overlapping execution/config/rollback authority | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/debug-probe-backend.md` | `docs/archive/20261104-2030-debug-probe-backend.md` | superseded overlapping execution/config/rollback authority | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/exec-glue-plan.md` | `docs/archive/20261104-2030-exec-glue-plan.md` | superseded overlapping execution/config/rollback authority | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/execution-architecture.md` | `docs/archive/20261104-2030-execution-architecture.md` | superseded overlapping execution/config/rollback authority | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/flow-process-launcher-annex-b4-real.md` | `docs/archive/20261104-2030-flow-process-launcher-annex-b4-real.md` | completed/current-fact plan superseded by root execution authority | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/flow-process-launcher-annex-b4a.md` | `docs/archive/20261104-2030-flow-process-launcher-annex-b4a.md` | completed/current-fact plan superseded by root execution authority | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/flow-process-launcher-annex-b4b.md` | `docs/archive/20261104-2030-flow-process-launcher-annex-b4b.md` | completed/current-fact plan superseded by root execution authority | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/flow-process-launcher-annex-b5-closeout.md` | `docs/archive/20261104-2030-flow-process-launcher-annex-b5-closeout.md` | completed/current-fact plan superseded by root execution authority | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/flow-process-launcher-annex-config-document-port.md` | `docs/archive/20261104-2030-flow-process-launcher-annex-config-document-port.md` | completed/current-fact plan superseded by root execution authority | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/flow-process-launcher-plan.md` | `docs/archive/20261104-2030-flow-process-launcher-plan.md` | completed/current-fact plan superseded by root execution authority | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/kotlin-clean-architecture-ui-plan-annex-a.md` | `docs/archive/20261104-2030-kotlin-clean-architecture-ui-plan-annex-a.md` | completed/current-fact plan superseded by root execution authority | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/kotlin-clean-architecture-ui-plan-annex-b.md` | `docs/archive/20261104-2030-kotlin-clean-architecture-ui-plan-annex-b.md` | completed/current-fact plan superseded by root execution authority | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/kotlin-clean-architecture-ui-plan-v0-checklist.md` | `docs/archive/20261104-2030-kotlin-clean-architecture-ui-plan-v0-checklist.md` | completed/current-fact plan superseded by root execution authority | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/kotlin-clean-architecture-ui-plan.md` | `docs/archive/20261104-2030-kotlin-clean-architecture-ui-plan.md` | completed/current-fact plan superseded by root execution authority | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/payload-finish-chain-plan.md` | `docs/archive/20261104-2030-payload-finish-chain-plan.md` | superseded overlapping execution/config/rollback authority | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/rewrite-disable-manifest.tsv` | `docs/archive/20261104-2030-rewrite-disable-manifest.tsv` | superseded overlapping execution/config/rollback authority | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/split-large-functions.md` | `docs/archive/20261104-2030-split-large-functions.md` | completed original-backend implementation plan superseded by R1 deletion closure | `docs/plan/backend-root-execution-unification-plan.md` |
+| `docs/plan/unified-execution-engine-plan.md` | `docs/archive/20261104-2030-unified-execution-engine-plan.md` | superseded overlapping execution/config/rollback authority | `docs/plan/backend-root-execution-unification-plan.md` |

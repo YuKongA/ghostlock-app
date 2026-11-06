@@ -1,0 +1,170 @@
+# 归档说明
+
+- 原路径：`docs/plan/PENDING-DECISIONS.md`
+- 归档日期：2026-11-04 22:24:59 -0500
+- 归档原因：superseded overlapping execution/config/rollback authority；用户于 2026-11-04 批准 Backend root execution D1–D9 与 R0→R1 收口，本文件不再作为活动实施 authority。
+- 来源：`dev-nocpp` 当前工作树；正文原样保留。现行唯一后继为 [`../plan/backend-root-execution-unification-plan.md`](../plan/backend-root-execution-unification-plan.md)。
+
+---
+
+# 待裁决清单（v3 · 2026-10-08 更新）
+
+> **2026-10-17 裁定**：Lua / GLKv3 文档 / CLI / script 面已删除（见 `MASTER-PLAN.md` §0.1）。
+> 下列条目**失去对象**、按作废处理：A1（HOCON vs Lua）、A2（批准 ADR-0008/0009/0010）、B1（计划＝脚本）、B2（内置计划脚本）、B4（`steps` 键）。
+> 其余条目（A3、B3、B5、C 组）仍按原文待裁。
+
+> 用法：每条 = **决定什么 / 参考 / 选项与代价 / 建议**。回复编号 + 结论即可（例：A1 裁定 X；其余照建议）。不点名 = 按建议执行。
+> 分组：**§A 阻塞**（不定则某层无法开工）· **§B 设计与规范**（本批/近期）· **§C 账目与仓库** · **§D 批量默认** · **§E 已闭环**（供核对，不重复决定）。
+
+## §A 阻塞项（3 条，全部已经多轮等待）
+
+### A1 R10：静态数据（几何/调参）留 HOCON 还是进 Lua —— 解锁 **P3**
+
+> **已裁定（2026-10-10）· 本条关闭**：选 **A**（JSON + JCS + 生成式 schema）；wire＝JCS JSON + 只读视图；载荷＝stdin/base64；`profile-core` 删除（检查归 Kotlin）；**运行期由 Lua 编排，限制靠运行时**；配置内嵌 Lua steps；v1/v2 统一迁入 `LegacyProfileConverter`。结论见 [config-wire-redesign-plan.md](../archive/20261017-1835-config-wire-redesign-plan.md)（版本号仍是 3，同号重做）。
+>
+> **状态（2026-10-08，随 v2）**：**仍适用**（A6 前置；按用户裁定「数值不入 C++」，A1 的选项 ④「先修隐患」中 Kotlin 零填充项随新实现重写而作废，multicast 缺口见 [rewrite-plan-v2](../archive/20261017-1835-rewrite-plan-v2.md) §4.1）。
+
+- **参考**：[lua-config-structure-options.md](../archive/20261017-1835-lua-config-structure-options.md)（四层默认值实测 + 三形态四维对比 + 两个先修隐患）· [composition-layer-p4-spec.md](../archive/20261017-1835-composition-layer-p4-spec.md) §9 未决 · P3 规格尚未撰写
+- **选项**：① L-C 数据在 HOCON（脚本只读）+ 行为在 Lua【建议】；② L-A 脚本载体；③ L-B 脚本 + 显式 schema（schema 取自 OpRegistry 则无重复描述成本）；④ 先修两个隐患（Kotlin `?: 0u` 零填充 / multicast 无调参资产）再定
+- **建议**：① + ④（隐患与形态无关，先修）
+
+### A2 批准 ADR-0008 / 0009 / 0010 —— 解锁 **P5**（vendor Lua + 沙箱 + 句柄表）
+
+> **状态**：**仍适用**（ADR-0010 亦为 A1 契约层输入；体积数字已复现：109 620 / 88 264 B）。
+
+- **参考**：[ADR-0008](../archive/20261017-1835-adr-0008-lua-runtime-sandbox.md)（体积数字已复现：109 620 B / 88 264 B，≈107 KB ≈ 2.2%；Berkeley 口径警告已写入）· [ADR-0009](../archive/20261017-1835-adr-0009-script-trust-and-hardline.md) · [ADR-0010](../archive/20261017-1835-adr-0010-lua-cpp-resource-model.md) · [P5 规格](../archive/20261017-1835-handoff-script-layer-p5-spec.md)（组件边界 + 判据 + 两证伪）
+- **选项**：① 三件一起批准【建议】；② 逐件批；③ 先批 P5 规格（R11 设计含 queue 退役）再批 ADR
+- **说明**：Lua 源码仓内没有，需**下载 vendored 到 `src/lib/lua/`**（lua.org 可达，lua-5.4.7.tar.gz 374 097 B，sha256 前 16 = `9fbf5e28ef86c698`）；ADR 要求登记来源与许可（I12）
+
+### A3 真实样本（boot.img / OTA）—— 解锁 **extractor ↔ Kotlin 产物级对拍**（R8 缺口③）
+
+> **状态**：**仍适用**（E2E-1 缺口③未变）。
+
+- **参考**：[host-assembled-integration-plan.md](../analysis/host-assembled-integration-plan.md) §3 缺口③ · 仓内实测无 `.img`/OTA 样本
+- **选项**：① 你提供一份样本（或指定镜像 URL）；② 用合成/最小夹具替代（判据降级，需登记）；③ 先跳过，等 E2E-1
+- **建议**：①（最省且判据不降级）
+
+## §B 设计与规范（4 条，本批/近期）
+
+### B1 批准 R11 设计（queue 退役 · 计划 = 脚本）
+
+> **状态**：**仍适用**（A6 输入）。
+
+- **参考**：[script-plan-design.md](../archive/20261017-1835-script-plan-design.md)（决策五条 + 影响面 + 重冻清单 + 判据 + 批次）· 你已裁定选 C（queue 退役）
+- **建议**：批准（它是 P5 的输入；内置计划脚本命名 `plan-<backend>-<route>.lua`）
+
+### B2 确认两点前提：内置计划脚本随资产 / 保留 `backend.<id>.route`
+
+> **状态**：**仍适用**（A6 输入）。
+
+- **参考**：同上 §1 决策①④⑤；取消内置脚本 ⇒ **67 个资产档全要补脚本**
+- **建议**：两者都保留
+
+### B3 确认「最小化时机重排」（Lead 已裁决，请追认）
+
+> **状态**：**作废** —— 其对象（P2 兼容面 + `.disabled` 参考件）已随 `core/src` **全量清空**（`b0e9f499`）消失；最小化路线不再是 v2 的一部分（[rewrite-plan-v2](../archive/20261017-1835-rewrite-plan-v2.md) §0）。
+
+- **参考**：[p2-minimisation-plan.md](../analysis/p2-minimisation-plan.md) §0（2026-10-08 重排）· [rewrite-plan.md](../archive/20261017-1835-rewrite-plan.md) §8.1 U-4
+- **内容**：B-1..B-3（24 项）**曾执行 → 违反 R39 → 全部回退 → 净效果 0**；最小化**整体后移到 P3/P5 落地且 `.disabled` 参考件退役之后**；此前凡被 `.disabled`/`docs` 引用者 = **预留接口，不得删**
+- **建议**：追认（理由：参考件是新实现的输入规格；当前可删面 = 0）
+
+### B4 `steps` 键（M5 已退休）是否与 queue 同批清
+
+> **状态**：**待重述** —— 旧 native 读取点（`backend_profile.cpp`）已不存在；**extractor 侧 `report.rs:185` 仍发射 `steps`**、`:1745` 断言仍在 ⇒ 需按新 wire 重新表述（清或保留）。
+
+- **参考**：extractor 仍发射 [report.rs:185](../../tools/extract_rs/src/report.rs) + 断言 `:1745`；native 遗留读取 **`core/src/backend/cve_2026_43499/backend_profile.cpp:82-85`** —— **该文件已不存在（legacy，已删除，`git show 92d55d3e:<path>` 可取回）**，不再作为当前依据。
+- **建议**：与 R11/P5 的 wire 变更同批清
+
+### B5 审查原则定稿 + **A 组是否升阻断级**；`design-critic` 是否正式启用
+
+> **状态**：**仍适用**（且 `design-critic` 已事实启用并完成 P2 评审）。
+
+- **参考**：[design-review-principles.md](../development/design-review-principles.md) §1（A1 / A2 / A3…）· [AGENTS.md](../../AGENTS.md) design-critic 节（9 条规则，已在实战中使用 4 轮）
+- **建议**：定稿 + A 组升阻断 + 正式启用该岗位
+
+## §C 账目与仓库（7 条）
+
+### C1 旧文档配额事项（已由 2026-11-03 用户裁定关闭；C7 旧号）
+
+> **状态**：**仍适用**（20 件既有超限仍在）。
+
+- **历史参考**：旧审计曾按 8192 B 门统计分析类 60 件中 20 件超限；该门已取消，统计只保留为沿革，不再产生违规或清理任务。
+- **现行结论**：无需选择豁免或追溯拆分；文档只在职责、读者或权威边界混杂时按语义拆分。
+
+### C2 会话内提交计数口径（早已远超 10）
+
+> **状态**：**作废** —— 该约束按建议①取消，改为「每批一次提交」；本项不再需要裁定。
+
+- **参考**：`git rev-list --count origin/main..dev` = **29**（会话前 17 + 会话内 12）；自基线以来 15 个提交
+- **选项**：① 该约束**作废**（改成「每批一次提交」）【建议】；② 再压一次历史；③ 放宽上限
+
+### C3 历史压缩沿革是否记档（686 → 17 + 会话内 N；备份分支；未 force-push）
+
+> **状态**：**仍适用**。
+
+- **参考**：`backup/pre-squash-20261007` = 691 提交；`dev` 已推
+- **建议**：记一行（analysis 或 MASTER-PLAN §10）
+
+### C4 在途 native 改动是否已过真机门禁
+
+> **状态**：**作废** —— 所指 5 个文件随 `core/src` 清空**已不存在**；新实现走 v2 的 G2 门禁。
+
+- **参考**：提交 `56eac698` 的 5 个文件（`backend_terminal.*` / `execution_binding.cpp` / `glkv3_parse.cpp` / `main.cpp`）；[AGENTS.md](../../AGENTS.md) 验证门槛
+- **建议**：列入第一个真机窗口（不阻塞当前）
+
+### C5 `.vscode/settings.json` 是否保留跟踪
+
+> **状态**：**仍适用**。
+
+- **参考**：提交 `3f329118` 纳入跟踪；未被 .gitignore 忽略
+- **建议**：保留
+
+### C6 备份分支 / 远端旧分支去留
+
+> **状态**：**仍适用**。
+
+- **参考**：`backup/pre-squash-20261007`（691 提交）· `origin/vr-ko-bypass-dev` = `acc5e7ba`
+- **建议**：备份留到 `dev` 稳定后删；旧远端分支保留作历史锚点
+
+### C7 社区短文 ANNOUNCEMENT.md 去向
+
+> **状态**：**仍适用**。
+
+- **参考**：你的提交 `5f184760` 删除该文件 46 行；文本已在会话中交付过
+- **建议**：不恢复文件（需要留档就放 `docs/`）
+
+## §D 批量默认（1 条）
+
+### D1 D1–D32 设计默认是否有要推翻的
+
+> **状态**：**仍适用**（按默认通过；与 v2 冲突的条目在 v2 §0 已作废）。
+
+- **参考**：[handoff-payload-plan.md](../analysis/handoff-payload-plan.md) §10（D 表）· [decisions](../analysis/handoff-payload-decisions.md) / [-archive](../analysis/handoff-payload-decisions-archive.md)
+- **建议**：全部按默认通过（不点名 = 通过）
+
+## §E 已闭环（供核对）
+
+| 项 | 结论 |
+|---|---|
+| 设计开工（R1/R2） | ~~已入库~~ ⇒ **随全量重写清空**；P4 五文件按 **Q1 裁定**用 `git show 63a87af8/9b46d5b5` **恢复**（见 [rewrite-plan-v2](../archive/20261017-1835-rewrite-plan-v2.md) §2 A0） |
+| R11 选型 | **选 C**：queue 退役、计划 = 脚本 |
+| 窗口内自定义 | **参数化不拆分**（P4 规格已落，`ParamSpec.max` 为上界） |
+| R5 窗口内 sched_setattr | **延期**（触发：B0.1→B3 完成后评审） |
+| R4 / R6 / R9 | 已批准并落地（E4 实证版 / E3 重写 / 文档三层拆分） |
+| 审查记录落档 | 已完成（p2-review-20261008.md + annex，含 Lead 稽核更正节） |
+| requirements 缺失条文 | 暂不补写（引用处标「条文待补」） |
+| 路线图时间窗 | 节奏制、不写时间 |
+| 导入策略 | 无限制导入 + 沙箱保留 + 硬线 D29/D30 |
+| 最小化批次 B-1..B-3 | 执行后判定违反 R39 ⇒ **全部回退**（净效果 0，无提交涉及删除） |
+
+---
+
+## §F 开工就绪状态（无需裁决）
+
+| 项 | 状态 |
+|---|---|
+| 分支 / 工作树 | `dev` · 干净（未提交 0） |
+| 门禁 | 旧 `gate` 两段**已无对象**（`core/src` 0 文件）；**现行** = `markdownlint`（现 1 issue，`core/lib/mpack/README.md:9`，属 `src/**` 归属）；新门禁按 v2 §4 |
+| 已完成层 | ~~P1 禁用扫描~~ · ~~P2 兼容层~~ · ~~P4 装配/窗口/门禁~~ ⇒ **均随 `b0e9f499` 清空作废**（文档保留为输入规格） |
+| 备份 | `backup/pre-squash-20261007`（691 提交）· 基线 tag `legacy/baseline-20261008` |
+| 团队 | native-core / kotlin-app / docs-uml / design-critic（当前 docs-uml、native-core 有收尾消息在途） |

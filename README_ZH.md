@@ -16,32 +16,29 @@
 
 ## Android 应用架构
 
-Kotlin 应用按 Clean Architecture 边界整理：纯 `domain/**` 保存模型、port 与 use case，`data/**` 提供 Android/backend adapter，应用级依赖统一由 `AppContainer` 组装。Screen 与 ViewModel 只消费不可变语义 state 和 action contract，不再直接读取 backend、日志、攻击或持久化全局对象。`LocalUiMode` 仍在页面级选择 Material/Miuix renderer，因此两套皮肤共享行为语义，但保留现有组件、几何和视觉差异。
+当前架构权威是[backend root-execution 统一计划](docs/plan/backend-root-execution-unification-plan.md)；唯一 Class、Sequence、State 与结果投影图位于 [full-process-uml.md](docs/development/full-process-uml.md)。
 
-物理 run 由 application-scoped `RunCoordinator` 持有；renderer 或 ViewModel observer 重建不会取消执行，只有显式 abort 才进入既有 launcher cancellation 路径。KernelSU/`ksud` 字面仅保留在真实 guard、payload、finish、package visibility 与 handoff 实现中；可复用 `ui/component/**` 完整保留并改由 caller 注入语义输入。
+Kotlin 应用采用中性 Clean Architecture 边界。domain 模型不包含 Android、Compose、具体 backend 或持久化类型；Android 存储与平台副作用位于 data adapter；应用组装统一由 AppContainer 持有；Screen 与 ViewModel 只消费不可变状态和 action contract。
 
-`BackendSpec` 是唯一 Android outer plugin contract，`Backends.all` 仍是唯一 membership authority。可交互的 backend 配置只通过 nullable 标准能力 `BackendSpec.configurationSpec` 暴露，并只投影中性的 `Static`、`Toggle`、`ChoiceDocument` 或 `Document` 状态；data adapter 不 import 具体 backend，只委派该能力，presentation 只使用 generic semantic renderer。A301SO/Mondrian 设备配置与 CVE-2026-43499 request factory 保持 backend-private，UI、domain、core 不再依赖具体 backend。
+BackendRegistry 是 same-APK immutable membership 的唯一权威。公开的 BackendSpec 只包含中性的身份、配置 schema、参数要求、执行域、取消策略和 capability。内部 BackendPlugin 再组合无资源 readiness 与每次新建的 one-shot Flow factory；它不会跨越 UI、profile、persistence 或 AIDL 边界。
+
+App 进程与 Shizuku shell 使用同一套 typed RunHost request、event、snapshot 和生命周期合同。RunInputFreezer 一次冻结所选 backend、profile-v3 snapshot、Payload 与 Finish；host 独占 staging、workspace、脚本发布、Flow 生命周期、terminal snapshot 与 cleanup。产品状态只来自 typed 六层 RunReport；raw uid 0、进程 exit 0、stdout 与诊断日志都不能把结果升级为产品成功。
+
+Payload 与 Finish 是两份独立的 version-3 document。公共 renderer 只发布一份 root script；具体 backend 只负责到达自己的 root execution point、派发该 exact artifact，并回报 backend-private cleanup facts。R4 已删除 caller-zero 的旧 SessionPhase。自动日志导出是产品能力，不是 dead residue：错误在于把能力与旧 object 一起清零。R4B 让旧根级 object 继续退役，以一个 neutral run-scoped sink、一个 bounded channel 与一个 `data/run` MediaStore worker承接能力；RunCoordinator在同一排序锁内提交、格式化与enqueue，不再保留opening protocol、第二queue、timeout或completion monitor。显式诊断报告、手动分享与自动导出都只是 diagnostic sink，均不成为 run 结果权威。
+
+当前 membership 刻意没有可选择的 production-root backend。CUSTOM 在获得批准的 operation catalog 前保持 disabled；DEBUG-PROBE 只在 debug build 出现且 capability 仅为 diagnostic。保留的 43284-Glued、43499-Glued 与 98260 native tree 是冻结的 future carrier candidate，不是已注册支持。
 
 ## 快速开始
 
-打开 **GhostLock** 点击 **执行**。需先装 KernelSU（`me.weishu.kernelsu`）、ReSukiSU（`com.resukisu.resukisu`）或 KowSU（`com.kowx712.supermanager`）以提供 `ksud`；缺 `ksud` 时 W1/W2 仍可拿到 uid 0，但不会加载模块。
+当前重构分支的 release build 没有可选择的 production-root backend。debug build 可选择 Debug Probe，用于观察 typed App/Shizuku transport 与 report projection；probe 完成仍只代表诊断链完成，不代表 root、Payload 或 Finish 成功。
 
-执行链由 `Pipeline<Backend, Terminal>` 在编译期固定。选择是 **`backend.<id>.steps` 里的唯一组合 token**；`contract::kCombinationCatalog` 是唯一权威——**12 token = 7 可用 + 5 计划**。可用：`cve_2026_43499` 的六个 `{multicast_waiter, select_stack, tcp_zerocopy} × {rootchild, shizuku}` 与 `cve_2026_43284 × umh`；计划项（`available=false`）：`{mcast, pselect, tcp}_umh` 与 `cve_2026_43284 × {rootchild, shizuku}`——可解析，但选择门禁拒绝、App 置灰。两个 terminal（`root_child`、`umh_forward`）与两个 backend（`cve_2026_43499`、`cve_2026_43284`）均可用，其余 CVE 为纯头占位。route（`select_stack` / `tcp_zerocopy` / `multicast_waiter`）是**由 token 派生**的 backend 内部策略，不是独立组件。路线是双核竞争：6.6/6.12 树形 waiter 内核上主线程跑 `select` 爆破、consumer 线程扰动 waiter 优先级；6.1 紧凑 waiter 内核上主线程改走 `getsockopt(TCP_ZEROCOPY_RECEIVE)` 打洞页写入；5.15 内核走 multicast waiter 路线。CPU 对同样由解析后的 profile 决定。
+真实 backend 只有在自己的 carrier 计划获批并通过目标设备门后才可 selectable。R2-R4B source 已经落地，包括简化后的 automatic-export settings→RunCoordinator→single sink→MediaStore 链；但按用户明确指令，R4B 的 compile、instrumentation、AVD、Shizuku 与设备门仍为 NOT_RUN。source presence 不是 runtime 证据，不得把当前分支写成 supported-device release。
 
 ## 命令行调试
 
-adb/shell 环境无 seccomp 过滤，会跳过 W3，适合快速验证：
+旧 core CLI 及其 load-prebuilt-profile、攻击选择和 JNI bridge 参数已经退出 current entry point。production execution 统一从 Android 应用进入 typed RunHost；backend 选择来自 immutable registry 与 profile，不允许用临时命令行参数旁路。
 
-```powershell
-make -C core ghostlock
-./gradlew exportProfiles
-adb push build/native/ghostlock /data/local/tmp/ghostlock
-adb push build/profile/<release>.bin /data/local/tmp/profile.bin
-adb shell chmod 755 /data/local/tmp/ghostlock
-adb shell /data/local/tmp/ghostlock --load-prebuilt-profile /data/local/tmp/profile.bin
-```
-
-CLI 只承载**传输 / 运行控制 / 安全 / 可观测**（S4 R2b）：`--ghostlock-app-call`、`--load-prebuilt-profile <bin>`、`--enable-status-record`、`--dump-kernel-log <dir>`、`--force-attack`、`--allow-dev-target`（只放宽**绑定期** carrier 校验），以及只读诊断 `--probe-cve-2026-43284 <ko>` 。**选择与策略绝不来自 CLI**：staged 入口与 `--cve43284-*` 选择器已删除，未知参数直接 fail-closed。
+保留的 native executable tree 只是冻结的 carrier candidate，不是受支持的 public CLI。transport 诊断请在 debug APK 中使用 Debug Probe。未来桌面 extractor 可以拥有自己的 CLI，但它与 backend execution 和 root 产品成功相互独立。
 
 ## 偏移量提取
 

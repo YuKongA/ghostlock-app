@@ -1,9 +1,9 @@
 package com.ghostlock.app.domain.finish
 
-/** Reads current finish settings through the domain boundary. */
+/** Reads current Finish settings from the canonical typed definition. */
 class ReadFinishSettingsUseCase(
     private val port: FinishSettingsPort,
 ) {
-    /** @return Current finish option snapshot. */
-    operator fun invoke(): FinishSettings = port.read()
+    /** @return Current built-in Finish option projection. */
+    operator fun invoke(): FinishSettings = FinishSettings.from(port.read())
 }

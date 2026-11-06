@@ -1,7 +1,14 @@
 package com.ghostlock.app.core.flow
 
-/** step 执行上下文；attempt 从 1 开始。 */
+/**
+ * One sequential step invocation.
+ *
+ * @property input Uniform frozen backend input.
+ * @property name Stable diagnostic name.
+ * @property attempt One-based retry attempt.
+ */
 data class StepContext(
+    val input: BackendFlowInput,
     val name: String,
     val attempt: Int,
 )

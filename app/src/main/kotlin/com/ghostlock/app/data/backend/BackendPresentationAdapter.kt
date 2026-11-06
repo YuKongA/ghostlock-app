@@ -1,24 +1,33 @@
 package com.ghostlock.app.data.backend
 
-import android.content.Context
-import com.ghostlock.app.backend.declarations.BackendSpec
-import com.ghostlock.app.domain.backend.BackendRuntimeSpec
+import com.ghostlock.app.domain.backend.BackendAvailability
+import com.ghostlock.app.domain.backend.BackendConfigValue
+import com.ghostlock.app.domain.backend.BackendConfiguration
+import com.ghostlock.app.domain.backend.BackendSpec
 
 /**
- * Maps the existing outer backend plugin contract into a pure domain projection.
- *
- * @param context Application context used only to resolve the backend-owned localized status resource.
+ * Maps a neutral backend declaration into the existing renderer-neutral configuration surface.
  */
-class BackendPresentationAdapter(
-    private val context: Context,
-) {
+class BackendPresentationAdapter {
     /**
-     * Captures the current readiness and status declaration of one backend object.
+     * Captures static facts plus the current typed readiness message.
      *
-     * @param spec Registered outer plugin contract.
-     * @return Renderer-neutral runtime projection with no Android types.
+     * @param spec Neutral immutable spec.
+     * @param availability Resource-free dynamic readiness fact.
+     * @return Static configuration card without backend callbacks.
      */
-    fun project(spec: BackendSpec): BackendRuntimeSpec {
-        return spec.runtimeSpec(context::getString)
-    }
+    fun project(
+        spec: BackendSpec,
+        availability: BackendAvailability,
+    ): BackendConfiguration.Static = BackendConfiguration.Static(
+        key = spec.key,
+        values = buildList {
+            spec.presentation.facts.forEach { fact ->
+                add(BackendConfigValue(fact.label, fact.value))
+            }
+            availability.reasons.forEach { reason ->
+                add(BackendConfigValue("status", reason.message))
+            }
+        },
+    )
 }

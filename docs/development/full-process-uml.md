@@ -1,5 +1,9 @@
 # 全流程 UML（**权威**）· 新架构（A0–A6）
 
+<a id="run-current-views"></a>
+
+> **代号与视图入口**：本页混合历次结构，A0–A6 与 §11.10 的旧 D7 属各自历史计划；Mermaid 内 D1/R1 等仅为节点变量。当前视图按[主计划语义映射](../plan/backend-root-execution-unification-plan.md#plan-semantic-identifiers)定位：[P-RUN-IO-001/批次01：脚本](#run-view-r2)、[P-RUN-X-001/批次01：执行主干](#run-view-r3)、[P-LOG-X-001/批次01：日志中枢](#run-view-r4c)、[P-BACKEND-X-001/来源S1：既有 common source](#run-view-r5)。原历史、状态和取代关系不变，来源S1不授权接回 carrier；wire 字段仍见 [P-RUN-IPC-001](../plan/backend-root-execution-runhost-wire.md#p-run-ipc-001)。
+
 > 2026-10-23 JNI v4 已获用户“按照计划”批准：§11 取代旧的 route/JNI handle/Flow/Finish 局部图。
 
 > **本文件是唯一权威 UML**（`docs/development/full-process-uml.md`）；旧的旧实现 UML 已归档为 [old-full-process-uml.md](old-full-process-uml.md)（**仅历史对照**，结构与本件不同）。
@@ -673,7 +677,7 @@ sequenceDiagram
 
 ## 10. 43499 C 核心会话骨架（历史；批准后由 §11 取代）
 
-> 从属 [43499-43284-cpp-parameterization-plan.md](../plan/43499-43284-cpp-parameterization-plan.md) P1；P1a 只新增类型/句柄，旧全局仍在。证据 [p1a-session-skeleton.md](../analysis/p1a-session-skeleton.md)。非生产接线。
+> 从属 [43499-43284-cpp-parameterization-plan.md](../archive/20261104-2030-43499-43284-cpp-parameterization-plan.md) P1；P1a 只新增类型/句柄，旧全局仍在。证据 [p1a-session-skeleton.md](../analysis/p1a-session-skeleton.md)。非生产接线。
 
 ```mermaid
 classDiagram
@@ -720,8 +724,8 @@ caller owns Glk43499Session; destroy never frees it
 
 ## 11. 43499 Placement / Page / Actor 契约（2026-10-26 header-only）
 
-> 头文件批见 [43499-c11-header-contract-plan](../plan/43499-c11-header-contract-plan.md)，JNI transport 见 [43499-jni-transport-plan](../plan/43499-jni-transport-plan.md)。当前 JNI 已接入九入口，但 core 仍是显式 `UNSUPPORTED` 的 unavailable 实现；victim/Finish 不在本批。
-> 真实实现的线性所有权权威与批次顺序见 [43499-resource-primitives-implementation-plan](../plan/43499-resource-primitives-implementation-plan.md)。G4L-0已批准；物理实现仍未开始。
+> 头文件批见 [43499-c11-header-contract-plan](../archive/20261104-2030-43499-c11-header-contract-plan.md)，JNI transport 见 [43499-jni-transport-plan](../archive/20261104-2030-43499-jni-transport-plan.md)。当前 JNI 已接入九入口，但 core 仍是显式 `UNSUPPORTED` 的 unavailable 实现；victim/Finish 不在本批。
+> 真实实现的线性所有权权威与批次顺序见 [43499-resource-primitives-implementation-plan](../archive/20261104-2030-43499-resource-primitives-implementation-plan.md)。G4L-0已批准；物理实现仍未开始。
 
 ### 11.1 IPO / dependency
 
@@ -862,7 +866,7 @@ Native不含registry，只绑定物理Primitive；route与跨backend顺序由Kot
 
 ### 11.6 2026-10-28：CVE-2026-98260 backend（IPO/状态机）
 
-> 执行结构唯一权威：[execution-architecture.md](../plan/execution-architecture.md) §10；本图只给 IPO 与状态机（AGENTS §9）。
+> 执行结构唯一权威：[execution-architecture.md](../archive/20261104-2030-execution-architecture.md) §10；本图只给 IPO 与状态机（AGENTS §9）。
 > 拓扑（2026-10-28 R1 修正）：app Flow（唯一编排）→ Shizuku UserService（shell 域，幂等原语）
 > → **公用 victim helper `execScript` 启动脚本 → payload（后台 detach）** → payload 内 **rooted victim
 > （fake-cred child）直接 exec finish 脚本**；BootSafetyStore 唯一安全闸。
@@ -1075,64 +1079,53 @@ Shizuku 路由被选定后，prepare/start/连接失败不会启动第二个 App
 43284Glued 的 `exp.c`/`elf_parser.c` 通过共享 `gl_common` 输出：ProcessBuilder 合并 stdout/stderr，由 launcher collector 写入本次 `run.log`，并同步输出 logcat。DFRoot `bootstrap.c` 是 system-root 独立进程，logger 只写 logcat；它的 stdout 不属于 App/Shizuku `run.log`。既有 `/dev/dfm*` markers 仍是控制信号，日志不替代 marker 状态。
 Shizuku `remove=true` 后，客户端等待 binder-disconnected 回调及其所在主线程队列轮次退出，再允许同 tag 的下一次 bind；该等待只串行化 UserService 销毁，不改变 launcher 选择规则。
 
-### 11.8 Glued executable native build and APK packaging
+### 11.8 Real-attack native build disconnection
 
-43499-Glued、43284Glued 与 DFRoot bootstrap helper 由同一个 AGP externalNativeBuild CMake variant 构建。自 2026-11-03（CMake chunk 整理）起根 `app/src/main/cpp/CMakeLists.txt` 只做 project/标准设置与 `include()` 组装：`include(common/)`、`include(glgeneral/)`、`include(backends/)`；`backends/CMakeLists.txt` 声明 6 个 per-backend option 并只 include 已开启的 chunk。每个 chunk 顶部 `include_guard(GLOBAL)` 且全部路径用 `${CMAKE_CURRENT_LIST_DIR}`（`include()` 不改变 `CMAKE_CURRENT_SOURCE_DIR`）。`gl_common` 为 **OBJECT** 库（编译成 `.o` 供各目标链接），其余目标类型/输出名不变：DSO 仍 `SHARED`，攻击 payload 仍是 PIE executable（`lib*.so` 仅是 AGP 打包命名）。CMake targets 交给 AGP variant producer；不从 `app/src/main/jniLibs` 拷贝，也不经 Makefile/Copy task。
+2026-11-05 用户裁定先断开全部真攻击 backend。根 `app/src/main/cpp/CMakeLists.txt` 仍只做 project/标准设置与两个 `include()` 组装：`include(common/)`、`include(backends/)`；其中 `common/CMakeLists.txt` 只声明 **OBJECT** target `gl_common`，`backends/CMakeLists.txt` 是不声明option、target或chunk include的显式断开边界。43499-Glued、43284-Glued、98260 的chunk继续作为source-only历史candidate保留，但不进入AGP externalNativeBuild target graph，也不会以攻击ELF进入APK。Gradle同时删除对应backend properties、M0 source staging/build task与marker wiring，因此没有build property旁路可以重新接回这些chunk。
 
-2026-11-04 起，CMake 在全部 include 后从当前 target/source graph 自导出 `target/artifact/type/expected_jni` manifest；app-owned `verifyDebugNativeArtifacts` 直接消费 `SingleArtifact.MERGED_NATIVE_LIBS` Provider，并从同一个 `sdkComponents.ndkDirectory` Provider 取得 `llvm-readelf`/`llvm-nm`。因此 artifact 名单只有 CMake target graph 一个权威，root `nativeBuildAndroid` 只依赖 app public verifier，不读取 AGP task 名或 intermediate 路径。
+2026-11-04 起，CMake 在全部 include 后从当前 target/source graph 自导出 `target/artifact/type/expected_jni` manifest；app-owned `verifyDebugNativeArtifacts` 直接消费 `SingleArtifact.MERGED_NATIVE_LIBS` Provider，并从同一个 `sdkComponents.ndkDirectory` Provider 取得 `llvm-readelf`/`llvm-nm`。因此 artifact 名单只有 CMake target graph 一个权威，root `nativeBuildAndroid` 只依赖 app public verifier，不读取 AGP task 名或 intermediate 路径。断开后manifest只有header、target rows为0；verifier只在merged output同样没有任何native artifact时接受该状态，发现任一文件或symlink即失败，不以“至少一个target”作为隐式前提。
 
 ```mermaid
 flowchart LR
   GRADLE[":app:externalNativeBuildDebug / assembleDebug"] --> ROOT["cpp/CMakeLists.txt：project/标准 + include()"]
   ROOT --> COMMON["common/CMakeLists.txt → OBJECT gl_common (.o)"]
-  ROOT --> GENERAL["glgeneral/CMakeLists.txt → SHARED libghostlock_general.so"]
-  ROOT --> BACKENDS["backends/CMakeLists.txt：6 个 option + 按 option include()"]
-  BACKENDS -->|43499_GLUED=ON| G43499["43499glued chunk → lib43499-Glued.so (PIE exec)"]
-  BACKENDS -->|43284_GLUED=ON| G43284["43284glued chunk → lib43284Glued.so + libbootstrap.so (PIE exec)"]
-  BACKENDS -->|43499=ON| O43499["43499 chunk → libghostlock43499.so + libghostlock_victim_helper.so"]
-  BACKENDS -->|43284=ON| O43284["43284 chunk → libghostlock43284.so"]
-  BACKENDS -->|98260=ON，缺源| FATAL["configure FATAL_ERROR（fail-closed）"]
-  COMMON -->|.o 链接进| T43499["payload/DSO targets"]
-  COMMON --> T43284
-  COMMON --> GENERAL
+  ROOT --> BACKENDS["backends/CMakeLists.txt：disconnection boundary"]
+  BACKENDS --> NONE["no option / no include / no backend target"]
+  SRC["43499glued / 43284glued / 98260 source-only"] -. not included .-> BACKENDS
   ROOT --> MANIFEST["CMake target/source-derived manifest"]
-  T43499 --> OUT["AGP CMAKE_LIBRARY_OUTPUT_DIRECTORY"]
-  T43284 --> OUT
-  GENERAL --> OUT
-  OUT --> MERGE["SingleArtifact.MERGED_NATIVE_LIBS Provider"]
+  MANIFEST --> EXPECT["no app-owned attack artifact rows"]
+  GRADLE --> MERGE["SingleArtifact.MERGED_NATIVE_LIBS Provider"]
   MANIFEST --> VERIFY["verifyDebugNativeArtifacts"]
   MERGE --> VERIFY
   NDK["sdkComponents.ndkDirectory Provider<br/>llvm-readelf + llvm-nm"] --> VERIFY
   VERIFY --> ROOT_GATE["root nativeBuildAndroid"]
-  MERGE --> APK["APK lib/arm64-v8a/*.so"]
-  APK --> INSTALL["installed nativeLibraryDir"]
-  INSTALL --> EXEC["Kotlin Flow allowlist ProcessBuilder exec"]
+  NONE --> APK["APK contains no project real-attack ELF"]
 ```
 
 Host CTest 不复用上述 Android production CMake。backend/module 自己拥有最小 TU/stub mapping，root 只做组合；`native-test-disposition.tsv` 同时约束所有 test/probe 的处置，不能把 excluded row 当成测试 PASS。
 
 ```mermaid
 flowchart LR
-  SOURCE["app/src/main/cpp + tools<br/>suffix/prefix test + named probe"] --> INVENTORY["verifyNativeTestInventory<br/>43 candidates exact-set"]
+  SOURCE["app/src/main/cpp + tools<br/>suffix/prefix test + named probe"] --> INVENTORY["verifyNativeTestInventory<br/>36 candidates exact-set"]
   TSV["native-test-disposition.tsv<br/>machine authority"] --> INVENTORY
   TSV --> C43499["43499glued/tests/CMakeLists.txt<br/>registration drift guard"]
   TSV --> CCONTRACT["tools/tests/CMakeLists.txt<br/>registration drift guard"]
   INVENTORY --> T43499["nativeTest43499GluedHost<br/>configure → build → CTest 27"]
   C43499 --> T43499
-  INVENTORY --> TCONTRACT["nativeTestContractsHost<br/>configure → build → CTest 5"]
+  INVENTORY --> TCONTRACT["nativeTestContractsHost<br/>configure → build → CTest 1"]
   CCONTRACT --> TCONTRACT
   INVENTORY --> TAVB["avbcheck typed task<br/>configure → build → CTest 1"]
-  T43499 --> HOST_GATE["root nativeTestHost<br/>33/33"]
+  T43499 --> HOST_GATE["root nativeTestHost<br/>29/29"]
   TCONTRACT --> HOST_GATE
   TAVB --> HOST_GATE
   HOST_GATE --> CHECK_ALL["root checkAll"]
-  ANDROID_GATE["nativeBuildAndroid<br/>merged artifacts 4 / AArch64 / JNI exact"] --> CHECK_ALL
-  XML["verifyDebugUnitTestXml<br/>459 / 0 / 0 / 0"] --> CHECK_ALL
+  ANDROID_GATE["nativeBuildAndroid<br/>real-attack targets disconnected / gate NOT_RUN"] --> CHECK_ALL
+  XML["verifyDebugUnitTestXml<br/>152 / 0 / 0 / 0"] --> CHECK_ALL
 ```
 
-`libbootstrap.so` 是 DFRoot 的上游 helper entry，不是 Kotlin backend；这张构建图只证明 CMake build/package 链接，不证明 DFRoot 固定路径、Finish 行为或任何漏洞 ELF 可运行。原版 JNI backend 默认关闭：`GHOSTLOCK_BACKEND_43499`/`GHOSTLOCK_BACKEND_43284` 默认继承 legacy `GHOSTLOCK_ENABLE_ORIGINAL_BACKENDS=OFF`；`GHOSTLOCK_BACKEND_98260=ON` 在源缺失时配置期 fail-closed。
+Host CTest仍可把保留source作为测试输入，但它不是APK production graph或registry接线。这张图只表达source/build ownership；本轮没有运行Gradle、CTest、AVD或真机门，因此断开后的构建结果保持`NOT_RUN`，且不宣称任何漏洞ELF可运行。
 
-### 11.9 2026-11-02：新进程 Flow 通道（生效架构；取代 §11.7 的执行通道）
+### 11.9 2026-11-02：新进程 Flow 通道（历史；由 §11.12 typed RunHost 取代）
 
 自 2026-11-02 起，攻击一律启动新进程；2026-11-03 的 Kotlin Clean Architecture 纵切又把 UI 与该执行通道隔开。Material/Miuix renderer 只消费 `RunUiState + RunActions`，`RunViewModel` 只调 `RunBackendUseCase`；唯一 outer adapter 才把 pure command/session 映射到既有 gate、dispatcher 与 launcher。物理 run 由 application-scoped `RunCoordinator` 持有，Activity/VM observer 消失只 detach，不 cancel。symbol 仍只能是 `FlowEntryRegistry` 登记的 Flow 入口（`@FlowEntry` 函数，类必须实现 `Flow<*>`）。
 
@@ -1179,15 +1172,15 @@ flowchart LR
 
 ### 11.9.1 2026-11-02：后端注册表统一（BackendId 删除、单一注册表驱动 UI）
 
-- 每个后端一个 object 实现 Android outer contract `BackendSpec`：`key/selectable/flowSymbol/flowParams/readiness/runtimeSpec/rows/configSchema` 与 nullable `configurationSpec` 同在一个声明里；backend 声明不持有 Composable、renderer 或 frontend state。
+- 每个当前后端由一个 object 实现 Android outer contract `BackendSpec`：`key/selectable/flowSymbol/flowParams/readiness/runtimeSpec/rows/configSchema` 与 nullable `configurationSpec` 同在一个声明里；backend 声明不持有 Composable、renderer 或 frontend state。
 - `Backends.all` 是唯一注册集合；AppContainer 启动期复制一次 membership，同一份 list 显式注入 catalog、selection、semantic configuration adapter 与 run adapter。`BackendSessionStore.selectedKey` 是 application-scoped 选择权威；原 process-global `BackendSelection` 已删除。`AndroidBackendConfigurationAdapter` 只能在 captured membership 中查找 `BackendSpec`，并委派标准 `configurationSpec.snapshot/mutate`；它不 import concrete backend，也不按 key/class 分支。
-- configuration capability 只暴露 `Static/Toggle/ChoiceDocument/Document` 语义 DTO 与标准 mutation。presentation-owned `RegisteredBackendConfigRenderer` 只按语义 subtype 选择 generic renderer；皮肤只从 `LocalUiMode` 派生的 `LocalUiKit` 读取。A301SO/Mondrian config 与 43499 request factory 分别归 `backend/backends/cve43499/config`、`request` 私有 owner，UI/domain/core/data 不持有这些具体类型。`isSelectable(spec)=spec.selectable`，无对象身份白名单。
+- configuration capability 只暴露 `Static/Toggle/ChoiceDocument/Document` 语义 DTO 与标准 mutation。presentation-owned `RegisteredBackendConfigRenderer` 只按语义 subtype 选择 generic renderer；皮肤只从 `LocalUiMode` 派生的 `LocalUiKit` 读取。R1 已删除 original 43499 的 A301SO/Mondrian config 与 request factory，不把其复制到 UI/domain/core/data。`isSelectable(spec)=spec.selectable`，无对象身份白名单。
 - `BackendId` 枚举（旧 `Flow<*>` 绑定）与 `BackendSpec.id`/`customConfig` 已删除；`register` 运行时 fail-closed（空/重复 key、selectable 无 flowSymbol 拒绝）。debug probe 仅 DEBUG 注册，release 菜单不含。
-- 证据：全量 JVM 434/0/0/0；debug/androidTest/release 构建 PASS；设备 A301SO debug 走查菜单 6 项（含 调试探针）、各卡渲染正确、禁用项不可选；release 菜单 5 项无调试探针；probe/B2 设备回归 PASS。
-- 代码布局（M5，2026-11-03；纯目录/包归类 + 未完工注解，无类关系或执行通道变化，上图不变）：所有 backend 平级放在 `backend/backends/`（cve43499glued、cve43284glued、debugprobe 可运行；cve43499、cve43284、lua 未完工）；未完工由 `@UnfinishedBackend(reason)` 标记（不删除、不可选/灰显、标准 configuration capability 保留、禁止以清理为名删除；debug probe 不标注）；`declarations/` 只留外层契约（BackendSpec/BackendRow、FlowEntryRegistryAssembly、`@UnfinishedBackend`）。包名与目录一致（`com.ghostlock.app.backend.backends.<name>`），政策见 `app/src/main/kotlin/com/ghostlock/app/backend/README.md`，交付记录见 `docs/plan/backend-directory-cleanup.md` §12。
+- R1 current membership：`cve43499glued`、`cve43284glued`、`lua`，以及 debug 构建中的 `debugprobe`；original `cve43499`/`cve43284` 已连同手写 JNI 与专用测试从 current graph 删除。Lua 是唯一仍带 `@UnfinishedBackend(reason)` 的 builtin；debug probe 不标注。R1 的 software gate 结果记录在本计划对应批次，不复用旧设备结果冒充。
 
 ```mermaid
 flowchart LR
+  BUILTINS["43499-Glued / 43284-Glued / Lua<br/>+ DEBUG-only probe"] --> REG
   REG[Backends.all 唯一注册集合] --> ROOT[AppContainer 捕获 immutable membership]
   ROOT -->|domain projection| MENU[后端菜单 enabled=selectable]
   MENU -->|stable key| SELECT[BackendSelectionPort]
@@ -1213,7 +1206,7 @@ classDiagram
   class Domain {
     UiPreferences / DeviceStatus / BackendRuntimeSpec
     OperationalPreferences / PrivilegeState
-    BackendConfiguration / FinishEditorState
+    BackendConfiguration / PayloadDefinition / FinishDefinition
     RunCommand / RunSessionState
     Ports + UseCases
   }
@@ -1222,7 +1215,7 @@ classDiagram
     SharedPreferences operational adapter
     Backend session-selection-config-run adapters
     Android privilege adapter
-    Finish config-script adapters
+    PayloadDocumentRepository / FinishDocumentRepository
   }
   class AppContainer {
     captured registry membership
@@ -1234,7 +1227,7 @@ classDiagram
     semantic actions
   }
   class SemanticUI {
-    Home / Backend / Settings / Finish / Run state+actions
+    Home / Backend / Settings / Payload / Finish / Run state+actions
   }
   class MaterialRenderer
   class MiuixRenderer
@@ -1274,7 +1267,547 @@ stateDiagram-v2
 - Shizuku binder、permission listener 与 executor preference 只归 `AndroidPrivilegeAdapter`；Home dialog 与 Run gate/launcher 读取同一个 `PrivilegeState` snapshot，presentation 不再直接调用 Shizuku 或 SharedPreferences。
 - Settings 的 log/attack/boot 控件只消费 `OperationalPreferences + SettingsScreenActions`；`SharedPreferencesOperationalPreferencesAdapter` 是既有 `ghostlock.log/attack/boot` store 与 Android picker URI 的唯一 mutable authority。旧 `LogSettings/AttackSettings/BootSettings` singleton 已删除；run adapter 从同一 domain stream 读取 rerun/timestamp/font facts。
 - `RunCoordinator` 拥有 launcher coroutine；VM 只订阅 `StateFlow`。renderer 只读 state 并调用 actions，不能持有/close/cancel host、fd、payload 或 attack child。
-- `FinishEditorAdapter` 只替换 editor-owned payload/root-manager/safe-mode 字段，基于当前 `FinishState.copy(...)` 保留 SELinux、relay、soft-reboot 等 handoff-only 字段；真实 KSU guard/payload/handoff 仍在 core/backend KEEP 集合。
-- page-level `LocalUiMode` 分支继续决定 Material/Miuix 外观；Home/Backend/Run/Settings/About/ColorPalette/Finish/FinishSettings 均先绑定同一语义 state/actions，再进入独立 renderer。Finish 已拆为 `FinishPageMaterial` / `FinishPageMiuix`；共享语义层不抹平两套组件的几何、色彩或 typography。
+- R2 已移除 `FinishEditorAdapter` / `FinishConfig` 混合 authority：Payload 与 Finish 分别由 `PayloadDocumentRepository`、`FinishDocumentRepository` 持有 version=3 canonical JSON/JCS 文档；二者不读写 backend profile，也不再以 SharedPreferences 保存副本。
+- page-level `LocalUiMode` 分支继续决定 Material/Miuix 外观；Home/Backend/Run/Settings/About/ColorPalette/Payload/Finish 均先绑定同一语义 state/actions，再进入独立 renderer。Payload 使用 `PayloadPageMaterial` / `PayloadPageMiuix`，Finish 设置保持独立页面；共享语义层不抹平两套组件的几何、色彩或 typography。
 - `kotlin_architecture_d0.py verify --section architecture` 对 domain 外向依赖、data/backend 反向 UI 依赖、非 UI Compose、UI 直连 data/backend/core、UI 直连 SharedPreferences/Shizuku，以及 UI/data/core 的 concrete-backend edge fail-closed；当前 live 结果为四条 D7 concrete/reverse count 均 `0`、`ARCH_VIOLATIONS=0`。
-- 当前 software gate 已恢复并在最终树闭环：`nativeTestHost` 连续两次均为 33/33，`nativeBuildAndroid` 为 4 件 AArch64 artifact 且 JNI exact，`checkAll` 同批得到 XML 459 tests / 0 failures / 0 errors / 0 skipped。AVD production renderer walk 仍为 `OK (1 test)`，覆盖 10 surfaces 和四种 configuration DTO。A301SO 当前不在 `adb devices`，所以 43499 冷机攻击门未运行；以上软件证据不宣称真实攻击执行已回归，D7 仍待不可替代的 A301SO device gate。
+- R1 最终树软件门（2026-11-04）：`verifyDebugUnitTestXml` = 30 suites / 152 tests / 0 failures / 0 errors / 0 skipped；`nativeTestHost` = 29/29；`nativeBuildAndroid` = 3 件 AArch64 artifact / JNI 0；`compileDebugAndroidTestKotlin` 为 exit 0。三个保留 native tree 的 diff exit 0。R1 没有修改攻击算法，因而没有执行 AVD/真机攻击门；这些普通软件证据不宣称任何 backend 已在设备上取得产品定义的 root 成功。
+
+<a id="run-view-r2"></a>
+
+### 11.11 2026-11-04：Payload / Finish / root-script 单一 authority（P-RUN-IO-001/批次01）
+
+```mermaid
+flowchart LR
+  PUI[Payload UI state/actions] --> PUC[Payload use cases]
+  PUC --> PR[PayloadDocumentRepository]
+  PR --> PD["payload-v3.json\nPayloadDocumentV3 / canonical JCS"]
+
+  FUI[Finish UI state/actions] --> FUC[Finish use cases]
+  FUC --> FR[FinishDocumentRepository]
+  FR --> FD["finish-v3.json\nFinishDocumentV3 / canonical JCS"]
+
+  PD --> FREEZE[future RunHost freezer]
+  FD --> FREEZE
+  FREEZE --> RENDER[RootScriptRenderer]
+  RENDER --> TEMP[exclusive temp writer]
+  TEMP --> CLOSE[flush + fsync + close + chmod]
+  CLOSE --> MOVE["same-directory atomic move\nAndroid app-data rename; no hard-link"]
+  MOVE --> PUB["RootScriptArtifact\nscript object+bytes identity\npre-created result object identity"]
+  PUB --> CARRIER[backend-private rooted carrier]
+  CARRIER --> SCRIPT["one script: Payload fail-fast → Finish best-effort"]
+  SCRIPT --> GLR1["GLR1 fixed-order result\ncomplete / durable handoff"]
+  GLR1 --> CODEC[RootScriptResultCodec]
+```
+
+```mermaid
+sequenceDiagram
+  participant UI as Payload/Finish UI
+  participant Repo as independent v3 repositories
+  participant Preview as PreviewRootScriptUseCase
+  participant Renderer as RootScriptRenderer
+  participant Workspace as isolated preview workspace
+
+  UI->>Repo: save typed definition
+  Repo->>Repo: validate + canonicalize + fsync + atomic publish
+  UI->>Preview: request preview
+  Preview->>Repo: read PayloadDefinition + FinishDefinition
+  Preview->>Renderer: same render contract as production
+  Renderer->>Workspace: create result object; write/fsync/close/publish script
+  Workspace-->>UI: preview script path
+  Note over Preview,Workspace: preview never reuses or overwrites a production run workspace
+```
+
+P-RUN-IO-001/批次01 owner 与行为边界：
+
+- `domain/payload` 只拥有主目标、顺序、`required` 与 acceptance；`domain/finish` 只拥有附加动作、`severity` 与 `alwaysRun`。二者都不包含 backend root 原语或 carrier。
+- `RootScriptRenderer` 是唯一整脚本 writer；`PayloadScriptRenderer` 与 `PayloadVerifier` 只产生 Payload action/acceptance 片段。没有 `PayloadExecutor`、`FinishExecutor` 或 JVM root session。
+- script temp 完成 write/flush/fsync/close/chmod 后才在0700 fresh workspace内以同目录atomic move发布，move保留同一inode；不使用Android `untrusted_app` SELinux禁止的hard-link。`PublishedArtifactIdentity` 从同一 `O_NOFOLLOW` opened fd 取得 device/inode/mode/size/SHA-256。result object 先以 exclusive ordinary file 创建，解析时在同一 opened fd 上重验 object identity并读取bytes。Payload预览动作以`Result<String>`跨ViewModel/UI边界，Material/Miuix只投影成功路径或可见失败Toast，发布异常不得终止主线程。
+- `RootScriptResultCodec` 只接受 GLR1 的 ASCII、LF-only、固定顺序、完整 item 四元组与 `complete=1`；unknown/duplicate/missing/out-of-order/partial、非法 state-reason-exit conjunction、Payload fail-fast 违规、Finish alwaysRun 违规或 reboot handoff 违规均整体拒绝，不从日志补猜。
+- preview 通过 `PreviewRootScriptPublisher` 调同一个 renderer，但每次使用新的 `root-script-preview/<runId>` workspace；P-RUN-IO-001/批次01 只生成 artifact，不选择 backend、不执行脚本、不把 raw uid 0 投影为产品成功。
+- 原R2实施批按用户裁定未做扩展验证；2026-11-05的R2-H1纠错只补了Android 15/内核6.6 AVD上的真实Payload Save发布路径：同目录atomic move成功、Toast显示published path、App进程与`MainActivity`保持存活、crash buffer为空、workspace mode/result/script/无temp均符合合同。完整fault-injection、GLR1语义与替换攻击矩阵仍未执行；后续只补缺失矩阵，不重复R1的SHA/基线检查。
+
+<a id="run-view-r3"></a>
+
+### 11.12 2026-11-05：P-RUN-X-001/批次01 neutral backend 与 typed RunHost（current authority）
+
+本节取代 §11.7、§11.9 与 §11.9.1 的 current execution/membership 图。旧节只保留历史沿革；current tree 不再含动态注册、Flow 反射、registry digest、Bundle host 参数、旧 AIDL 或 Glued Kotlin connector。P-RUN-X-001/批次01 允许 selectable PRODUCT_ROOT backend 数量为 0；debug build 只增加 DIAGNOSTIC_ONLY 的 DebugProbe，CUSTOM 仍 disabled。
+
+#### 11.12.1 Class 与 owner
+
+~~~mermaid
+classDiagram
+  direction LR
+
+  class BackendSpec {
+    +String key
+    +BackendPresentationIdentity presentation
+    +BackendSelectionPolicy selectionPolicy
+    +AbortPolicy abortPolicy
+    +ExecutionDomain executionDomain
+    +BackendConfigurationSpec configuration
+    +BackendParameterRequirements parameterRequirements
+    +RunCapability runCapability
+  }
+
+  class BackendPlugin {
+    -BackendSpec spec
+    -readinessProbe
+    -flowFactory
+    +availability()
+    +createFlow() Flow
+  }
+
+  class BackendRegistry {
+    +List~BackendSpec~ specs
+    +spec(key)
+    +availability(key)
+    -plugin(key)
+  }
+
+  class Flow {
+    <<interface>>
+    +run(BackendFlowInput) BackendRunFacts
+    +stop()
+  }
+
+  class RunInputFreezer {
+    +freeze(BackendSpec) FrozenRunInput
+    +release(FrozenRunInput)
+  }
+
+  class BackendRunSessionAdapter {
+    +refresh()
+    +start(RunCommand)
+    +abort()
+    +shareTerminal()
+  }
+
+  class RunCoordinator {
+    +StateFlow~RunSessionState~ state
+    +start(context, execute)
+    +requestAbort()
+  }
+
+  class IRunHost {
+    <<AIDL>>
+    +setCallback(runId, generation, callback)
+    +prepare(RunHostRequest)
+    +start(runId, generation)
+    +getSnapshot(runId, generation)
+    +cancel(runId, generation)
+    +requestClose(runId, generation)
+    +destroy()
+  }
+
+  class AppRunHostClient
+  class ShizukuRunHostClient
+  class RunHostService
+  class GhostlockUserService
+  class AndroidRunWorkspace
+  class RootArtifactStagingAdapter
+  class BackendProcessCarrier
+  class RunReport {
+    +RunCapability runCapability
+    +DiagnosticOutcome diagnosticOutcome
+    +StageResult backendPrimitive
+    +StageResult rootScriptDispatch
+    +PayloadItemResult[] payloadItems
+    +StageResult payloadOverall
+    +FinishItemResult[] finishItems
+    +StageResult finishOverall
+    +StageResult backendCleanup
+    +RunTerminal terminal
+    +Boolean isProductSuccess
+  }
+
+  BackendRegistry o-- BackendPlugin : immutable membership
+  BackendPlugin *-- BackendSpec
+  BackendPlugin --> Flow : fresh one-shot instance
+  BackendRunSessionAdapter --> BackendRegistry : exact stable key and readiness
+  BackendRunSessionAdapter --> RunInputFreezer : freeze once
+  BackendRunSessionAdapter --> RunCoordinator : application-lifetime owner
+  BackendRunSessionAdapter --> AppRunHostClient
+  BackendRunSessionAdapter --> ShizukuRunHostClient
+  AppRunHostClient --> IRunHost
+  ShizukuRunHostClient --> IRunHost
+  RunHostService ..|> IRunHost : app flowhost process
+  GhostlockUserService ..|> IRunHost : Shizuku shell process
+  RunHostService --> AndroidRunWorkspace
+  GhostlockUserService --> AndroidRunWorkspace
+  RunHostService --> RootArtifactStagingAdapter
+  GhostlockUserService --> RootArtifactStagingAdapter
+  RunHostService --> BackendRegistry : internal plugin lookup
+  GhostlockUserService --> BackendRegistry : internal plugin lookup
+  Flow --> BackendProcessCarrier : optional executable carrier
+  IRunHost --> RunReport : typed immutable snapshot
+~~~
+
+Owner 边界固定如下：BackendRegistry 拥有 immutable plugin list；application data adapter 拥有 frozen source 与 request PFD；RunHost 在 prepare 时 dup descriptor，并拥有 staged input、workspace、fresh Flow、callback 与 terminal snapshot；App host workspace 位于 app-private no-backup root，Shizuku workspace 位于 shell-owned `/data/local/tmp/<package>-runhost`，两者都核验 non-symlink 与 actual owner；RunCoordinator 拥有 client coroutine；UI/ViewModel 只订阅 neutral state。BackendSpec、RunHostRequest、AIDL snapshot 与 profile 都不携带 BackendPlugin 或 Flow object。
+
+#### 11.12.2 prepare、run 与 result Sequence
+
+~~~mermaid
+sequenceDiagram
+  autonumber
+  participant UI as Run UI
+  participant VM as RunViewModel
+  participant AD as BackendRunSessionAdapter
+  participant RG as BackendRegistry
+  participant FR as RunInputFreezer
+  participant RC as RunCoordinator
+  participant CL as App or Shizuku RunHostClient
+  participant RH as typed RunHost
+  participant ST as RootArtifactStagingAdapter
+  participant FL as fresh Flow
+  participant RS as common root script
+
+  UI->>VM: start selected stable key
+  VM->>AD: RunCommand(key)
+  AD->>RG: exact spec and dynamic availability
+  RG-->>AD: neutral BackendSpec and availability
+  AD->>FR: freeze spec, profile v3, Payload, Finish
+  FR-->>AD: FrozenRunInput(runId, generation, artifacts)
+  AD->>RC: start application-owned run
+  RC->>CL: typed RunHostRequest plus read-only PFDs
+  CL->>RH: setCallback(runId, generation)
+  CL->>RH: prepare(request)
+  RH->>RH: Parcel budget and structural validation
+  RH->>RH: state, identity and semantic fingerprint preflight
+  RH->>RG: exact key to internal BackendPlugin
+  RG-->>RH: immutable capability, domain, fresh Flow factory
+  RH->>RH: capability shape, actual UID plus SELinux domain, readiness validation
+  RH->>ST: dup and stage every PFD into host workspace
+  ST-->>RH: verified host-owned artifact identities
+  RH->>FL: create one fresh Flow
+  RH-->>CL: prepare OK
+  CL->>RH: start(runId, generation)
+  RH->>FL: run(BackendFlowInput)
+  FL-->>RH: BackendRunFacts primitive, dispatch, cleanup, diagnostic
+  opt PRODUCT_ROOT future carrier
+    FL->>RS: dispatch exact published artifact
+    RS-->>RH: typed GLR1 Payload and Finish item facts
+  end
+  RH->>RH: compose immutable six-layer terminal snapshot
+  par low-latency callback
+    RH-->>CL: onTerminal(snapshot)
+  and durable authority polling
+    CL->>RH: getSnapshot(runId, generation)
+    RH-->>CL: typed current or terminal snapshot
+  end
+  CL-->>RC: RunReport
+  RC-->>VM: RunSessionState(report)
+  VM-->>UI: six layers plus independent diagnostic and product projector
+  CL->>RH: requestClose(runId, generation)
+  RH->>RH: terminal retention decision and workspace cleanup
+  RH-->>CL: DESTROYED accepted
+  CL->>RH: App unbind or Shizuku remove
+~~~
+
+request 不包含 RunCapability。successful prepare 后的 capability 只能由命中的 BackendSpec 投影。callback event 只作 bounded progress；terminal snapshot 才是 result authority。client 不依赖 terminal callback 必达，而是以 getSnapshot 读取持久 authority。late callback 必须匹配 current runId、generation、strictly-increasing sequence 且尚未 terminal，否则 client 丢弃且不得改变 report。
+
+#### 11.12.3 RunHost state
+
+~~~mermaid
+stateDiagram-v2
+  [*] --> NEW
+  NEW --> NEW: setCallback reserves identity
+  NEW --> PREPARED: validated prepare and staged ownership commit
+  PREPARED --> PREPARED: same identity and fingerprint retry / ALREADY_APPLIED
+  PREPARED --> RUNNING: start
+  RUNNING --> RUNNING: duplicate start / ALREADY_APPLIED
+  RUNNING --> TERMINAL: Flow terminal snapshot published
+  NEW --> TERMINAL: safe cancel after identity reservation
+  PREPARED --> TERMINAL: cancel before physical start
+  RUNNING --> RUNNING: safe cancel reserves cancellation; resources stay live
+  RUNNING --> TERMINAL: worker stops access, completes cleanup, publishes cancelled terminal
+  RUNNING --> RUNNING: unsafe cancel or requestClose rejected
+  NEW --> DESTROYED: requestClose after identity reservation
+  PREPARED --> DESTROYED: requestClose
+  TERMINAL --> DESTROYED: requestClose after retention decision
+  DESTROYED --> DESTROYED: repeated requestClose / ALREADY_APPLIED
+  DESTROYED --> [*]: framework destroy or service unbind
+~~~
+
+generation 小于 current identity 返回 stale，generation 大于 current 返回 busy，同 generation 不同 runId 返回 mismatch。framework destroy 只在 requestClose 已把状态推进到 DESTROYED 后生效；RUNNING 的直接 destroy 不清理 worker 或攻击资源。
+
+#### 11.12.4 产品结果投影
+
+~~~mermaid
+flowchart TD
+  S[typed terminal snapshot] --> C{RunCapability}
+  C -->|DIAGNOSTIC_ONLY| D[DiagnosticOutcome and DIAGNOSTIC_COMPLETE or UNKNOWN]
+  D --> N[isProductSuccess = false]
+  C -->|PRODUCT_ROOT| P{RunTerminal = SUCCESS}
+  P -->|yes| Y[isProductSuccess = true]
+  P -->|no| F[isProductSuccess = false]
+  L[stdout, logcat, callback event, raw uid 0, process exit 0] -. diagnostic only .-> N
+  L -. cannot upgrade .-> F
+~~~
+
+UI 同时显示 capability、diagnostic、backend primitive、root-script dispatch、Payload、Finish、backend cleanup 与 terminal。DebugProbe 的 PASS 加 DIAGNOSTIC_COMPLETE 只证明 typed transport/fixture 完成；它不代表 root 产品成功。首个真实 backend 进入 registry 前，必须由自己的 carrier 子计划提供 root-script identity、六层 facts 与目标设备门。
+
+### 11.13 2026-11-05：R4/R4A 历史纠正记录（runtime topology 已由 §11.14 取代）
+
+本节只保留沿革，不是current topology、current fixture或运行门权威。R4 不改变 §11.12 的 RunHost state 或六层结果语义；caller-zero SessionPhase 已删除，而旧 LogExport 与automatic-export preference、tree picker、ViewModel action、双皮肤controls、strings曾被误删。2026-11-05用户纠正后，R4A曾恢复产品能力但没有恢复旧object；随后R4B推翻R4A runtime topology。当前唯一结构权威见§11.14，运行门仍为`NOT_RUN`。
+
+~~~mermaid
+flowchart LR
+  S[Settings UI] --> L[log level]
+  S --> F[terminal font]
+  S --> T[timestamp]
+  U[explicit diagnostic action] --> B[AndroidDiagnosticReportBuilder]
+  B --> R[RunCoordinator canonical GLLOG1 snapshot]
+  X[automatic export preference and picker] --> P[OperationalPreferences]
+  P --> C[application RunCoordinator]
+  C --> D[data/run MediaStore worker]
+  G[architecture source guard] --> A[old AIDL absent]
+  G --> J[manual JNI absent outside named frozen candidates]
+  G --> C[UI domain core concrete-backend edges absent]
+  G --> P[backend product-script generator absent]
+~~~
+
+上图只说明R4误删与R4A纠正的历史范围，不描述当前sink实现。旧`log/LogExport.kt=DELETE/ABSENT/R4`事实继续保留；R4B的current source、fixture与`NOT_RUN`边界全部收敛到§11.14，避免两节同时声称current authority。
+
+<a id="run-view-r4c"></a>
+
+### 11.14 2026-11-05：P-LOG-X-001/批次01 single log hub current（P-LOG-IO-001/批次02 sink 拓扑保留）
+
+P-LOG-X-001/批次01 以 `RunCoordinator` 作为唯一应用日志中枢，并保留 P-LOG-IO-001/批次02 已简化的 GLLOG1 与自动导出 sink：每个 accepted 且启用导出的 run 只创建一个 nonblocking sink；sink 内部只有一个 capacity=512 channel 和一个 I/O worker。文件 identity 仍来自 frozen `runId` 与 generation，level threshold 与格式配置仍在 run 接受时冻结。source sequence 只拒绝同一 RunHost callback 的重复/逆序；跨来源总顺序只有 coordinator lock 内 canonical commit order。
+
+~~~mermaid
+flowchart LR
+  S[Settings UI] --> P[OperationalPreferences<br/>autoExportLogs + relative destination]
+  O[AppContainer] --> A[BackendRunSessionAdapter]
+  O -->|construct| D[data/run AndroidRunLogSinkFactory]
+  D -. implements .-> Q[domain/run RunLogSinkFactory]
+  P --> A
+  KF[Kotlin Flow/application logs] -->|RunLogDraft / RunLogRecord| C[RunCoordinator<br/>sole log hub<br/>threshold + total order + canonical list]
+  NF[Native logs] -->|origin=NATIVE| C
+  SF[Shell logs] -->|origin=SHELL| C
+  H[App RunHost] -->|validated onLog| C
+  Z[Shizuku RunHost] -->|validated onLog| C
+  R[Flow-owned RunReport] -->|terminal projection once| C
+  A -->|pure RunLogSinkRequest| C
+  O -->|inject Q + formatter| C
+  C --> I[canonical RunLogDocumentSnapshot<br/>independent of UI clear]
+  I --> F[domain/run RunLogDocumentFormatter<br/>GLLOG1 authority]
+  F --> M[manual share artifact]
+  C --> U[StateFlow entries<br/>Material3 + Miuix ANSI renderer]
+  I --> G[AndroidDiagnosticReportBuilder]
+  C -->|same lock: commit + format + tryEmit| K[run-scoped RunLogSink]
+  K --> B[one bounded channel]
+  B --> W[one data/run IO worker<br/>sole URI and stream owner]
+  W -->|write row + flush| X[canonical byte prefix or completed .log]
+  W -. firstFailure callback + run token .-> C
+  C -. presentation warning only .-> U
+  C -. cannot change .-> R
+~~~
+
+~~~mermaid
+sequenceDiagram
+  participant UI as Settings/Run UI
+  participant A as BackendRunSessionAdapter
+  participant C as RunCoordinator
+  participant S as RunLogSink
+  participant W as Android sink worker
+  participant H as typed RunHost client
+
+  UI->>A: start(selected backend key)
+  A->>A: freeze runId/generation + export config
+  A->>C: start(context, RunLogSinkRequest, execute)
+  alt coordinator rejects start
+    C-->>A: false (factory create = 0)
+  else coordinator accepts start
+    C->>C: reserve token + canonical initial state
+    C->>S: create(callback) + tryEmit(header) under lock
+    Note over C,S: create schedules only; no gateway I/O
+    S-->>W: worker insert/open asynchronously
+    C->>H: execute(onLog) without waiting for open
+    loop each validated log record
+      H-->>C: RunHostLogRecord -> RunLogRecord
+      C->>C: threshold + canonical append + pure format under same lock
+      C->>S: nonblocking tryEmit(row)
+    end
+    H-->>C: Completed(RunReport) / Refused / TransportFailure / Abort
+    C->>C: derive prefixed report records + commit final phase/report under lock
+    C->>S: tryEmit(trailer) + finish()
+    C-->>A: terminal and active slot release without drain wait
+    W->>W: drain accepted prefix; close stream once
+    opt first open/write/flush/queue/close failure
+      W-->>C: callback(failure, captured token) once
+      C->>C: ignore stale token or append one noncanonical warning
+    end
+  end
+~~~
+
+~~~mermaid
+stateDiagram-v2
+  [*] --> Scheduled: factory create returns
+  Scheduled --> Opening: worker starts
+  Opening --> Writing: URI and stream opened
+  Opening --> Failed: insert/open failure
+  Scheduled --> Finishing: finish before worker open
+  Opening --> Finishing: finish while provider blocked
+  Writing --> Finishing: finish
+  Scheduled --> Failed: queue full before open
+  Opening --> Failed: queue full before open returns
+  Writing --> Failed: write/flush/queue failure
+  Finishing --> Closed: drain accepted prefix; close once
+  Failed --> Closed: cleanup only; first failure unchanged
+  Closed --> [*]
+~~~
+
+`RunCoordinator` 是唯一应用日志中枢。它在同一 lock 内统一接受 Kotlin/Native/Shell `RunLogRecord`、冻结 threshold、提交 canonical list、派生有前缀的 terminal report records、纯格式化并 fan-out；commit order 同时就是 UI、manual share 与 automatic channel 的顺序，不按 source timestamp 重排，也不需要第二 queue。`RunReport` 是 Flow 返回的 typed terminal authority，不是第二日志系统；UI 只渲染 canonical records。Coordinator lock 内不做平台 I/O，factory 只分配 sink 并调度 I/O worker；worker 独占 MediaStore insert/open、row write/flush 与 stream close。sink 内 `firstFailure` CAS 只允许首次失败回调一次：queue-full 后迟到 open 失败只做 URI cleanup，write/flush 后 close 失败只做 close 终结，均不改首失败。`finish()` 无 failure 参数且不等待；blocked provider 若永久不返回，cleanup 只能等 provider 返回或进程死亡，系统不再用 timeout/monitor 伪造完成。callback 捕获 run token，旧 run 迟到 failure 不能污染新 run。warning 不进入 canonical document/GLLOG1，也不得修改 backend primitive、root-script dispatch、Payload、Finish、backend cleanup、terminal 或 `isProductSuccess`。successful automatic export 与 manual share 继续由同一 formatter 得到 byte-identical complete bytes；provider 失败文件只保证 canonical byte prefix，最后一行允许不完整。
+
+<a id="run-view-r5"></a>
+
+### 11.15 2026-11-05：R5-S1 common product host closure（source complete / gates NOT_RUN）
+
+本节只描述R5-S1已写入的common host结构。43499 concrete plugin、process exit mapper与native carrier属于R5-S2/S3，尚未进入registry；canonical profile-v3 encoder/decoder仍是独立enable blocker。因此本节不把PRODUCT_ROOT通路标为可达、Ready、selectable或supported。
+
+#### 11.15.1 IPO与单一权威
+
+~~~mermaid
+flowchart LR
+  P[canonical profile fixture or future v3 source] --> O[OpenedRunInputSource<br/>one O_NOFOLLOW object]
+  C[packaged carrier declaration] --> CR[PackagedBackendArtifactResolver]
+  M[PayloadRootManagers + PackageManager + uname.release] --> MR[RootManagerArtifactResolver<br/>mandatory executable + actual argv]
+  CR --> O
+  MR --> O
+  O --> L[FrozenRunInputLease<br/>opaque token to master PFD]
+  L -->|duplicate only| W[typed RunHost request PFDs]
+  W --> S[RootArtifactStagingAdapter<br/>EXECUTABLE 0500 / other 0400]
+  S --> A[Map logicalId to PublishedFlowArtifact]
+  R[validated RunHostRequestModel] --> N[RootScriptExecutionPlan<br/>kind policy staged path exact argv acceptance]
+  A --> N
+  N --> E[RootScriptRenderer]
+  N --> D[RootScriptResultCodec]
+  N --> X[RunReportComposer]
+  E --> F[exact RootScriptArtifact + pre-created GLR1 object]
+  F --> B[BackendFlowInput<br/>report context + terminal claim + log emitter]
+  B --> G[Flow computes BackendRunFacts]
+  G --> X
+  D --> X
+  X --> T[Flow returns six-layer RunReport]
+  T --> U[RunHost snapshots and transports report]
+  Z[stdout log callback raw uid0] -. diagnostic only; cannot upgrade .-> T
+~~~
+
+#### 11.15.2 Class/owner关系
+
+~~~mermaid
+classDiagram
+  class BackendPlugin {
+    +BackendSpec spec
+    +BackendCarrierArtifact? carrierArtifact
+    +createFlow()
+  }
+  class FrozenRunInputLease {
+    +FrozenRunInput input
+    +duplicate(token) ParcelFileDescriptor
+    +close()
+  }
+  class PublishedFlowArtifact {
+    +String logicalId
+    +RunInputArtifactKind kind
+    +String path
+    +PublishedArtifactIdentity identity
+  }
+  class RootScriptExecutionPlan {
+    +String runId
+    +Long generation
+    +List payload
+    +List finish
+    +validate()
+  }
+  class RunHostProductPipeline {
+    +prepare(workspace, identity, request, staged)
+  }
+  class RootScriptRenderer
+  class RootScriptResultCodec
+  class RunReportComposer
+  class BackendFlowInput {
+    +Map artifacts
+    +String? persistentStateDirectory
+    +FlowReportContext reportContext
+    +FlowTerminalClaim terminalClaim
+    +RunLogEmitter logs
+    +complete(BackendRunFacts) RunReport
+  }
+  BackendPlugin o-- BackendCarrierArtifact
+  FrozenRunInputLease *-- FrozenRunInput
+  RunHostProductPipeline --> PublishedFlowArtifact
+  RunHostProductPipeline --> RootScriptExecutionPlan
+  RunHostProductPipeline --> RootScriptRenderer
+  RunHostProductPipeline --> BackendFlowInput
+  BackendFlowInput --> RootScriptResultCodec
+  BackendFlowInput --> RunReportComposer
+~~~
+
+`FrozenRunInputLease`独占masters；request assembly只取得duplicates。全部duplicate成功或失败后masters立即close，随后只删除app-private profile source；packaged carrier与root-manager ELF永不由lease删除。RunHost独占staged paths/workspace；Flow只借用catalog与stable backend-state path。
+
+#### 11.15.3 App/Shizuku共享sequence
+
+~~~mermaid
+sequenceDiagram
+  participant A as BackendRunSessionAdapter
+  participant L as FrozenRunInputLease
+  participant H as App or Shizuku RunHost
+  participant S as RootArtifactStagingAdapter
+  participant P as RunHostProductPipeline
+  participant F as fresh Flow
+  participant C as RootScriptResultCodec
+  participant R as RunReportComposer
+
+  A->>L: freeze profile + carrier + manager opened objects
+  A->>L: duplicate each opaque token into request
+  A->>L: close masters and owned private source
+  A->>H: prepare typed request
+  H->>H: structure/capability/registry/domain/readiness gates
+  H->>S: stage owned PFDs and close them
+  S-->>H: staged identity list + published catalog
+  H->>P: prepare(validated model, staged list)
+  P->>P: build and validate one RootScriptExecutionPlan
+  P->>P: publish exact script + pre-created result object
+  P-->>H: PreparedProductRun
+  H->>F: run(BackendFlowInput + catalog + stable state dir)
+  F->>F: compute BackendRunFacts and emit RunLogDraft
+  F->>H: FlowTerminalClaim.claim() through neutral port
+  H-->>F: cancelledBeforeClaim or ownership lost
+  alt scriptDispatch is SUCCESS
+    F->>C: decode same result object with same plan
+    C-->>F: complete GLR1 or malformed
+  else dispatch not SUCCESS
+    F->>F: choose NotAttempted without reading result object
+  end
+  F->>R: same plan + backend facts + decode outcome + cancellation
+  R-->>F: six-layer RunReport
+  F-->>H: RunReport
+  H-->>A: immutable terminal snapshot
+~~~
+
+App 与 Shizuku 各自保留现有 lifecycle、domain gate 和 callback owner；两者都先用同一个 `RunHostProductPipeline` 发布 plan/script，再由 fresh Flow 自己解码 result、取得中立 terminal claim 并组合 `RunReport`。控制方向始终是 RunHost service 调 Flow；Flow 不调用 `RunHostService` 或 `GhostlockUserService`。APP-only backend 在 Shizuku domain gate 先被拒绝；host 不按 backend key 硬编码分支。
+
+#### 11.15.4 Lease、workspace与retention状态
+
+~~~mermaid
+stateDiagram-v2
+  [*] --> OPENED: O_NOFOLLOW open + fstat + same-fd digest + rewind
+  OPENED --> DUPLICATING: request assembly
+  DUPLICATING --> CLOSED: all duplicates created; close masters
+  DUPLICATING --> CLOSED: any failure; close partial duplicates and masters
+  CLOSED --> OWNED_SOURCE_REMOVED: app-private source only
+  CLOSED --> PACKAGED_PRESERVED: packaged carrier or manager
+  OWNED_SOURCE_REMOVED --> [*]
+  PACKAGED_PRESERVED --> [*]
+
+  state RunWorkspace {
+    [*] --> PREPARED
+    PREPARED --> TERMINAL_SAFE: known terminal without held state
+    PREPARED --> TERMINAL_RETAINED: UNKNOWN or NEEDS_ATTENTION or REBOOT_REQUIRED or REBOOT_REQUESTED
+    TERMINAL_SAFE --> DELETED: requestClose
+    TERMINAL_RETAINED --> PRESERVED: requestClose releases host owner without deleting evidence
+  }
+~~~
+
+R5-S1 test source已覆盖same-opened inode、owned-source终结、packaged/root-manager解析、lease-to-wire mandatory executable/actual argv、mixed normalized kinds、同plan render/decode、dispatch未开始合成与six-layer compose。遵用户指令，这些测试及Gradle、instrumentation、AVD、Shizuku和设备门均未运行，状态只记`source complete / NOT_RUN`。

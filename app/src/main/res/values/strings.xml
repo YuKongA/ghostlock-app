@@ -732,6 +732,7 @@
     <string name="finish_restore_selinux_summary">Run setenforce 1 after the finish actions</string>
     <string name="finish_save">Save</string>
     <string name="finish_saved">Saved: %1$s</string>
+    <string name="payload_save_failed">Could not save the Payload preview.</string>
     <string name="backend_43284_access_title">Enable kernel memory access after relay</string>
     <string name="backend_43284_access_on">Wait 5s for a plugin; keep the window until the plugin closes, then run the finish script</string>
     <string name="backend_43284_access_off">Off: run the finish script right after loading the relay</string>
@@ -744,9 +745,9 @@
     <string name="settings_log_timestamp">Show timestamp</string>
     <string name="settings_log_timestamp_summary">Timestamp before the tag, e.g. 12.345 &lt;*&gt;</string>
     <string name="settings_log_auto_export">Log auto-export</string>
-    <string name="settings_log_auto_export_summary">Save each run under the folder below</string>
+    <string name="settings_log_auto_export_summary">Save each accepted run under the folder below</string>
     <string name="settings_log_export_location">Export folder</string>
-    <string name="settings_log_export_location_invalid">Pick a folder on internal storage</string>
+    <string name="settings_log_export_location_invalid">Pick a folder under internal storage Downloads</string>
     <string name="attack_notification_channel">Attack execution</string>
     <string name="attack_notification_title">GhostLock attack running</string>
     <string name="attack_notification_text">Execution runs in a separate process</string>

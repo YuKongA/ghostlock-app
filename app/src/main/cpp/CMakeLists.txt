@@ -1,13 +1,11 @@
 cmake_minimum_required(VERSION 3.22)
 
 # Purpose: Android app-owned native build entry point. Only project/standard setup plus
-# three assembly includes; every target and every backend compile switch lives in the
-# included CMakeLists files (common/, glgeneral/, backends/).
-# Inputs: -DGHOSTLOCK_BACKEND_* options are declared by backends/CMakeLists.txt; the
-# Android arm64 NDK toolchain and AGP output directories come from the AGP invocation.
+# two assembly includes; common owns the only current native object target and
+# backends/CMakeLists.txt is the explicit real-attack disconnection boundary.
+# Inputs: the Android arm64 NDK toolchain and AGP output directories come from AGP.
 # Output: no target here; targets are defined by the included files.
-# Failure: an included chunk that cannot satisfy its own preconditions fails configuration
-# loudly (e.g. GHOSTLOCK_BACKEND_98260=ON without sources).
+# Failure: any reintroduced backend target violates the disconnected graph contract.
 # Preconditions: invoked by AGP externalNativeBuild (CMake >= 3.22).
 # Phase: application native build.
 # Note: `include()` keeps CMAKE_CURRENT_SOURCE_DIR/CMAKE_CURRENT_BINARY_DIR pointing at
@@ -21,12 +19,11 @@ set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 include(${CMAKE_CURRENT_LIST_DIR}/common/CMakeLists.txt)
-include(${CMAKE_CURRENT_LIST_DIR}/glgeneral/CMakeLists.txt)
 include(${CMAKE_CURRENT_LIST_DIR}/backends/CMakeLists.txt)
 
 # Purpose: export the enabled app-native target graph for the post-merge AGP
 # verifier without duplicating artifact or JNI symbol lists in Gradle.
-# Inputs: targets created by the three includes above and their actual source
+# Inputs: targets created by the two includes above and their actual source
 # files; GHOSTLOCK_NATIVE_ARTIFACT_MANIFEST is supplied only for debug by AGP.
 # Output: one stable four-column TSV consumed by verifyDebugNativeArtifacts.
 # Failure: unreadable target metadata fails configuration; an omitted manifest

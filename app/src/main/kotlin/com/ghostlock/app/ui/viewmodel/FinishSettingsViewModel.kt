@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import com.ghostlock.app.domain.finish.FinishSettings
 import com.ghostlock.app.domain.finish.ReadFinishSettingsUseCase
 import com.ghostlock.app.domain.finish.SaveFinishSettingsUseCase
-import com.ghostlock.app.ui.screen.module.backends.FinishSettingsUiState
+import com.ghostlock.app.ui.screen.module.finish.FinishSettingsUiState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

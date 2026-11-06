@@ -1,110 +1,74 @@
 package com.ghostlock.app.core.flow
 
-import com.ghostlock.app.backend.backends.cve43284.flow.Flow43284Impl
-import com.ghostlock.app.backend.backends.cve43284.flow.Flow43284Request
-import com.ghostlock.app.backend.backends.cve43499.flow.Flow43499Impl
-import com.ghostlock.app.backend.backends.cve43499.flow.Flow43499KernelLayout
-import com.ghostlock.app.backend.backends.cve43499.flow.Flow43499Request
-import com.ghostlock.app.backend.backends.cve43499.flow.Flow43499Route
-import com.ghostlock.app.backend.backends.lua.FlowLuaImpl
-import com.ghostlock.app.backend.backends.lua.FlowLuaRequest
+import com.ghostlock.app.core.rootscript.PublishedArtifactIdentity
+import com.ghostlock.app.core.rootscript.RootScriptArtifact
+import com.ghostlock.app.domain.run.ProfileSnapshot
+import com.ghostlock.app.domain.run.RunCancellationView
+import com.ghostlock.app.domain.run.RunCapability
+import com.ghostlock.app.domain.run.RunLogDraft
+import com.ghostlock.app.domain.run.RunLogEmitter
+import com.ghostlock.app.domain.run.StageResult
+import com.ghostlock.app.domain.run.StageState
 import kotlinx.coroutines.runBlocking
-import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/** Uniform Flow input and one-shot sequential execution contract. */
 class FlowRequestTest {
-
+    /** FlowRequest wraps only the neutral frozen input. */
     @Test
-    fun `each backend binds its own request type`() {
-        val lua: Flow<FlowLuaRequest> = FlowLuaImpl()
-        val cve43499: Flow<Flow43499Request> = Flow43499Impl()
-        val cve43284: Flow<Flow43284Request> = Flow43284Impl()
-
-        assertEquals(FlowLuaImpl::class, lua.backendClass)
-        assertEquals(Flow43499Impl::class, cve43499.backendClass)
-        assertEquals(Flow43284Impl::class, cve43284.backendClass)
-        assertTrue(FlowRequest::class.java.isAssignableFrom(FlowLuaRequest::class.java))
-        assertTrue(FlowRequest::class.java.isAssignableFrom(Flow43499Request::class.java))
-        assertTrue(FlowRequest::class.java.isAssignableFrom(Flow43284Request::class.java))
+    fun requestCarriesUniformInput() {
+        val input = input()
+        assertEquals(input, FlowRequest(input).input)
     }
 
+    /** A fresh sequential Flow returns one typed report, emits logs, and rejects reuse. */
     @Test
-    fun `lua request exposes its own fields`() {
-        val payload = byteArrayOf(1, 2, 3)
-        val request = FlowLuaRequest(
-            pathId = "entry",
-            payload = payload,
-            values = mapOf("route" to "select"),
+    fun sequentialFlowIsOneShotAndReturnsFacts() = runBlocking {
+        val records = mutableListOf<RunLogDraft>()
+        val input = input(records)
+        val flow = object : SequentialFlow() {
+            override fun steps(input: BackendFlowInput): List<FlowStep> = listOf(
+                FlowStep(
+                    name = "primitive",
+                    stage = FlowStage.BACKEND_PRIMITIVE,
+                    step = Step { StepResult.Done(StageResult.SUCCESS) },
+                ),
+            )
+        }
+        val report = flow.run(input)
+        assertEquals(StageState.SUCCESS, report.backendPrimitive.state)
+        assertTrue(records.isNotEmpty())
+        assertTrue(runCatching { flow.run(input) }.isFailure)
+    }
+
+    /** @return One diagnostic Flow input whose terminal claim succeeds exactly once. */
+    private fun input(records: MutableList<RunLogDraft> = mutableListOf()): BackendFlowInput {
+        val identity = PublishedArtifactIdentity(
+            device = 1uL,
+            inode = 1uL,
+            byteCount = 0L,
+            sha256 = "0".repeat(64),
+            mode = 0u,
         )
-
-        assertEquals("entry", request.pathId)
-        assertArrayEquals(payload, request.payload)
-        assertEquals(mapOf("route" to "select"), request.values)
-    }
-
-    @Test
-    fun `sequential flow accepts its own request`() = runBlocking {
-        val result = Flow43499Impl().run(validRequest())
-
-        assertTrue(result is FlowResult.Failed)
-        assertEquals("cve43499-flow-not-wired", (result as FlowResult.Failed).reason)
-    }
-
-    @Test
-    fun `lua flow accepts a script carried by its request`() = runBlocking {
-        val result = FlowLuaImpl().run(
-            FlowLuaRequest(values = mapOf("script" to "return 1")),
-        )
-
-        assertTrue(result is FlowResult.Ok)
-    }
-
-    @Test
-    fun `lua flow fails closed without a script`() = runBlocking {
-        val result = FlowLuaImpl().run(FlowLuaRequest())
-
-        assertTrue(result is FlowResult.Failed)
-        assertEquals("lua-script-missing", (result as FlowResult.Failed).reason)
-    }
-
-    private fun validRequest(): Flow43499Request = Flow43499Request(
-        session = Flow43499Request.Session(
-            init = Flow43499Request.Init(
-                route = Flow43499Route.TcpZerocopy(),
-                stamp = Flow43499Request.Stamp(
-                    waiterOffset = 1L,
-                    taskOffset = 1L,
-                    lockOffset = 1L,
-                    bufferSize = 1L,
-                ),
-                limits = Flow43499Request.Limits(
-                    maxAttempts = 1L,
-                    armSequence = 1L,
-                    armHold = 1L,
-                ),
-                timing = Flow43499Request.Timing(parkMs = 1L),
-                consumer = Flow43499Request.Consumer(
-                    burstCalls = 1L,
-                    maxCalls = 1L,
-                    niceModulus = 1,
-                ),
-                fakeTask = 1L,
-                fakeLock = 1L,
+        return BackendFlowInput(
+            runId = "0".repeat(32),
+            generation = 1L,
+            rootScript = RootScriptArtifact(
+                runId = "0".repeat(32),
+                generation = 1L,
+                scriptPath = "/run/script",
+                resultPath = "/run/result",
+                scriptIdentity = identity,
+                resultIdentity = identity,
+                retainedArtifacts = emptyList(),
             ),
-            layout = Flow43499KernelLayout(pointerBytes = 8),
-        ),
-        prepare = Flow43499Request.Prepare(
-            threads = 1L,
-            pageSize = 1L,
-            regionSize = 1L,
-            objectSize = 1L,
-            mmStructSize = 1L,
-        ),
-        discover = Flow43499Request.Discover(
-            rangeStart = 1L,
-            patienceRounds = 1L,
-        ),
-    )
+            profile = ProfileSnapshot("profile", ProfileSnapshot.CURRENT_SCHEMA_VERSION, "0".repeat(64)),
+            logs = RunLogEmitter { record -> records += record },
+            cancellation = RunCancellationView { false },
+            reportContext = FlowReportContext(RunCapability.DIAGNOSTIC_ONLY, null),
+            terminalClaim = FlowTerminalClaim { false },
+        )
+    }
 }

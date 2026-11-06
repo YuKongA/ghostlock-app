@@ -5,7 +5,9 @@ import android.os.Build
 import android.system.Os
 import com.ghostlock.app.BuildConfig
 import com.ghostlock.app.domain.diagnostics.DiagnosticReportPort
-import com.ghostlock.app.log.LogFile
+import com.ghostlock.app.domain.run.RunReport
+import com.ghostlock.app.domain.run.RunSessionState
+import com.ghostlock.app.domain.run.StageResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
@@ -22,10 +24,14 @@ import java.util.concurrent.TimeUnit
  * Android adapter that packages GhostLock runtime and non-privileged system diagnostics.
  *
  * @param context Application-capable context used for cache ownership.
+ * @param runState Typed application-scoped session snapshot supplier.
+ * @param runLog Canonical GLLOG1 snapshot supplier owned by the sole log hub.
  * @note Collection does not invoke privileged shells or read manager-private paths and never mutates attack state.
  */
 class AndroidDiagnosticReportBuilder(
     context: Context,
+    private val runState: () -> RunSessionState,
+    private val runLog: () -> ByteArray,
 ) : DiagnosticReportPort {
     private val applicationContext = context.applicationContext
 
@@ -42,7 +48,8 @@ class AndroidDiagnosticReportBuilder(
         check(reportDirectory.mkdirs()) { "cannot create diagnostic report directory" }
 
         writeBasicInfo(File(reportDirectory, "basic.txt"))
-        copyRuntimeLog(File(reportDirectory, "ghostlock-run.log"))
+        writeRunReport(File(reportDirectory, "run-report.txt"), runState())
+        writeRuntimeLog(File(reportDirectory, "ghostlock-run.log"))
         collectLogcat(File(reportDirectory, "logcat.txt"))
         PROC_FILES.forEach { source ->
             copyReadableFile(File(source), File(reportDirectory, source.removePrefix("/").replace('/', '_')))
@@ -53,6 +60,62 @@ class AndroidDiagnosticReportBuilder(
         archive(reportDirectory, target)
         reportDirectory.deleteRecursively()
         return target
+    }
+
+    /** Writes the typed session and six-layer report without interpreting terminal text. */
+    private fun writeRunReport(target: File, session: RunSessionState) {
+        PrintWriter(target).use { writer ->
+            writer.field("BackendKey", session.backendKey ?: "NONE")
+            writer.field("BackendLabel", session.backendLabel)
+            writer.field("SessionPhase", session.phase.name)
+            writer.field("StartAllowed", session.startAllowed.toString())
+            val report = session.report
+            writer.field("ReportPresent", (report != null).toString())
+            if (report != null) writer.writeReport(report)
+        }
+    }
+
+    /** Writes one immutable six-layer report in a line-oriented diagnostic format. */
+    private fun PrintWriter.writeReport(report: RunReport) {
+        field("RunCapability", report.runCapability.name)
+        field("DiagnosticOutcome", report.diagnosticOutcome.name)
+        stage("BackendPrimitive", report.backendPrimitive)
+        stage("RootScriptDispatch", report.rootScriptDispatch)
+        report.payloadItems.forEachIndexed { index, item ->
+            field("Payload.$index.ItemId", item.itemId)
+            field("Payload.$index.State", item.state.name)
+            field("Payload.$index.Reason", item.reason.name)
+            field("Payload.$index.ExitKind", item.exitKind.name)
+            field("Payload.$index.ExitValue", item.exitValue.toString())
+        }
+        stage("PayloadOverall", report.payloadOverall)
+        report.finishItems.forEachIndexed { index, item ->
+            field("Finish.$index.ItemId", item.itemId)
+            field("Finish.$index.State", item.state.name)
+            field("Finish.$index.Reason", item.reason.name)
+            field("Finish.$index.ExitKind", item.exitKind.name)
+            field("Finish.$index.ExitValue", item.exitValue.toString())
+        }
+        stage("FinishOverall", report.finishOverall)
+        stage("BackendCleanup", report.backendCleanup)
+        field("Terminal", report.terminal.name)
+        field("ProductSuccess", report.isProductSuccess.toString())
+    }
+
+    /** Writes one complete typed stage result. */
+    private fun PrintWriter.stage(prefix: String, result: StageResult) {
+        field("$prefix.State", result.state.name)
+        field("$prefix.Reason", result.reason.name)
+        field("$prefix.ExitKind", result.exitKind.name)
+        field("$prefix.ExitValue", result.exitValue.toString())
+    }
+
+    /** Writes one single-line field while preventing diagnostic line injection. */
+    private fun PrintWriter.field(name: String, value: String) {
+        val oneLine = value.map { character ->
+            if (character == '\r' || character == '\n' || character == '\t') ' ' else character
+        }.joinToString("")
+        println("$name: $oneLine")
     }
 
     /** Writes stable app, Android, kernel, and SELinux identity without manager-specific fields. */
@@ -82,10 +145,9 @@ class AndroidDiagnosticReportBuilder(
         }
     }
 
-    /** Copies the application/native shared runtime log when one is open and readable. */
-    private fun copyRuntimeLog(target: File) {
-        val source = LogFile.path?.let(::File) ?: return
-        copyReadableFile(source, target)
+    /** Writes the same immutable canonical bytes used by manual and automatic run-log sinks. */
+    private fun writeRuntimeLog(target: File) {
+        target.writeBytes(runLog())
     }
 
     /** Captures bounded logcat output without requiring elevated privileges. */

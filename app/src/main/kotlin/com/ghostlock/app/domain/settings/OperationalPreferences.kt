@@ -19,7 +19,7 @@ enum class TerminalLogLevel(val token: String) {
  * @property logLevel Minimum application log severity.
  * @property terminalFontPath Private copied font path, or null for the system monospace font.
  * @property showLogTimestamp Whether terminal rows include elapsed time.
- * @property autoExportLogs Whether terminal logs are exported after a run.
+ * @property autoExportLogs Whether each accepted run creates an automatic GLLOG1 document.
  * @property logExportLocation Normalized Downloads-relative export directory.
  * @property warnOnRerun Whether a completed run requires confirmation before rerunning.
  * @property autoAttackOnBoot Whether the dormant boot preference is enabled.
@@ -37,6 +37,7 @@ data class OperationalPreferences(
     val bootRetryCount: Int = 1,
 ) {
     companion object {
-        const val DEFAULT_LOG_EXPORT_LOCATION = "Download/ghostlock-log"
+        /** Historical MediaStore Downloads-relative default retained by R4A. */
+        const val DEFAULT_LOG_EXPORT_LOCATION: String = "Download/ghostlock-log"
     }
 }

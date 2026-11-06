@@ -47,7 +47,7 @@ class PathViewModel(
             options = catalog.entries.map { entry ->
                 BackendOptionUiState(
                     key = entry.key,
-                    title = entry.displayName,
+                    title = entry.presentation.displayName,
                     selectable = entry.selectable,
                 )
             },

@@ -1,8 +1,12 @@
 # 文档编写规范（Documentation Standards）
 
+<a id="e-doc-rule-001"></a>
+
+> **代号**：E-DOC-RULE-001（工程支撑－文档－编写与编号规则）；跨端模板是本根附录，不另立规范。 定义入口见[工程代号入口](../plan/MASTER-PLAN.md#work-identifiers)。
+
 > 本仓库一切文档的写法。风格参照 Google Developer Documentation Style Guide：短、直接、面向读者；
 > 内容分类参照 Diátaxis。来源见文末。
-> 效力：用户要求 > `AGENTS.md` > 本文；与代码冲突时以代码为准，并顺手改文档。
+> 效力与冲突处理见 [E-REVIEW-RULE-004/§1：最高思想与质疑义务](../../AGENTS.md#e-review-rule-004)；编号仅定位，不另设权威层级。
 > 沿革：2026-11-03 用户裁定取消文档字节、页数与篇幅硬上限；“短、直接、一处权威”仍是质量要求，拆分只按职责、读者或权威边界。
 
 ## 先定类型
@@ -33,7 +37,56 @@
   代码与英文术语用反引号。
 - 规范类文字用 必须/应当/可以（MUST/SHOULD/MAY）；其他文档不用命令语气。
 - 英文文档按 Google style：active voice、second person、present tense、sentence case 标题。
-- 链接用相对路径；跨文档引用写文件名，不写章节号。
+- 链接用相对路径；跨文档引用给文件链接、完整代号与中文标题，必要时定位稳定锚点；不用裸章节号或裸局部字母号代替身份。
+
+<a id="engineering-identifiers"></a>
+
+## 工程代号：全局短码、局部复合码
+
+代号用于快速识别主题并直达定义，不承载完整变更清单。下列语法是本项目对公开实践的裁剪，不是国际标准规定；不新增编号服务、TSV 注册表、校验器或审批岗位。
+
+### 全局与局部
+
+- **全局短码 `R<n>`**：仅指 [engineering-rules.md](engineering-rules.md) 的全工程规则，例 `R1：单一权威`；该表是 R 语义的唯一来源。全局表示适用范围，不表示最高权威：教材仍高于经验规则，教材条文继续引用具名章节，不为编号改写教材或另造“最高守则”。
+- **局部根代号 `<类别>-<主模块>-<范围>-<序号>`**：如 `P-LOG-IO-001：日志文件输出`，前三段可反推产品/工程、主责模块和主要合同领域，末段区分同一作用域的不同工作。计划和局部规范均可有根代号；对象类型、状态、版本和负责人写在正文，不再塞进代号。
+- **局部子项 `<根代号>/<类型><序号>`**：新增条目用 `/需求01`、`/决策01`、`/批次01`、`/问题01`，标题同时写中文含义；同一根的同类型连续分配，复审和另开报告不重置。问题分配先查该根的既有审核记录；在根文档的已有审核位置保留“问题号→定义锚点”链接，不另建问题台账。普通段落用 1、1.1，不给每段分配永久代号。
+- **活跃旧号迁移为语义主代号**：旧 D1/R4C 等不能仅套统一计划前缀。按条目实际主责模块与合同领域分组，使用如 `P-PAYLOAD-CORE-001/决策01`、`P-LOG-X-001/批次01`；标题同时写中文主题。一个文件可定义多个语义根，不因此拆文件/新建计划；同一合同下连续决策/批次共用根，真正不同领域使用不同根。旧号只在原计划一处映射及原证据中保留，旧锚点继续可达；不重新批准、排序或重写历史。规范的旧 A–G 等仍按自身根定位，与产品决策不混用。
+
+### 唯一短词表
+
+词义按固定槽位读取，模块是稳定职责而非目录名。只有实际出现新职责且现有码确实不适用时才补一行；禁止每份计划自创缩写或预建未来模块。
+
+| 槽位 | 代号 | 含义 |
+|---|---|---|
+| 工程类别 | P | 产品功能与其运行架构 |
+| 工程类别 | E | 构建、工具、规则和文档等工程支撑 |
+| 主模块 | RUN | 执行编排、会话与 RunHost 合同 |
+| 主模块 | BACKEND | Backend 描述、成员资格、私有实现与接线边界 |
+| 主模块 | DIAG | 诊断功能及其实际执行链，不表示 root/攻击能力 |
+| 主模块 | LOG | 日志采集、呈现与导出 |
+| 主模块 | PROFILE | 配置档格式、解析与验证 |
+| 主模块 | PAYLOAD | 用户载荷定义与执行语义 |
+| 主模块 | FINISH | 收尾动作与恢复语义 |
+| 主模块 | BUILD | 构建、打包与产物生成 |
+| 主模块 | REVIEW | 设计审核、规划边界与门禁规则 |
+| 主模块 | DOC | 文档组织、引用与命名 |
+| 领域/范围 | UI | 用户界面与交互 |
+| 领域/范围 | CORE | 模块内部模型与编排逻辑 |
+| 领域/范围 | IO | 文件、流与持久化合同 |
+| 领域/范围 | IPC | 进程间通信与 wire 合同 |
+| 领域/范围 | NATIVE | native 构建、绑定与执行边界 |
+| 领域/范围 | RULE | 工作规范与验收规则 |
+| 领域/范围 | X | 由具名主模块负责的跨模块/跨层合同，正文必须列出边界，不代表“全仓任意修改” |
+
+[P-LOG-IO-001：日志导出](../plan/backend-root-execution-unification-plan.md#p-log-io-001)、[P-LOG-X-001：跨层日志中枢](../plan/backend-root-execution-unification-plan.md#p-log-x-001)、[P-RUN-IPC-001：RunHost wire](../plan/backend-root-execution-runhost-wire.md#p-run-ipc-001) 均为已有内容的实际身份；`E-BUILD-NATIVE-001` 仍仅为未分配示例。`CORE` 指模块内部合同，`IO` 指文件/流，`X` 只用于确有具名 owner 的跨层/跨模块合同，不作为不分析归属的兜底；其它影响仍列在原范围中。测试随被验证合同归属，不因 test 字样自动成为工程工具任务。
+
+### 分配、定位与兼容
+
+1. **一处入口**：复用 [MASTER-PLAN.md](../plan/MASTER-PLAN.md#work-identifiers) 的代号入口：根代号、中文标题、定义链接。每个根只登记一次；文档头部声明容器身份；含多个语义主题时，在各定义标题声明主代号并保留一处映射。编号被使用才登记，不能仅为占号新建计划；单纯文件路径/章节变化不分配新根。序号从 001 起，在相同前三段内递增，超过 999 可继续增长，不回收、不按排期重排。分配前只查该前缀已有行，不扫描全部源码/归档。
+2. **先读码，后定位**：三段用于判断大致主题；需要精确条款时从入口直达根，再用完整子号/锚点定位。跨文档、聊天交接和审核结论使用完整码＋中文标题＋链接；上下文唯一的同根正文可短写。稳定引用需要锚点时只在被引用的定义处加，不全库生成锚点。
+3. **身份稳定**：目录、负责人、状态、轮次变化不改码。范围实质改变到另一个主题时分配新码，旧入口标明取代/拆分并链接新定义，不能让旧码悄悄变义；小范围调整保留码并更新正文。语义段提示主责与主要合同，不是精确文件白名单，也不代表实施授权。
+4. **归档不失联**：归档时更新既有入口的目标路径并保留原码；不把 Git 考古当日常定位入口。历史局部号仅作有来源的别名，不再赋予新含义；活跃显示迁移与机器兼容键分开，工具仍消费的字段保留原键并映射，不为文档改号改写工具判据。历史归档与旧门禁记录不批量重命名。ADR 等既有身份保留，新增引用说明对象类型，不重新分配一套同义号。
+5. **避免重复权威**：同一规范只定义一次，其余以完整码链接或明确为派生检查项；编号相似不证明语义相同，编号不同也不授权重复定义。只有歧义妨碍当前追溯/验收时才要求本批消歧，不以旧格式存在为理由阻断无关业务批次。
 
 ## 画图
 
@@ -49,29 +102,36 @@
   两者不互相抄。
 - **一个结构只有一处权威图**，其他文档链接它（沿用历史 `routes.md` "核心维护图唯一强制更新"的做法）。
 
+<a id="documentation-bilingual"></a>
+
 ## 双语
 
 `README.md` / `README_ZH.md` 与 `docs/profile/**` 的 `_ZH` 必须同批次修改，不允许单边漂移。
 `docs/development/**` 用中文；代码注释与提交信息用英文。
 
+<a id="documentation-templates"></a>
+
 ## 模板
 
 **计划（L 级改动必须）**
 
+沿用下列八节；“目标与约束/进度”内区分本批承诺、后续需求和待裁定，具体依 [design-review-principles.md](design-review-principles.md) 的滚动细化与阶段规则。不新增独立需求台账，不改写已有专用任务清单。后续需求仅保留来源/目标、未知、owner 与重访触发，逐文件清单和详细验证矩阵只细化当前准备实施的批次；既有本批承诺移出仍须批准。
+
 涉及 Kotlin/JNI/Native 跨层契约、资源 owner 或 Native transaction 时，可在下列通用八节内按需套用
-[`kotlin-jni-native-architecture-template.md`](kotlin-jni-native-architecture-template.md) 的问题清单。该文件是专用附录，
+[E-DOC-RULE-001/跨端附录：架构问题清单](kotlin-jni-native-architecture-template.md#cross-platform-appendix) 的问题清单。该文件是专用附录，
 不得取代本节、另定计划目录或无条件引入 handle/common/Flow 等结构。
 
 ```markdown
-# <主题> 计划（<YYYY-MM-DD>）
+# <根代号>：<中文主题> 计划（<YYYY-MM-DD>）
+> 代号解释与定义入口：沿用工程代号规范；既有计划保留原题名，仅补头部声明。
 ## 现状与基线        # 分支、commit、当前行为、已知问题
-## 目标与约束        # 非目标明确列出
+## 目标与约束        # 用户结果/批准职责/本批缺口；承诺、后续、待裁定；引用最新有效裁定
 ## 改动清单          # 逐文件：文件 → 改动 → 理由
 ## 数据流/控制流差异  # 新旧对照；不变量说明
 ## 兼容性与失败恢复  # 源码恢复只引用 Git/Time Machine，不准备 rollback artifact/fixture
-## 验证矩阵          # 每批次的命令与预期结果
+## 验证矩阵          # 本批行为/前提→方法/预期→对应成功层级；保留暂缓项及原恢复触发
 ## 明确保留          # 不动的部分及理由
-## 进度              # [ ]/[x] 逐项，完成即更新
+## 进度              # [ ]/[x] 跟踪交付；关闭凭对应证据，不凭已改源码或已做检查
 ```
 
 **门禁记录（真机验证必须）**
@@ -85,8 +145,10 @@
 ## 变更说明     # 本次验证针对的行为差异
 ```
 
-编号前缀沿用 S/CPP/U01/NS*/PROFILE-*；**失败与通过同等归档**。失败记录写清影响（panic/重启/时长）、
+历史门禁编号保留 S/CPP/U01/NS*/PROFILE-*；新增记录附所属完整根代号和验收主题，不为规范化重编号历史；**失败与通过同等归档**。失败记录写清影响（panic/重启/时长）、
 根因与行动项，不追责——按事后剖析（postmortem）的字段写。
+
+<a id="documentation-process"></a>
 
 ## 流程
 
@@ -104,6 +166,18 @@
 - [ ] 删除/归档已反映到 `AGENTS.md`
 
 ---
+
+### 本轮查阅的公开实践及采用边界（2026-11-05）
+
+| 来源 | 本项目采用什么 | 不额外引入什么 |
+|---|---|---|
+| [NASA WBS / Dictionary 术语](https://www.nasa.gov/ocfo/ppc-corner/ppc-glossary/)与[需求检查表](https://www.nasa.gov/reference/appendix-c-how-to-write-a-good-requirement/) | 按职责/成果分解、词典解释范围、唯一引用和追溯 | 不照搬航天项目管理规模；四段语法为项目自定 |
+| [Jira 工作项 key](https://support.atlassian.com/jira-service-management-cloud/docs/work-with-requests-and-issues-in-jira-cloud-products/)与[修改 key 的影响](https://confluence.atlassian.com/adminjiraserver105/editing-a-project-key-1561363653.html) | 有意义的前缀＋序号；变更身份保留旧引用入口 | 不部署 Jira、不建数据库或内部 ID 双层系统 |
+| [Google 审核标准](https://google.github.io/eng-practices/review/reviewer/standard.html)与[审核内容](https://google.github.io/eng-practices/review/reviewer/looking-for.html) | 事实优于偏好、非关键建议不阻断、避免投机性通用化；测试也要控制复杂度 | 不把实现评审要求搬成设计前必须已有全部测试；增量复审/token 规则是项目裁剪，不声称原文规定 |
+| [Google 小变更](https://google.github.io/eng-practices/review/developer/small-cls.html) | 一批解决一个完整问题及必要测试闭包 | 不设置文档长度配额，不借并行做法越过项目阶段门 |
+| [Scrum Guide 2020](https://scrumguides.org/scrum-guide.html#product-backlog)与[Agile 原则](https://agilemanifesto.org/principles.html) | 需求持续细化、选定工作与需求集合分开、减少无价值工作 | 不导入整套 Scrum 角色/会议，不省略安全/真机证据，不自称实施完整 Scrum |
+
+禁止冗余副本/回滚演练是 AGENTS 中的项目裁定，不伪称以上资料普遍禁止备份或回滚。滚动细化、阶段相关阻断和增量复审继续以 [design-review-principles.md](design-review-principles.md) 为唯一权威，不在此重复流程。
 
 来源：Google Developer Documentation Style Guide、Diátaxis、OASIS DITA（信息类型）、
 Carroll Minimalism、UML（OMG / ISO/IEC 19505）、ISO/IEC/IEEE 42010 / 15289 / 2651x、

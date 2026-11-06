@@ -46,9 +46,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <!-- B2a：通用 Flow 宿主（独立进程；每次 run 新进程由 launcher/stopWithTask 保证）。 -->
+        <!-- Typed one-shot RunHost; App and Shizuku share the same AIDL business schema. -->
         <service
-            android:name="com.ghostlock.app.backend.host.FlowHostService"
+            android:name="com.ghostlock.app.backend.transport.RunHostService"
             android:process=":flowhost"
             android:exported="false"
             android:stopWithTask="false" />

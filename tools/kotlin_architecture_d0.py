@@ -26,12 +26,33 @@ import time
 from typing import Iterable, Sequence
 
 
-D7_ARCHITECTURE_RULES = (
+ARCHITECTURE_RULES = (
     "ui-implementation-dependency",
     "data-backend-concrete-implementation",
     "core-concrete-backend-implementation",
     "backend-data-cve-reverse-dependency",
+    "backend-declaration-concrete-implementation",
+    "backend-product-script-authority",
+    "runtime-reflection",
+    "superseded-run-log-topology",
+    "runhost-client-log-sink-owner",
+    "old-aidl-transaction",
+    "manual-jni-object-marshalling",
 )
+
+REFLECTION_FORBIDDEN_PREFIXES = (
+    "app/src/main/kotlin/com/ghostlock/app/backend/",
+    "app/src/main/kotlin/com/ghostlock/app/core/flow/",
+    "app/src/main/kotlin/com/ghostlock/app/core/run/",
+    "app/src/main/kotlin/com/ghostlock/app/data/backend/",
+    "app/src/main/kotlin/com/ghostlock/app/data/run/",
+    "app/src/main/kotlin/com/ghostlock/app/domain/backend/",
+    "app/src/main/kotlin/com/ghostlock/app/domain/run/",
+    "app/src/main/kotlin/com/ghostlock/app/shizuku/",
+)
+REFLECTION_FORBIDDEN_FILES = {
+    "app/src/main/kotlin/com/ghostlock/app/AppContainer.kt",
+}
 
 
 TSV_NAMES = (
@@ -148,48 +169,34 @@ DELETE_KOTLIN = {
 DELETE_AIDL = "app/src/main/aidl/com/ghostlock/app/ui/IKsuInterface.aidl"
 
 KEEP_KOTLIN = {
-    "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43284glued/Flow43284GluedEntry.kt",
-    "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499glued/Flow43499GluedEntry.kt",
-    "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/finish/FinishAcceptance.kt",
-    "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/finish/FinishExecutionEvidence.kt",
-    "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/flow/Flow43499Impl.kt",
-    "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/flow/Flow43499RunSpec.kt",
-    "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/owned/KernelsuGuard.kt",
-    "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/w3/Cve43499W3HardGate.kt",
-    "app/src/main/kotlin/com/ghostlock/app/core/finish/FinishConfig.kt",
-    "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/request/Cve43499RequestFactory.kt",
-    "app/src/main/kotlin/com/ghostlock/app/core/payload/PayloadEffects.kt",
-    "app/src/main/kotlin/com/ghostlock/app/core/payload/PayloadRequests.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/rootscript/PayloadScriptRenderer.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/rootscript/PayloadVerifier.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/rootscript/PublishedArtifactIdentity.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptArtifact.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptRenderer.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptResult.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptResultCodec.kt",
     "app/src/main/kotlin/com/ghostlock/app/data/diagnostics/AndroidDiagnosticReportBuilder.kt",
-    "app/src/main/kotlin/com/ghostlock/app/domain/finish/FinishEditor.kt",
-    "app/src/main/kotlin/com/ghostlock/app/backend/declarations/BackendParameterSchema.kt",
-    "app/src/main/kotlin/com/ghostlock/app/ui/screen/module/backends/FinishUi.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/run/RootManagerArtifactResolver.kt",
+    "app/src/main/kotlin/com/ghostlock/app/domain/payload/PayloadEditor.kt",
+    "app/src/main/kotlin/com/ghostlock/app/domain/payload/PayloadDefinition.kt",
+    "app/src/main/kotlin/com/ghostlock/app/ui/screen/module/payload/PayloadUi.kt",
 }
 
 KEEP_TESTS = {
-    "app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/KotlinHygieneTest.kt",
-    "app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/finish/FinishEnforceRestoreTest.kt",
-    "app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/flow/Cve43499WriteChainFlowTest.kt",
-    "app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/owned/KernelsuGuardTest.kt",
-    "app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/w3/Cve43499W3HardGateTest.kt",
-    "app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/FinishScript43284Test.kt",
-    "app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/PayloadEffectsTest.kt",
-    "app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/PayloadRequestsTest.kt",
-    "app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/ScriptRenderTest.kt",
-    "app/src/androidTest/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/JniVictimMechanismProbeTest.kt",
-    "app/src/androidTest/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/MondrianConfigProbeTest.kt",
-    "app/src/androidTest/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/W1OnlyProbeTest.kt",
-    "app/src/androidTest/kotlin/com/ghostlock/app/backend/core/Real43499GateTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/rootscript/PayloadScriptRendererTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/rootscript/PayloadVerifierTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/rootscript/PublishedArtifactIdentityTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/rootscript/RootScriptRendererTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/rootscript/RootScriptResultCodecTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/run/RootManagerArtifactResolverTest.kt",
 }
 
 KEEP_NATIVE = {
     "app/src/main/assets/kernel_profiles/6.6.30-android15-8-g24ffe62b0a0e-abogki387229724-4k.conf",
-    "app/src/main/cpp/backends/43284/bootstrap.c",
-    "app/src/main/cpp/backends/43284/exp.c",
     "app/src/main/cpp/backends/43284glued/SOURCE-MANIFEST.json",
     "app/src/main/cpp/backends/43284glued/bootstrap.c",
     "app/src/main/cpp/backends/43284glued/exp.c",
-    "app/src/main/cpp/backends/43499/core/api.h",
     "app/src/main/cpp/backends/43499glued/attack/ops.cpp",
     "app/src/main/cpp/backends/43499glued/main.cpp",
     "app/src/main/cpp/backends/43499glued/route/frontend_contract.hpp",
@@ -214,6 +221,9 @@ KEEP_NATIVE = {
 }
 
 ADD_TARGETS = {
+    "app/src/main/kotlin/com/ghostlock/app/data/run/AndroidRunLogSinkFactory.kt": "R4B",
+    "app/src/main/kotlin/com/ghostlock/app/domain/run/RunLogDocumentFormatter.kt": "R4A",
+    "app/src/main/kotlin/com/ghostlock/app/domain/run/RunLogSink.kt": "R4B",
     "app/src/main/kotlin/com/ghostlock/app/domain/settings/UiPreferences.kt": "D1a",
     "app/src/main/kotlin/com/ghostlock/app/domain/settings/UiPreferencesPort.kt": "D1a",
     "app/src/main/kotlin/com/ghostlock/app/domain/settings/ObserveUiPreferencesUseCase.kt": "D1a",
@@ -296,8 +306,6 @@ ADD_TARGETS = {
     "app/src/main/kotlin/com/ghostlock/app/ui/backend/BackendToggleConfigCard.kt": "D7.2",
     "app/src/main/kotlin/com/ghostlock/app/ui/backend/BackendChoiceDocumentConfigCard.kt": "D7.2",
     "app/src/main/kotlin/com/ghostlock/app/ui/backend/BackendDocumentConfigCard.kt": "D7.2",
-    "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/config/Cve43499DebugConfig.kt": "D7.3",
-    "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/request/Cve43499RequestFactory.kt": "D7.4",
     "app/src/main/kotlin/com/ghostlock/app/ui/backend/BackendConfigRenderer.kt": "D6",
     "app/src/main/kotlin/com/ghostlock/app/ui/backend/BackendStatusTone.kt": "D4a",
     "app/src/main/kotlin/com/ghostlock/app/ui/kit/ConfigItem.kt": "D6",
@@ -307,7 +315,64 @@ ADD_TARGETS = {
     "app/src/main/kotlin/com/ghostlock/app/ui/screen/module/backends/FinishSettingsUiState.kt": "D4f",
     "app/src/main/kotlin/com/ghostlock/app/ui/viewmodel/FinishEditorViewModel.kt": "D4f",
     "app/src/main/kotlin/com/ghostlock/app/ui/viewmodel/FinishSettingsViewModel.kt": "D4f",
+    "app/src/main/aidl/com/ghostlock/app/run/FinishItemParcel.aidl": "R3",
+    "app/src/main/aidl/com/ghostlock/app/run/IRunHost.aidl": "R3",
+    "app/src/main/aidl/com/ghostlock/app/run/IRunHostCallback.aidl": "R3",
+    "app/src/main/aidl/com/ghostlock/app/run/ItemResultParcel.aidl": "R3",
+    "app/src/main/aidl/com/ghostlock/app/run/PayloadItemParcel.aidl": "R3",
+    "app/src/main/aidl/com/ghostlock/app/run/RunHostLogRecord.aidl": "R4C",
+    "app/src/main/aidl/com/ghostlock/app/run/RunHostRequest.aidl": "R3",
+    "app/src/main/aidl/com/ghostlock/app/run/RunHostSnapshot.aidl": "R3",
+    "app/src/main/aidl/com/ghostlock/app/run/RunHostSnapshotReply.aidl": "R3",
+    "app/src/main/aidl/com/ghostlock/app/run/RunInputArtifactParcel.aidl": "R3",
+    "app/src/main/aidl/com/ghostlock/app/run/StageResultParcel.aidl": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/backend/declarations/BackendPlugin.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/backend/registry/BackendRegistry.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/backend/transport/AppRunHostClient.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/backend/transport/BackendProcessCarrier.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostLogCursor.kt": "R4C",
+    "app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostExecutionDomainVerifier.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostParcelBudget.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostProtocol.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostRequest.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostService.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostSnapshot.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostSnapshotPoller.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostSnapshotReply.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/backend/transport/ShizukuRunHostClient.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/core/flow/BackendFlowInput.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/core/flow/BackendRunFacts.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/core/run/RunCoordinator.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/core/run/RunInputFreezer.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/data/run/AndroidRunWorkspace.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/data/run/RootArtifactStagingAdapter.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/domain/backend/BackendSpec.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/domain/run/FrozenRunInput.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/domain/run/RunLogRecord.kt": "R4C",
+    "app/src/main/kotlin/com/ghostlock/app/domain/run/RunReport.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/backend/declarations/BackendCarrierArtifact.kt": "R5-S1",
+    "app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostProductPipeline.kt": "R5-S1",
+    "app/src/main/kotlin/com/ghostlock/app/core/flow/PublishedFlowArtifact.kt": "R5-S1",
+    "app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptExecutionPlan.kt": "R5-S1",
+    "app/src/main/kotlin/com/ghostlock/app/core/run/FrozenRunInputLease.kt": "R5-S1",
+    "app/src/main/kotlin/com/ghostlock/app/core/flow/RunReportComposer.kt": "R4C",
+    "app/src/main/kotlin/com/ghostlock/app/ui/screen/run/AnsiRunLogText.kt": "R4C",
+    "app/src/test/kotlin/com/ghostlock/app/ui/screen/run/AnsiRunLogTextTest.kt": "R4C",
+    "app/src/main/kotlin/com/ghostlock/app/data/run/PackagedBackendArtifactResolver.kt": "R5-S1",
+    "app/src/main/kotlin/com/ghostlock/app/data/run/RootManagerArtifactResolver.kt": "R5-S1",
 }
+
+AUTOMATIC_LOG_TEST_TARGETS = {
+    "app/src/androidTest/kotlin/com/ghostlock/app/data/run/AndroidRunLogSinkFactoryTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/data/settings/OperationalPreferencesExportContractTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/run/RunCoordinatorLogSinkTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/domain/run/RunLogDocumentFormatterTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/ui/screen/run/AnsiRunLogTextTest.kt",
+}
+
+ADD_TARGETS.update({path: "R4B" for path in AUTOMATIC_LOG_TEST_TARGETS})
+ADD_TARGETS["app/src/androidTest/kotlin/com/ghostlock/app/data/settings/OperationalPreferencesExportContractTest.kt"] = "R4A"
+ADD_TARGETS["app/src/test/kotlin/com/ghostlock/app/domain/run/RunLogDocumentFormatterTest.kt"] = "R4A"
 
 D7_FILE_MOVES = {
     "app/src/main/kotlin/com/ghostlock/app/ui/backend/Backend43284ConfigCard.kt":
@@ -316,15 +381,91 @@ D7_FILE_MOVES = {
         "app/src/main/kotlin/com/ghostlock/app/ui/backend/BackendChoiceDocumentConfigCard.kt",
     "app/src/main/kotlin/com/ghostlock/app/ui/component/backend/CustomLuaConfig.kt":
         "app/src/main/kotlin/com/ghostlock/app/ui/backend/BackendDocumentConfigCard.kt",
-    "app/src/main/kotlin/com/ghostlock/app/data/cve43499/A301SoDebugConfig.kt":
-        "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/config/Cve43499DebugConfig.kt",
-    "app/src/main/kotlin/com/ghostlock/app/core/finish/FinishHandoffAdapter.kt":
-        "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/request/Cve43499RequestFactory.kt",
 }
 
 D7_FILE_DELETES = {
     "app/src/main/kotlin/com/ghostlock/app/core/finish/FinishExecution.kt",
 }
+
+R3_FILE_DELETES = {
+    "app/src/androidTest/kotlin/com/ghostlock/app/backend/backends/cve43284glued/AndroidIpSecRuntimeSmokeTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/backend/core/Flow43284GluedHostSmokeTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/backend/core/Flow43284TimeoutKeepaliveTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/backend/core/Flow43499GluedHostSmokeTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/backend/core/Real43499GateTest.kt",
+    "app/src/main/aidl/com/ghostlock/app/flow/IFlowHost.aidl",
+    "app/src/main/aidl/com/ghostlock/app/flow/IFlowHostCallback.aidl",
+    "app/src/main/aidl/com/ghostlock/app/shizuku/IGhostlockCallback.aidl",
+    "app/src/main/aidl/com/ghostlock/app/shizuku/IGhostlockUserService.aidl",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43284glued/AndroidIpSecRuntime.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43284glued/BackendCve43284Glued.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43284glued/Flow43284GluedEntry.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499glued/BackendCve43499Glued.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499glued/Flow43499GluedEntry.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499glued/Glued43499ExecParams.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499glued/Glued43499ProfileCodec.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/lua/LuaNew.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/lua/LuaReflect.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/declarations/BackendFlowParams.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/declarations/BackendRegistryIdentityFactory.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/declarations/FlowEntryRegistryAssembly.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/declarations/UnfinishedBackend.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/diagnostics/DiagnosticFlowEntries.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/host/FlowEntryParams.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/host/FlowHostProtocol.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/host/HostRunPaths.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/launcher/BackendExecutionState.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/launcher/FlowLaunchParent.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/flow/FlowEntry.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/flow/FlowEntryRegistry.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/flow/FlowHostParams.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/flow/FlowSymbol.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/backend/SharedPreferencesBackendConfigStore.kt",
+    "app/src/main/kotlin/com/ghostlock/app/domain/backend/BackendRegistryIdentity.kt",
+    "app/src/main/kotlin/com/ghostlock/app/domain/backend/BackendRuntimeSpec.kt",
+    "app/src/main/kotlin/com/ghostlock/app/shizuku/ShizukuBackendClient.kt",
+    "app/src/main/kotlin/com/ghostlock/app/shizuku/ShizukuFlowHostClient.kt",
+    "app/src/main/kotlin/com/ghostlock/app/shizuku/host/ShizukuBackendHost.kt",
+    "app/src/test/kotlin/com/ghostlock/app/backend/backends/BackendConfigurationCommitOrderingTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43284glued/IpSecCliArgumentsTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499glued/Glued43499ExecParamsTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499glued/Glued43499ProfileCodecMergeTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/backend/core/FlowEntryParamsTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/backend/declarations/FlowEntryRegistryAssemblyTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/backend/declarations/UnfinishedBackendAnnotationTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/backend/registry/DynamicBackendsTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/flow/FlowEntryRegistryTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/flow/FlowEntryValidationTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/flow/FlowHostParamsTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/flow/FlowSymbolTest.kt",
+}
+
+R4_FILE_DELETES = {
+    "app/src/main/kotlin/com/ghostlock/app/core/SessionPhase.kt",
+    "app/src/main/aidl/com/ghostlock/app/run/RunHostEvent.aidl",
+    "app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostEventCursor.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/flow/FlowProgress.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/run/RunReportComposer.kt",
+    "app/src/main/kotlin/com/ghostlock/app/domain/run/RunEvent.kt",
+    "app/src/main/kotlin/com/ghostlock/app/log/FileSink.kt",
+    "app/src/main/kotlin/com/ghostlock/app/log/LogFile.kt",
+    "app/src/main/kotlin/com/ghostlock/app/log/LogOrigin.kt",
+    "app/src/main/kotlin/com/ghostlock/app/log/log.kt",
+    "app/src/main/kotlin/com/ghostlock/app/log/LogExport.kt",
+}
+
+OLD_AIDL_CONTRACTS = {
+    "IFlowHost": "app/src/main/aidl/com/ghostlock/app/flow/IFlowHost.aidl",
+    "IFlowHostCallback": "app/src/main/aidl/com/ghostlock/app/flow/IFlowHostCallback.aidl",
+    "IGhostlockCallback": "app/src/main/aidl/com/ghostlock/app/shizuku/IGhostlockCallback.aidl",
+    "IGhostlockUserService": "app/src/main/aidl/com/ghostlock/app/shizuku/IGhostlockUserService.aidl",
+}
+
+MANUAL_JNI_EXEMPT_PREFIXES = (
+    "app/src/main/cpp/backends/43284glued/",
+    "app/src/main/cpp/backends/43499glued/",
+    "app/src/main/cpp/backends/98260/",
+)
 
 D7_COMPONENT_SOURCE_PATH = (
     "app/src/main/kotlin/com/ghostlock/app/ui/component/backend/CustomLuaConfig.kt"
@@ -839,8 +980,15 @@ def kotlin_source_paths(repo: Path) -> list[Path]:
     return sorted((repo / "app/src/main/kotlin").rglob("*.kt"))
 
 
+def is_reflection_forbidden_scope(relative_path: str) -> bool:
+    """Return whether one source belongs to the typed backend execution spine."""
+    return relative_path in REFLECTION_FORBIDDEN_FILES or relative_path.startswith(
+        REFLECTION_FORBIDDEN_PREFIXES
+    )
+
+
 def architecture_violations(repo: Path) -> list[str]:
-    """Return forbidden Kotlin package edges with stable source locations."""
+    """Return forbidden Kotlin, AIDL, and native edges with stable source locations."""
     source_prefix = "app/src/main/kotlin/com/ghostlock/app/"
     import_pattern = re.compile(r"(?m)^\s*import\s+([A-Za-z_][A-Za-z0-9_.]*)")
     violations: list[str] = []
@@ -851,12 +999,28 @@ def architecture_violations(repo: Path) -> list[str]:
             continue
         layer = rel.removeprefix(source_prefix).split("/", 1)[0]
         stripped = strip_kotlin(path.read_text(encoding="utf-8"))
+        reflection_forbidden = is_reflection_forbidden_scope(rel)
 
         for match in import_pattern.finditer(stripped):
             imported = match.group(1)
             line = stripped.count("\n", 0, match.start()) + 1
             rule = ""
-            if layer == "domain" and (
+            if reflection_forbidden and imported.startswith(("java.lang.reflect.", "kotlin.reflect.")):
+                rule = "runtime-reflection"
+            elif (
+                rel.startswith(source_prefix + "domain/backend/")
+                or rel.startswith(source_prefix + "backend/declarations/")
+            ) and imported.startswith("com.ghostlock.app.backend.backends."):
+                rule = "backend-declaration-concrete-implementation"
+            elif rel.startswith(source_prefix + "backend/backends/") and imported.startswith(
+                (
+                    "com.ghostlock.app.core.rootscript.",
+                    "com.ghostlock.app.domain.finish.",
+                    "com.ghostlock.app.domain.payload.",
+                )
+            ):
+                rule = "backend-product-script-authority"
+            elif layer == "domain" and (
                 imported.startswith("android.")
                 or imported.startswith("androidx.compose.")
                 or imported.startswith(
@@ -913,11 +1077,129 @@ def architecture_violations(repo: Path) -> list[str]:
                     line = stripped.count("\n", 0, match.start()) + 1
                     violations.append(f"ui-direct-platform-authority|{rel}:{line}|{token}")
 
+        if reflection_forbidden:
+            for token, pattern in (
+                ("Class.forName", re.compile(r"\bClass\s*\.\s*forName\s*\(")),
+                ("getDeclaredMethod", re.compile(r"\.\s*getDeclaredMethod\s*\(")),
+                ("getDeclaredField", re.compile(r"\.\s*getDeclaredField\s*\(")),
+                ("getMethod", re.compile(r"\.\s*getMethod\s*\(")),
+                ("getField", re.compile(r"\.\s*getField\s*\(")),
+            ):
+                for match in pattern.finditer(stripped):
+                    line = stripped.count("\n", 0, match.start()) + 1
+                    violations.append(f"runtime-reflection|{rel}:{line}|{token}")
+
+        for match in re.finditer(
+            r"\b(?:RunLogExportOpening|RunLogExportOpenResult|RunLogExportPort|"
+            r"RunLogExportSession|RunLogExportCompletion|awaitWithin|awaitClosed|"
+            r"RunLogSinkCompletion|awaitCompletion|completionMonitor|completionMonitorJob|"
+            r"completion_monitor|"
+            r"FormatWork|documentSequence|formatDrainActive|lastDequeuedSequence|"
+            r"OPEN_WAIT_MS|TERMINAL_DRAIN_MS)\b",
+            stripped,
+        ):
+            line = stripped.count("\n", 0, match.start()) + 1
+            violations.append(
+                f"superseded-run-log-topology|{rel}:{line}|{match.group(0)}"
+            )
+
+        if rel in {
+            source_prefix + "backend/transport/AppRunHostClient.kt",
+            source_prefix + "backend/transport/ShizukuRunHostClient.kt",
+        }:
+            for match in re.finditer(
+                r"\b(?:RunLogSink|RunLogSinkFactory|AndroidRunLogSinkFactory)\b",
+                stripped,
+            ):
+                line = stripped.count("\n", 0, match.start()) + 1
+                violations.append(
+                    f"runhost-client-log-sink-owner|{rel}:{line}|{match.group(0)}"
+                )
+
+        if rel.startswith(source_prefix + "backend/backends/"):
+            for match in re.finditer(
+                r"\b(?:RootScriptRenderer|PayloadScriptRenderer|RootScriptResultCodec|"
+                r"PayloadDefinition|FinishDefinition|ProcessBuilder)\b",
+                stripped,
+            ):
+                line = stripped.count("\n", 0, match.start()) + 1
+                violations.append(
+                    f"backend-product-script-authority|{rel}:{line}|{match.group(0)}"
+                )
+
+        if rel in {
+            source_prefix + "domain/backend/BackendSpec.kt",
+            source_prefix + "backend/declarations/BackendPlugin.kt",
+        }:
+            for match in re.finditer(
+                r"\b(?:BackendCve\w*|Cve[0-9]\w*|A301\w*|DebugProbe\w*|Glued\w*|CustomLua\w*)\b",
+                stripped,
+            ):
+                line = stripped.count("\n", 0, match.start()) + 1
+                violations.append(
+                    f"backend-declaration-concrete-implementation|{rel}:{line}|{match.group(0)}"
+                )
+
+    old_aidl_pattern = re.compile(
+        r"\b(?:" + "|".join(re.escape(name) for name in OLD_AIDL_CONTRACTS) + r")\b"
+    )
+    kotlin_jni_patterns = (
+        ("external-fun", re.compile(r"\bexternal\s+fun\b")),
+        ("System.load", re.compile(r"\bSystem\s*\.\s*load(?:Library)?\s*\(")),
+    )
+    contract_paths = sorted((repo / "app/src").rglob("*.kt"))
+    contract_paths += sorted((repo / "app/src/main/aidl").rglob("*.aidl"))
+    contract_paths += [
+        repo / "app/src/main/AndroidManifest.xml",
+        repo / "app/proguard-rules.pro",
+        repo / "app/build.gradle.kts",
+    ]
+    for path in contract_paths:
+        if not path.is_file():
+            continue
+        rel = relative(path, repo)
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for match in old_aidl_pattern.finditer(text):
+            line = text.count("\n", 0, match.start()) + 1
+            violations.append(
+                f"old-aidl-transaction|{rel}:{line}|{match.group(0)}"
+            )
+        if path.suffix == ".kt":
+            stripped = strip_kotlin(text)
+            for token, pattern in kotlin_jni_patterns:
+                for match in pattern.finditer(stripped):
+                    line = stripped.count("\n", 0, match.start()) + 1
+                    violations.append(
+                        f"manual-jni-object-marshalling|{rel}:{line}|{token}"
+                    )
+    for name, rel in OLD_AIDL_CONTRACTS.items():
+        if (repo / rel).exists():
+            violations.append(f"old-aidl-transaction|{rel}:1|{name}")
+
+    manual_jni_pattern = re.compile(
+        r"\b(?:JNIEnv|JavaVM|jobject|jclass|jstring|jarray|NewGlobalRef|"
+        r"DeleteGlobalRef|GetObjectClass|Call[A-Za-z]+Method|RegisterNatives|FindClass)\b"
+    )
+    native_root = repo / "app/src/main/cpp"
+    for path in sorted(native_root.rglob("*")):
+        if path.suffix not in {".c", ".cc", ".cpp", ".h", ".hpp"}:
+            continue
+        rel = relative(path, repo)
+        if rel.startswith(MANUAL_JNI_EXEMPT_PREFIXES):
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for match in manual_jni_pattern.finditer(text):
+            line = text.count("\n", 0, match.start()) + 1
+            violations.append(
+                f"manual-jni-object-marshalling|{rel}:{line}|{match.group(0)}"
+            )
+
     return sorted(set(violations))
 
 
 def file_action_rows(repo: Path) -> list[dict[str, object]]:
     paths = kotlin_source_paths(repo)
+    paths += [repo / rel for rel in sorted(AUTOMATIC_LOG_TEST_TARGETS) if (repo / rel).is_file()]
     paths += sorted((repo / "app/src/main/aidl").rglob("*.aidl"))
     paths += sorted((repo / "app/src/main/res").rglob("*.xml"))
     paths += [repo / "app/src/main/AndroidManifest.xml"]
@@ -966,7 +1248,7 @@ def file_action_rows(repo: Path) -> list[dict[str, object]]:
             "target": target,
             "batch": batch,
             "evidence": evidence,
-            "source_sha256": sha256_file(path),
+            "source_state": "PRESENT",
         })
     current_paths = {str(row["path"]) for row in rows}
     for rel in sorted(DELETE_KOTLIN | {DELETE_AIDL}):
@@ -982,20 +1264,7 @@ def file_action_rows(repo: Path) -> list[dict[str, object]]:
                 "D1e" if rel.endswith("ui/BuildConfig.kt") else "D3b"
             ),
             "evidence": "deleted-manager-closure",
-            "source_sha256": "ABSENT",
-        })
-    for rel, batch in sorted(ADD_TARGETS.items()):
-        if rel in current_paths:
-            continue
-        rows.append({
-            "path": rel,
-            "symbol_resource": "file",
-            "current_owner": "ABSENT",
-            "action": "add-approved",
-            "target": rel,
-            "batch": batch,
-            "evidence": "annex-a-exact-target",
-            "source_sha256": "ABSENT",
+            "source_state": "ABSENT",
         })
     for rel, target in sorted(D7_FILE_MOVES.items()):
         if rel in current_paths:
@@ -1008,7 +1277,7 @@ def file_action_rows(repo: Path) -> list[dict[str, object]]:
             "target": target,
             "batch": ADD_TARGETS[target],
             "evidence": "retired-d7-source",
-            "source_sha256": "ABSENT",
+            "source_state": "ABSENT",
         })
     for rel in sorted(D7_FILE_DELETES):
         if rel in current_paths:
@@ -1021,7 +1290,33 @@ def file_action_rows(repo: Path) -> list[dict[str, object]]:
             "target": "ABSENT",
             "batch": "D7.4",
             "evidence": "retired-dead-compatibility-layer",
-            "source_sha256": "ABSENT",
+            "source_state": "ABSENT",
+        })
+    for rel in sorted(R3_FILE_DELETES):
+        if rel in current_paths:
+            continue
+        rows.append({
+            "path": rel,
+            "symbol_resource": "file",
+            "current_owner": "ABSENT",
+            "action": "delete",
+            "target": "ABSENT",
+            "batch": "R3",
+            "evidence": "retired-r3-execution-spine",
+            "source_state": "ABSENT",
+        })
+    for rel in sorted(R4_FILE_DELETES):
+        if rel in current_paths:
+            continue
+        rows.append({
+            "path": rel,
+            "symbol_resource": "file",
+            "current_owner": "ABSENT",
+            "action": "delete",
+            "target": "ABSENT",
+            "batch": "R4",
+            "evidence": "retired-r4-caller-zero-residue",
+            "source_state": "ABSENT",
         })
     return rows
 
@@ -1055,7 +1350,7 @@ def ksu_remove_rows(repo: Path) -> list[dict[str, object]]:
             "target": "ABSENT",
             "batch": "D3a" if rel.endswith("IntentDispatcher.kt") else ("D1e" if rel.endswith("ui/BuildConfig.kt") else "D3b"),
             "evidence": "manager-delete-closure" if exists else "deleted-manager-closure",
-            "literal_sha256": sha256_file(path) if exists else "ABSENT",
+            "identity_state": "PRESENT" if exists else "ABSENT",
         })
     keep_paths = KEEP_KOTLIN | KEEP_NATIVE
     for path in sorted((repo / "app/src/main").rglob("*")):
@@ -1080,7 +1375,7 @@ def ksu_remove_rows(repo: Path) -> list[dict[str, object]]:
                 "target": rel,
                 "batch": "D2" if "/component/" in rel else "D3",
                 "evidence": literal,
-                "literal_sha256": sha256_bytes(literal.encode()),
+                "identity_state": "PRESENT",
             })
     manifest = repo / "app/src/main/AndroidManifest.xml"
     manifest_text = manifest.read_text(encoding="utf-8")
@@ -1095,7 +1390,7 @@ def ksu_remove_rows(repo: Path) -> list[dict[str, object]]:
                 "target": relative(manifest, repo),
                 "batch": "D3e",
                 "evidence": literal,
-                "literal_sha256": sha256_bytes(literal.encode()),
+                "identity_state": "PRESENT",
             })
     return rows
 
@@ -1114,9 +1409,9 @@ def ksu_keep_rows(repo: Path) -> list[dict[str, object]]:
                 "current_owner": owner_for(path, path.read_text(encoding="utf-8", errors="replace")),
                 "action": "KEEP_LITERAL",
                 "target": rel,
-                "batch": "FROZEN-D1-D6",
+                "batch": ADD_TARGETS.get(rel, "FROZEN-D1-D6"),
                 "evidence": literal,
-                "literal_sha256": sha256_bytes(literal.encode()),
+                "identity_state": "PRESENT",
             })
     for rel in sorted(KEEP_NATIVE):
         path = repo / rel
@@ -1124,11 +1419,11 @@ def ksu_keep_rows(repo: Path) -> list[dict[str, object]]:
             "path": rel,
             "symbol_resource": "file",
             "current_owner": "native-or-asset",
-            "action": "KEEP_HASH",
+            "action": "KEEP_PRESENCE",
             "target": rel,
             "batch": "FROZEN-NATIVE",
             "evidence": "native-handoff-loader-evidence",
-            "literal_sha256": sha256_file(path),
+            "identity_state": "PRESENT",
         })
     manifest = repo / "app/src/main/AndroidManifest.xml"
     for package_name in ("me.weishu.kernelsu.pr", "me.weishu.kernelsu"):
@@ -1141,7 +1436,7 @@ def ksu_keep_rows(repo: Path) -> list[dict[str, object]]:
             "target": relative(manifest, repo),
             "batch": "FROZEN-D1-D6",
             "evidence": literal,
-            "literal_sha256": sha256_bytes(literal.encode()),
+            "identity_state": "PRESENT",
         })
     for rel in sorted(KEEP_TESTS):
         path = repo / rel
@@ -1153,7 +1448,7 @@ def ksu_keep_rows(repo: Path) -> list[dict[str, object]]:
             "target": rel,
             "batch": "FROZEN-TEST",
             "evidence": "guard-preflight-handoff-characterization",
-            "literal_sha256": sha256_file(path),
+            "identity_state": "PRESENT",
         })
     return rows
 
@@ -1211,7 +1506,7 @@ def surface_rows() -> list[dict[str, object]]:
 
 
 FILE_ACTION_FIELDS = (
-    "path", "symbol_resource", "current_owner", "action", "target", "batch", "evidence", "source_sha256",
+    "path", "symbol_resource", "current_owner", "action", "target", "batch", "evidence", "source_state",
 )
 COMPONENT_FIELDS = (
     "row_type", "path", "kind", "owner_fqn", "name", "receiver_type", "type_parameter_arity",
@@ -1220,7 +1515,7 @@ COMPONENT_FIELDS = (
     "source_line", "declared_type", "mutability",
 )
 KSU_FIELDS = (
-    "path", "symbol_resource", "current_owner", "action", "target", "batch", "evidence", "literal_sha256",
+    "path", "symbol_resource", "current_owner", "action", "target", "batch", "evidence", "identity_state",
 )
 SURFACE_FIELDS = (
     "member_id", "group", "surface", "state", "mode", "theme", "layout", "action", "screenshot",
@@ -1263,15 +1558,15 @@ def verify_inventory(repo: Path, fixtures: Path, section: str = "all") -> dict[s
         if violations:
             rule_counts = {
                 rule: sum(item.startswith(rule + "|") for item in violations)
-                for rule in D7_ARCHITECTURE_RULES
+                for rule in ARCHITECTURE_RULES
             }
             summary = " ".join(
                 rule.upper().replace("-", "_") + "=" + str(rule_counts[rule])
-                for rule in D7_ARCHITECTURE_RULES
+                for rule in ARCHITECTURE_RULES
             )
             raise ValueError("architecture violations " + summary + ":\n" + "\n".join(violations))
         result["ARCH_VIOLATIONS"] = 0
-        for rule in D7_ARCHITECTURE_RULES:
+        for rule in ARCHITECTURE_RULES:
             result[rule.upper().replace("-", "_")] = 0
     if section in {"all", "inventory"}:
         rows = read_tsv(fixtures / "kotlin-file-actions-v1.tsv")
@@ -1279,7 +1574,7 @@ def verify_inventory(repo: Path, fixtures: Path, section: str = "all") -> dict[s
         if len(keys) != len(set(keys)):
             raise ValueError("duplicate file-action path")
         current = {relative(path, repo) for path in kotlin_source_paths(repo)}
-        covered = {row["path"] for row in rows if row["source_sha256"] != "ABSENT" and row["path"].endswith(".kt")}
+        covered = {row["path"] for row in rows if row["source_state"] == "PRESENT" and row["path"].endswith(".kt")}
         unclassified = current - covered
         if unclassified:
             raise ValueError("unclassified Kotlin: " + ",".join(sorted(unclassified)))
@@ -1289,11 +1584,11 @@ def verify_inventory(repo: Path, fixtures: Path, section: str = "all") -> dict[s
             target_row = by_path.get(target)
             if (repo / source).exists():
                 raise ValueError("stale D7 move source: " + source)
-            if source_row is None or source_row.get("source_sha256") != "ABSENT":
+            if source_row is None or source_row.get("source_state") != "ABSENT":
                 raise ValueError("missing retired D7 source row: " + source)
             if source_row.get("action") != "move-source-1to1" or source_row.get("target") != target:
                 raise ValueError("invalid D7 source mapping: " + source)
-            if target_row is None or target_row.get("source_sha256") == "ABSENT":
+            if target_row is None or target_row.get("source_state") != "PRESENT":
                 raise ValueError("missing D7 move target: " + target)
             if target_row.get("action") != "move-target-1to1":
                 raise ValueError("invalid D7 target action: " + target)
@@ -1303,11 +1598,35 @@ def verify_inventory(repo: Path, fixtures: Path, section: str = "all") -> dict[s
                 raise ValueError("stale D7 deleted source: " + deleted)
             if (
                 deleted_row is None
-                or deleted_row.get("source_sha256") != "ABSENT"
+                or deleted_row.get("source_state") != "ABSENT"
                 or deleted_row.get("action") != "delete"
                 or deleted_row.get("target") != "ABSENT"
             ):
                 raise ValueError("invalid D7 delete row: " + deleted)
+        for deleted in R3_FILE_DELETES:
+            deleted_row = by_path.get(deleted)
+            if (repo / deleted).exists():
+                raise ValueError("stale R3 execution-spine source: " + deleted)
+            if (
+                deleted_row is None
+                or deleted_row.get("source_state") != "ABSENT"
+                or deleted_row.get("action") != "delete"
+                or deleted_row.get("target") != "ABSENT"
+                or deleted_row.get("batch") != "R3"
+            ):
+                raise ValueError("invalid R3 delete row: " + deleted)
+        for deleted in R4_FILE_DELETES:
+            deleted_row = by_path.get(deleted)
+            if (repo / deleted).exists():
+                raise ValueError("stale R4 residue: " + deleted)
+            if (
+                deleted_row is None
+                or deleted_row.get("source_state") != "ABSENT"
+                or deleted_row.get("action") != "delete"
+                or deleted_row.get("target") != "ABSENT"
+                or deleted_row.get("batch") != "R4"
+            ):
+                raise ValueError("invalid R4 delete row: " + deleted)
         result["UNCLASSIFIED"] = 0
         result["FILE_ACTION_ROWS"] = len(rows)
     if section in {"all", "component"}:

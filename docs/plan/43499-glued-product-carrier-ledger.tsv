@@ -1,0 +1,92 @@
+# SUPERSEDED 2026-11-05: the user cancelled R5-S2/S3 carrier integration and ordered every real-attack backend disconnected; rows below are historical design inventory and MUST NOT be implemented.
+# R5-S1 neutral common source already present remains unconnected; all runtime gates remain NOT_RUN and no backend is Ready/selectable/supported.
+# path	action	target	batch	scope	reason
+app/src/main/kotlin/com/ghostlock/app/backend/declarations/BackendCarrierArtifact.kt	ADD	-	R5-S1	internal-carrier-declaration	declare fixed logical id packaged filename and executable kind without Context or absolute path
+app/src/main/kotlin/com/ghostlock/app/core/flow/PublishedFlowArtifact.kt	ADD	-	R5-S1	neutral-staged-artifact	carry host-local path and staged-object identity to Flow
+app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptExecutionPlan.kt	ADD	-	R5-S1	normalized-render-plan	make validated kind argv acceptance required severity and alwaysRun the renderer decoder and composer shared sole frozen input without domain reconstruction
+app/src/main/kotlin/com/ghostlock/app/core/run/FrozenRunInputLease.kt	ADD	-	R5-S1	opened-source-ownership	own master PFDs opaque tokens duplicate transfer and app-private source cleanup
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostProductPipeline.kt	ADD	-	R5-S1	shared-product-pipeline	centralize normalized plan publish Flow GLR1 decode and snapshot composition for App and Shizuku
+app/src/main/kotlin/com/ghostlock/app/core/run/RunReportComposer.kt	ADD	-	R5-S1	typed-product-composition	map backend facts plus GLR1 to six-layer aggregates and parent-wire terminal priority
+app/src/main/kotlin/com/ghostlock/app/data/run/PackagedBackendArtifactResolver.kt	ADD	-	R5-S1	packaged-carrier-master-pfd	resolve plugin declaration and open one nofollow carrier object for the source lease
+app/src/main/kotlin/com/ghostlock/app/data/run/RootManagerArtifactResolver.kt	ADD	-	R5-S1	manager-master-pfd-and-argv	resolve installed manager executable PFD and freeze exact KMI and safe-mode argv
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499glued/BackendCve43499Glued.kt	ADD	-	R5-S3	neutral-disabled-plugin	declare disabled APP-domain PRODUCT_ROOT plugin and fail-closed profile/device readiness
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499glued/Cve43499GluedFlow.kt	ADD	-	R5-S3	process-carrier-flow	launch staged ET_EXEC with pinned profile/script identity args and return carrier facts only
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499glued/Cve43499CarrierExit.kt	ADD	-	R5-S3	carrier-exit-contract	own exact Kotlin mapping for exit 0 20-25 noncanonical Java exit and collector-incomplete observations
+app/src/main/kotlin/com/ghostlock/app/AppContainer.kt	MODIFY	-	R5-S1	resolver-composition	inject immutable plugin lookup packaged resolver manager resolver and opened source lease owner
+app/src/main/kotlin/com/ghostlock/app/backend/declarations/BackendPlugin.kt	MODIFY	-	R5-S1	carrier-declaration-slot	add optional internal BackendCarrierArtifact only
+app/src/main/kotlin/com/ghostlock/app/backend/registry/BackendRegistry.kt	MODIFY	-	R5-S3	disabled-membership	register 43499-Glued disabled and preserve unique key and plugin lookup authority
+app/src/main/kotlin/com/ghostlock/app/core/flow/BackendFlowInput.kt	MODIFY	-	R5-S1	published-artifact-catalog	add default-empty artifact map and default-null persistent state directory while 43499 requires both
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostService.kt	MODIFY	-	R5-S1	app-product-host	replace PRODUCT_ROOT stub with shared pipeline while registry domain and readiness remain authoritative
+app/src/main/kotlin/com/ghostlock/app/shizuku/GhostlockUserService.kt	MODIFY	-	R5-S1	shizuku-product-host	use the same pipeline and reject APP-only 43499 at the domain gate
+app/src/main/kotlin/com/ghostlock/app/data/backend/BackendRunSessionAdapter.kt	MODIFY	-	R5-S1	lease-to-wire	map manager to mandatory executable artifact and actual argv then duplicate lease PFDs without pathname reopen
+app/src/main/kotlin/com/ghostlock/app/data/run/AndroidRunWorkspace.kt	MODIFY	-	R5-S1	carrier-workspace	add run executable subdirectory and stable 0700 per-backend state directory used by GHOSTLOCK_HOME
+app/src/main/kotlin/com/ghostlock/app/data/run/RootArtifactStagingAdapter.kt	MODIFY	-	R5-S1	kind-mode-and-catalog	publish executable as 0500 and other inputs as 0400 with staged identity
+app/src/main/kotlin/com/ghostlock/app/backend/transport/BackendProcessCarrier.kt	MODIFY	-	R5-S3	never-kill-and-bounded-collectors	add typed termination policy and bounded stream close join without product inference
+app/src/main/kotlin/com/ghostlock/app/core/run/RunInputFreezer.kt	MODIFY	-	R5-S1	opened-object-freeze	return FrozenRunInputLease and resolve profile carrier and manager from one opened object each
+app/src/main/kotlin/com/ghostlock/app/domain/run/FrozenRunInput.kt	MODIFY	-	R5-S1	opaque-source-token	reaffirm token is not a path and preserve neutral immutable artifact metadata
+app/src/main/kotlin/com/ghostlock/app/core/rootscript/PayloadScriptRenderer.kt	MODIFY	-	R5-S1	normalized-direct-argv	render only plan-provided staged path and exact argv and delete manager directory search fallback
+app/src/main/kotlin/com/ghostlock/app/core/rootscript/PayloadVerifier.kt	MODIFY	-	R5-S1	normalized-acceptance	render acceptance from the plan contract without manager catalog lookup
+app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptRenderer.kt	MODIFY	-	R5-S1	single-plan-authority	consume RootScriptExecutionPlan for production and preview while retaining sole GLR1 renderer authority
+app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptResultCodec.kt	MODIFY	-	R5-S1	single-plan-decode-authority	decode identity order fail-fast alwaysRun and durable handoff directly from the same RootScriptExecutionPlan without copied expectation DTOs
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499glued/Cve43499GluedFlowTest.kt	ADD	-	R5-S3	carrier-fact-mapping	lock exact exit observations and forbid stdout success inference
+app/src/test/kotlin/com/ghostlock/app/backend/transport/RunHostProductPipelineTest.kt	ADD	-	R5-S1	product-pipeline-matrix	lock plan publish decode identity malformed synthetic-not-run and six-layer terminal composition
+app/src/test/kotlin/com/ghostlock/app/core/run/FrozenRunInputLeaseTest.kt	ADD	-	R5-S1	opened-object-lease	lock same opened inode after pathname replacement partial failure close and owned-file cleanup
+app/src/test/kotlin/com/ghostlock/app/data/run/PackagedBackendArtifactResolverTest.kt	ADD	-	R5-S1	carrier-source-resolution	lock declaration-only lookup nofollow ordinary-file and no-delete behavior
+app/src/test/kotlin/com/ghostlock/app/data/run/RootManagerArtifactResolverTest.kt	ADD	-	R5-S1	manager-source-resolution	lock package priority mandatory binary exact KMI safe mode and launchOnly rejection
+app/src/test/kotlin/com/ghostlock/app/data/backend/BackendRunSessionAdapterTest.kt	ADD	-	R5-S1	wire-assembly-ownership	lock mandatory manager artifact actual argv PFD duplicate and close lifecycle
+app/src/test/kotlin/com/ghostlock/app/backend/registry/BackendRegistryTest.kt	MODIFY	-	R5-S3	disabled-43499-membership	lock unique disabled product declaration without selectable support claim
+app/src/test/kotlin/com/ghostlock/app/backend/transport/BackendProcessCarrierTest.kt	MODIFY	-	R5-S3	termination-and-collector-contract	lock never-kill no-timeout bounded collector close and incomplete disposition
+app/src/test/kotlin/com/ghostlock/app/core/rootscript/PayloadScriptRendererTest.kt	MODIFY	-	R5-S1	normalized-render-contract	delete search fallback expectations and lock exact staged argv
+app/src/test/kotlin/com/ghostlock/app/core/rootscript/PayloadVerifierTest.kt	MODIFY	-	R5-S1	normalized-acceptance-contract	lock acceptance without manager catalog or stdout parsing
+app/src/test/kotlin/com/ghostlock/app/core/rootscript/RootScriptRendererTest.kt	MODIFY	-	R5-S1	single-plan-render-tests	map tests and preview to RootScriptExecutionPlan and lock GLR1 order
+app/src/test/kotlin/com/ghostlock/app/core/rootscript/RootScriptResultCodecTest.kt	MODIFY	-	R5-S1	single-plan-codec-tests	lock mixed normalized kinds TAKEOVER_ACK argv token preservation fail-fast alwaysRun reboot and direct same-plan decode
+app/build.gradle.kts	MODIFY	-	R5-S3	r5-unit-test-inventory-count	update only the exact four-bucket XML total after final R5 source test inventory
+app/src/main/cpp/backends/43499glued/session/root_context_prepare.hpp	ADD	-	R5-S2	backend-root-context-contract	declare exact policy prepare enforce restore iomem cache and failure enums
+app/src/main/cpp/backends/43499glued/session/root_context_prepare.cpp	ADD	-	R5-S2	backend-root-context-implementation	implement D6 header byte23 retries direct load_policy proof restore and cleanup
+app/src/main/cpp/backends/43499glued/session/root_script_dispatch.hpp	ADD	-	R5-S2	root-worker-wire	declare pinned identities 32-byte RootWorkerResultV1 report reader writer and stable carrier exits
+app/src/main/cpp/backends/43499glued/session/root_script_dispatch.cpp	ADD	-	R5-S2	root-worker-lifecycle	implement exact-fd shell exec stdio redirects report deadline validation and outcome mapping
+app/src/main/cpp/backends/43499glued/CMakeLists.txt	MODIFY	-	R5-S2	native-source-closure	add root context and dispatch units and remove handoff probe unit
+app/src/main/cpp/backends/43499glued/main.cpp	MODIFY	-	R5-S2	unique-argv-and-exit	parse only required file identity options pin objects remove old flags and emit stable carrier exits
+app/src/main/cpp/backends/43499glued/attack/ops.cpp	MODIFY	-	R5-S2	remove-product-generator	delete write_root_script implementation only and retain attack operations
+app/src/main/cpp/backends/43499glued/attack/ops.hpp	MODIFY	-	R5-S2	remove-product-generator-declaration	delete write_root_script declaration only
+app/src/main/cpp/backends/43499glued/route/backend_contract.hpp	MODIFY	-	R5-S2	remove-retired-runtime-args	remove debug-dir and force-attack parameters from backend execution contract
+app/src/main/cpp/backends/43499glued/route/frontend_contract.hpp	MODIFY	-	R5-S2	root-worker-boundary	replace handoff-probe ownership text with exact script dispatch and report ownership
+app/src/main/cpp/backends/43499glued/route/orchestrator.hpp	MODIFY	-	R5-S2	remove-retired-runtime-args	propagate the reduced backend execution signature only
+app/src/main/cpp/backends/43499glued/route/pipeline.hpp	MODIFY	-	R5-S2	detailed-run-result	remove retired args and expose prestart primitive dispatch cleanup outcome needed by main
+app/src/main/cpp/backends/43499glued/session/backend/cve_2026_43499_backend.cpp	MODIFY	-	R5-S2	setup-generator-and-flag-removal	remove generator debug force args and preserve W1 W2 W3 PI waiter route algorithm bodies
+app/src/main/cpp/backends/43499glued/session/backend/cve_2026_43499_backend.hpp	MODIFY	-	R5-S2	backend-signature-closure	remove debug-dir and force-attack declarations and document already-rooted fail-closed behavior
+app/src/main/cpp/backends/43499glued/session/exploit_session.hpp	MODIFY	-	R5-S2	pinned-script-owner	own pinned script fd expected identity report outcome and lifecycle state
+app/src/main/cpp/backends/43499glued/session/exploit_session.cpp	MODIFY	-	R5-S2	pinned-state-initialization	initialize only new owned values and remove hardcoded product paths
+app/src/main/cpp/backends/43499glued/session/root_child_frontend.cpp	MODIFY	-	R5-S2	strict-root-handoff	preserve settle G close transfer then exact-read worker report and reject W3 parked pseudo-dispatch
+app/src/main/cpp/backends/43499glued/session/root_child_frontend.hpp	MODIFY	-	R5-S2	strict-root-handoff-contract	document report outcomes stable exits and held-state semantics
+app/src/main/cpp/backends/43499glued/session/runtime_config.cpp	MODIFY	-	R5-S2	remove-product-path-env	stop deriving root script KSU log ksud and debug paths while retaining unrelated home TMPDIR CPU inputs
+app/src/main/cpp/backends/43499glued/session/runtime_config.h	MODIFY	-	R5-S2	remove-product-path-fields	remove root script KSU log ksud and debug state
+app/src/main/cpp/backends/43499glued/session/runtime_paths.h	MODIFY	-	R5-S2	remove-root-script-derivation	delete caller-zero root script helper and preserve unrelated home path rules
+app/src/main/cpp/backends/43499glued/session/victim_process.cpp	MODIFY	-	R5-S2	worker-report-exact-exec-and-park	transfer report writer execute pinned fd redirect descendants and park raw child without collector fds
+app/src/main/cpp/backends/43499glued/session/handoff_probe.cpp	DELETE	-	R5-S2	retired-ksu-probe	product module log and enforcing polling is not backend success authority
+app/src/main/cpp/backends/43499glued/session/handoff_probe.hpp	DELETE	-	R5-S2	retired-ksu-probe-header	remove with the final production and host-stub caller
+app/src/main/cpp/backends/43499glued/tests/handoff_probe_test.cpp	DELETE	-	R5-S2	retired-probe-test	probe contract no longer exists
+app/src/main/cpp/backends/43499glued/tests/host/handoff_stub.cpp	DELETE	-	R5-S2	retired-probe-stub	remove the final stub consumer
+app/src/main/cpp/backends/43499glued/tests/root_script_dispatch_test.cpp	ADD	-	R5-S2	native-dispatch-contract	lock pinned fd exec report wire deadline EOF stdio closure and stable exit mapping
+app/src/main/cpp/backends/43499glued/tests/root_context_prepare_test.cpp	ADD	-	R5-S2	native-policy-contract	lock header byte23 retries timeout sequence temp ownership enforce proof and cleanup
+app/src/main/cpp/backends/43499glued/tests/CMakeLists.txt	MODIFY	-	R5-S2	native-test-closure	remove handoff probe test and register the two R5 source tests
+app/src/main/cpp/backends/43499glued/tests/host/backend_dataflow_test.cpp	MODIFY	-	R5-S2	generator-and-signature-closure	remove retired args and assert detailed worker outcome without generator authority
+app/src/main/cpp/backends/43499glued/tests/host/attack_stub.cpp	MODIFY	-	R5-S2	generator-stub-removal	delete write_root_script stub only
+app/src/main/cpp/backends/43499glued/tests/host/include/attack/ops.hpp	MODIFY	-	R5-S2	generator-declaration-stub-removal	delete write_root_script declaration only
+app/src/main/cpp/backends/43499glued/tests/host/host_attack_script.hpp	MODIFY	-	R5-S2	worker-outcome-fixture	replace handoff_ready with exact primitive dispatch cleanup report script facts
+app/src/main/cpp/backends/43499glued/tests/host/victim_stub.cpp	MODIFY	-	R5-S2	worker-report-stub	return scripted RootWorkerResultV1 without fork or pipes
+app/src/main/cpp/backends/43499glued/tests/runtime_paths_test.cpp	MODIFY	-	R5-S2	root-script-helper-removal	remove obsolete derived product-path assertions
+tools/tests/native-test-disposition.tsv	MODIFY	-	R5-S2	native-test-disposition	remove retired handoff probe row and register R5 source tests
+tools/kotlin_architecture_d0.py	MODIFY	-	R5-S3	authorized-r5-delta	replace frozen candidate exemption with exact common renderer carrier and no-manual-JNI guards
+app/src/test/resources/architecture/kotlin-file-actions-v1.tsv	MODIFY	-	R5-S3	generated-file-action-fixture	regenerate exact Kotlin add modify inventory after the authorized structure change
+app/src/test/resources/architecture/ksu-exec-keep-v1.tsv	MODIFY	-	R5-S3	carrier-source-authority	declare common renderer sole KSU product authority and 43499 policy component backend-private
+docs/development/full-process-uml.md	MODIFY	-	R5-S1	r5-common-host-ipo-class-sequence-state	add opened-object lease normalized plan shared App Shizuku pipeline GLR1 composition and retention diagrams with source-only status
+docs/development/full-process-uml.md	MODIFY	-	R5-S3	r5-backend-specific-ipo-sequence-state	add disabled 43499 process carrier pinned-fd worker report and backend cleanup diagrams
+app/src/main/kotlin/com/ghostlock/app/backend/README.md	MODIFY	-	R5-S3	r5-backend-boundary	document process carrier policy prepare held child and disabled readiness boundary
+docs/development/introduction.md	MODIFY	-	R5-S3	r5-current-tree-summary	replace frozen candidate wording with disabled source state and NOT_RUN gates
+docs/plan/backend-root-execution-unification-plan.md	MODIFY	-	R5-S3	r5-child-pointer	point R5 placeholder to this child and retain parent evidence debt
+docs/plan/backend-root-execution-unification-ledger.tsv	MODIFY	-	R5-S3	r5-child-pointer	replace R5 freeze candidates with pointer only while exact delta remains in child ledger
+docs/plan/MASTER-PLAN.md	MODIFY	-	R5-S3	r5-progress-pointer	project approved child source state profile blocker and gate status
+docs/plan/REMAINING-PLAN.md	MODIFY	-	R5-S3	r5-checkbox-projection	project live R5 delivery checkboxes without duplicating design
+docs/plan/ROADMAP.md	MODIFY	-	R5-S3	r5-roadmap-state	show R5 source progression and profile device blockers
+docs/analysis/architecture-review-log.md	MODIFY	-	R5-D0	r5-design-review-record	record critic snapshots verdict blockers responses and final closure

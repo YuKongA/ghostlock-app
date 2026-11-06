@@ -6,9 +6,9 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import com.ghostlock.app.domain.run.RunBackendUseCase
 import com.ghostlock.app.domain.run.RunCommand
-import com.ghostlock.app.domain.run.RunLogEntry
 import com.ghostlock.app.domain.run.RunLogLevel
 import com.ghostlock.app.domain.run.RunLogOrigin
+import com.ghostlock.app.domain.run.RunLogRecord
 import com.ghostlock.app.domain.run.RunSessionPhase
 import com.ghostlock.app.domain.run.RunSessionState
 import com.ghostlock.app.ui.screen.run.RunTerminalEntry
@@ -149,7 +149,7 @@ private fun RunSessionPhase.toUiPhase(): RunUiPhase = when (this) {
 }
 
 /** @return Renderer row equivalent of one pure domain terminal fact. */
-private fun RunLogEntry.toUiEntry(): RunTerminalEntry = RunTerminalEntry(
+private fun RunLogRecord.toUiEntry(): RunTerminalEntry = RunTerminalEntry(
     origin = when (origin) {
         RunLogOrigin.Kotlin -> RunTerminalOrigin.Kotlin
         RunLogOrigin.Native -> RunTerminalOrigin.Native

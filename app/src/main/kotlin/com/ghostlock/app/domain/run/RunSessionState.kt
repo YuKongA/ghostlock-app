@@ -21,37 +21,6 @@ enum class RunSessionPhase {
     HandoffRequested,
 }
 
-/** Renderer-neutral terminal severity. */
-enum class RunLogLevel {
-    Verbose,
-    Debug,
-    Info,
-    Warn,
-    Error,
-}
-
-/** Renderer-neutral terminal origin. */
-enum class RunLogOrigin {
-    Kotlin,
-    Native,
-    Shell,
-}
-
-/**
- * One immutable terminal fact emitted by the application-scoped session.
- *
- * @property origin Component family that emitted the fact.
- * @property level Severity used by both visual renderers and exported logs.
- * @property message Literal fact body without a presentation prefix.
- * @property elapsedMs Elapsed run time in milliseconds; zero for non-run notices.
- */
-data class RunLogEntry(
-    val origin: RunLogOrigin,
-    val level: RunLogLevel,
-    val message: String,
-    val elapsedMs: Long = 0L,
-)
-
 /**
  * Pure projection of the selected backend and its application-scoped execution session.
  *
@@ -62,6 +31,7 @@ data class RunLogEntry(
  * @property abortable Whether explicit user cancellation may propagate to the launcher.
  * @property warnOnRerun Whether presentation must confirm a repeated run.
  * @property showTimestamp Whether terminal rows include elapsed time.
+ * @property minimumLogLevel Frozen minimum severity applied before every log sink.
  * @property terminalFontPath Validated custom terminal-font path, or null for monospace.
  * @property phase Current session lifecycle.
  * @property entries Immutable terminal facts retained across renderer recreation.
@@ -75,40 +45,35 @@ data class RunSessionState(
     val abortable: Boolean = false,
     val warnOnRerun: Boolean = true,
     val showTimestamp: Boolean = false,
+    val minimumLogLevel: RunLogLevel = RunLogLevel.Info,
     val terminalFontPath: String? = null,
     val phase: RunSessionPhase = RunSessionPhase.Idle,
-    val entries: List<RunLogEntry> = initialRunLogEntries(),
+    val entries: List<RunLogRecord> = initialRunLogRecords(),
+    val report: RunReport? = null,
 )
 
-/** @return The unchanged two-line terminal greeting for a fresh backend selection. */
-fun initialRunLogEntries(): List<RunLogEntry> = listOf(
-    RunLogEntry(RunLogOrigin.Kotlin, RunLogLevel.Info, "ghostlock terminal"),
-    RunLogEntry(RunLogOrigin.Kotlin, RunLogLevel.Info, "waiting for execution"),
-)
+/**
+ * Creates the unchanged two-line terminal greeting under the same minimum-level rule as a run.
+ *
+ * @param minimumLevel Frozen minimum severity.
+ * @return Canonical greeting records visible at [minimumLevel].
+ */
+fun initialRunLogRecords(minimumLevel: RunLogLevel = RunLogLevel.Info): List<RunLogRecord> = listOf(
+    RunLogRecord(RunLogOrigin.Kotlin, RunLogLevel.Info, "ghostlock terminal"),
+    RunLogRecord(RunLogOrigin.Kotlin, RunLogLevel.Info, "waiting for execution"),
+).filter { record -> record.level.wireValue >= minimumLevel.wireValue }
 
-/** Result returned by the existing dispatcher and normalized by the outer adapter. */
+/** Typed result returned by a RunHost client and normalized by the outer data adapter. */
 sealed interface RunExecutionResult {
-    /** The authoritative gate rejected dispatch before launcher ownership began. */
+    /** The authoritative gate rejected dispatch before RunHost ownership began. */
     data class Blocked(val reasons: List<String>) : RunExecutionResult
 
-    /** The launcher or host refused the request with stable diagnostic reasons. */
+    /** A synchronous typed RunHost method rejected the request. */
     data class Refused(val reasons: List<String>) : RunExecutionResult
 
-    /** The host returned a successful terminal result and immutable evidence. */
-    data class Succeeded(val evidence: Map<String, String>) : RunExecutionResult
+    /** The host returned one immutable six-layer report. */
+    data class Completed(val report: RunReport) : RunExecutionResult
 
-    /** The host returned a failed terminal result and immutable evidence. */
-    data class Failed(
-        val reason: String,
-        val evidence: Map<String, String>,
-    ) : RunExecutionResult
-
-    /** The host requested handoff; no later success is inferred. */
-    data object HandoffRequested : RunExecutionResult
-
-    /** Defensive mapping for an unexpected dispatcher idle state. */
-    data object Idle : RunExecutionResult
-
-    /** Defensive mapping for an unexpected dispatcher running state. */
-    data object Running : RunExecutionResult
+    /** Binder death or malformed typed wire produced an explicit unknown terminal. */
+    data class TransportFailure(val reason: String) : RunExecutionResult
 }

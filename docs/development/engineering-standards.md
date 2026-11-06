@@ -1,15 +1,19 @@
 # GhostLock 工程与设计规范（Engineering & Design Standards）
 
+<a id="e-review-rule-002"></a>
+
+> **代号**：E-REVIEW-RULE-002（工程支撑－工程审查与实施－规则）；本文章节号只在此根内解释。 定义入口见[工程代号入口](../plan/MASTER-PLAN.md#work-identifiers)。
+
 > 思想层（为什么/信什么）见 [`design-philosophy.md`](design-philosophy.md)——11 条原则均以软件工程理论
 > （SWEBOK / ISO/IEC/IEEE 12207 / ISO/IEC 25010 / 经典文献 / 工业实践）为依据，本文是做法层（怎么做/门槛）。
 > 适用对象：本仓库的人类开发者与 AI agent。**任何改动开始前必须先读本文并完成第 1 节的设计流程。**
 > 用语按 RFC 2119：**必须**（MUST）/ **应当**（SHOULD）/ **可以**（MAY）。
-> 效力顺序：用户当期要求 > `AGENTS.md` > 本文 > 其他文档。本文与代码不一致时，以代码为准并**顺带修正本文**。
+> 效力与冲突处理见 [E-REVIEW-RULE-004/§1：最高思想与质疑义务](../../AGENTS.md#e-review-rule-004)；编号仅定位，不另设权威层级。
 
 > **2026-10-22 状态：部分 superseded。** §2.1/§2.2/§3.1 中「ProcessBuilder + stdin GLK1」「`core/src/` C++23 可执行 ELF」
 > 「profile = GLK1 唯一配置权威」描述的是 2026-10-17 前架构。当前生产面 = **Kotlin 编排 + JNI 库**，native 只收 POD/fd；
-> 事实见 [introduction.md](introduction.md)，结构见 [execution-architecture.md](../plan/execution-architecture.md)，
-> 当前 JNI 计划见 [43499-43284-jni-rewrite-plan.md](../plan/43499-43284-jni-rewrite-plan.md)。旧条文保留作历史，不再作判据。
+> 上句“当前”仅指 2026-10-22 快照；当时结构见 [历史 execution-architecture](../archive/20261104-2030-execution-architecture.md)，JNI 计划见 [历史 JNI rewrite](../archive/20261104-2030-43499-43284-jni-rewrite-plan.md)。旧条文保留作历史，不再作判据。
+> 现行计划定位 [P-RUN-X-001：执行统一计划](../plan/backend-root-execution-unification-plan.md#p-run-x-001)，图见[当前执行视图](full-process-uml.md#run-current-views)；此导航不更新原快照或批准状态。
 
 本文由仓库历史文档（`docs/analysis/**`、`DECOUPLING_PLAN.md`、`native-cpp-migration-plan.md`
 等，已归档在 git 历史）与外部权威规范（见附录 A）合成，描述的是**这个项目实际执行过并被验证有效**的做法，
@@ -25,11 +29,10 @@
 Explore（只读调查） → Design（设计产物） → Implement（最小实现） → Verify（分级验证）
 ```
 
-- **Explore**：动手前先读相关代码与文档；用 `git log`/`git show` 查阅历史设计与证据（本仓库的
-  `docs/analysis/**` 与 device-gates 在 git 历史中完整保留）。调查范围要窄，不确定就声明假设。
-- **Design**：按下表产出一个**可评审的设计**。设计未完成不得进入实现。
-- **Implement**：最小改动；只碰设计里列出的文件；侧向改动一律不做。
-- **Verify**：按 §1.3 的门槛执行并**保留证据**（命令输出、日志、对比结果）。证据优于口头断言。
+- **Explore**：先定位用户结果、本批唯一交付物及最新有效裁定，再读相关代码/历史证据；每项调查要能改变当前决策，足够就停止，具体按 [AGENTS §2](../../AGENTS.md#agents-change)。不以复读全部历史作为开工前提。
+- **Design**：按下表产出本批可评审设计，设计批准与实现验收分开；当前需求/合同及验证策略须明确，不要求先完成实现来获得设计批准。需求分流、工具依赖、增量复审统一按 [design-review-principles.md](design-review-principles.md)，不另建流程。
+- **Implement**：最小改动；只碰设计列出的文件。收到纠正先同步受影响执行入口再继续；是否转移/删除职责按 [E-REVIEW-RULE-001/§0.5](design-review-principles.md#review-feedback-control)，不为修工具误报或减少类数改变批准行为。
+- **Verify**：按 §1.3 执行适用门并留证据；依 [E-REVIEW-RULE-001/§3](design-review-principles.md#review-execution) 将结果对应到原判据/成功层级。视觉或交互反馈看匹配的观察结果；暂缓门留原欠账，不以本轮动作完成替代产品完成。
 
 依据：Anthropic《Claude Code best practices》的 Explore→Plan→Implement→Commit 与
 "give a way to verify its work"；本项目 `native-cpp-migration-plan.md` 的批次门禁实践。
@@ -48,13 +51,15 @@ L 级改动**必须**先给出设计并获得用户认可，再写代码。历�
 
 ### 1.3 验证门槛（按级别）
 
+本表用于实现后的验证，不作为设计阶段必须已有 PASS 的条件。纯文档批验证规则一致性、链接和差异，不运行无关 native/设备门；关键可行性缺证仍按审查原则补证。
+
 | 改动 | 主机测试 | NDK 构建 | lint-tidy | `cmp_disasm` | 真机门禁 |
 |---|---|---|---|---|---|
-| S/M 非攻击路径 | 必须 | 必须零警告 | 必须 0 findings | 可跳过 | 不需要 |
-| M 触及攻击路径 | 必须 | 必须零警告 | 必须 0 findings | **必须**（8 函数） | 必须（见 §8.3） |
-| L | 必须 | 必须零警告 | 必须 0 findings | **必须** | 必须，且归档证据 |
+| S/M 非攻击路径实现 | 必须 | 必须零警告 | 必须 0 findings | 可跳过 | 设备依赖行为/端到端结论须真机，否则不需要 |
+| M 触及攻击路径 | 必须 | 必须零警告 | 必须 0 findings | 可选诊断 | 必须，按 AGENTS §8 归档 |
+| L 实现 | 按改动面，适用门不得省略 | 涉及 native/构建时必须零警告 | 按改动面 | 可选诊断 | 设备依赖行为/攻击路径/端到端结论必须，且归档证据 |
 
-命令见 `AGENTS.md` 与 §8。
+命令见 `AGENTS.md` 与 §8。2026-11-05 沿革：同步 AGENTS 已有 cmp_disasm 可选口径；取代按 L 标签一律索取真机、对纯文档索取构建的旧表述。现有产品门禁与欠账不由本次规则修订自动关闭。
 
 ### 1.4 批次化与"明确保留"
 
@@ -70,13 +75,13 @@ L 级改动**必须**先给出设计并获得用户认可，再写代码。历�
   行为变化与不变量写进 body（历史范例：`fix(profile): resolve imported v1 reports and edit them per their own release`）。
 - 一个提交只表达一个意图；不夹带无关格式化；大变更拆成小提交序列（对应批次化）。
 - 评审：主库变更应由至少一名非作者复核（历史 PR review 即此实践）；L 级改动以计划文档 + 门禁证据
-  作为评审记录；新增功能不带测试视为不完整。
+  作为对应阶段记录；新增功能实现交付须有适用测试，设计阶段须有验证策略，二者不混为同一准入条件。
 
 ---
 
 ## 2. 架构规范
 
-### 2.0 目标架构（重写进行中；权威 = ADR-0001/0002/**0004**/**0006** + `docs/archive/20261007-2237-top-level-architecture-rewrite-plan.md` + 现行批次见 `docs/plan/MASTER-PLAN.md` §4）
+### 2.0 目标架构（重写进行中；权威 = ADR-0001/0002/**0004**/**0006** + `docs/archive/20261007-2237-top-level-architecture-rewrite-plan.md`；历史目标模型，现行批次见 [P-RUN-X-001](../plan/backend-root-execution-unification-plan.md#p-run-x-001-batches)）
 
 > **选择权威（2026-10-05）**：装配选择由 **token 白名单**表达（`contract::kCombinationCatalog`：token → {backend, route, steps, terminal, available}），
 > token 落在 `backend.<id>.steps`；`pipeline` 只做分派。**词汇/白名单必须导出并对拍**（native → 资源 → Kotlin agreement test），
@@ -124,7 +129,7 @@ app/src/main/cpp/ (C11 薄原语；无 CLI/无全局)   tools/extract_rs/ (Rust 
 ### 2.2 route 结构（本项目核心扩展点）
 
 > 现状描述；重写后 `route` 为 **backend 内部策略**（见 §2.0 / ADR-0001）：`Pipeline<Backend, Terminal>`，
-> route 由 backend 按 profile 选择；terminal 由 pipeline 编排（R12）。
+> route 由 backend 按 profile 选择；terminal 由 pipeline 编排（本节历史架构的旧 R12 标签，非全局 R12 fail-closed）。
 
 每条 route 由三个部件构成（**可使用虚基类**；但 PI 竞争窗口内的间接调用会引入不可预测时序，见 §4.2）：
 
@@ -135,8 +140,7 @@ app/src/main/cpp/ (C11 薄原语；无 CLI/无全局)   tools/extract_rs/ (Rust 
 3. **Route 类**：`prepare → execute → disarm → destroy` 固定生命周期（概念见 `route_lifecycle.hpp`），
    结果只经 `status` 汇报。`execute` 仅在 `prepare` 返回 0 时调用。
 
-新增组件（route/backend/terminal/platform/ancillary）的完整触点清单以 `docs/development/adding-a-component.md`
-为唯一权威，必须逐项核对。
+本节旧模型的组件触点保留在[历史组件指南](adding-a-component.md#legacy-component-identifiers)；当前改动范围以 [P-RUN-X-001：执行统一计划](../plan/backend-root-execution-unification-plan.md#p-run-x-001) 为准，不将旧触点自动带入当前批次。
 
 ### 2.3 编译边界与条件编译
 
@@ -362,11 +366,7 @@ setup → W1（SELinux）→ W2（凭据）→ W3（seccomp）→ handoff（root
 完整规范——文档分类与地图、命名与结构、中英文写作、RFC 2119 用语、计划/门禁模板、归档与评审流程、
 作者检查清单——以 [`documentation-standards.md`](documentation-standards.md) 为唯一权威（依据
 ISO/IEC/IEEE 42010 / 15289 / 2651x、Diátaxis、DITA 信息类型、Carroll Minimalism、Google style）。
-工程侧的三条硬约束：
-
-- 双语对（`README.md`/`README_ZH.md`、`docs/profile/**` 的 `_ZH`）必须同批次同步修改；
-- 改动影响命令/字段/流程时，文档必须同一批次回写；
-- 计划文档与门禁记录的模板字段（含 commit 与日期）必须完整，fail/pass 同等归档。
+工程侧检查入口（只引用，不另定规则）：[E-DOC-RULE-001：双语同步](documentation-standards.md#documentation-bilingual)、[同批回写](documentation-standards.md#documentation-process)、[计划与门禁记录模板](documentation-standards.md#documentation-templates)。
 
 ---
 
@@ -374,12 +374,12 @@ ISO/IEC/IEEE 42010 / 15289 / 2651x、Diátaxis、DITA 信息类型、Carroll Min
 
 ### 8.1 验证金字塔
 
-1. **主机单元测试**（`make -C core native-host-tests`，全量含 host 数据流 harness）：固定向量、
-   生命周期、几何边界、双侧一致性；新增数据结构/route 必须补测试（登记进 `NATIVE_HOST_TESTS`）；
-   无对应测试的功能变更视为不完整。
+1. **主机单元测试**：固定向量、生命周期、几何边界、双侧一致性；新增数据结构/route 必须补适用测试。当前构建与测试入口统一引用 [E-REVIEW-RULE-004/§8：验证门槛](../../AGENTS.md#agents-gates)；旧 `make -C core native-host-tests` 与 `NATIVE_HOST_TESTS` 是退役构建树记录，不另立门禁。
 2. **Kotlin 单测**（`./gradlew :app:testDebugUnitTest`）与 **Rust 测试**（`cargo test --release`）。
 3. **形状对比**（攻击路径专用，§8.2）。
 4. **真机门禁**（§8.3）。
+
+<a id="engineering-diagnostic"></a>
 
 ### 8.2 攻击函数形状对比（可选诊断，**非门槛**）
 

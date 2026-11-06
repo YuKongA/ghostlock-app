@@ -1,5 +1,9 @@
 # GhostLock 设计哲学（Design Philosophy）
 
+<a id="e-review-rule-003"></a>
+
+> **代号**：E-REVIEW-RULE-003（工程支撑－设计判断－规则解释）；§1–§11 为本文原则，附录 D 不指产品 D 决策。 定义入口见[工程代号入口](../plan/MASTER-PLAN.md#work-identifiers)。
+
 > 本文的每条原则都以**软件工程理论与公认实践**为主要依据（标准、经典文献、工业实践，见附录 A），
 > 本项目的经验只作为该理论在特定约束下的**实例化证据**。
 > 分层：哲学（本文，为什么）→ 规范（`engineering-standards.md`，怎么做）→ 操作（`AGENTS.md`）。
@@ -29,21 +33,23 @@
 
 ---
 
-## 1. 实证主义：真机是唯一裁判
+## 1. 实证主义：证据分层，设备结论由真机确认
 
 **理论依据**
 
 - **Empirical / Evidence-based Software Engineering**（Kitchenham 等系统评价方法）：技术主张的有效性必须由实验、案例与重复验证支撑，而不是由权威或直觉支撑。
 - **V&V（IEEE 1012；ISO/IEC/IEEE 12207）**：*Verification* 回答"是否按规格构建（building it right）"；
-  *Validation* 回答"是否构建了正确的东西（building the right thing）"。主机测试是 verification，
-  真机门禁才是 validation——**两者不可互相替代**（Boehm, *Software Engineering Economics*, 1981）。
+  *Validation* 回答"是否构建了正确的东西（building the right thing）"。两者按所回答的问题区分，
+  不按 host/真机二分；真机也可验证规格符合性，设备端到端确认仍需相应环境证据。
 
-**原则**：主机测试、静态分析、代码推理都只是假设；真机日志才是判决。
+**原则**：证据只支持其覆盖层级与前提下的结论。主机测试可验证纯逻辑和合同，静态检查可验证特定结构性质；它们不代替设备依赖行为、攻击关键路径及端到端成功的真机门。
 
 **项目实例化**：Xperia 首攻 V1–V21 的每个假设（promoted child、`empty_zero_page`、BSS scratch、
 slide-only、超时缩短）都被真机逐一否决或确认；Multicast、TCP、Select 三条路径均已由开发者真机验证。
 
-**行为要求**：没有设备证据的结论称为假设，不称为结论；未验证路径不得标 `supported`。
+**行为要求**：无真机证据不宣称设备/端到端通过，未验证路径不标 `supported`；冷机等条件、身份核验与日志归档仍按 AGENTS 执行。审查阶段与证据边界见 [design-review-principles.md](design-review-principles.md)。
+
+> **沿革（2026-11-05）**：取代“所有主机/静态结果只是假设”和 host=verification、真机=validation 的绝对化表述；保留真实设备准出要求。
 
 ## 2. 信息隐藏与契约：显式优于隐式
 
@@ -62,6 +68,8 @@ fd/pid/线程的所有权写进类型（`UniqueFd`/`VictimContext`/`PthreadOwner
 （`prepare → execute → disarm → destroy`）;配置只有一条注入路径（环境变量收敛）。
 
 **行为要求**：任何"大家都知道"的约定，都必须能指向一行类型、一个字段或一个测试。
+
+<a id="philosophy-authority"></a>
 
 ## 3. 配置管理与基线：每个事实只有一个权威
 
@@ -119,6 +127,8 @@ C++ 现代化以 `cmp_disasm` 8 函数逐指令验证"抽象零开销"——把�
 
 **行为要求**：改动前先声明"我不碰什么"；大改动拆批次，每批独立验证并记录；
 **要重写就先立项**——受控重写允许，顺手重写禁止。
+
+需求收集不等于本批交付承诺；近批细化、远期保留目标与进入条件，不用未实现的弱相关需求阻断当前批次。既有承诺变更仍受批准控制；具体按 [design-review-principles.md](design-review-principles.md) 的滚动细化与阶段规则执行。
 
 ## 6. 验证与确认设计：为验证而设计，证据优于断言
 
@@ -264,7 +274,7 @@ profile；攻击窗口内无异常/分配/间接调用；"dirty" 是显式可接
 
 | 思想（本文） | 做法（`engineering-standards.md`） |
 |---|---|
-| §1 真机是唯一裁判 | §8 验证与证据规范（门禁、归因纪律、V&V 分层） |
+| §1 证据分层，设备结论由真机确认 | §8 验证与证据规范（门禁、归因纪律、V&V 分层） |
 | §2 显式优于隐式 | §3 数据流（presence/单一权威）、§2.2 route 显式选择、§6 命名与接口契约 |
 | §3 单一权威 | §3.1 配置数据流、§2.4 全局状态、§5.1 wire 权威 |
 | §4 编译期决定 | §2.3 编译边界、§5.2 类型设计、§8.2 cmp_disasm |
@@ -282,7 +292,7 @@ profile；攻击窗口内无异常/分配/间接调用；"dirty" 是显式可接
 |---|---|
 | 解耦设计与验收 | `DECOUPLING_PLAN.md` / `DECOUPLING_LOG.md`（commit `432a05f` 等） |
 | C++ 迁移批次与门禁 | `docs/analysis/native-cpp-migration-plan.md`、`docs/development/native-modernization-plan.md` |
-| 组件扩展清单与双侧一致性 | `docs/development/adding-a-component.md`（现行） |
+| 组件扩展清单与双侧一致性 | [旧组件指南](adding-a-component.md#legacy-component-identifiers)（历史模型） |
 | 全局状态审计 | `docs/analysis/native-global-state.md` |
 | 入口/CLI 契约 | `docs/analysis/native-entrypoint-plan.md` |
 | 环境变量收敛 | `docs/analysis/environment-convergence-plan.md` |
@@ -292,7 +302,7 @@ profile；攻击窗口内无异常/分配/间接调用；"dirty" 是显式可接
 
 ## 附录 D：操作条目增补（2026-10-05，来自结构审查 G5/G6）
 
-> 原则不变，增补**可执行**的操作条目，防止同一类系统性原因再次发生。
+> **历史适用范围**：以下 D.1–D.3 保留 2026-10-05 的词汇模型与操作记录，不是主计划 D1–D9。现行跨端合同按批准计划；并发写入、提交与恢复纪律统一引用 [E-REVIEW-RULE-004/§6](../../AGENTS.md#agents-collaboration)，旧“并行写后先提交”等例外不再授权当前操作。
 
 ### D.1 承接原则 3（每个事实只有一个权威）——**词汇/白名单必须导出并对拍**
 

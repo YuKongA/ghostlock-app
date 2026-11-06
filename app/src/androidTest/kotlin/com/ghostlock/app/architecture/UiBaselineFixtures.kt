@@ -14,10 +14,6 @@ import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import com.ghostlock.app.backend.backends.cve43284.BackendCve43284
-import com.ghostlock.app.backend.backends.cve43499glued.BackendCve43499Glued
-import com.ghostlock.app.backend.backends.debugprobe.BackendDebugProbe
-import com.ghostlock.app.backend.backends.lua.BackendCustom
 import com.ghostlock.app.R
 import com.ghostlock.app.ui.LocalMainPagerState
 import com.ghostlock.app.ui.LocalUiMode
@@ -49,10 +45,10 @@ import com.ghostlock.app.ui.screen.module.BackendPageMiuix
 import com.ghostlock.app.ui.screen.module.BackendOptionUiState
 import com.ghostlock.app.ui.screen.module.BackendPageActions
 import com.ghostlock.app.ui.screen.module.BackendPageUiState
-import com.ghostlock.app.ui.screen.module.backends.FinishPage
-import com.ghostlock.app.ui.screen.module.backends.FinishSettingsPage
-import com.ghostlock.app.ui.screen.module.backends.FinishEditorUiState
-import com.ghostlock.app.ui.screen.module.backends.FinishSettingsUiState
+import com.ghostlock.app.ui.screen.module.payload.PayloadPage
+import com.ghostlock.app.ui.screen.module.finish.FinishSettingsPage
+import com.ghostlock.app.ui.screen.module.payload.PayloadUiState
+import com.ghostlock.app.ui.screen.module.finish.FinishSettingsUiState
 import com.ghostlock.app.ui.screen.run.RunPageMaterial
 import com.ghostlock.app.ui.screen.run.RunPageMiuix
 import com.ghostlock.app.ui.screen.run.RunActions
@@ -74,7 +70,7 @@ import com.ghostlock.app.ui.theme.LocalEnableFloatingBottomBar
 import com.ghostlock.app.ui.theme.LocalEnableFloatingBottomBarBlur
 import com.ghostlock.app.domain.update.AppUpdateInfo
 import com.ghostlock.app.domain.privilege.AttackExecutorKind
-import com.ghostlock.app.domain.finish.FinishEditorState
+import com.ghostlock.app.domain.payload.PayloadEditorState
 import com.ghostlock.app.domain.backend.BackendConfigMutationResult
 import com.ghostlock.app.domain.backend.BackendChoiceKind
 import com.ghostlock.app.domain.backend.BackendChoiceOption
@@ -313,7 +309,7 @@ internal object UiBaselineFixtures {
                 BackendPageMiuix(
                     state = backendState(),
                     actions = backendActions(),
-                    finishEditorState = finishEditorState(),
+                    payloadState = payloadState(),
                     finishSettingsState = FinishSettingsUiState(),
                     configRenderer = backendConfigRenderer,
                     bottomInnerPadding = 0.dp,
@@ -322,7 +318,7 @@ internal object UiBaselineFixtures {
                 BackendPageMaterial(
                     state = backendState(),
                     actions = backendActions(),
-                    finishEditorState = finishEditorState(),
+                    payloadState = payloadState(),
                     finishSettingsState = FinishSettingsUiState(),
                     configRenderer = backendConfigRenderer,
                     bottomInnerPadding = 0.dp,
@@ -350,12 +346,12 @@ internal object UiBaselineFixtures {
                 ColorPaletteScreenMaterial(colorPaletteState(fixture), colorPaletteActions())
             }
 
-            "finish" -> FinishPage(bottomInnerPadding = 0.dp, onBack = {})
+            "finish" -> PayloadPage(bottomInnerPadding = 0.dp, onBack = {})
             "finish_settings" -> FinishSettingsPage(bottomInnerPadding = 0.dp, onBack = {})
-            "config_43499" -> CardFrame { backendConfigRenderer.render(BackendCve43499Glued.key) }
-            "config_43284" -> CardFrame { backendConfigRenderer.render(BackendCve43284.key) }
-            "config_debug" -> CardFrame { backendConfigRenderer.render(BackendDebugProbe.key) }
-            "config_custom" -> CardFrame { backendConfigRenderer.render(BackendCustom.key) }
+            "config_43499" -> CardFrame { backendConfigRenderer.render(NEUTRAL_PROFILE_KEY) }
+            "config_43284" -> CardFrame { backendConfigRenderer.render(NEUTRAL_TOGGLE_KEY) }
+            "config_debug" -> CardFrame { backendConfigRenderer.render(DEBUG_PROBE_KEY) }
+            "config_custom" -> CardFrame { backendConfigRenderer.render(CUSTOM_KEY) }
             "confirm_dialog" -> ConfirmDialog(miuix)
             "component_gallery" -> ComponentGallery()
             else -> throw IllegalArgumentException("unclassified D0 surface: ${fixture.surface}")
@@ -402,8 +398,8 @@ internal object UiBaselineFixtures {
         object : BackendConfigurationPort {
             override val states: StateFlow<Map<String, BackendConfiguration>> = MutableStateFlow(
                 mapOf(
-                    BackendCve43499Glued.key to BackendConfiguration.ChoiceDocument(
-                        key = BackendCve43499Glued.key,
+                    NEUTRAL_PROFILE_KEY to BackendConfiguration.ChoiceDocument(
+                        key = NEUTRAL_PROFILE_KEY,
                         field = "profile_reference",
                         title = "Profile",
                         summary = "Required",
@@ -415,8 +411,8 @@ internal object UiBaselineFixtures {
                         errorText = "Invalid profile",
                         invalid = false,
                     ),
-                    BackendCve43284.key to BackendConfiguration.Toggle(
-                        key = BackendCve43284.key,
+                    NEUTRAL_TOGGLE_KEY to BackendConfiguration.Toggle(
+                        key = NEUTRAL_TOGGLE_KEY,
                         field = "kernel_access_after_relay",
                         title = "Kernel access",
                         enabled = false,
@@ -424,12 +420,12 @@ internal object UiBaselineFixtures {
                         disabledSummary = "Off",
                         icon = BackendConfigIcon.SECURITY,
                     ),
-                    BackendDebugProbe.key to BackendConfiguration.Static(
-                        key = BackendDebugProbe.key,
+                    DEBUG_PROBE_KEY to BackendConfiguration.Static(
+                        key = DEBUG_PROBE_KEY,
                         values = listOf(BackendConfigValue("ID", "Debug Probe")),
                     ),
-                    BackendCustom.key to BackendConfiguration.Document(
-                        key = BackendCustom.key,
+                    CUSTOM_KEY to BackendConfiguration.Document(
+                        key = CUSTOM_KEY,
                         field = "script_uri",
                         importTitle = "Import Lua script",
                         documentSummary = "No script selected",
@@ -487,16 +483,15 @@ internal object UiBaselineFixtures {
     /** @return Stable selector state for both production path-page skins. */
     private fun backendState(): BackendPageUiState = BackendPageUiState(
         options = listOf(
-            BackendOptionUiState(BackendCve43499Glued.key, "CVE-2026-43499-Glued", true),
-            BackendOptionUiState(BackendCve43284.key, "CVE-2026-43284", BackendCve43284.selectable),
-            BackendOptionUiState(BackendDebugProbe.key, "Debug Probe", BackendDebugProbe.selectable),
+            BackendOptionUiState(DEBUG_PROBE_KEY, "Debug Probe", true),
+            BackendOptionUiState(CUSTOM_KEY, "Lua operation flow", false),
         ),
-        selectedKey = BackendCve43499Glued.key,
+        selectedKey = DEBUG_PROBE_KEY,
     )
 
     /** @return Empty deterministic finish-editor state for path-page summary rendering. */
-    private fun finishEditorState(): FinishEditorUiState = FinishEditorUiState(
-        editor = FinishEditorState(
+    private fun payloadState(): PayloadUiState = PayloadUiState(
+        editor = PayloadEditorState(
             rootManager = "",
             safeMode = false,
             payloads = emptyList(),
@@ -507,7 +502,7 @@ internal object UiBaselineFixtures {
     /** @return No-op interactions for deterministic path-page rendering. */
     private fun backendActions(): BackendPageActions = BackendPageActions(
         onSelectBackend = {},
-        onOpenFinish = {},
+        onOpenPayload = {},
         onOpenFinishSettings = {},
     )
 
@@ -665,4 +660,9 @@ internal object UiBaselineFixtures {
             }
         }
     }
+
+    private const val NEUTRAL_PROFILE_KEY: String = "NEUTRAL-PROFILE"
+    private const val NEUTRAL_TOGGLE_KEY: String = "NEUTRAL-TOGGLE"
+    private const val DEBUG_PROBE_KEY: String = "DEBUG-PROBE"
+    private const val CUSTOM_KEY: String = "CUSTOM"
 }

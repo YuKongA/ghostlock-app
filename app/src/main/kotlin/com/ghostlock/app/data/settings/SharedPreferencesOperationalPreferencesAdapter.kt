@@ -8,8 +8,6 @@ import android.provider.DocumentsContract
 import com.ghostlock.app.domain.settings.OperationalPreferences
 import com.ghostlock.app.domain.settings.OperationalPreferencesPort
 import com.ghostlock.app.domain.settings.TerminalLogLevel
-import com.ghostlock.app.log.LogLevel
-import com.ghostlock.app.log.log
 import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,8 +17,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * Application-scoped SharedPreferences adapter for operational settings and Android picker effects.
  *
  * @param context Application-capable context used for the historical stores and private font copy.
- * @note This adapter is the single mutable authority; it preserves all historical store names, keys,
- *   defaults, export normalization, and immediate log-threshold application without singleton state.
+ * @note This adapter is the single mutable authority; it preserves active store names, keys,
+ *   defaults, while the run adapter freezes the selected threshold into the sole log hub.
  */
 class SharedPreferencesOperationalPreferencesAdapter(
     context: Context,
@@ -45,14 +43,13 @@ class SharedPreferencesOperationalPreferencesAdapter(
     override val preferences: StateFlow<OperationalPreferences> = mutablePreferences.asStateFlow()
 
     init {
-        applyLogThreshold(mutablePreferences.value.logLevel)
         stores.forEach { store -> store.registerOnSharedPreferenceChangeListener(listener) }
     }
 
     /**
      * Persists one complete normalized snapshot to the historical stores.
      *
-     * @param value Storage-neutral state; retry count and export path are normalized before writing.
+     * @param value Storage-neutral state; retry count is normalized before writing.
      */
     override fun save(value: OperationalPreferences) {
         val normalized = value.copy(
@@ -75,7 +72,6 @@ class SharedPreferencesOperationalPreferencesAdapter(
             .putBoolean(KEY_AUTO_ATTACK, normalized.autoAttackOnBoot)
             .putInt(KEY_BOOT_RETRY_COUNT, normalized.bootRetryCount)
             .apply()
-        applyLogThreshold(normalized.logLevel)
         publish()
     }
 
@@ -102,7 +98,7 @@ class SharedPreferencesOperationalPreferencesAdapter(
     }
 
     /**
-     * Selects a primary-storage Downloads tree for log export.
+     * Selects a primary-storage Downloads tree for automatic run-log export.
      *
      * @param uri Serialized tree URI.
      * @return True when the directory can be represented by MediaStore Downloads.
@@ -116,10 +112,9 @@ class SharedPreferencesOperationalPreferencesAdapter(
         return true
     }
 
-    /** Publishes current stores and immediately applies the logging threshold. */
+    /** Publishes the current storage snapshot. */
     private fun publish() {
         val current = readCurrent()
-        applyLogThreshold(current.logLevel)
         mutablePreferences.value = current
     }
 
@@ -144,19 +139,6 @@ class SharedPreferencesOperationalPreferencesAdapter(
             autoAttackOnBoot = bootStore.getBoolean(KEY_AUTO_ATTACK, false),
             bootRetryCount = bootStore.getInt(KEY_BOOT_RETRY_COUNT, 1)
                 .coerceIn(0, MAX_BOOT_RETRY_COUNT),
-        )
-    }
-
-    /** Applies a pure-domain severity to the existing logging sink. */
-    private fun applyLogThreshold(level: TerminalLogLevel) {
-        log.configure(
-            when (level) {
-                TerminalLogLevel.Verbose -> LogLevel.Verbose
-                TerminalLogLevel.Debug -> LogLevel.Debug
-                TerminalLogLevel.Info -> LogLevel.Info
-                TerminalLogLevel.Warn -> LogLevel.Warn
-                TerminalLogLevel.Error -> LogLevel.Error
-            },
         )
     }
 
@@ -189,9 +171,9 @@ class SharedPreferencesOperationalPreferencesAdapter(
         }
     }
 
-    /** @return True when no path segment is dot or dot-dot. */
+    /** @return True when no path segment is empty, dot, or dot-dot. */
     private fun hasSafeSegments(value: String): Boolean =
-        value.split('/').none { segment -> segment == "." || segment == ".." }
+        value.split('/').all { segment -> segment.isNotEmpty() && segment != "." && segment != ".." }
 
     private companion object {
         const val LOG_PREFERENCES = "ghostlock.log"

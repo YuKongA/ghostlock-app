@@ -25,6 +25,6 @@ data class BackendPageUiState(
 @Immutable
 data class BackendPageActions(
     val onSelectBackend: (String) -> Unit,
-    val onOpenFinish: () -> Unit,
+    val onOpenPayload: () -> Unit,
     val onOpenFinishSettings: () -> Unit,
 )

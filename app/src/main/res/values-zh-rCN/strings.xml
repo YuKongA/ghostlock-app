@@ -348,6 +348,7 @@
     <string name="finish_restore_selinux">结束后恢复 SELinux enforcing</string>
     <string name="finish_save">保存</string>
     <string name="finish_saved">已保存：%1$s</string>
+    <string name="payload_save_failed">无法保存 Payload 预览。</string>
     <string name="backend_43284_access_title">加载 relay 后开启内核内存访问接口</string>
     <string name="backend_43284_access_on">等待插件连接 5 秒；连接后保持到插件关闭，再执行收尾脚本</string>
     <string name="backend_43284_access_off">关闭：加载 relay 后直接执行收尾脚本</string>
@@ -360,9 +361,9 @@
     <string name="settings_log_timestamp">显示时间戳</string>
     <string name="settings_log_timestamp_summary">时间戳放在标签前，例如 12.345 &lt;*&gt;</string>
     <string name="settings_log_auto_export">日志自动导出</string>
-    <string name="settings_log_auto_export_summary">每次执行自动保存到下方目录</string>
+    <string name="settings_log_auto_export_summary">每次已接受的执行自动保存到下方目录</string>
     <string name="settings_log_export_location">导出位置</string>
-    <string name="settings_log_export_location_invalid">请选择内部存储中的文件夹</string>
+    <string name="settings_log_export_location_invalid">请选择内部存储 Downloads 下的文件夹</string>
     <string name="attack_notification_channel">攻击执行</string>
     <string name="attack_notification_title">GhostLock 攻击执行中</string>
     <string name="attack_notification_text">执行在独立进程中进行</string>

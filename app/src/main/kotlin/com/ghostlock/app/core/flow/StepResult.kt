@@ -1,11 +1,18 @@
 package com.ghostlock.app.core.flow
 
-/** 一次 step 调用的结果；Retry 只重试当前 step。 */
+import com.ghostlock.app.domain.run.StageResult
+
+/** Typed step result without arbitrary evidence maps. */
 sealed interface StepResult {
-    data class Done(val evidence: Map<String, String> = emptyMap()) : StepResult
+    /** Step reached a terminal typed stage fact. */
+    data class Done(val stage: StageResult) : StepResult
+
+    /** Step requests another bounded attempt; reason is diagnostic only. */
     data class Retry(val reason: String) : StepResult
+
+    /** Step reached a typed failure or unknown fact. */
     data class Failed(
-        val reason: String,
-        val evidence: Map<String, String> = emptyMap(),
+        val stage: StageResult,
+        val detail: String,
     ) : StepResult
 }

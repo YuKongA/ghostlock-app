@@ -1,0 +1,82 @@
+# Exact active-plan disposition; executes only after R0 user approval.
+# path	action	target	reason
+docs/archive/INDEX-plans.md	UPDATE_INDEX	-	register every archived path and successor
+docs/plan/43284-b8-b9-b10-plan-v3.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43284-b8-b9-b10-plan-v3.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43284-kotlin-dynamic-hook-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43284-kotlin-dynamic-hook-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43284-production-engine-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43284-production-engine-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43284-reset-batch.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43284-reset-batch.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-43284-cpp-parameterization-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-43284-cpp-parameterization-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-43284-jni-rewrite-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-43284-jni-rewrite-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-5.10-attack-path-adaptation-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-5.10-attack-path-adaptation-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-agent-coding-and-self-acceptance-guide.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-agent-coding-and-self-acceptance-guide.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-app-domain-execution-model-plan-annex.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-app-domain-execution-model-plan-annex.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-app-domain-execution-model-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-app-domain-execution-model-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-approval-status.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-approval-status.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-c11-header-contract-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-c11-header-contract-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-fast-repair-prebuilt-plan-annex.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-fast-repair-prebuilt-plan-annex.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-fast-repair-prebuilt-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-fast-repair-prebuilt-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-jni-transport-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-jni-transport-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-kotlin-package-refactor-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-kotlin-package-refactor-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-kt-step-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-kt-step-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-ktstep-architecture-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-ktstep-architecture-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-legacy-cpp-jni-migration-guide.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-legacy-cpp-jni-migration-guide.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-legacy-cpp-production-inventory.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-legacy-cpp-production-inventory.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-legacy-cpp-test-inventory.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-legacy-cpp-test-inventory.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-logging-integration-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-logging-integration-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-native-actor-child-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-native-actor-child-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-native-device-ops-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-native-device-ops-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-native-parameterization-v2-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-native-parameterization-v2-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-perf-leak-primitive-plan-annex-b.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-perf-leak-primitive-plan-annex-b.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-perf-leak-primitive-plan-annex.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-perf-leak-primitive-plan-annex.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-perf-leak-primitive-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-perf-leak-primitive-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-prepare-port-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-prepare-port-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-production-engine-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-production-engine-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-production-victim-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-production-victim-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-public-structure-adaptation-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-public-structure-adaptation-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-r1-freeze-abi.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-r1-freeze-abi.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-r1-freeze-fields.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-r1-freeze-fields.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-r1-freeze-inventory.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-r1-freeze-inventory.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-r1-freeze-validation.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-r1-freeze-validation.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-resource-primitives-implementation-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-resource-primitives-implementation-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-route-port-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-route-port-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-tcp-native-port-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-tcp-native-port-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-three-routes-production-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-three-routes-production-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-victim-launch-hoist-adaptation-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-victim-launch-hoist-adaptation-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/43499-w3-hard-gate-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-43499-w3-hard-gate-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/98260-43499-conf-reuse-classification.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-98260-43499-conf-reuse-classification.md	old backend/JNI/execution authority; preserve as history
+docs/plan/98260-backend-plan-annex-b.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-98260-backend-plan-annex-b.md	old backend/JNI/execution authority; preserve as history
+docs/plan/98260-backend-plan-annex.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-98260-backend-plan-annex.md	old backend/JNI/execution authority; preserve as history
+docs/plan/98260-backend-plan-delta-userservice.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-98260-backend-plan-delta-userservice.md	old backend/JNI/execution authority; preserve as history
+docs/plan/98260-backend-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-98260-backend-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/98260-project-structure-adaptation-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-98260-project-structure-adaptation-plan.md	old backend/JNI/execution authority; preserve as history
+docs/plan/98260-user-requirements-summary.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-98260-user-requirements-summary.md	old backend/JNI/execution authority; preserve as history
+docs/plan/MASTER-PLAN.md	UPDATE_POINTER	-	remove superseded active instructions and point to new authority
+docs/plan/PENDING-DECISIONS.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-PENDING-DECISIONS.md	superseded overlapping execution/config/rollback authority
+docs/plan/REMAINING-PLAN.md	UPDATE_POINTER	-	remove superseded active instructions and point to new authority
+docs/plan/ROADMAP.md	UPDATE_POINTER	-	remove superseded active instructions and point to new authority
+docs/plan/backend-access-execution-design.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-backend-access-execution-design.md	superseded overlapping execution/config/rollback authority
+docs/plan/backend-directory-cleanup.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-backend-directory-cleanup.md	superseded overlapping execution/config/rollback authority
+docs/plan/backend-registry-unification.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-backend-registry-unification.md	superseded overlapping execution/config/rollback authority
+docs/plan/backend-root-execution-plan-disposition.tsv	ADD_AUTHORITY	-	exact R0 active-plan disposition
+docs/plan/backend-root-execution-runhost-wire.md	KEEP_AUTHORITY	-	new root execution authority set
+docs/plan/backend-root-execution-unification-ledger.tsv	KEEP_AUTHORITY	-	new root execution authority set
+docs/plan/backend-root-execution-unification-plan.md	KEEP_AUTHORITY	-	new root execution authority set
+docs/plan/backends-execution-architecture-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-backends-execution-architecture-plan.md	superseded overlapping execution/config/rollback authority
+docs/plan/cmake-backend-chunks.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-cmake-backend-chunks.md	superseded overlapping execution/config/rollback authority
+docs/plan/debug-probe-backend.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-debug-probe-backend.md	superseded overlapping execution/config/rollback authority
+docs/plan/exec-glue-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-exec-glue-plan.md	superseded overlapping execution/config/rollback authority
+docs/plan/execution-architecture.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-execution-architecture.md	superseded overlapping execution/config/rollback authority
+docs/plan/flow-process-launcher-annex-b4-real.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-flow-process-launcher-annex-b4-real.md	completed/current-fact plan superseded by root execution authority
+docs/plan/flow-process-launcher-annex-b4a.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-flow-process-launcher-annex-b4a.md	completed/current-fact plan superseded by root execution authority
+docs/plan/flow-process-launcher-annex-b4b.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-flow-process-launcher-annex-b4b.md	completed/current-fact plan superseded by root execution authority
+docs/plan/flow-process-launcher-annex-b5-closeout.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-flow-process-launcher-annex-b5-closeout.md	completed/current-fact plan superseded by root execution authority
+docs/plan/flow-process-launcher-annex-config-document-port.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-flow-process-launcher-annex-config-document-port.md	completed/current-fact plan superseded by root execution authority
+docs/plan/flow-process-launcher-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-flow-process-launcher-plan.md	completed/current-fact plan superseded by root execution authority
+docs/plan/kotlin-clean-architecture-ui-plan-annex-a.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-kotlin-clean-architecture-ui-plan-annex-a.md	completed/current-fact plan superseded by root execution authority
+docs/plan/kotlin-clean-architecture-ui-plan-annex-b.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-kotlin-clean-architecture-ui-plan-annex-b.md	completed/current-fact plan superseded by root execution authority
+docs/plan/kotlin-clean-architecture-ui-plan-v0-checklist.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-kotlin-clean-architecture-ui-plan-v0-checklist.md	completed/current-fact plan superseded by root execution authority
+docs/plan/kotlin-clean-architecture-ui-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-kotlin-clean-architecture-ui-plan.md	completed/current-fact plan superseded by root execution authority
+docs/plan/payload-finish-chain-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-payload-finish-chain-plan.md	superseded overlapping execution/config/rollback authority
+docs/plan/rewrite-disable-manifest.tsv	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-rewrite-disable-manifest.tsv	superseded overlapping execution/config/rollback authority
+docs/plan/split-large-functions.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-split-large-functions.md	completed original-backend implementation plan superseded by R1 deletion closure
+docs/plan/unified-execution-engine-plan.md	ARCHIVE_AFTER_APPROVAL	docs/archive/20261104-2030-unified-execution-engine-plan.md	superseded overlapping execution/config/rollback authority

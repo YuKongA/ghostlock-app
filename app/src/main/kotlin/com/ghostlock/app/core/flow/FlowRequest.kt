@@ -1,9 +1,11 @@
 package com.ghostlock.app.core.flow
 
 /**
- * 一次 backend flow run 的请求标记。
+ * One validated request view consumed by sequential step planners.
  *
- * 每个 [Flow] 实现必须声明自己的具体子类，并在 [Flow] 的泛型参数中绑定；
- * core 不提供通用/默认 request，避免把 backend 字段解释集中到公共 DTO。
+ * @property input Uniform frozen backend input.
+ * @note This wrapper carries no backend-specific fields and exists only to keep step planning explicit.
  */
-interface FlowRequest
+data class FlowRequest(
+    val input: BackendFlowInput,
+)

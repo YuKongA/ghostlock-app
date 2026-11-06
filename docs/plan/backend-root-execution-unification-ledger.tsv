@@ -1,0 +1,838 @@
+# Backend root execution exact file ledger; R0 and R1 approved by user on 2026-11-04.
+# Human-readable batch IDs: main plan section 0.3 maps old aliases; machine fixture keys are unchanged.
+# path	action	target	batch	scope	reason
+app/build.gradle.kts	MODIFY	-	P-BACKEND-X-001/批次01	retired-original-targets-only	remove old targets; later role-aware manifest
+app/build.gradle.kts	MODIFY	-	P-RUN-IO-001/批次01	unit-test-inventory-count	update exact XML test count after replacing retired Payload/Finish characterization tests with typed document/renderer/result suites
+app/build.gradle.kts	MODIFY	-	P-RUN-X-001/批次01	r3-unit-test-inventory-count	update only the exact four-bucket XML test total from the final R3 tree; do not weaken or remove the verifier
+app/proguard-rules.pro	MODIFY	-	P-BACKEND-X-001/批次01	retired-jni-keeps-only	remove stale JNI keeps; future R6 child owns JNA keep rules
+app/proguard-rules.pro	MODIFY	-	P-RUN-X-001/批次01	typed-runhost-aidl-keeps	remove retired FlowHost/Shizuku AIDL keeps and retain only the new typed IRunHost/IRunHostCallback release boundary
+app/src/androidTest/kotlin/com/ghostlock/app/architecture/UiBaselineFixtures.kt	MODIFY	-	P-BACKEND-X-001/批次01	original-backend-fixtures	remove fixtures for deleted original 43499/43284 specs
+app/src/androidTest/kotlin/com/ghostlock/app/backend/backends/cve43499/perf/PerfMechanismProbeTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/androidTest/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/ActorFutexSelfTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/androidTest/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/JniVictimMechanismProbeTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/androidTest/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/Mcast510ProbeTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/androidTest/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/MondrianConfigProbeTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/androidTest/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/W1OnlyProbeTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/main/cpp/CMakeLists.txt	MODIFY	-	P-BACKEND-X-001/批次01	whole-file	remove glgeneral include and role manifest prep
+app/src/main/cpp/backends/43284/CMakeLists.txt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/backend_stub.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/bootstrap.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/df_log.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/df_log.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/elf_parser.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/exp.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/glk43284_api.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/glk43284_api.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/glk43284_state.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/include.inc	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/jni_attach.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/jni_exploit.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/ko/dfroot-android12-5.10.ko	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/ko/dfroot-android13-5.10.ko	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/ko/dfroot-android13-5.15.ko	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/ko/dfroot-android14-5.15.ko	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/ko/dfroot-android14-6.1.ko	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/ko/dfroot-android15-6.6.ko	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/ko/dfroot-android16-6.12.ko	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/ko/dfroot-android17-6.18.ko	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/libcxx.S	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/splicehelper	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43284/splicehelper.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/.DS_Store	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/CMakeLists.txt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/abi.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/actor.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/actor.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/api.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/carrier_internal.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/carrier_multicast.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/carrier_pselect.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/carrier_tcp.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/core_internal.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/cpu_pin_internal.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/kernel_internal.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/kernelsnitch_bounds_internal.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/page.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/page.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/page_internal.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/perf.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/perf.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/placement.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/placement.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/placement_internal.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/primitive.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/pselect_timeout_internal.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/result.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/victim_helper/victim_helper.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/victim_protocol.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/core/victim_protocol.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/dev/api_probe.cpp	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/dev/main_dev.cpp	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/dev/main_legacy.cpp	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/jni43499.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/43499/mcast510_probe.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/backends/CMakeLists.txt	MODIFY	-	P-BACKEND-X-001/批次01	whole-file	default unusable targets off; original closure removed
+app/src/main/cpp/glgeneral/CMakeLists.txt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/glgeneral/general_jni.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/glgeneral/kernelsnitch/futex_hash.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/glgeneral/kernelsnitch/kernelsnitch.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/glgeneral/kernelsnitch/scan_bounds.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/glgeneral/kernelsnitch/timeutils.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/cpp/glgeneral/kernelsnitch/utils.h	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/GhostLockApp.kt	MODIFY	-	P-BACKEND-X-001/批次01	whole-file	remove historical JNI attach
+app/src/main/kotlin/com/ghostlock/app/backend/README.md	MODIFY	-	P-BACKEND-X-001/批次01	backend-membership-and-native-graph	remove original backends/manual JNI from current owner map
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43284/BackendCve43284.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43284/flow/Flow43284Impl.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43284/flow/Flow43284Request.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/BackendCve43499.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/Profiles43499.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/config/Cve43499DebugConfig.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/finish/FinishAcceptance.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/finish/FinishExecutionEvidence.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/finish/FinishHandoff.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/flow/Cve43499CleanFailureReason.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/flow/Cve43499RunLog.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/flow/Cve43499WriteChain.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/flow/Cve43499WriteTransactionRunner.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/flow/Flow43499Impl.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/flow/Flow43499Layouts.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/flow/Flow43499Request.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/flow/Flow43499Route.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/flow/Flow43499RunSpec.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/flow/Flow43499WordWrite.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/generator/Cve43499DebugWritePlanner.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/generator/Cve43499GeneratorSupport.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/generator/Cve43499MulticastInputGenerator.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/generator/Cve43499PayloadBuilder.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/generator/Cve43499PselectInputGenerator.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/generator/Cve43499RouteGeneratorFactory.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/generator/Cve43499TcpZerocopyInputGenerator.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/lifecycle/Cve43499Lifecycle.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/lifecycle/Cve43499LifecycleApi.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/owned/ActorOwner.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/owned/Cve43499PrebuiltRepair.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/owned/FailStopController.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/owned/KernelsuGuard.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/owned/PageOwner.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/owned/PlacementOwner.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/owned/ProcessLimits.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/owned/TokenOwner.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/perf/Cve43499PerfNative.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/perf/Cve43499PerfOwner.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/perf/Cve43499PerfSampleParser.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/perf/Cve43499PerfTargetSource.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/port/Cve43499BackendPort.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/request/Cve43499RequestFactory.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/Cve43499CommonVictimRuntime.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/Cve43499JniVictim.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/Cve43499VictimKillPolicy.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/Cve43499VictimLaunchSpecFactory.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/ProcessVictim.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/ProcessVictimSession.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/VictimFinish.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/VictimProbe.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/VictimProtocolAppend.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499/w3/Cve43499W3HardGate.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/backend/registry/Backends.kt	MODIFY	-	P-BACKEND-X-001/批次01	original-43499-43284-imports-and-membership	remove deleted original backend imports and catalog membership before source deletion
+app/src/main/kotlin/com/ghostlock/app/core/NativeSession.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/core/access/AccessCapabilities.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/core/access/AccessCapability.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/core/access/AccessIo.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/core/access/AccessResult.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/core/access/AccessSession.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/core/access/AccessSessionFactory.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/core/access/InitializationReceipt.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/core/access/KernelMemoryAccess.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/core/access/PageCacheAccess.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/core/access/SessionSnapshot.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/core/access/ShutdownReceipt.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/core/nativeabi/NativeCallResult.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/core/nativehandle/NativeHandlePort.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/core/nativehandle/NativeHandleState.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/core/nativehandle/OwnedNativeHandle.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/core/nativehandle/RunResourceScope.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/core/victim/VictimCapability.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/core/victim/VictimIdentity.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/core/victim/VictimNative.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/core/victim/VictimNativeJni.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/core/victim/VictimProtocol.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/core/victim/VictimResult.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/core/victim/VictimScriptLauncher.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/core/victim/VictimSession.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	disabled original backend/manual JNI closure
+app/src/main/kotlin/com/ghostlock/app/jni/Native43499Jni.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/jni/NativeKernelSnitch.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/log/NativeLogBridge.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/log/NativeLogTailer.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/log/LogFile.kt	MODIFY	-	P-BACKEND-X-001/批次01	retired-native-log-contract	remove NativeLogBridge authority while retaining Kotlin/Shizuku fd ownership
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43284/BackendCve43284ConfigurationTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/JniBoundaryContractTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/KernelsnitchBoundsContractTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/KotlinHygieneTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/NativeHygieneContractTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/PselectWindowContractTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/config/Cve43499DebugConfigTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/config/FailStopCpuConfigTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/config/MondrianDebugConfigTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/finish/FinishEnforceRestoreTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/flow/Cve43499CleanFailureReasonTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/flow/Cve43499RunLogTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/flow/Cve43499WriteChainFlowTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/flow/Flow43499RequestTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/generator/Cve43499CredentialWriteVectorTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/generator/Cve43499GeneratorVectorTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/lifecycle/Cve43499LifecycleRootedTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/owned/ActorCpuPinningTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/owned/Cve43499PrebuiltRepairTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/owned/FailStopControllerTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/owned/KernelsuGuardTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/owned/ProcessLimitsTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/perf/Cve43499PerfOwnerTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/perf/Cve43499PerfSampleParserTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/perf/Cve43499PerfTargetSourceTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/Cve43499JniVictimTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/Cve43499VictimKillPolicyTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/Cve43499VictimLaunchSpecFactoryTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/ProcessVictimFinishTimeoutTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/ProcessVictimSessionTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/VictimPipeHighFdTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/victim/VictimProtocolTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499/w3/Cve43499W3HardGateTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/backend/launcher/BackendUidRequirementTest.kt	MODIFY	-	P-BACKEND-X-001/批次01	original-backend-cases	remove original 43499 case before closure deletion; Glued cases remain until R3
+app/src/test/kotlin/com/ghostlock/app/backend/declarations/UnfinishedBackendAnnotationTest.kt	MODIFY	-	P-BACKEND-X-001/批次01	original-membership-assertions	retain the annotation guard but reduce expected unfinished membership to Lua only
+app/src/test/kotlin/com/ghostlock/app/backend/registry/DynamicBackendsTest.kt	MODIFY	-	P-BACKEND-X-001/批次01	original-membership-assertions	retain dynamic registry coverage but remove deleted original backend keys
+app/src/test/kotlin/com/ghostlock/app/core/flow/FlowRequestTest.kt	MODIFY	-	P-BACKEND-X-001/批次01	original-backend-cases	remove original 43499/43284 request cases; retain Lua cases until R3
+app/src/test/kotlin/com/ghostlock/app/core/access/AccessIoTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	test only covers core/access types deleted in the same closure
+app/src/test/kotlin/com/ghostlock/app/core/nativeabi/NativeCallResultTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	test only covers NativeCallResult deleted in the same closure
+app/src/test/kotlin/com/ghostlock/app/core/nativehandle/OwnedNativeHandleTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	test only covers generic handle types deleted in the same original-backend closure
+app/src/test/kotlin/com/ghostlock/app/core/victim/VictimArchitectureTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/core/victim/VictimCapabilityTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/core/victim/VictimNativeJniTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/core/victim/VictimProbeAppendTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/core/victim/VictimProtocolTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/core/victim/VictimScriptLauncherTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/core/victim/VictimSessionTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	tests of retired original backend closure
+app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/BackendParameterSchemaTest.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	test only names deleted original backend specs
+app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/FinishScript43284Test.kt	DELETE	-	P-BACKEND-X-001/批次01	whole-file	test only names retired original 43284 closure
+app/src/test/resources/architecture/kotlin-file-actions-v1.tsv	MODIFY	-	P-BACKEND-X-001/批次01	r1-file-actions	record exact deleted/modified original closure
+app/src/test/resources/architecture/ksu-exec-keep-v1.tsv	MODIFY	-	P-BACKEND-X-001/批次01	retired-original-ksu-owners	remove deleted original backend script ownership rows
+build.gradle.kts	MODIFY	-	P-BACKEND-X-001/批次01	native-contract-task-closure	remove nativeTestContractsHost inputs/tasks that only compile retired original 43499 core
+docs/development/full-process-uml.md	MODIFY	-	P-BACKEND-X-001/批次01	backend-membership-and-native-graph	remove original backends/manual JNI/public victim from authoritative diagrams
+docs/development/introduction.md	MODIFY	-	P-BACKEND-X-001/批次01	current-native-gates-and-pointers	remove retired original-backend commands and point to surviving gates
+tools/abi_layout_probe.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	probe only includes retired original 43499 ABI
+tools/kotlin_architecture_d0.py	MODIFY	-	P-BACKEND-X-001/批次01	retired-original-path-authority	remove expected paths and rules for deleted original Kotlin/JNI closure
+tools/tests/CMakeLists.txt	MODIFY	-	P-BACKEND-X-001/批次01	whole-file	retired native test registration
+tools/tests/cpu_pin_test.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	host contract only includes retired original 43499 core
+tools/tests/native-test-disposition.tsv	MODIFY	-	P-BACKEND-X-001/批次01	whole-file	retired original target rows
+tools/tests/placement_floor_test.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	host contract only includes retired original 43499 core
+tools/tests/pselect_timeout_test.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	host contract only includes retired original 43499 core
+tools/tests/victim_fd_rules_test.c	DELETE	-	P-BACKEND-X-001/批次01	whole-file	host contract only includes retired original 43499 core
+tools/verify_43499_finish_victim_only.py	DELETE	-	P-BACKEND-X-001/批次01	whole-file	gate only scans retired original 43499 closure
+tools/verify_43499_kotlin_hygiene.py	DELETE	-	P-BACKEND-X-001/批次01	whole-file	gate only scans retired original 43499 closure
+tools/verify_43499_log_sites.py	DELETE	-	P-BACKEND-X-001/批次01	whole-file	gate only scans retired original 43499 closure
+tools/verify_43499_probe_protocol.py	DELETE	-	P-BACKEND-X-001/批次01	whole-file	gate only scans retired original 43499 victim protocol
+tools/verify_43499_victim_common_gate.py	DELETE	-	P-BACKEND-X-001/批次01	whole-file	gate only scans retired original 43499/public victim closure
+tools/verify_jni_exports.py	DELETE	-	P-BACKEND-X-001/批次01	whole-file	gate only verifies retired manual JNI DSO
+tools/verify_no_fork_imports.py	DELETE	-	P-BACKEND-X-001/批次01	whole-file	gate only verifies retired original 43499 victim/helper products
+tools/verify_no_log_in_pi.py	DELETE	-	P-BACKEND-X-001/批次01	whole-file	gate only scans retired original 43499 JNI/core
+app/src/androidTest/kotlin/com/ghostlock/app/architecture/UiBaselineFixtures.kt	MODIFY	-	P-RUN-IO-001/批次01	payload-finish-ui-fixtures	separate Payload and Finish fixtures after owner correction
+app/src/main/kotlin/com/ghostlock/app/AppContainer.kt	MODIFY	-	P-RUN-IO-001/批次01	payload-finish-repository-composition	wire Payload/Finish v3 repositories and root renderer without backend execution
+app/src/main/kotlin/com/ghostlock/app/AppViewModelFactory.kt	MODIFY	-	P-RUN-IO-001/批次01	payload-finish-viewmodel-factory	replace FinishEditor factory with Payload and independent Finish factories
+app/src/main/kotlin/com/ghostlock/app/core/finish/FinishConfig.kt	DELETE	-	P-RUN-IO-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/core/finish/FinishScript.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptRenderer.kt	P-RUN-IO-001/批次01	whole-file	one Payload then Finish renderer
+app/src/main/kotlin/com/ghostlock/app/core/finish/FinishScriptStore.kt	DELETE	-	P-RUN-IO-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/core/payload/PayloadEffects.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/core/rootscript/PayloadVerifier.kt	P-RUN-IO-001/批次01	whole-file	typed per-item verifier
+app/src/main/kotlin/com/ghostlock/app/core/payload/PayloadRequests.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/core/rootscript/PayloadScriptRenderer.kt	P-RUN-IO-001/批次01	whole-file	frozen Payload renderer
+app/src/main/kotlin/com/ghostlock/app/core/rootscript/PublishedArtifactIdentity.kt	ADD	-	P-RUN-IO-001/批次01	whole-file	pinned regular-file identity contract
+app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptArtifact.kt	ADD	-	P-RUN-IO-001/批次01	whole-file	published script artifact
+app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptResult.kt	ADD	-	P-RUN-IO-001/批次01	whole-file	typed script result
+app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptResultCodec.kt	ADD	-	P-RUN-IO-001/批次01	whole-file	single result protocol codec
+app/src/main/kotlin/com/ghostlock/app/data/finish/FinishDocumentCodec.kt	ADD	-	P-RUN-IO-001/批次01	whole-file	canonical JSON/JCS codec for Finish v3 document
+app/src/main/kotlin/com/ghostlock/app/data/finish/FinishEditorAdapter.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/data/payload/PayloadDocumentRepository.kt	P-RUN-IO-001/批次01	whole-file	version-3 Payload document/JCS repository; no SharedPreferences authority
+app/src/main/kotlin/com/ghostlock/app/data/finish/FinishSettingsAdapter.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/data/finish/FinishDocumentRepository.kt	P-RUN-IO-001/批次01	whole-file	version-3 Finish document/JCS repository; no SharedPreferences authority
+app/src/main/kotlin/com/ghostlock/app/data/payload/PayloadDocumentCodec.kt	ADD	-	P-RUN-IO-001/批次01	whole-file	canonical JSON/JCS codec for Payload v3 document
+app/src/main/kotlin/com/ghostlock/app/domain/finish/FinishDefinition.kt	ADD	-	P-RUN-IO-001/批次01	whole-file	finish authority
+app/src/main/kotlin/com/ghostlock/app/domain/finish/FinishDocumentV3.kt	ADD	-	P-RUN-IO-001/批次01	whole-file	version-3 Finish typed document authority
+app/src/main/kotlin/com/ghostlock/app/domain/finish/FinishEditor.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/domain/payload/PayloadEditor.kt	P-RUN-IO-001/批次01	whole-file	current editor owns Payload
+app/src/main/kotlin/com/ghostlock/app/domain/finish/FinishEditorPort.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/domain/payload/PayloadEditorPort.kt	P-RUN-IO-001/批次01	whole-file	Payload editor port
+app/src/main/kotlin/com/ghostlock/app/domain/finish/FinishRepository.kt	ADD	-	P-RUN-IO-001/批次01	whole-file	finish persistence port
+app/src/main/kotlin/com/ghostlock/app/domain/finish/FinishSettings.kt	MODIFY	-	P-RUN-IO-001/批次01	whole-file	FinishDefinition projection
+app/src/main/kotlin/com/ghostlock/app/domain/finish/FinishSettingsPort.kt	MODIFY	-	P-RUN-IO-001/批次01	whole-file	FinishRepository port
+app/src/main/kotlin/com/ghostlock/app/domain/finish/PreviewFinishScriptUseCase.kt	DELETE	-	P-RUN-IO-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/domain/finish/ReadFinishEditorUseCase.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/domain/payload/ReadPayloadEditorUseCase.kt	P-RUN-IO-001/批次01	whole-file	Payload read use case
+app/src/main/kotlin/com/ghostlock/app/domain/finish/ReadFinishSettingsUseCase.kt	MODIFY	-	P-RUN-IO-001/批次01	whole-file	FinishRepository
+app/src/main/kotlin/com/ghostlock/app/domain/finish/SaveFinishEditorUseCase.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/domain/payload/SavePayloadEditorUseCase.kt	P-RUN-IO-001/批次01	whole-file	Payload save use case
+app/src/main/kotlin/com/ghostlock/app/domain/finish/SaveFinishSettingsUseCase.kt	MODIFY	-	P-RUN-IO-001/批次01	whole-file	FinishRepository
+app/src/main/kotlin/com/ghostlock/app/domain/payload/PayloadDefinition.kt	ADD	-	P-RUN-IO-001/批次01	whole-file	payload authority
+app/src/main/kotlin/com/ghostlock/app/domain/payload/PayloadDocumentV3.kt	ADD	-	P-RUN-IO-001/批次01	whole-file	version-3 Payload typed document authority
+app/src/main/kotlin/com/ghostlock/app/domain/payload/PayloadRepository.kt	ADD	-	P-RUN-IO-001/批次01	whole-file	payload persistence port
+app/src/main/kotlin/com/ghostlock/app/domain/run/PreviewRootScriptUseCase.kt	ADD	-	P-RUN-IO-001/批次01	whole-file	preview through production renderer in isolated workspace
+app/src/main/kotlin/com/ghostlock/app/ui/MainActivity.kt	MODIFY	-	P-RUN-IO-001/批次01	payload-finish-navigation	rename editor destination and keep independent Finish destination
+app/src/main/kotlin/com/ghostlock/app/ui/screen/module/BackendPage.kt	MODIFY	-	P-RUN-IO-001/批次01	payload-finish-entry-points	render separate Payload and Finish settings entry points
+app/src/main/kotlin/com/ghostlock/app/ui/screen/module/BackendPageUiState.kt	MODIFY	-	P-RUN-IO-001/批次01	payload-finish-state	separate Payload definition summary from Finish summary
+app/src/main/kotlin/com/ghostlock/app/ui/screen/module/backends/FinishEditorUiState.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/ui/screen/module/payload/PayloadUiState.kt	P-RUN-IO-001/批次01	whole-file	Payload UI state
+app/src/main/kotlin/com/ghostlock/app/ui/screen/module/backends/FinishSettingsUi.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/ui/screen/module/finish/FinishSettingsUi.kt	P-RUN-IO-001/批次01	whole-file	Finish UI owner
+app/src/main/kotlin/com/ghostlock/app/ui/screen/module/backends/FinishSettingsUiState.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/ui/screen/module/finish/FinishSettingsUiState.kt	P-RUN-IO-001/批次01	whole-file	Finish UI state owner
+app/src/main/kotlin/com/ghostlock/app/ui/screen/module/backends/FinishUi.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/ui/screen/module/payload/PayloadUi.kt	P-RUN-IO-001/批次01	whole-file	Payload settings UI
+app/src/main/kotlin/com/ghostlock/app/ui/viewmodel/FinishEditorViewModel.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/ui/viewmodel/PayloadViewModel.kt	P-RUN-IO-001/批次01	whole-file	current editor owns Payload and moves to correct owner
+app/src/main/kotlin/com/ghostlock/app/ui/viewmodel/FinishSettingsViewModel.kt	MODIFY	-	P-RUN-IO-001/批次01	whole-file	FinishRepository
+app/src/test/kotlin/com/ghostlock/app/core/rootscript/PublishedArtifactIdentityTest.kt	ADD	-	P-RUN-IO-001/批次01	whole-file	same-open-file identity and replacement/symlink negative cases
+app/src/test/kotlin/com/ghostlock/app/core/rootscript/RootScriptRendererTest.kt	ADD	-	P-RUN-IO-001/批次01	whole-file	Payload then Finish rendering and fail-fast golden
+app/src/test/kotlin/com/ghostlock/app/core/rootscript/RootScriptResultCodecTest.kt	ADD	-	P-RUN-IO-001/批次01	whole-file	strict line-protocol positive and malformed cases
+app/src/test/kotlin/com/ghostlock/app/data/finish/FinishDocumentRepositoryTest.kt	ADD	-	P-RUN-IO-001/批次01	whole-file	Finish v3 JCS round-trip and legacy rejection
+app/src/test/kotlin/com/ghostlock/app/data/payload/PayloadDocumentRepositoryTest.kt	ADD	-	P-RUN-IO-001/批次01	whole-file	Payload v3 JCS round-trip and legacy rejection
+app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/PayloadEffectsTest.kt	MOVE_REWRITE	app/src/test/kotlin/com/ghostlock/app/core/rootscript/PayloadVerifierTest.kt	P-RUN-IO-001/批次01	whole-file	move Payload acceptance tests beside the typed verifier
+app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/PayloadRequestsTest.kt	MOVE_REWRITE	app/src/test/kotlin/com/ghostlock/app/core/rootscript/PayloadScriptRendererTest.kt	P-RUN-IO-001/批次01	whole-file	move Payload fragment tests beside the renderer
+app/src/test/kotlin/com/ghostlock/app/ui/screen/module/backends/ScriptRenderTest.kt	DELETE	-	P-RUN-IO-001/批次01	whole-file	superseded by the new root-script renderer golden and strict result tests
+app/src/test/resources/architecture/kotlin-file-actions-v1.tsv	MODIFY	-	P-RUN-IO-001/批次01	r2-file-actions	record exact owner moves and new root-script authority
+app/src/test/resources/architecture/ksu-exec-keep-v1.tsv	MODIFY	-	P-RUN-IO-001/批次01	common-root-script-authority	replace backend KSU generator ownership with Payload/root-script ownership
+docs/development/full-process-uml.md	MODIFY	-	P-RUN-IO-001/批次01	payload-finish-root-script-ipo	update authoritative IPO for document repositories and one script
+tools/kotlin_architecture_d0.py	MODIFY	-	P-RUN-IO-001/批次01	payload-root-script-manifest-authority	replace retired FinishConfig/PayloadRequests keep paths with typed Payload/root-script owners so generated manifests remain producible
+app/src/androidTest/kotlin/com/ghostlock/app/architecture/UiBaselineFixtures.kt	MODIFY	-	P-RUN-X-001/批次01	neutral-backend-and-runhost-fixtures	replace Glued concrete fixtures with DebugProbe/neutral catalog fixtures
+app/src/androidTest/kotlin/com/ghostlock/app/backend/backends/cve43284glued/AndroidIpSecRuntimeSmokeTest.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	old Glued Kotlin connector is deleted
+app/src/androidTest/kotlin/com/ghostlock/app/backend/core/DebugProbeHostSmokeTest.kt	MOVE_REWRITE	app/src/androidTest/kotlin/com/ghostlock/app/backend/transport/RunHostDebugProbeSmokeTest.kt	P-RUN-X-001/批次01	whole-file	typed DebugProbe RunHost vertical smoke
+app/src/androidTest/kotlin/com/ghostlock/app/backend/core/Flow43284GluedHostSmokeTest.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	old Glued Flow/host contract is deleted
+app/src/androidTest/kotlin/com/ghostlock/app/backend/core/Flow43284TimeoutKeepaliveTest.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	old Glued Flow/keepalive contract is deleted
+app/src/androidTest/kotlin/com/ghostlock/app/backend/core/Flow43499GluedHostSmokeTest.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	old Glued Flow/host contract is deleted
+app/src/androidTest/kotlin/com/ghostlock/app/backend/core/FlowHostCancellationTest.kt	MOVE_REWRITE	app/src/androidTest/kotlin/com/ghostlock/app/backend/transport/RunHostCancellationTest.kt	P-RUN-X-001/批次01	whole-file	typed abort policy and state-machine cancellation
+app/src/androidTest/kotlin/com/ghostlock/app/backend/core/FlowHostHostDeathTest.kt	MOVE_REWRITE	app/src/androidTest/kotlin/com/ghostlock/app/backend/transport/RunHostHostDeathTest.kt	P-RUN-X-001/批次01	whole-file	typed host death UNKNOWN behavior
+app/src/androidTest/kotlin/com/ghostlock/app/backend/core/FlowHostKeepaliveTest.kt	MOVE_REWRITE	app/src/androidTest/kotlin/com/ghostlock/app/backend/transport/RunHostLifecycleTest.kt	P-RUN-X-001/批次01	whole-file	replace keepalive with explicit requestClose/destroy lifecycle
+app/src/androidTest/kotlin/com/ghostlock/app/backend/core/FlowHostProcessSmokeTest.kt	MOVE_REWRITE	app/src/androidTest/kotlin/com/ghostlock/app/backend/transport/AppRunHostSmokeTest.kt	P-RUN-X-001/批次01	whole-file	typed App RunHost smoke
+app/src/androidTest/kotlin/com/ghostlock/app/backend/core/Real43499GateTest.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	old selectable Glued connector gate is deleted
+app/src/androidTest/kotlin/com/ghostlock/app/backend/core/ShizukuFlowHostSmokeTest.kt	MOVE_REWRITE	app/src/androidTest/kotlin/com/ghostlock/app/backend/transport/ShizukuRunHostSmokeTest.kt	P-RUN-X-001/批次01	whole-file	typed Shizuku RunHost smoke
+app/src/main/AndroidManifest.xml	MODIFY	-	P-RUN-X-001/批次01	whole-file	new RunHost service/AIDL
+app/src/main/aidl/com/ghostlock/app/flow/IFlowHost.aidl	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/aidl/com/ghostlock/app/flow/IFlowHostCallback.aidl	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/aidl/com/ghostlock/app/run/FinishItemParcel.aidl	ADD	-	P-RUN-X-001/批次01	whole-file	typed Finish item wire
+app/src/main/aidl/com/ghostlock/app/run/IRunHost.aidl	ADD	-	P-RUN-X-001/批次01	whole-file	typed host interface
+app/src/main/aidl/com/ghostlock/app/run/IRunHostCallback.aidl	ADD	-	P-RUN-X-001/批次01	whole-file	typed host callback
+app/src/main/aidl/com/ghostlock/app/run/ItemResultParcel.aidl	ADD	-	P-RUN-X-001/批次01	whole-file	typed Payload/Finish item result wire
+app/src/main/aidl/com/ghostlock/app/run/PayloadItemParcel.aidl	ADD	-	P-RUN-X-001/批次01	whole-file	typed Payload item wire
+app/src/main/aidl/com/ghostlock/app/run/RunHostEvent.aidl	ADD	-	P-RUN-X-001/批次01	whole-file	typed bounded callback event
+app/src/main/aidl/com/ghostlock/app/run/RunHostRequest.aidl	ADD	-	P-RUN-X-001/批次01	whole-file	AIDL parcelable declaration
+app/src/main/aidl/com/ghostlock/app/run/RunHostSnapshot.aidl	ADD	-	P-RUN-X-001/批次01	whole-file	AIDL snapshot declaration
+app/src/main/aidl/com/ghostlock/app/run/RunHostSnapshotReply.aidl	ADD	-	P-RUN-X-001/批次01	whole-file	stable code plus nullable snapshot reply for synchronous getSnapshot
+app/src/main/aidl/com/ghostlock/app/run/RunInputArtifactParcel.aidl	ADD	-	P-RUN-X-001/批次01	whole-file	typed bounded input artifact with read-only PFD
+app/src/main/aidl/com/ghostlock/app/run/StageResultParcel.aidl	ADD	-	P-RUN-X-001/批次01	whole-file	typed stage result wire
+app/src/main/aidl/com/ghostlock/app/shizuku/IGhostlockCallback.aidl	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/aidl/com/ghostlock/app/shizuku/IGhostlockUserService.aidl	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/AppContainer.kt	MODIFY	-	P-RUN-X-001/批次01	execution-spine-composition	composition root
+app/src/main/kotlin/com/ghostlock/app/AppViewModelFactory.kt	MODIFY	-	P-RUN-X-001/批次01	run-ui-factory	new use cases
+app/src/main/kotlin/com/ghostlock/app/backend/README.md	MODIFY	-	P-RUN-X-001/批次01	new-plugin-runhost-owner-policy	document neutral spec/plugin/Flow/transport ownership and production backend count zero
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43284glued/AndroidIpSecRuntime.kt	DELETE	-	P-RUN-X-001/批次01	retired-kotlin-connector	old Glued Kotlin connector is not a compatibility baseline; native source stays frozen
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43284glued/BackendCve43284Glued.kt	DELETE	-	P-RUN-X-001/批次01	retired-kotlin-connector	old Glued Kotlin connector is not a compatibility baseline; native source stays frozen
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43284glued/Flow43284GluedEntry.kt	DELETE	-	P-RUN-X-001/批次01	retired-kotlin-connector	old Glued Kotlin connector is not a compatibility baseline; native source stays frozen
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499glued/BackendCve43499Glued.kt	DELETE	-	P-RUN-X-001/批次01	retired-kotlin-connector	old Glued Kotlin connector is not a compatibility baseline; native source stays frozen
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499glued/Flow43499GluedEntry.kt	DELETE	-	P-RUN-X-001/批次01	retired-kotlin-connector	old Glued Kotlin connector is not a compatibility baseline; native source stays frozen
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499glued/Glued43499ExecParams.kt	DELETE	-	P-RUN-X-001/批次01	retired-kotlin-connector	old Glued Kotlin connector is not a compatibility baseline; native source stays frozen
+app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43499glued/Glued43499ProfileCodec.kt	DELETE	-	P-RUN-X-001/批次01	retired-kotlin-connector	old Glued Kotlin connector is not a compatibility baseline; native source stays frozen
+app/src/main/kotlin/com/ghostlock/app/backend/backends/debugprobe/BackendDebugProbe.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	diagnostic plugin
+app/src/main/kotlin/com/ghostlock/app/backend/backends/debugprobe/FlowDebugProbeEntry.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/backend/backends/debugprobe/DebugProbeFlow.kt	P-RUN-X-001/批次01	whole-file	diagnostic Flow without reflection
+app/src/main/kotlin/com/ghostlock/app/backend/backends/lua/BackendCustom.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	fixed Lua plugin
+app/src/main/kotlin/com/ghostlock/app/backend/backends/lua/FlowLuaImpl.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	operation catalog only
+app/src/main/kotlin/com/ghostlock/app/backend/backends/lua/FlowLuaRequest.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	typed Lua input
+app/src/main/kotlin/com/ghostlock/app/backend/backends/lua/LuaFlowInput.kt	ADD	-	P-RUN-X-001/批次01	whole-file	typed Lua flow input
+app/src/main/kotlin/com/ghostlock/app/backend/backends/lua/LuaNew.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/backend/backends/lua/LuaOperationCatalog.kt	ADD	-	P-RUN-X-001/批次01	whole-file	approved Lua operation surface
+app/src/main/kotlin/com/ghostlock/app/backend/backends/lua/LuaReflect.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/backend/backends/lua/LuaScriptSelectionStore.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/data/lua/AndroidLuaScriptRepository.kt	P-RUN-X-001/批次01	whole-file	Lua I/O data adapter
+app/src/main/kotlin/com/ghostlock/app/backend/declarations/BackendConfig.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/domain/backend/BackendConfigSchema.kt	P-RUN-X-001/批次01	whole-file	strip Android Context/store from schema
+app/src/main/kotlin/com/ghostlock/app/backend/declarations/BackendConfigurationSpec.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/domain/backend/BackendConfigurationSpec.kt	P-RUN-X-001/批次01	whole-file	neutral configuration capability
+app/src/main/kotlin/com/ghostlock/app/backend/declarations/BackendExecution.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/domain/backend/BackendExecutionSpec.kt	P-RUN-X-001/批次01	whole-file	execution domain and abort policy
+app/src/main/kotlin/com/ghostlock/app/backend/declarations/BackendFlowParams.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/backend/declarations/BackendParameterSchema.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/domain/backend/BackendParameterRequirements.kt	P-RUN-X-001/批次01	whole-file	neutral parameter declaration
+app/src/main/kotlin/com/ghostlock/app/backend/declarations/BackendPlugin.kt	ADD	-	P-RUN-X-001/批次01	whole-file	internal immutable plugin composition
+app/src/main/kotlin/com/ghostlock/app/backend/declarations/BackendReadiness.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/domain/backend/BackendAvailability.kt	P-RUN-X-001/批次01	whole-file	resource-free readiness facts
+app/src/main/kotlin/com/ghostlock/app/backend/declarations/BackendRegistryIdentityFactory.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/backend/declarations/BackendSpec.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/domain/backend/BackendSpec.kt	P-RUN-X-001/批次01	whole-file	neutral immutable spec
+app/src/main/kotlin/com/ghostlock/app/backend/declarations/FlowEntryRegistryAssembly.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/backend/declarations/UnfinishedBackend.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/backend/diagnostics/DiagnosticFlowEntries.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/backend/host/FlowEntryParams.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/backend/host/FlowHostProtocol.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/backend/host/FlowHostService.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostService.kt	P-RUN-X-001/批次01	whole-file	key-based typed RunHost
+app/src/main/kotlin/com/ghostlock/app/backend/host/HostProcessExec.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/backend/transport/BackendProcessCarrier.kt	P-RUN-X-001/批次01	whole-file	generic executable carrier only
+app/src/main/kotlin/com/ghostlock/app/backend/host/HostRunPaths.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/backend/launcher/AppProcessFlowLauncher.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/backend/transport/AppRunHostClient.kt	P-RUN-X-001/批次01	whole-file	typed App client
+app/src/main/kotlin/com/ghostlock/app/backend/launcher/BackendExecutionState.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/backend/launcher/BackendRunGate.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	neutral gate only
+app/src/main/kotlin/com/ghostlock/app/backend/launcher/FlowLaunchParent.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/backend/launcher/RunCoordinator.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/core/run/RunCoordinator.kt	P-RUN-X-001/批次01	whole-file	application-scoped run lifecycle
+app/src/main/kotlin/com/ghostlock/app/backend/launcher/ShizukuProcessFlowLauncher.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/backend/transport/ShizukuRunHostClient.kt	P-RUN-X-001/批次01	whole-file	typed Shizuku client
+app/src/main/kotlin/com/ghostlock/app/backend/registry/Backends.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/backend/registry/BackendRegistry.kt	P-RUN-X-001/批次01	surviving-file-to-immutable-registry	immutable plugin registry
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostEventCursor.kt	ADD	-	P-RUN-X-001/批次01	whole-file	client identity sequence terminal and event-conjunction filter
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostExecutionDomainVerifier.kt	ADD	-	P-RUN-X-001/批次01	whole-file	actual host role uid and SELinux domain gate
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostParcelBudget.kt	ADD	-	P-RUN-X-001/批次01	whole-file	actual request event and snapshot Parcel budget authority
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostProtocol.kt	ADD	-	P-RUN-X-001/批次01	whole-file	host lifecycle protocol
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostRequest.kt	ADD	-	P-RUN-X-001/批次01	whole-file	typed bounded request
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostSnapshot.kt	ADD	-	P-RUN-X-001/批次01	whole-file	typed host snapshot
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostSnapshotPoller.kt	ADD	-	P-RUN-X-001/批次01	whole-file	durable terminal snapshot polling independent of callback delivery
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostSnapshotReply.kt	ADD	-	P-RUN-X-001/批次01	whole-file	code and nullable snapshot invariant used by both clients
+app/src/main/kotlin/com/ghostlock/app/core/flow/BackendFlowInput.kt	ADD	-	P-RUN-X-001/批次01	whole-file	uniform Flow input
+app/src/main/kotlin/com/ghostlock/app/core/flow/BackendRunFacts.kt	ADD	-	P-RUN-X-001/批次01	whole-file	backend primitive dispatch cleanup facts
+app/src/main/kotlin/com/ghostlock/app/core/flow/Flow.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	uniform Flow contract
+app/src/main/kotlin/com/ghostlock/app/core/flow/FlowEntry.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/core/flow/FlowEntryRegistry.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/core/flow/FlowHostParams.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/core/flow/FlowProgress.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	typed RunEvent sink
+app/src/main/kotlin/com/ghostlock/app/core/flow/FlowRequest.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	new input model
+app/src/main/kotlin/com/ghostlock/app/core/flow/FlowResult.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	backend facts not product success
+app/src/main/kotlin/com/ghostlock/app/core/flow/FlowStep.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	new Flow result
+app/src/main/kotlin/com/ghostlock/app/core/flow/FlowStepRun.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	new Flow result
+app/src/main/kotlin/com/ghostlock/app/core/flow/FlowSymbol.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/core/flow/RetryPolicy.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	new Flow input
+app/src/main/kotlin/com/ghostlock/app/core/flow/SequentialFlow.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	remove KClass
+app/src/main/kotlin/com/ghostlock/app/core/flow/Step.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	new Flow input
+app/src/main/kotlin/com/ghostlock/app/core/flow/StepContext.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	new Flow input
+app/src/main/kotlin/com/ghostlock/app/core/flow/StepResult.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	typed stage facts
+app/src/main/kotlin/com/ghostlock/app/core/flow/StepTiming.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	typed stage facts
+app/src/main/kotlin/com/ghostlock/app/core/run/RunInputFreezer.kt	ADD	-	P-RUN-X-001/批次01	whole-file	single freeze boundary
+app/src/main/kotlin/com/ghostlock/app/data/backend/AndroidBackendConfigurationAdapter.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	no concrete backend import
+app/src/main/kotlin/com/ghostlock/app/data/backend/BackendCatalogAdapter.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	plugin to neutral projection
+app/src/main/kotlin/com/ghostlock/app/data/backend/BackendPresentationAdapter.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	presentation key resolver
+app/src/main/kotlin/com/ghostlock/app/data/backend/BackendRunSessionAdapter.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	freeze request and typed report
+app/src/main/kotlin/com/ghostlock/app/data/backend/BackendSelectionAdapter.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	immutable registry lookup
+app/src/main/kotlin/com/ghostlock/app/data/backend/BackendSessionStore.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	profile/config authority
+app/src/main/kotlin/com/ghostlock/app/data/backend/SharedPreferencesBackendConfigStore.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	old declaration types move in R3; delete the preferences authority with its final caller and fixtures
+app/src/main/kotlin/com/ghostlock/app/data/diagnostics/AndroidDiagnosticReportBuilder.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	typed report/event export
+app/src/main/kotlin/com/ghostlock/app/data/run/AndroidRunWorkspace.kt	ADD	-	P-RUN-X-001/批次01	whole-file	per-host run workspace
+app/src/main/kotlin/com/ghostlock/app/data/run/RootArtifactStagingAdapter.kt	ADD	-	P-RUN-X-001/批次01	whole-file	execution-domain staging port
+app/src/main/kotlin/com/ghostlock/app/domain/backend/BackendCatalogPort.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	neutral BackendSpec catalog
+app/src/main/kotlin/com/ghostlock/app/domain/backend/BackendConfiguration.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	neutral configuration model
+app/src/main/kotlin/com/ghostlock/app/domain/backend/BackendRegistryIdentity.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/domain/backend/BackendRegistrySnapshot.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	List BackendSpec snapshot
+app/src/main/kotlin/com/ghostlock/app/domain/backend/BackendRuntimeSpec.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/domain/backend/BackendSelectionPort.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	stable key selection
+app/src/main/kotlin/com/ghostlock/app/domain/backend/GetBackendCatalogUseCase.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	neutral catalog
+app/src/main/kotlin/com/ghostlock/app/domain/backend/SelectBackendUseCase.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	neutral catalog
+app/src/main/kotlin/com/ghostlock/app/domain/run/FrozenRunInput.kt	ADD	-	P-RUN-X-001/批次01	whole-file	immutable run input
+app/src/main/kotlin/com/ghostlock/app/domain/run/RunBackendUseCase.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	frozen run input
+app/src/main/kotlin/com/ghostlock/app/domain/run/RunCommand.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	frozen run identity
+app/src/main/kotlin/com/ghostlock/app/domain/run/RunEvent.kt	ADD	-	P-RUN-X-001/批次01	whole-file	typed progress event
+app/src/main/kotlin/com/ghostlock/app/domain/run/RunReport.kt	ADD	-	P-RUN-X-001/批次01	whole-file	six-layer result authority
+app/src/main/kotlin/com/ghostlock/app/domain/run/RunSessionPort.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	RunReport result
+app/src/main/kotlin/com/ghostlock/app/domain/run/RunSessionState.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	six-layer terminal
+app/src/main/kotlin/com/ghostlock/app/log/FileSink.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	diagnostic only
+app/src/main/kotlin/com/ghostlock/app/log/LogFile.kt	MODIFY	-	P-RUN-X-001/批次01	typed-run-diagnostic-projection	only project typed RunEvent/RunReport diagnostics; do not revisit R1 fd ownership, Shizuku fd transfer, or retired NativeLogBridge contract
+app/src/main/kotlin/com/ghostlock/app/log/LogOrigin.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	typed origin formatting
+app/src/main/kotlin/com/ghostlock/app/log/log.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	diagnostic only
+app/src/main/kotlin/com/ghostlock/app/shizuku/GhostlockUserService.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	new IRunHost only
+app/src/main/kotlin/com/ghostlock/app/shizuku/ShizukuBackendClient.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/shizuku/ShizukuFlowHostClient.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/shizuku/host/ShizukuBackendHost.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/ui/screen/home/HomeMaterial.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	typed status rendering
+app/src/main/kotlin/com/ghostlock/app/ui/screen/home/HomeMiuix.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	typed status rendering
+app/src/main/kotlin/com/ghostlock/app/ui/screen/home/HomeScreen.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	product success projection
+app/src/main/kotlin/com/ghostlock/app/ui/screen/home/HomeUiState.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	product success projection
+app/src/main/kotlin/com/ghostlock/app/ui/screen/module/BackendPage.kt	MODIFY	-	P-RUN-X-001/批次01	neutral-backend-catalog-and-run-actions	neutral catalog
+app/src/main/kotlin/com/ghostlock/app/ui/screen/module/BackendPageUiState.kt	MODIFY	-	P-RUN-X-001/批次01	neutral-backend-and-run-state	neutral catalog
+app/src/main/kotlin/com/ghostlock/app/ui/screen/run/RunActions.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	typed cancel
+app/src/main/kotlin/com/ghostlock/app/ui/screen/run/RunPage.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	six-layer presentation
+app/src/main/kotlin/com/ghostlock/app/ui/screen/run/RunUiState.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	six-layer presentation
+app/src/main/kotlin/com/ghostlock/app/ui/viewmodel/HomeViewModel.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	typed status projection
+app/src/main/kotlin/com/ghostlock/app/ui/viewmodel/PathViewModel.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	new ports
+app/src/main/kotlin/com/ghostlock/app/ui/viewmodel/RunViewModel.kt	MODIFY	-	P-RUN-X-001/批次01	whole-file	six-layer state
+app/src/test/kotlin/com/ghostlock/app/backend/backends/BackendConfigurationCommitOrderingTest.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	test binds deleted Glued concrete configuration object
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43284glued/IpSecCliArgumentsTest.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	old Glued Kotlin connector is deleted
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499glued/Glued43499ExecParamsTest.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	old Glued Kotlin connector is deleted
+app/src/test/kotlin/com/ghostlock/app/backend/backends/cve43499glued/Glued43499ProfileCodecMergeTest.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	old Glued Kotlin connector is deleted
+app/src/test/kotlin/com/ghostlock/app/backend/core/FlowEntryParamsTest.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	reflection FlowEntry params contract removed
+app/src/test/kotlin/com/ghostlock/app/backend/core/FlowHostProtocolTest.kt	MOVE_REWRITE	app/src/test/kotlin/com/ghostlock/app/backend/transport/RunHostProtocolTest.kt	P-RUN-X-001/批次01	whole-file	replace symbol and Bundle protocol cases with stable typed host codes
+app/src/test/kotlin/com/ghostlock/app/backend/core/HostProcessExecTest.kt	MOVE_REWRITE	app/src/test/kotlin/com/ghostlock/app/backend/transport/BackendProcessCarrierTest.kt	P-RUN-X-001/批次01	whole-file	generic process observation without FlowEntry
+app/src/test/kotlin/com/ghostlock/app/backend/declarations/BackendFlowSelectionTest.kt	MOVE_REWRITE	app/src/test/kotlin/com/ghostlock/app/backend/registry/BackendRegistryTest.kt	P-RUN-X-001/批次01	whole-file	immutable key to plugin to Flow selection
+app/src/test/kotlin/com/ghostlock/app/backend/declarations/BackendRegistryInvariantsTest.kt	MODIFY	-	P-RUN-X-001/批次01	immutable-plugin-invariants	remove FlowSymbol/digest and assert key uniqueness
+app/src/test/kotlin/com/ghostlock/app/backend/declarations/FlowEntryRegistryAssemblyTest.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	dynamic reflection assembly removed
+app/src/test/kotlin/com/ghostlock/app/backend/declarations/UnfinishedBackendAnnotationTest.kt	DELETE	-	P-RUN-X-001/批次01	remaining-annotation-contract-after-r1	remove the remaining Lua annotation compatibility gate after the R1 original-membership assertions are gone
+app/src/test/kotlin/com/ghostlock/app/backend/launcher/BackendUidRequirementTest.kt	MOVE_REWRITE	app/src/test/kotlin/com/ghostlock/app/backend/transport/RunHostExecutionDomainTest.kt	P-RUN-X-001/批次01	surviving-glued-cases-to-neutral-domain	replace concrete Glued specs with neutral ExecutionDomain cases
+app/src/test/kotlin/com/ghostlock/app/backend/registry/DynamicBackendsTest.kt	DELETE	-	P-RUN-X-001/批次01	remaining-dynamic-registry-contract-after-r1	remove the remaining dynamic register/unregister/reset tests after the R1 original-membership assertions are gone
+app/src/test/kotlin/com/ghostlock/app/backend/transport/RunHostRequestValidationTest.kt	ADD	-	P-RUN-X-001/批次01	whole-file	grammar/count/byte/reference boundary matrix
+app/src/test/kotlin/com/ghostlock/app/backend/transport/RunHostSnapshotContractTest.kt	ADD	-	P-RUN-X-001/批次01	whole-file	stage item capability diagnostic and product-success conjunction guard
+app/src/test/kotlin/com/ghostlock/app/backend/transport/RunHostStateMachineTest.kt	ADD	-	P-RUN-X-001/批次01	whole-file	method by state matrix and linearization tests
+app/src/test/kotlin/com/ghostlock/app/core/flow/FlowEntryRegistryTest.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	dynamic reflection registry removed
+app/src/test/kotlin/com/ghostlock/app/core/flow/FlowEntryValidationTest.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	FlowEntry reflection contract removed
+app/src/test/kotlin/com/ghostlock/app/core/flow/FlowHostParamsTest.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	arbitrary Bundle host params removed
+app/src/test/kotlin/com/ghostlock/app/core/flow/FlowRequestTest.kt	MODIFY	-	P-RUN-X-001/批次01	uniform-backend-flow-input	replace generic request/KClass assertions with BackendFlowInput/facts
+app/src/test/kotlin/com/ghostlock/app/core/flow/FlowSymbolTest.kt	DELETE	-	P-RUN-X-001/批次01	whole-file	reflection symbol contract removed
+app/src/test/kotlin/com/ghostlock/app/data/backend/AndroidBackendConfigurationAdapterTest.kt	MODIFY	-	P-RUN-X-001/批次01	neutral-schema-adapter	replace Android/concrete BackendSpec fixtures with neutral schema fixtures
+app/src/test/kotlin/com/ghostlock/app/data/backend/BackendSessionStoreAuthorityTest.kt	MODIFY	-	P-RUN-X-001/批次01	neutral-spec-readiness-separation	assert profile/config authority without embedding runtime readiness in immutable spec
+app/src/test/kotlin/com/ghostlock/app/data/backend/BackendSessionStoreLegacySelectionTest.kt	MODIFY	-	P-RUN-X-001/批次01	neutral-key-selection	remove FlowSymbol persistence and preserve stable key behavior
+app/src/test/kotlin/com/ghostlock/app/shizuku/ShizukuLauncherSharedTest.kt	MOVE_REWRITE	app/src/test/kotlin/com/ghostlock/app/backend/transport/RunHostSharedWireTest.kt	P-RUN-X-001/批次01	whole-file	same typed request semantics across App/Shizuku clients
+app/src/test/resources/architecture/kotlin-file-actions-v1.tsv	MODIFY	-	P-RUN-X-001/批次01	r3-file-actions	record execution-spine moves/deletes and no dual path
+app/src/test/resources/architecture/ksu-exec-keep-v1.tsv	MODIFY	-	P-RUN-X-001/批次01	carrier-consumer-boundary	assert RunHost stages common artifact and backends do not generate product scripts
+docs/development/full-process-uml.md	MODIFY	-	P-RUN-X-001/批次01	runhost-class-sequence-state	update authoritative Class/Sequence/State diagrams in same structural batch
+tools/kotlin_architecture_d0.py	MODIFY	-	P-RUN-X-001/批次01	execution-spine-forbidden-edges	add neutral-spec, no-reflection, no-backend-product-script gates
+app/build.gradle.kts	MODIFY	-	P-LOG-IO-001/批次01	r4a-test-inventory-count	update the exact XML test inventory only after the final R4A test set exists
+app/src/main/kotlin/com/ghostlock/app/AppContainer.kt	MODIFY	-	P-LOG-IO-001/批次01	automatic-export-composition	construct one AndroidRunLogExportAdapter and one RunLogDocumentFormatter; inject both directly into RunCoordinator
+app/src/main/kotlin/com/ghostlock/app/AppViewModelFactory.kt	MODIFY	-	P-LOG-IO-001/批次01	automatic-export-settings-composition	restore the export-directory use case only with the real exporter caller
+app/src/main/kotlin/com/ghostlock/app/core/run/RunCoordinator.kt	MODIFY	-	P-LOG-IO-001/批次01	run-log-session-owner	own injected export port canonical snapshot pure request session state bounded feed and CAS-guarded single close; pass the open bound into awaitWithin and render manual bytes from the same formatter
+app/src/main/kotlin/com/ghostlock/app/data/backend/BackendRunSessionAdapter.kt	MODIFY	-	P-LOG-IO-001/批次01	automatic-export-request	freeze run identity/preferences into a pure data request and pass it to RunCoordinator without carrying the port; share coordinator canonical bytes
+app/src/main/kotlin/com/ghostlock/app/data/run/AndroidRunLogExportAdapter.kt	ADD	-	P-LOG-IO-001/批次01	whole-file	Android MediaStore implementation with raw-result bounded wait before ACTIVE claim, direct row write then flush without a redundant local buffer, canonical-byte-prefix failure semantics, one per-run IO worker, stable closed/full classification, worker-failure channel termination, orphan cleanup, and no platform dependency above data
+app/src/main/kotlin/com/ghostlock/app/data/settings/SharedPreferencesOperationalPreferencesAdapter.kt	MODIFY	-	P-LOG-IO-001/批次01	automatic-export-preferences	restore historical keys, Downloads normalization, and picker effect
+app/src/main/kotlin/com/ghostlock/app/domain/run/RunLogDocumentFormatter.kt	ADD	-	P-LOG-IO-001/批次01	whole-file	pure GLLOG1 row grammar and canonical snapshot formatter shared byte-for-byte by manual share and automatic export
+app/src/main/kotlin/com/ghostlock/app/domain/run/RunLogExportPort.kt	ADD	-	P-LOG-IO-001/批次01	whole-file	neutral request/session/failure contract for NEW OPENING ACTIVE FAILED CLOSING CLOSED lifecycle with awaitWithin timeout-before-claim semantics
+app/src/main/kotlin/com/ghostlock/app/domain/settings/OperationalPreferences.kt	MODIFY	-	P-LOG-IO-001/批次01	automatic-export-preferences	restore auto-export flag and Downloads-relative destination with historical defaults
+app/src/main/kotlin/com/ghostlock/app/domain/settings/OperationalPreferencesPort.kt	MODIFY	-	P-LOG-IO-001/批次01	automatic-export-directory-effect	restore neutral picker effect contract
+app/src/main/kotlin/com/ghostlock/app/domain/settings/OperationalPreferencesUseCases.kt	MODIFY	-	P-LOG-IO-001/批次01	automatic-export-directory-effect	restore the directory use case with a production caller
+app/src/main/kotlin/com/ghostlock/app/ui/screen/settings/SettingsMaterial.kt	MODIFY	-	P-LOG-IO-001/批次01	automatic-export-ui	restore switch and tree picker in the same batch as the real sink
+app/src/main/kotlin/com/ghostlock/app/ui/screen/settings/SettingsMiuix.kt	MODIFY	-	P-LOG-IO-001/批次01	automatic-export-ui	restore switch and tree picker in the same batch as the real sink
+app/src/main/kotlin/com/ghostlock/app/ui/screen/settings/SettingsScreen.kt	MODIFY	-	P-LOG-IO-001/批次01	automatic-export-ui	bind restored actions to the settings model
+app/src/main/kotlin/com/ghostlock/app/ui/screen/settings/SettingsUiState.kt	MODIFY	-	P-LOG-IO-001/批次01	automatic-export-ui	restore immutable state and action contract
+app/src/main/kotlin/com/ghostlock/app/ui/viewmodel/SettingsViewModel.kt	MODIFY	-	P-LOG-IO-001/批次01	automatic-export-ui	restore commands and projection with the real sink in the same batch
+app/src/main/res/values/strings.xml	MODIFY	-	P-LOG-IO-001/批次01	automatic-export-resources	restore English settings strings
+app/src/main/res/values-zh-rCN/strings.xml	MODIFY	-	P-LOG-IO-001/批次01	automatic-export-resources	restore Chinese settings strings
+app/src/androidTest/kotlin/com/ghostlock/app/architecture/UiBaselineFixtures.kt	MODIFY	-	P-LOG-IO-001/批次01	automatic-export-fixture	restore the complete SettingsScreen action fixture
+app/src/test/kotlin/com/ghostlock/app/core/run/RunCoordinatorLogExportTest.kt	ADD	-	P-LOG-IO-001/批次01	whole-file	prove accepted rejected all terminal abort overflow presentation-only warning clearTerminal owner replacement CAS close exact one and forced A-commit B-drain interleaving preserves documentSequence order
+app/src/test/kotlin/com/ghostlock/app/domain/run/RunLogDocumentFormatterTest.kt	ADD	-	P-LOG-IO-001/批次01	whole-file	prove every literal GLLOG1 report row optional token control escaping item bounds all-terminal byte identity and canonical prefix
+app/src/test/kotlin/com/ghostlock/app/data/backend/RunLogExportParityTest.kt	ADD	-	P-LOG-IO-001/批次01	whole-file	prove equivalent App and Shizuku typed event streams produce identical canonical bytes
+app/src/androidTest/kotlin/com/ghostlock/app/data/run/AndroidRunLogExportAdapterTest.kt	ADD	-	P-LOG-IO-001/批次01	whole-file	prove MediaStore insert open write flush close timeout-before-claim orphan cleanup duplicate-await isolation late-open cancellation provider partial-write canonical byte prefix and CLOSED versus FAILED late-write results
+app/src/androidTest/kotlin/com/ghostlock/app/data/settings/OperationalPreferencesExportContractTest.kt	ADD	-	P-LOG-IO-001/批次01	whole-file	prove exact absent false legal root non-Download dot traversal bare relative repeated-slash storage and picker results
+README.md	MODIFY	-	P-LOG-IO-001/批次01	automatic-export-correction	publish unfinished capability and supersede the mistaken deletion conclusion
+README_ZH.md	MODIFY	-	P-LOG-IO-001/批次01	automatic-export-correction	publish unfinished capability and supersede the mistaken deletion conclusion
+app/src/main/kotlin/com/ghostlock/app/backend/README.md	MODIFY	-	P-LOG-IO-001/批次01	automatic-export-owner-policy	record application RunCoordinator ownership and non-authoritative failure semantics
+app/src/main/kotlin/com/ghostlock/app/core/SessionPhase.kt	DELETE	-	P-RUN-CORE-001/批次01	whole-file	retired mixed/reflection/manual bridge authority
+app/src/main/kotlin/com/ghostlock/app/log/LogExport.kt	DELETE	-	P-RUN-CORE-001/批次01	whole-file	retire only the caller-zero platform object; R4A capability moves behind domain port to data/run
+app/src/test/resources/architecture/kotlin-file-actions-v1.tsv	MODIFY	-	P-LOG-IO-001/批次01	r4a-file-actions	add delivered rows only when R4A source exists while preserving old LogExport as current ABSENT fact
+app/src/test/resources/architecture/ksu-exec-keep-v1.tsv	FREEZE	-	P-RUN-CORE-001/批次01	current-product-script-authority	R3 already records common root-script owners and named frozen native candidates; R4 adds the executable guard in the tool without rewriting this fixture
+docs/development/full-process-uml.md	MODIFY	-	P-LOG-IO-001/批次01	automatic-export-owner-sequence	add the single formatter run-scoped export lifecycle raw-result timeout-before-ACTIVE-claim handoff and provider-partial canonical-byte-prefix failure semantics without changing success authority
+docs/development/introduction.md	MODIFY	-	P-LOG-IO-001/批次01	automatic-export-current-pointer	record the reopened incomplete state instead of claiming feature deletion
+docs/analysis/architecture-review-log.md	MODIFY	-	P-LOG-IO-001/批次01	design-critic-record	record each R4A critic round with verdict blockers and NOT_RUN boundary
+docs/archive/INDEX-plans.md	MODIFY	-	P-LOG-IO-001/批次01	active-successor-status	preserve archived plans as history while recording the current correction
+docs/plan/43499-glued-product-carrier-plan.md	MODIFY	-	P-LOG-IO-001/批次01	active-plan-consistency	preserve the R5 design-only override while keeping R5 production source blocked
+docs/plan/backend-root-execution-unification-plan.md	MODIFY	-	P-LOG-IO-001/批次01	automatic-export-authority	freeze requirement dependency lifecycle byte contract exact matrix and critic responses
+docs/plan/backend-root-execution-unification-ledger.tsv	MODIFY	-	P-LOG-IO-001/批次01	r4a-exact-scope	replace the mistaken delete closure with the exact R4A implementation and test rows
+docs/plan/MASTER-PLAN.md	MODIFY	-	P-LOG-IO-001/批次01	current-progress-pointer	reopen R4 automatic export while keeping all gates NOT_RUN
+docs/plan/REMAINING-PLAN.md	MODIFY	-	P-LOG-IO-001/批次01	remaining-source-pointer	list automatic export completion before future carrier work
+docs/plan/ROADMAP.md	MODIFY	-	P-LOG-IO-001/批次01	batch-status-pointer	show R4A source work as pending without promoting unrun gates
+tools/kotlin_architecture_d0.py	MODIFY	-	P-LOG-IO-001/批次01	r4a-source-inventory	generate and verify new domain/data/tests only after they exist; keep current LogExport delete row until implementation
+app/src/main/kotlin/com/ghostlock/app/domain/run/RunLogExportPort.kt	DELETE	-	P-LOG-IO-001/批次02	whole-file	remove opening claim timeout session and terminal-drain topology
+app/src/main/kotlin/com/ghostlock/app/domain/run/RunLogSink.kt	ADD	-	P-LOG-IO-001/批次02	whole-file	minimal immediate factory bounded sink two-value emit finish and first-failure callback contract without completion monitor
+app/src/main/kotlin/com/ghostlock/app/domain/run/RunLogDocumentFormatter.kt	MODIFY	-	P-LOG-IO-001/批次02	format-config-owner	move RunLogFormatConfig beside the unchanged sole GLLOG1 formatter authority
+app/src/main/kotlin/com/ghostlock/app/data/run/AndroidRunLogExportAdapter.kt	DELETE	-	P-LOG-IO-001/批次02	whole-file	remove opening claim abandon timeout and separately activated session
+app/src/main/kotlin/com/ghostlock/app/data/run/AndroidRunLogSinkFactory.kt	ADD	-	P-LOG-IO-001/批次02	whole-file	one immediate sink one bounded channel one IO worker and worker-owned MediaStore stream lifecycle
+app/src/main/kotlin/com/ghostlock/app/core/run/RunCoordinator.kt	MODIFY	-	P-LOG-IO-001/批次02	single-sink-owner	format and tryEmit under canonical lock remove FormatWork sequence drainer open wait terminal wait and completion monitor project token callback only
+app/src/main/kotlin/com/ghostlock/app/AppContainer.kt	MODIFY	-	P-LOG-IO-001/批次02	log-sink-composition	construct AndroidRunLogSinkFactory and inject it with the shared formatter
+app/src/main/kotlin/com/ghostlock/app/data/backend/BackendRunSessionAdapter.kt	MODIFY	-	P-LOG-IO-001/批次02	log-sink-request	freeze RunLogSinkRequest while preserving manual canonical share
+app/src/test/kotlin/com/ghostlock/app/core/run/RunCoordinatorLogExportTest.kt	DELETE	-	P-LOG-IO-001/批次02	whole-file	remove tests coupled to the superseded opening and double-queue topology
+app/src/test/kotlin/com/ghostlock/app/core/run/RunCoordinatorLogSinkTest.kt	ADD	-	P-LOG-IO-001/批次02	whole-file	accepted rejected lock order abort token-isolated single warning clear and nonwaiting terminal source criteria with unchanged unit method count
+app/src/test/kotlin/com/ghostlock/app/data/backend/RunLogExportParityTest.kt	DELETE	-	P-LOG-IO-001/批次02	whole-file	remove old port-named parity source
+app/src/androidTest/kotlin/com/ghostlock/app/data/run/AndroidRunLogExportAdapterTest.kt	DELETE	-	P-LOG-IO-001/批次02	whole-file	remove timeout claim and duplicate-await source criteria
+app/src/androidTest/kotlin/com/ghostlock/app/data/run/AndroidRunLogSinkFactoryTest.kt	ADD	-	P-LOG-IO-001/批次02	whole-file	create-no-IO first-failure precedence open write flush queue close blocked-open finish and provider partial-prefix source criteria
+app/build.gradle.kts	MODIFY	-	P-LOG-IO-001/批次02	r4b-unit-inventory	remove the tautological parity test and replace the stale 168 projection with the observed current 32-file 93-test source and XML total after approved backend closure deletions
+app/src/test/resources/architecture/kotlin-file-actions-v1.tsv	MODIFY	-	P-LOG-IO-001/批次02	r4b-file-actions	replace old delivered target rows with current sink files and tests
+tools/kotlin_architecture_d0.py	MODIFY	-	P-LOG-IO-001/批次02	r4b-source-inventory	replace old expected files and forbid opening double-queue and timeout symbols
+docs/development/full-process-uml.md	MODIFY	-	P-LOG-IO-001/批次02	automatic-export-owner-sequence	replace R4A topology with single channel worker and token-isolated first-failure callback without a completion monitor
+docs/analysis/architecture-review-log.md	MODIFY	-	P-LOG-IO-001/批次02	design-and-source-record	record critic verdict user approval supersession source result and NOT_RUN boundary
+docs/plan/backend-root-execution-unification-plan.md	MODIFY	-	P-LOG-IO-001/批次02	current-log-authority	integrate the only active successor design and preserve R4A history
+docs/plan/backend-root-execution-unification-ledger.tsv	MODIFY	-	P-LOG-IO-001/批次02	r4b-exact-scope	record every delete add and caller documentation change
+docs/plan/REMAINING-PLAN.md	MODIFY	-	P-LOG-IO-001/批次02	remaining-source-pointer	show R4B as the current automatic-export topology with gates NOT_RUN
+docs/plan/MASTER-PLAN.md	MODIFY	-	P-LOG-IO-001/批次02	current-progress-pointer	replace R4A runtime topology pointer with approved R4B redesign and NOT_RUN boundary
+docs/plan/ROADMAP.md	MODIFY	-	P-LOG-IO-001/批次02	current-progress-pointer	show R4B successor source status without promoting unrun gates
+README.md	MODIFY	-	P-LOG-IO-001/批次02	current-log-pointer	replace R4A port session wording with the delivered single sink topology and NOT_RUN boundary
+README_ZH.md	MODIFY	-	P-LOG-IO-001/批次02	current-log-pointer	keep the Chinese current topology and NOT_RUN boundary synchronized
+app/src/main/kotlin/com/ghostlock/app/backend/README.md	MODIFY	-	P-LOG-IO-001/批次02	current-log-owner-policy	record coordinator lock single sink worker and diagnostic-only authority
+docs/development/introduction.md	MODIFY	-	P-LOG-IO-001/批次02	current-log-pointer	replace R4A port pointer with delivered R4B sink structure and evidence debt
+tools/kotlin_architecture_d0.py	MODIFY	-	P-RUN-CORE-001/批次01	final-forbidden-edge-authority	new forbidden-edge authority
+app/src/main/kotlin/com/ghostlock/app/backend/declarations/BackendCarrierArtifact.kt	ADD	-	P-BACKEND-X-001/来源S1	current-neutral-source-inventory	retain the delivered carrier declaration without registry membership or a native target
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostProductPipeline.kt	ADD	-	P-BACKEND-X-001/来源S1	current-neutral-source-inventory	retain the shared product pipeline without connecting a real backend
+app/src/main/kotlin/com/ghostlock/app/core/flow/PublishedFlowArtifact.kt	ADD	-	P-BACKEND-X-001/来源S1	current-neutral-source-inventory	retain the host-local staged artifact DTO
+app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptExecutionPlan.kt	ADD	-	P-BACKEND-X-001/来源S1	current-neutral-source-inventory	retain the sole normalized renderer decoder composer input
+app/src/main/kotlin/com/ghostlock/app/core/run/FrozenRunInputLease.kt	ADD	-	P-BACKEND-X-001/来源S1	current-neutral-source-inventory	retain same-opened-object source ownership
+app/src/main/kotlin/com/ghostlock/app/core/run/RunReportComposer.kt	ADD	-	P-BACKEND-X-001/来源S1	current-neutral-source-inventory	retain typed six-layer report composition
+app/src/main/kotlin/com/ghostlock/app/data/run/PackagedBackendArtifactResolver.kt	ADD	-	P-BACKEND-X-001/来源S1	current-neutral-source-inventory	retain the unconnected packaged artifact resolver
+app/src/main/kotlin/com/ghostlock/app/data/run/RootManagerArtifactResolver.kt	ADD	-	P-BACKEND-X-001/来源S1	current-neutral-source-inventory	retain the root-manager artifact and argv resolver
+app/src/test/kotlin/com/ghostlock/app/data/run/RootManagerArtifactResolverTest.kt	ADD	-	P-BACKEND-X-001/来源S1	root-manager-exact-argv-contract	retain package priority mandatory binary exact KMI safe-mode and launchOnly evidence
+tools/kotlin_architecture_d0.py	MODIFY	-	P-BACKEND-X-001/来源S1	current-neutral-source-inventory-closure	classify the exact eight retained R5-S1 files and supersede the child ledger's cancelled R5-S3 tool ownership
+app/src/test/resources/architecture/kotlin-file-actions-v1.tsv	MODIFY	-	P-BACKEND-X-001/来源S1	current-neutral-source-inventory-closure	add exactly eight generated PRESENT rows and supersede the child ledger's cancelled R5-S3 fixture ownership
+app/src/test/resources/architecture/ksu-exec-keep-v1.tsv	MODIFY	-	P-BACKEND-X-001/来源S1	root-manager-execution-contract	register the resolver and exact-argv test as R5-S1 KSU execution authority and supersede the child ledger's cancelled R5-S3 fixture ownership
+app/src/main/cpp/backends/43499glued/CMakeLists.txt	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/README.md	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/README_ZH.md	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/attack/ops.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/attack/ops.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/common.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/kernel/constants.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/kernel/offset.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/kernel/runtime_struct_offsets.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/kernel/target.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/kernel/target_constants.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/kernelsnitch/futex_hash.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/kernelsnitch/kernelsnitch.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/kernelsnitch/number_parse.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/kernelsnitch/scan_bounds.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/kernelsnitch/timeutils.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/kernelsnitch/utils.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/main.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/memory/address_space.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/memory/address_space.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/memory/heap_context.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/memory/heap_context.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/memory/payload_builder.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/memory/payload_builder.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/profile/accessors.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/profile/binary.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/profile/binary.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/profile/entry.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/profile/entry.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/profile/macros.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/profile/model.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/race/pi_race.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/race/pi_race.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/race/threads.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/race/threads.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/route/backend_contract.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/route/backend_policy.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/route/component_catalog.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/route/frontend_contract.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/route/multicast_waiter_route.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/route/orchestrator.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/route/pipeline.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/route/route_api.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/route/route_controller.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/route/route_controller.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/route/route_lifecycle.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/route/route_middleware.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/route/route_middleware.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/route/route_policy.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/route/route_status.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/route/select_stack_route.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/route/select_stack_route.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/route/tcp_zerocopy_route.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/route/tcp_zerocopy_route.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/session/backend/cve_2026_43499_backend.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/session/backend/cve_2026_43499_backend.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/session/backend/cve_2026_64560_backend.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/session/exploit_session.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/session/exploit_session.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/session/handoff_probe.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/session/handoff_probe.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/session/root_child_frontend.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/session/root_child_frontend.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/session/runtime_config.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/session/runtime_config.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/session/runtime_paths.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/session/stage_types.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/session/victim_context.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/session/victim_context.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/session/victim_process.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/session/victim_process.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/support/decls.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/support/fatal_error.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/support/native_resource.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/support/native_resource.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/support/native_result.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/support/run_state.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/support/run_state.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/support/status.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/support/time.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/support/util.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/CMakeLists.txt	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/address_space_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/backend_contract_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/component_catalog_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/cpp_link_probe.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/cpp_link_probe.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/cpp_link_probe_test.c	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/futex_hash_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/handoff_probe_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/heap_context_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/host/attack_stub.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/host/backend_dataflow_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/host/glue_stub.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/host/handoff_stub.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/host/host_attack_script.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/host/host_attack_script.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/host/include/attack/ops.hpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/host/include/linux/futex.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/host/include/linux/memfd.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/host/include/sched.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/host/include/sys/prctl.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/host/route_stub.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/host/support_stub.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/host/victim_stub.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/kernelsnitch_scan_bounds_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/native_resource_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/number_parse_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/payload_builder_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/pi_race_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/profile_binary_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/profile_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/route_catalog_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/route_controller_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/route_lifecycle_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/route_policy_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/route_status_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/run_state_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/runtime_paths_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/runtime_time_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/select_stack_route_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/target_constants_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/tcp_zerocopy_route_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43499glued/tests/victim_context_test.cpp	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-X-001/批次02	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/CMakeLists.txt	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/SOURCE-MANIFEST.json	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/aes256.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/bootstrap.c	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/elf_parser.c	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/exp.c	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/include.inc	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/ko/dfroot-android12-5.10.ko	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/ko/dfroot-android13-5.10.ko	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/ko/dfroot-android13-5.15.ko	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/ko/dfroot-android14-5.15.ko	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/ko/dfroot-android14-6.1.ko	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/ko/dfroot-android15-6.6.ko	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/ko/dfroot-android16-6.12.ko	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/ko/dfroot-android17-6.18.ko	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/libcxx.S	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/m0/aes256.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/m0/elf_parser.c	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/m0/exp.c	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/m0/include.inc	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/m0/ko/dfroot-android12-5.10.ko	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/m0/ko/dfroot-android13-5.10.ko	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/m0/ko/dfroot-android13-5.15.ko	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/m0/ko/dfroot-android14-5.15.ko	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/m0/ko/dfroot-android14-6.1.ko	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/m0/ko/dfroot-android15-6.6.ko	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/m0/ko/dfroot-android16-6.12.ko	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/m0/ko/dfroot-android17-6.18.ko	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/m0/libcxx.S	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/m0/lkm/Makefile	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/m0/lkm/m0_dfroot.c	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/m0/m0_marker.c	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/m0/m0_marker.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/m0/splicehelper	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/splicehelper	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/43284glued/splicehelper.c	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-001/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/98260/CMakeLists.txt	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-002/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/98260/README.md	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-002/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/98260/timer/a301so_515_params.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-002/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/98260/timer/avd_61_params.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-002/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/98260/timer/core_state_probe.c	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-002/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/98260/timer/core_state_probe_params.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-002/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/98260/timer/target_params.h	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-002/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/98260/timer/timer.c	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-002/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/98260/tools/fork_trace.c	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-002/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/98260/tools/leak_iso.c	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-002/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/98260/tools/stream_test.c	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-002/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/98260/tools/timer_trace.c	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-002/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/98260/tools/trace_calls.c	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-002/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/98260/tools/trace_dump.c	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-002/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/98260/tools/trace_leak_test.c	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-002/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/src/main/cpp/backends/98260/tools/trace_parse.c	FREEZE_FUTURE_CANDIDATE	-	P-BACKEND-NATIVE-002/批次01	entire-file-zero-write	not authorized by this plan; future backend L child plan must emit a new minimal exact delta ledger
+app/build.gradle.kts	MODIFY	-	P-BACKEND-X-001/批次02/断开	remove-real-backend-build-entry	remove all backend properties plus M0 staging build task BuildConfig marker and CMake arguments; make the manifest verifier accept only an actually empty merged output when the target manifest has zero rows
+app/src/main/cpp/backends/CMakeLists.txt	MODIFY	-	P-BACKEND-X-001/批次02/断开	empty-backend-assembly-boundary	remove every real-attack option and chunk include while retaining one explicit no-target boundary
+app/src/main/cpp/CMakeLists.txt	MODIFY	-	P-BACKEND-X-001/批次02/断开	current-graph-contract-comment	document that common object is the only current project native target and backend assembly is disconnected
+app/src/main/kotlin/com/ghostlock/app/backend/README.md	MODIFY	-	P-BACKEND-X-001/批次02/断开	current-membership-boundary	document zero real backend registry and native target membership with no Gradle bypass
+app/src/main/kotlin/com/ghostlock/app/backend/registry/BackendRegistry.kt	MODIFY	-	P-BACKEND-X-001/批次02/断开	registry-contract-comment	record that no real-attack backend is registered and reconnection requires a new approved L-level plan
+docs/development/introduction.md	MODIFY	-	P-BACKEND-X-001/批次02/断开	current-tree-summary	project disconnected source-only real backend state and cancel automatic R6 R7 R8 scheduling
+docs/development/full-process-uml.md	MODIFY	-	P-BACKEND-X-001/批次02/断开	native-build-graph	replace attack ELF packaging graph with common-object plus explicit no-target backend boundary
+docs/plan/43499-glued-product-carrier-plan.md	MODIFY	-	P-BACKEND-X-001/批次02/断开	superseded-child-record	cancel S2 S3 and retain the design as non-actionable history
+docs/plan/43499-glued-product-carrier-ledger.tsv	MODIFY	-	P-BACKEND-X-001/批次02/断开	superseded-ledger-record	mark every prior carrier row historical and forbidden to implement
+docs/plan/MASTER-PLAN.md	MODIFY	-	P-BACKEND-X-001/批次02/断开	progress-projection	project R5 disconnected closed state
+docs/plan/REMAINING-PLAN.md	MODIFY	-	P-BACKEND-X-001/批次02/断开	checkbox-projection	close disconnect items and remove carrier implementation queue
+docs/plan/ROADMAP.md	MODIFY	-	P-BACKEND-X-001/批次02/断开	roadmap-projection	remove scheduled carrier and JNA children after disconnected R5
+app/src/androidTest/kotlin/com/ghostlock/app/backend/transport/RunHostDebugProbeSmokeTest.kt	DELETE	-	P-LOG-IO-001/批次02/运行验证	whole-file	remove the invalid app-UID direct shell-service smoke after physical execution-domain enforcement; do not add a fake identity seam
+app/src/androidTest/kotlin/com/ghostlock/app/data/run/RunCoordinatorMediaStoreIntegrationTest.kt	ADD	-	P-LOG-IO-001/批次02/运行验证	whole-file	prove one accepted diagnostic run writes real MediaStore bytes identical to the same coordinator manual document and deletes only its own unique row
+app/src/main/kotlin/com/ghostlock/app/data/run/AndroidRunLogSinkFactory.kt	MODIFY	-	P-LOG-IO-001/批次02/运行验证	mediastore-display-name	mechanically align the requested .log.txt display name with text/plain and the Android MediaProvider row name observed by the AVD
+app/src/androidTest/kotlin/com/ghostlock/app/data/run/AndroidRunLogSinkFactoryTest.kt	MODIFY	-	P-LOG-IO-001/批次02/运行验证	display-name-contract	lock the exact runId generation and .log.txt display name passed to MediaStore
+# R4C single log hub and Flow-owned RunReport; approved 2026-11-05 after design-critic blockers closed.
+app/build.gradle.kts	MODIFY	-	P-LOG-X-001/批次01	unit-xml-count	advance exact current unit count for the ANSI renderer contract
+app/src/main/aidl/com/ghostlock/app/run/RunHostEvent.aidl	DELETE	-	P-LOG-X-001/批次01	whole-file	remove progress-event-as-log wire
+app/src/main/aidl/com/ghostlock/app/run/RunHostLogRecord.aidl	ADD	-	P-LOG-X-001/批次01	whole-file	bounded origin level message callback record
+app/src/main/aidl/com/ghostlock/app/run/IRunHostCallback.aidl	MODIFY	-	P-LOG-X-001/批次01	onLog-contract	replace onEvent with one typed log callback while retaining terminal callback
+app/src/main/aidl/com/ghostlock/app/run/RunHostSnapshot.aidl	MODIFY	-	P-LOG-X-001/批次01	log-diagnostics	rename eventSequence and droppedEvents to logSequence and droppedLogs
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostEventCursor.kt	DELETE	-	P-LOG-X-001/批次01	whole-file	remove event conjunction cursor
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostLogCursor.kt	ADD	-	P-LOG-X-001/批次01	whole-file	validate identity sequence budgets origin level and exact SGR grammar
+app/src/main/kotlin/com/ghostlock/app/domain/run/RunEvent.kt	DELETE	-	P-LOG-X-001/批次01	whole-file	remove event kind stage and draft double representation
+app/src/main/kotlin/com/ghostlock/app/domain/run/RunLogRecord.kt	ADD	-	P-LOG-X-001/批次01	whole-file	sole producer draft canonical record origin level and cancellation view
+app/src/main/kotlin/com/ghostlock/app/domain/run/RunSessionState.kt	MODIFY	-	P-LOG-X-001/批次01	canonical-record-list	store frozen threshold and sole canonical records
+app/src/main/kotlin/com/ghostlock/app/domain/run/RunLogDocumentFormatter.kt	MODIFY	-	P-LOG-X-001/批次01	canonical-record-format	format the same records used by UI and automatic export
+app/src/main/kotlin/com/ghostlock/app/core/flow/FlowProgress.kt	DELETE	-	P-LOG-X-001/批次01	whole-file	remove redundant progress wrapper
+app/src/main/kotlin/com/ghostlock/app/core/run/RunReportComposer.kt	DELETE	-	P-LOG-X-001/批次01	move-source	remove report composition from run host application owner
+app/src/main/kotlin/com/ghostlock/app/core/flow/RunReportComposer.kt	ADD	-	P-LOG-X-001/批次01	move-target	Flow package owns product report composition
+app/src/main/kotlin/com/ghostlock/app/core/flow/Flow.kt	MODIFY	-	P-LOG-X-001/批次01	return-contract	Flow returns RunReport directly
+app/src/main/kotlin/com/ghostlock/app/core/flow/BackendFlowInput.kt	ADD	-	P-LOG-X-001/批次01	report-completion	freeze report context and neutral terminal claim then compose product or diagnostic report
+app/src/main/kotlin/com/ghostlock/app/core/flow/SequentialFlow.kt	MODIFY	-	P-LOG-X-001/批次01	direct-log-and-report	emit RunLogDraft and return Flow-owned RunReport
+app/src/main/kotlin/com/ghostlock/app/backend/backends/debugprobe/DebugProbeFlow.kt	ADD	-	P-LOG-X-001/批次01	direct-log-and-report	emit bounded diagnostic logs and return diagnostic report
+app/src/main/kotlin/com/ghostlock/app/backend/backends/lua/FlowLuaImpl.kt	MODIFY	-	P-LOG-X-001/批次01	direct-log-and-report	emit bounded logs and return Flow-owned report
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostProtocol.kt	MODIFY	-	P-LOG-X-001/批次01	terminal-claim-and-log-budgets	atomically return cancellation decision and freeze log budgets
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostSnapshot.kt	MODIFY	-	P-LOG-X-001/批次01	log-diagnostics	decode logSequence and droppedLogs
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostService.kt	MODIFY	-	P-LOG-X-001/批次01	flow-caller	host prepares input calls Flow and transports its report and logs
+app/src/main/kotlin/com/ghostlock/app/shizuku/GhostlockUserService.kt	MODIFY	-	P-LOG-X-001/批次01	flow-caller	shell host mirrors App host without reverse Flow dependency
+app/src/main/kotlin/com/ghostlock/app/backend/transport/AppRunHostClient.kt	MODIFY	-	P-LOG-X-001/批次01	onLog-client	validate typed log callbacks before coordinator delivery
+app/src/main/kotlin/com/ghostlock/app/backend/transport/ShizukuRunHostClient.kt	MODIFY	-	P-LOG-X-001/批次01	onLog-client	mirror App log cursor and terminal behavior
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostProductPipeline.kt	MODIFY	-	P-LOG-X-001/批次01	prepare-only	remove report decode and composition from host pipeline
+app/src/main/kotlin/com/ghostlock/app/data/backend/BackendRunSessionAdapter.kt	MODIFY	-	P-LOG-X-001/批次01	wire-to-canonical	map validated log origin and level without formatting
+app/src/main/kotlin/com/ghostlock/app/core/run/RunCoordinator.kt	ADD	-	P-LOG-X-001/批次01	sole-log-hub	central threshold total order canonical list report projection and sink fanout
+app/src/main/kotlin/com/ghostlock/app/log/FileSink.kt	DELETE	-	P-LOG-X-001/批次01	whole-file	remove second legacy file sink
+app/src/main/kotlin/com/ghostlock/app/log/LogFile.kt	DELETE	-	P-LOG-X-001/批次01	whole-file	remove second log storage owner
+app/src/main/kotlin/com/ghostlock/app/log/LogOrigin.kt	DELETE	-	P-LOG-X-001/批次01	whole-file	remove duplicate origin model
+app/src/main/kotlin/com/ghostlock/app/log/log.kt	DELETE	-	P-LOG-X-001/批次01	whole-file	remove legacy singleton log hub
+app/src/main/kotlin/com/ghostlock/app/GhostLockApp.kt	MODIFY	-	P-LOG-X-001/批次01	legacy-log-disconnect	stop configuring legacy singleton
+app/src/main/kotlin/com/ghostlock/app/AppContainer.kt	MODIFY	-	P-LOG-X-001/批次01	canonical-diagnostic-source	inject coordinator canonical bytes into diagnostics
+app/src/main/kotlin/com/ghostlock/app/data/settings/SharedPreferencesOperationalPreferencesAdapter.kt	MODIFY	-	P-LOG-X-001/批次01	threshold-owner	stop configuring legacy global logger
+app/src/main/kotlin/com/ghostlock/app/data/diagnostics/AndroidDiagnosticReportBuilder.kt	MODIFY	-	P-LOG-X-001/批次01	canonical-log-input	embed coordinator GLLOG1 instead of a second log file
+app/src/main/kotlin/com/ghostlock/app/ui/screen/run/AnsiRunLogText.kt	ADD	-	P-LOG-X-001/批次01	whole-file	render approved foreground and reset SGR as Compose spans
+app/src/main/kotlin/com/ghostlock/app/ui/screen/run/RunUiState.kt	MODIFY	-	P-LOG-X-001/批次01	single-record-ui	remove the independent report renderer state
+app/src/main/kotlin/com/ghostlock/app/ui/screen/run/RunPage.kt	MODIFY	-	P-LOG-X-001/批次01	ansi-terminal-renderer	render prefixes levels and inline ANSI identically in Material3 and Miuix
+app/src/main/kotlin/com/ghostlock/app/ui/viewmodel/RunViewModel.kt	MODIFY	-	P-LOG-X-001/批次01	single-record-ui	project only canonical RunLogRecord rows
+app/src/main/res/values/strings.xml	MODIFY	-	P-LOG-X-001/批次01	remove-report-labels	remove strings owned only by the deleted special report renderer
+app/src/main/res/values-zh-rCN/strings.xml	MODIFY	-	P-LOG-X-001/批次01	remove-report-labels	keep Chinese resources symmetric
+app/src/test/kotlin/com/ghostlock/app/ui/screen/run/AnsiRunLogTextTest.kt	ADD	-	P-LOG-X-001/批次01	whole-file	prove inline green override reset and inert unsupported SGR
+tools/kotlin_architecture_d0.py	MODIFY	-	P-LOG-X-001/批次01	current-inventory	retire superseded log topology and classify new files
+app/src/test/resources/architecture/kotlin-file-actions-v1.tsv	MODIFY	-	P-LOG-X-001/批次01	generated-current-inventory	classify added moved and deleted log files
+docs/plan/backend-root-execution-runhost-wire.md	MODIFY	-	P-LOG-X-001/批次01	log-wire-authority	freeze RunHostLogRecord exact grammar and Flow terminal direction
+docs/development/full-process-uml.md	MODIFY	-	P-LOG-X-001/批次01	log-hub-flow-and-owner-diagrams	replace event and host-composed report paths with one hub and Flow-owned report
+# R6 Diagnose JNA candidate v4; constructor-load decision force-closed without another critic, source actions still require explicit R6-D2 approval.
+app/src/main/cpp/backends/diagnose/CMakeLists.txt	ADD	-	P-DIAG-NATIVE-001/批次01	whole-file	build the sole non-attack Diagnose shared library and exact ordinary export
+app/src/main/cpp/backends/diagnose/api/diagnose_api.h	ADD	-	P-DIAG-NATIVE-001/批次01	whole-file	freeze versioned request result layouts and single int32 status authority
+app/src/main/cpp/backends/diagnose/diagnose.cpp	ADD	-	P-DIAG-NATIVE-001/批次01	whole-file	implement bounded synchronous uid pid nonce round-trip and one native log record
+app/src/main/cpp/backends/CMakeLists.txt	MODIFY	-	P-DIAG-NATIVE-001/批次01	diagnose-membership	include the Diagnose target without restoring any attack backend option
+app/src/main/cpp/CMakeLists.txt	MODIFY	-	P-DIAG-NATIVE-001/批次01	native-manifest	export the Diagnose shared target and ordinary symbol authority for both variants
+app/src/main/kotlin/com/ghostlock/app/backend/backends/debugprobe/BackendDebugProbe.kt	DELETE	-	P-DIAG-NATIVE-001/批次01	whole-file	replace the debug-only registry spec with release-visible Diagnose
+app/src/main/kotlin/com/ghostlock/app/backend/backends/debugprobe/DebugProbeFlow.kt	DELETE	-	P-DIAG-NATIVE-001/批次01	whole-file	replace the Kotlin-only Flow with the native Diagnose SequentialFlow
+app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/BackendDiagnose.kt	ADD	-	P-DIAG-NATIVE-001/批次01	whole-file	declare one DIAGNOSE diagnostic plugin without a BuildConfig gate
+app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseFlow.kt	ADD	-	P-DIAG-NATIVE-001/批次01	whole-file	construct the native binding during prepare and implement SequentialFlow two steps cleanup cancellation and diagnostic projection
+app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/jna/DiagnoseJnaLibrary.kt	ADD	-	P-DIAG-NATIVE-001/批次01	whole-file	map the sole ordinary C function and private structures without singleton ownership
+app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/jna/DiagnoseNativeBinding.kt	ADD	-	P-DIAG-NATIVE-001/批次01	whole-file	load by constant name in constructor and own native call fd decode and log injection lifecycle
+app/src/main/kotlin/com/ghostlock/app/core/flow/SequentialFlow.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	diagnostic-cleanup-template	pass the sole cleanup fact into diagnostic outcome assembly without changing the public Flow lifecycle
+app/src/main/kotlin/com/ghostlock/app/backend/registry/BackendRegistry.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	diagnose-membership	replace debug-only membership with one debug and release DIAGNOSE plugin
+app/src/main/kotlin/com/ghostlock/app/data/run/RootArtifactStagingAdapter.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	diagnostic-shell-artifact	emit exactly one bounded Shell log record and exit zero
+app/src/main/kotlin/com/ghostlock/app/core/run/RunCoordinator.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/core/run/LogHub.kt	P-DIAG-NATIVE-001/批次01	sole-log-hub-name	mechanically rename the sole canonical log hub without changing lock queue or lifecycle topology
+app/src/test/kotlin/com/ghostlock/app/core/run/RunCoordinatorLogSinkTest.kt	MOVE_REWRITE	app/src/test/kotlin/com/ghostlock/app/core/run/LogHubSinkTest.kt	P-DIAG-NATIVE-001/批次01	log-hub-tests	mechanically rename and retain accepted run ordering sink and terminal criteria
+app/src/androidTest/kotlin/com/ghostlock/app/data/run/RunCoordinatorMediaStoreIntegrationTest.kt	MOVE_REWRITE	app/src/androidTest/kotlin/com/ghostlock/app/data/run/LogHubMediaStoreIntegrationTest.kt	P-DIAG-NATIVE-001/批次01	log-hub-runtime-test	mechanically rename the canonical MediaStore parity gate
+app/src/main/kotlin/com/ghostlock/app/AppContainer.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	log-hub-composition	construct and inject LogHub under its final name
+app/src/main/kotlin/com/ghostlock/app/data/backend/BackendRunSessionAdapter.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	log-hub-caller	rename the sole application hub dependency and calls
+app/src/main/kotlin/com/ghostlock/app/domain/run/RunLogRecord.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	log-hub-authority-kdoc	name LogHub lock as the sole canonical order authority
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostLogCursor.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	log-hub-authority-kdoc	distinguish transport sequence from LogHub commit order
+app/build.gradle.kts	MODIFY	-	P-DIAG-NATIVE-001/批次01	jna-and-variant-gates	pin JNA AAR add distribution check release XML and debug release native union verifiers
+app/proguard-rules.pro	MODIFY	-	P-DIAG-NATIVE-001/批次01	jna-release-keep	retain only the JNA interface structures and mapped members required by minified release
+build.gradle.kts	MODIFY	-	P-DIAG-NATIVE-001/批次01	root-native-gates	register the host ABI test counts and require both Android variant verifiers
+gradle/verification-metadata.xml	ADD	-	P-DIAG-NATIVE-001/批次01	jna-checksums	strictly verify the resolved JNA AAR POM and metadata without a dynamic version
+app/src/main/assets/third_party/jna/LICENSE	ADD	-	P-DIAG-NATIVE-001/批次01	jna-license	package the upstream 5.19.1 license selector bytes
+app/src/main/assets/third_party/jna/AL2.0	ADD	-	P-DIAG-NATIVE-001/批次01	jna-license	package the full Apache-2.0 license selected for distribution
+app/src/main/assets/third_party/jna/LGPL2.1	ADD	-	P-DIAG-NATIVE-001/批次01	jna-license	package the resolved AAR LGPL2.1 bytes while distribution selects Apache-2.0
+app/src/main/assets/third_party/jna/INVENTORY.txt	ADD	-	P-DIAG-NATIVE-001/批次01	jna-inventory	record coordinate upstream selected license packaged files and absent NOTICE fact
+tools/tests/diagnose_abi_test.cpp	ADD	-	P-DIAG-NATIVE-001/批次01	whole-file	prove host layout status initialization no-mutation and raw-bit nonce contract
+tools/tests/CMakeLists.txt	MODIFY	-	P-DIAG-NATIVE-001/批次01	diagnose-host-test	register the Diagnose ABI source in native contracts
+tools/tests/native-test-disposition.tsv	MODIFY	-	P-DIAG-NATIVE-001/批次01	diagnose-host-test-disposition	classify the new host test and keep source task totals exact
+app/src/test/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseFlowTest.kt	ADD	-	P-DIAG-NATIVE-001/批次01	whole-file	prove constructor-bound mapping two sequential stages cancellation and cleanup matrix
+app/src/test/kotlin/com/ghostlock/app/backend/registry/BackendRegistryTest.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	diagnose-membership	prove one DIAGNOSE member independent of build type and no DEBUG-PROBE alias
+app/src/androidTest/kotlin/com/ghostlock/app/backend/transport/RunHostTestFixtures.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	diagnose-fixture	select the real DIAGNOSE plugin without a loader bypass
+app/src/androidTest/kotlin/com/ghostlock/app/backend/transport/AppRunHostSmokeTest.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	diagnose-app-flowhost	prove App client to flowhost Diagnose typed result and log path
+app/src/androidTest/kotlin/com/ghostlock/app/backend/transport/ShizukuRunHostSmokeTest.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	diagnose-shizuku	prove Shizuku UserService Diagnose typed result and log path
+app/src/androidTest/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseJnaSmokeTest.kt	ADD	-	P-DIAG-NATIVE-001/批次01	whole-file	prove C JNA layout constant load native log shell handoff and both execution domains
+README.md	MODIFY	-	P-DIAG-NATIVE-001/批次01	current-log-and-diagnose-summary	replace current RunCoordinator and DEBUG-PROBE claims with LogHub and DIAGNOSE
+README_ZH.md	MODIFY	-	P-DIAG-NATIVE-001/批次01	current-log-and-diagnose-summary	keep the Chinese root README synchronized with LogHub and DIAGNOSE
+app/src/main/kotlin/com/ghostlock/app/backend/README.md	MODIFY	-	P-DIAG-NATIVE-001/批次01	current-diagnose-contract	record Flow initialize LogHub JNA and non-root diagnostic boundaries
+tools/kotlin_architecture_d0.py	MODIFY	-	P-DIAG-NATIVE-001/批次01	current-inventory	forbid current RunCoordinator debug probe public Flow initialize second hub JNI arbitrary JNA path and runtime reload
+app/src/test/resources/architecture/kotlin-file-actions-v1.tsv	MODIFY	-	P-DIAG-NATIVE-001/批次01	generated-current-inventory	classify LogHub Diagnose JNA and retired debugprobe paths exactly
+docs/development/introduction.md	MODIFY	-	P-DIAG-NATIVE-001/批次01	current-tree-summary	replace future-JNA and DebugProbe statements with the implemented Diagnose boundary only after completion
+docs/development/full-process-uml.md	MODIFY	-	P-DIAG-NATIVE-001/批次01	log-hub-and-diagnose-uml	update IPO class sequence and state diagrams for LogHub initialize JNA native and shell
+docs/plan/backend-root-execution-runhost-wire.md	MODIFY	-	P-DIAG-NATIVE-001/批次01	diagnose-prepare-load-authority	freeze constructor load during prepare and IO_FAILURE before any Flow report or log
+docs/plan/backend-root-execution-unification-ledger.tsv	MODIFY	-	P-DIAG-NATIVE-001/批次01	exact-r6-ledger	keep every R6 source action and target explicit
+docs/plan/backend-root-execution-unification-plan.md	MODIFY	-	P-DIAG-NATIVE-001/批次01	r6-authority	record critic closure implementation evidence and final current state
+docs/plan/MASTER-PLAN.md	MODIFY	-	P-DIAG-NATIVE-001/批次01	progress-projection	project the approved and implemented Diagnose batch without scheduling attack backends
+docs/plan/REMAINING-PLAN.md	MODIFY	-	P-DIAG-NATIVE-001/批次01	checkbox-projection	track only remaining approved R6 delivery gates
+docs/plan/ROADMAP.md	MODIFY	-	P-DIAG-NATIVE-001/批次01	roadmap-projection	replace not-scheduled R6 with its evidence-qualified current state
+docs/plan/developer-defined-tasks.md	MODIFY	-	P-DIAG-NATIVE-001/批次01	checkbox-only	change only the three existing Diagnose checkboxes after their literal delivery criteria pass

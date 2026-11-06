@@ -15,8 +15,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.DisplaySettings
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.SystemUpdateAlt
 import androidx.compose.material.icons.rounded.BugReport

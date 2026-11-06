@@ -1,5 +1,9 @@
 # 需求与裁决登记（requirements）
 
+<a id="legacy-requirement-identifiers"></a>
+
+> **旧号兼容说明（2026-11-05）**：本文件是带确定性标记的历史重建登记，F/I/Q/U 号只在此表解释；不是新的当前承诺基线。下文原“效力”及旧 MASTER 章节描述保留为重建沿革，不推翻现行用户裁定和活动计划。缺失/推断项、未决状态不因整理而获批；新需求用所属活动计划根号，旧号不重用、不补造含义。现行入口见 [MASTER](../plan/MASTER-PLAN.md#work-identifiers)。
+
 > **重建声明（2026-10-07）**：本文件原版在 **2026-10-07 22:44** 的写操作事故中**被截断且不可恢复**（未跟踪文件 ⇒ git 无对象、无副本、本机 TM 快照时点更早；取证见 `docs/analysis/incident-20261007-agents-requirements-revert.md`）。以下内容**尽力重建**：
 >
 > - **重建来源**：① `/tmp/forensics-task67/requirements.md`（**966 B 尾部残片**：U5–U7 + 第 8 节来源索引，**逐字抄录**）；② 全仓引用反推（`docs/analysis/resolved-profile-registry-plan.md:20/:179`、`docs/analysis/handoff-payload-batch-plan.md:48-49`、`docs/analysis/handoff-payload-kotlin-io.md:26`、`docs/analysis/adr/0008:30`、`docs/plan/MASTER-PLAN.md`）；③ Lead 给定的编号含义清单。

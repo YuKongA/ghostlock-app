@@ -1,19 +1,13 @@
 package com.ghostlock.app.core.flow
 
-/** flow 的统一结果；不暴露 backend 内部节点。 */
-sealed interface FlowResult {
-    val steps: List<FlowStepRun>
-    val evidence: Map<String, String>
-
-    data class Ok(
-        override val steps: List<FlowStepRun>,
-        override val evidence: Map<String, String>,
-    ) : FlowResult
-
-    data class Failed(
-        val reason: String,
-        val failedStep: String?,
-        override val steps: List<FlowStepRun>,
-        override val evidence: Map<String, String>,
-    ) : FlowResult
-}
+/**
+ * Internal sequential-flow assembly result.
+ *
+ * @property facts Backend facts returned through the public [Flow] contract.
+ * @property steps Ordered typed step facts retained for diagnostics only.
+ * @note No evidence map or text log participates in product success.
+ */
+data class FlowResult(
+    val facts: BackendRunFacts,
+    val steps: List<FlowStepRun>,
+)

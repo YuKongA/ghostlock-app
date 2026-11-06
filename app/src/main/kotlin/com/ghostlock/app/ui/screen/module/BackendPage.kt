@@ -42,14 +42,14 @@ import com.ghostlock.app.ui.component.material.TonalCard
 import com.ghostlock.app.ui.component.material.expressiveTopAppBarColors
 import com.ghostlock.app.ui.backend.BackendConfigRenderer
 import com.ghostlock.app.ui.viewmodel.PathViewModel
-import com.ghostlock.app.ui.viewmodel.FinishEditorViewModel
+import com.ghostlock.app.ui.viewmodel.PayloadViewModel
 import com.ghostlock.app.ui.viewmodel.FinishSettingsViewModel
-import com.ghostlock.app.ui.screen.module.backends.FinishCardMaterial
-import com.ghostlock.app.ui.screen.module.backends.FinishCardMiuix
-import com.ghostlock.app.ui.screen.module.backends.FinishEditorUiState
-import com.ghostlock.app.ui.screen.module.backends.FinishSettingsCardMaterial
-import com.ghostlock.app.ui.screen.module.backends.FinishSettingsCardMiuix
-import com.ghostlock.app.ui.screen.module.backends.FinishSettingsUiState
+import com.ghostlock.app.ui.screen.module.payload.PayloadCardMaterial
+import com.ghostlock.app.ui.screen.module.payload.PayloadCardMiuix
+import com.ghostlock.app.ui.screen.module.payload.PayloadUiState
+import com.ghostlock.app.ui.screen.module.finish.FinishSettingsCardMaterial
+import com.ghostlock.app.ui.screen.module.finish.FinishSettingsCardMiuix
+import com.ghostlock.app.ui.screen.module.finish.FinishSettingsUiState
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold as MiuixScaffold
@@ -65,29 +65,29 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun BackendPager(
     bottomInnerPadding: Dp,
     isCurrentPage: Boolean = true,
-    onOpenFinish: () -> Unit,
+    onOpenPayload: () -> Unit,
     onOpenFinishSettings: () -> Unit,
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as GhostLockApp
     val pathViewModel = viewModel<PathViewModel>(factory = app.container.viewModelFactory)
-    val finishEditorViewModel = viewModel<FinishEditorViewModel>(factory = app.container.viewModelFactory)
+    val payloadViewModel = viewModel<PayloadViewModel>(factory = app.container.viewModelFactory)
     val finishSettingsViewModel = viewModel<FinishSettingsViewModel>(factory = app.container.viewModelFactory)
     val state by pathViewModel.uiState.collectAsStateWithLifecycle()
-    val finishEditorState by finishEditorViewModel.uiState.collectAsStateWithLifecycle()
+    val payloadState by payloadViewModel.uiState.collectAsStateWithLifecycle()
     val finishSettingsState by finishSettingsViewModel.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(isCurrentPage) {
         if (isCurrentPage) {
             pathViewModel.refresh()
-            finishEditorViewModel.refresh()
+            payloadViewModel.refresh()
             finishSettingsViewModel.refresh()
         }
     }
     val actions = BackendPageActions(
         onSelectBackend = pathViewModel::selectBackend,
-        onOpenFinish = {
-            finishEditorViewModel.openEditor()
-            onOpenFinish()
+        onOpenPayload = {
+            payloadViewModel.openPayload()
+            onOpenPayload()
         },
         onOpenFinishSettings = onOpenFinishSettings,
     )
@@ -95,7 +95,7 @@ fun BackendPager(
         UiMode.Material -> BackendPageMaterial(
             state = state,
             actions = actions,
-            finishEditorState = finishEditorState,
+            payloadState = payloadState,
             finishSettingsState = finishSettingsState,
             configRenderer = app.container.backendConfigRenderer,
             bottomInnerPadding = bottomInnerPadding,
@@ -103,7 +103,7 @@ fun BackendPager(
         UiMode.Miuix -> BackendPageMiuix(
             state = state,
             actions = actions,
-            finishEditorState = finishEditorState,
+            payloadState = payloadState,
             finishSettingsState = finishSettingsState,
             configRenderer = app.container.backendConfigRenderer,
             bottomInnerPadding = bottomInnerPadding,
@@ -123,7 +123,7 @@ fun BackendPager(
 fun BackendPageMaterial(
     state: BackendPageUiState,
     actions: BackendPageActions,
-    finishEditorState: FinishEditorUiState,
+    payloadState: PayloadUiState,
     finishSettingsState: FinishSettingsUiState,
     configRenderer: BackendConfigRenderer,
     bottomInnerPadding: Dp,
@@ -168,7 +168,7 @@ fun BackendPageMaterial(
                     )
                 }
             }
-            FinishCardMaterial(finishEditorState, actions.onOpenFinish)
+            PayloadCardMaterial(payloadState, actions.onOpenPayload)
             FinishSettingsCardMaterial(finishSettingsState, actions.onOpenFinishSettings)
             TonalCard {
                 /* 唯一渲染路径：backend 自己的 ConfigCard（默认卡内部读 rows）。 */
@@ -182,7 +182,7 @@ fun BackendPageMaterial(
 fun BackendPageMiuix(
     state: BackendPageUiState,
     actions: BackendPageActions,
-    finishEditorState: FinishEditorUiState,
+    payloadState: PayloadUiState,
     finishSettingsState: FinishSettingsUiState,
     configRenderer: BackendConfigRenderer,
     bottomInnerPadding: Dp,
@@ -235,7 +235,7 @@ fun BackendPageMiuix(
                     entry = backendEntry,
                 )
             }
-            FinishCardMiuix(finishEditorState, actions.onOpenFinish)
+            PayloadCardMiuix(payloadState, actions.onOpenPayload)
             FinishSettingsCardMiuix(finishSettingsState, actions.onOpenFinishSettings)
             Card(modifier = Modifier.fillMaxWidth()) {
                 /* 唯一渲染路径：backend 自己的 ConfigCard（默认卡内部读 rows）。 */

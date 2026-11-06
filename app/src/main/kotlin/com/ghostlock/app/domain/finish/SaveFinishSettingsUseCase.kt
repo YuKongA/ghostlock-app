@@ -1,11 +1,11 @@
 package com.ghostlock.app.domain.finish
 
-/** Persists non-payload finish options through the domain boundary. */
+/** Persists Finish settings through the sole typed repository authority. */
 class SaveFinishSettingsUseCase(
     private val port: FinishSettingsPort,
 ) {
-    /** @param settings Complete non-payload finish option snapshot. */
+    /** @param settings Complete built-in Finish option projection. */
     operator fun invoke(settings: FinishSettings) {
-        port.save(settings)
+        port.save(settings.applyTo(port.read()))
     }
 }

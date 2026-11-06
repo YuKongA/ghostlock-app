@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 3.22)
 
 # Purpose: build the current repository-wide, host-compatible native contract
 # tests without importing Android/JNI production targets.
-# Inputs: five explicitly registered C tests plus the machine-owned disposition
+# Inputs: one explicitly registered C test plus the machine-owned disposition
 # table at native-test-disposition.tsv.
-# Output: five CTest executables in this CMake binary tree.
+# Output: one CTest executable in this CMake binary tree.
 # Failure: missing/drifted disposition rows, compiler warnings, build failures,
 # or assertion failures stop the owning Gradle task.
 # Preconditions: configured by nativeTestContractsHost on a POSIX desktop host.
@@ -18,8 +18,6 @@ set(CMAKE_C_EXTENSIONS OFF)
 enable_testing()
 
 get_filename_component(GL_REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
-set(GL_43499_CORE
-    "${GL_REPO_ROOT}/app/src/main/cpp/backends/43499/core")
 set(GL_COMMON_ROOT "${GL_REPO_ROOT}/app/src/main/cpp")
 set(GL_DISPOSITION
     "${CMAKE_CURRENT_LIST_DIR}/native-test-disposition.tsv")
@@ -42,21 +40,12 @@ set(GL_REGISTERED_CONTRACT_SOURCES "")
 # Phase: host native verification.
 function(gl_add_contract_host_test target source)
     add_executable(${target} "${GL_REPO_ROOT}/${source}")
-    target_include_directories(${target} PRIVATE "${GL_43499_CORE}")
     target_compile_options(${target} PRIVATE ${GL_HOST_WARNINGS})
     add_test(NAME ${target} COMMAND ${target})
     list(APPEND GL_REGISTERED_CONTRACT_SOURCES "${source}")
     set(GL_REGISTERED_CONTRACT_SOURCES
         "${GL_REGISTERED_CONTRACT_SOURCES}" PARENT_SCOPE)
 endfunction()
-
-gl_add_contract_host_test(cpu_pin_test tools/tests/cpu_pin_test.c)
-gl_add_contract_host_test(
-    placement_floor_test tools/tests/placement_floor_test.c)
-gl_add_contract_host_test(
-    pselect_timeout_test tools/tests/pselect_timeout_test.c)
-gl_add_contract_host_test(
-    victim_fd_rules_test tools/tests/victim_fd_rules_test.c)
 
 # gl_log.c must call the test seam while the test TU must retain libc write().
 # Compiling the production TU as its own object target keeps that distinction.

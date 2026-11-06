@@ -113,13 +113,23 @@ class HomeViewModel(
 
     /** @return Current selected-backend readiness projected without waiting for device I/O. */
     private fun selectedBackendState(): SelectedBackendUiState {
-        val selectedBackend = checkNotNull(getBackendCatalog().selectedBackend()) {
-            "backend catalog is empty"
+        val catalog = getBackendCatalog()
+        val selectedBackend = catalog.selectedBackend() ?: return SelectedBackendUiState(
+            cveLabel = "",
+            statusText = "No backend is available.",
+            isReady = false,
+        )
+        val availability = catalog.availabilityFor(selectedBackend.key)
+        val ready = selectedBackend.selectable && availability.isReady
+        val status = when {
+            ready -> "Ready"
+            availability.reasons.isNotEmpty() -> availability.reasons.first().message
+            else -> "The selected backend is disabled."
         }
         return SelectedBackendUiState(
-            cveLabel = selectedBackend.cveLabel,
-            statusText = selectedBackend.statusText,
-            isReady = selectedBackend.isReady,
+            cveLabel = selectedBackend.presentation.categoryLabel,
+            statusText = status,
+            isReady = ready,
         )
     }
 

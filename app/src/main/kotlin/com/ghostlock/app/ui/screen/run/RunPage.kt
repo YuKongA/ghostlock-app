@@ -49,6 +49,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -159,13 +160,13 @@ private fun stateGlyph(phase: RunUiPhase): String = when (phase) {
     RunUiPhase.RerunReady -> "↻  "
 }
 
-/** @return Existing terminal color mapping shared by both renderers. */
+/** @return Fixed severity palette shared by both renderers and independent from app light/dark theme. */
 private fun terminalColor(level: RunTerminalLevel): Color = when (level) {
     RunTerminalLevel.Error -> Color(0xFFFF5252)
     RunTerminalLevel.Warn -> Color(0xFFFFD740)
-    RunTerminalLevel.Info -> Color(0xFF9BE7A0)
-    RunTerminalLevel.Debug -> Color(0xFFFFFFFF)
-    RunTerminalLevel.Verbose -> Color(0xFF9E9E9E)
+    RunTerminalLevel.Info -> Color(0xFFFFFFFF)
+    RunTerminalLevel.Debug -> Color(0xFFBDBDBD)
+    RunTerminalLevel.Verbose -> Color(0xFF757575)
 }
 
 /** @return Existing single-character level marker. */
@@ -206,7 +207,7 @@ private fun elapsedText(elapsedMs: Long): String = String.format(
 private fun RunTerminalRows(
     state: RunUiState,
     modifier: Modifier,
-    text: @Composable (String, Modifier, Color, FontFamily) -> Unit,
+    text: @Composable (AnnotatedString, Modifier, Color, FontFamily) -> Unit,
 ) {
     val font = state.terminalFontFamily
     SelectionContainer {
@@ -222,8 +223,8 @@ private fun RunTerminalRows(
                 }
                 val color = terminalColor(entry.level)
                 Row(modifier = Modifier.fillMaxWidth()) {
-                    text(prefix, Modifier, color, font)
-                    text(entry.message, Modifier.weight(1f), color, font)
+                    text(AnnotatedString(prefix), Modifier, color, font)
+                    text(ansiRunLogText(entry.message, color), Modifier.weight(1f), color, font)
                 }
             }
         }

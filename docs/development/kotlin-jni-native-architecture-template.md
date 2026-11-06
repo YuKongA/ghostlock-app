@@ -1,5 +1,9 @@
 # Kotlin / JNI / Native 架构计划附录模板
 
+<a id="cross-platform-appendix"></a>
+
+> **代号范围**：`E-DOC-RULE-001/跨端附录`；旧 A–N、D.1、E.1 等仅是此附录的问题组。跨文档须带“跨端附录”限定；问题表不成为第二套批准或验收规则。
+
 > 本文件是 [`documentation-standards.md`](documentation-standards.md)“L 级计划”模板的 JNI 架构专用附录，不是第二套通用计划规范。
 > 新计划仍放在 `docs/analysis/<主题>-plan.md`，必须先完整保留通用模板八节，再按需加入本文问题。
 > 本模板不预选层数、库形态、ABI、handle、Flow 或资源模型；没有证据需要的章节直接删除。
@@ -8,8 +12,8 @@
 
 1. 先复制 `documentation-standards.md` 的 L 级计划模板。
 2. 在“目标与约束、数据流/控制流差异、改动清单、验证矩阵”中选用本文问题。
-3. 所有结构先回答必要性和 CBN，再写具体方案。
-4. 正文记录 branch、commit 和版本；完整文档 hash 只写在外部评审/批准记录中。design-critic 阻断为 0且用户批准后才实现。
+3. 先回答当前必要性；CBN 的适用条件与唯一表格见 [E-REVIEW-RULE-001/§2：成本权衡](design-review-principles.md#review-cbn)，不因套用模板重复填表。
+4. 正文记录 branch、commit 和版本；输入识别按 [E-REVIEW-RULE-001/G4](design-review-principles.md#review-g4)，必要身份信息进入已有审核记录。design-critic 对应 gate 的阻断为 0 且用户批准后才实现。
 
 ## 问题组 A：现状与基线
 
@@ -99,7 +103,7 @@
 
 ### E.1 方案 CBN
 
-至少比较：一次调用内完成、调用方持有资源、Native opaque handle。量化初始成本、每新增一种资源的边际成本、锁/slot/参数数量和翻转条件。
+先判断一次调用内完成、调用方持有资源、Native opaque handle 中哪些确实适用于当前需求；成本权衡按[问题组 L](#cross-platform-cbn)所指唯一规则，不要求凑齐三个方案或虚构数值。跨调用存活、owner 与终结证据仍须回答。
 
 ### E.2 owner 表
 
@@ -183,55 +187,41 @@ Native 可以消费上层已决定的数据，但不得自行引入第二套业�
 - 旧实现作为参考时不得形成第二生产权威。
 - 所有生产 symbol 映射完成前不得删除旧入口。
 
-## 问题组 J：兼容性与回滚
+## 问题组 J：兼容性与失败恢复
 
-把本组表格嵌入通用计划的“兼容性与回滚”。
+只在当前合同确有旧调用者、数据迁移或部分部署要求时嵌入通用计划同名节；源码恢复与冗余产物禁令统一见 [E-REVIEW-RULE-004/§6](../../AGENTS.md#agents-collaboration)，不准备回滚文件或演练。
 
-| 场景 | 兼容策略 | 回滚点 | 回滚后验证 |
+| 场景 | 适用兼容要求 | 运行时失败处置与资源终态 | 验证方法与预期 |
 |---|---|---|---|
-| `<SCENARIO>` | `<POLICY>` | `<EXACT_COMMIT_OR_ARTIFACT>` | `<COMMAND_AND_RESULT>` |
+| `<SCENARIO>` | `<APPLICABLE_CONTRACT>` | `<FAILURE_AND_RESOURCE_STATE>` | `<METHOD_AND_EXPECTATION>` |
 
-写清 ABI/version、旧调用者、数据迁移、部分部署和回滚后的资源状态。回滚不得依赖临时旁路或未验证旧产物。
+这里只记录产品运行时合同，不因旧实现存在就增加未经要求的兼容层；不预填未执行的结果。
 
 ## 问题组 K：验证矩阵
 
 把适用行嵌入通用计划的“验证矩阵”。
 
-先分类，再选择门禁；不适用的专项门禁删除，不留空壳。
+按 [E-REVIEW-RULE-001/§3：阶段与证据](design-review-principles.md#review-execution) 选择本批适用项，覆盖规则只引用 [E-REVIEW-RULE-001/D1](design-review-principles.md#review-rule-d1)，具体构建/真机门禁只引用 [E-REVIEW-RULE-004/§8](../../AGENTS.md#agents-gates)。设计阶段填写方法与预期，实现/验证阶段记录实际命令、输入、结果与退出码；保留适用 XML 和产物身份，不重抄命令表。
 
-| 变更类型 | 必需验证 |
-|---|---|
-| 文档/契约 | critic、完整性、链接、UML、冻结 hash；不设字节或篇幅门 |
-| 普通 Native | `make -C core check`、`make -C core android`、新码零告警 |
-| Kotlin/JNI | Kotlin unit test、Native build、ABI 对拍、symbol/link map |
-| 资源/并发 | 0/1/MAX、stale/wrong-scope/wrong-DSO、并发 close/cancel |
-| 攻击关键路径 | 在以上基础上追加项目 AGENTS 规定的真机门禁与归档 |
+本领域补充问题仅在触及时回答：Kotlin/Native ABI 与 symbol/link map 一致性；跨调用资源的 stale/wrong-scope/wrong-DSO、并发 close/cancel；问题组 F 的 transaction 边界证据。攻击关键路径的真机门与归档不变，模板不额外要求全文 hash 或未进入实现阶段的运行 PASS。
 
-攻击关键路径必须追加冷机、固定 CPU、单 route、KernelSU 未加载和设备日志归档。其它声明不可拆 critical transaction 的设计也必须按问题组 F 追加调用图、反汇编或设备证据。每批保存 exact command、输入、literal output、exit、XML 三桶和产物 identity。
+<a id="cross-platform-cbn"></a>
 
 ## 问题组 L：CBN
 
-每个新增结构都把一份本组表格嵌入其所在通用章节。
+仅链接 [E-REVIEW-RULE-001/§2：CBN 适用条件与表格](design-review-principles.md#review-cbn)，需要时在取舍发生处填写一次；已有论证直接引用。本附录不再维护“每结构一表、至少两个方案、必须给数字”的第二套要求。
 
-| 字段 | 内容 |
-|---|---|
-| 决策点 | `<ONE_DECISION>` |
-| 方案 A / B | `<AT_LEAST_TWO_OPTIONS>` |
-| 可度量收益 | `<NUMBER>` |
-| 初始成本 | `<EFFORT>` |
-| 每次扩展边际成本 | `<TOUCH_POINTS>` |
-| 翻转条件 | `<TESTABLE_CONDITION>` |
-| 结论 | `<SELECTED_AND_WHY>` |
+> **沿革（2026-11-05）**：K/L 的全文 hash、旧 core make 命令与无条件 CBN 重复定义收拢到已生效规则；资源、ABI、攻击关键路径和真机验收责任保留。此整理不改既有计划的批准或门禁结果。
 
 ## 问题组 M：风险、技术债与扩展点
 
-适用时嵌入“目标与约束”或“兼容性与回滚”。
+适用时嵌入“目标与约束”或“兼容性与失败恢复”。
 
 | 风险/债务 | 触发条件 | fail-closed 处置 | owner | 偿还时机 |
 |---|---|---|---|---|
 | `<RISK>` | `<CONDITION>` | `<ACTION>` | `<OWNER>` | `<GATE>` |
 
-写清新增 backend、service、operation 或脚本 API 时改哪里、不改哪里。没有当前复用或已登记扩展点的抽象不得建立。
+适用的当前变化轴写清改哪里、不改哪里；是否建立抽象统一按 [E-REVIEW-RULE-001/C2：当前变化轴](design-review-principles.md#review-c2)，登记后续需求不构成提前实现授权。
 
 ## 问题组 N：进度补充项
 
@@ -240,7 +230,7 @@ Native 可以消费上层已决定的数据，但不得自行引入第二套业�
 - [ ] Explore：代码、历史、活跃计划和调用图完成。
 - [ ] Design：数据权威、owner、CBN、UML 完成。
 - [ ] Review：design-critic 阻断为 0。
-- [ ] Approval：外部用户批准记录含 commit 与本文件完整 hash。
+- [ ] Approval：已有记录可定位用户批准与对应输入；输入标识沿用 G4，不另索全文 hash。
 - [ ] Implement：按单变量批次完成。
 - [ ] Verify：离线、构建、真机适用门禁完成。
 - [ ] Cleanup：临时物、旧入口和技术债按批准计划处理。

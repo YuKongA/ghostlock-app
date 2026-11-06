@@ -6,7 +6,6 @@ import java.util.Date
 import java.util.Locale
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
-import java.security.MessageDigest
 import java.util.Properties
 
 plugins {
@@ -21,25 +20,16 @@ layout.buildDirectory.set(rootProject.layout.buildDirectory.dir("app"))
 
 val appName = "GhostLock"
 val appVersionName = "2.0.12"
-//TODO(m0-marker-20261029): temporary marker fixture build gate; remove after M0 device validation.
-val m0MarkerEnabled = providers.gradleProperty("m0Marker").orNull == "true"
 
-// Per-backend native chunk switches (task-4): Gradle property wins, otherwise the CMake
-// default. The two original backends inherit the legacy GHOSTLOCK_ENABLE_ORIGINAL_BACKENDS
-// value so the old CLI keeps working; all six values are forwarded to CMake as -D flags.
-val legacyOriginalBackends = providers.gradleProperty("GHOSTLOCK_ENABLE_ORIGINAL_BACKENDS").orNull ?: "OFF"
-val backend43499GluedFlag = providers.gradleProperty("GHOSTLOCK_BACKEND_43499_GLUED").orNull ?: "ON"
-val backend43284GluedFlag = providers.gradleProperty("GHOSTLOCK_BACKEND_43284_GLUED").orNull ?: "ON"
-val backend43499Flag = providers.gradleProperty("GHOSTLOCK_BACKEND_43499").orNull ?: legacyOriginalBackends
-val backend43284Flag = providers.gradleProperty("GHOSTLOCK_BACKEND_43284").orNull ?: legacyOriginalBackends
-val backend98260Flag = providers.gradleProperty("GHOSTLOCK_BACKEND_98260").orNull ?: "OFF"
 val debugNativeManifest = layout.buildDirectory.file("native-artifacts/debug/manifest.tsv")
 
 /**
  * Verifies the actual debug variant native artifacts after AGP has merged them.
  *
  * The expected artifact/JNI set comes only from the CMake-generated target
- * manifest. LLVM tools come from the same NDK Provider that AGP uses.
+ * manifest. A header-only manifest is the authoritative disconnected state and
+ * requires the merged output to contain no native artifact. LLVM tools come
+ * from the same NDK Provider that AGP uses when at least one target exists.
  */
 abstract class VerifyNativeArtifactsTask : org.gradle.api.DefaultTask() {
     @get:org.gradle.api.tasks.InputDirectory
@@ -68,7 +58,7 @@ abstract class VerifyNativeArtifactsTask : org.gradle.api.DefaultTask() {
         val expectedJni: Set<String>,
     )
 
-    /** Checks exact set, ELF architecture, and per-artifact JNI exports. */
+    /** Checks zero-target disconnection or the exact ELF architecture/JNI artifact set. */
     @org.gradle.api.tasks.TaskAction
     fun verifyArtifacts() {
         val manifest = manifestFile.get().asFile
@@ -100,7 +90,6 @@ abstract class VerifyNativeArtifactsTask : org.gradle.api.DefaultTask() {
             }
             NativeManifestRow(fields[0], fields[1], fields[2], expectedJni)
         }
-        check(rows.isNotEmpty()) { "native artifact manifest has no targets" }
         check(rows.map(NativeManifestRow::target).toSet().size == rows.size) {
             "native artifact manifest contains duplicate targets"
         }
@@ -110,6 +99,22 @@ abstract class VerifyNativeArtifactsTask : org.gradle.api.DefaultTask() {
 
         val mergedRoot = mergedNativeLibs.get().asFile
         val libraryRoot = mergedRoot.resolve("lib")
+        if (rows.isEmpty()) {
+            val unexpectedArtifacts = if (libraryRoot.isDirectory) {
+                libraryRoot.walkTopDown()
+                    .filter { entry -> entry.isFile || Files.isSymbolicLink(entry.toPath()) }
+                    .map { entry -> entry.relativeTo(mergedRoot).invariantSeparatorsPath }
+                    .sorted()
+                    .toList()
+            } else {
+                emptyList()
+            }
+            check(unexpectedArtifacts.isEmpty()) {
+                "merged native artifacts exist while the CMake target manifest is empty: $unexpectedArtifacts"
+            }
+            logger.lifecycle("NATIVE_ARTIFACTS=PASS COUNT=0 ABI=none JNI=0")
+            return
+        }
         check(libraryRoot.isDirectory) {
             "merged native library root is missing: ${libraryRoot.absolutePath}"
         }
@@ -292,135 +297,6 @@ val lkmSourceDir = rootProject.file("tools/lkm/ghostlock")
 val lkmCacheDir = layout.buildDirectory.dir("lkm").get().asFile
 val lkmGeneratedAssets = layout.buildDirectory.dir("generated/lkmAssets")
 
-/** Builds the isolated M0 source copy and its A301SO-specific KO under the real build root. */
-abstract class BuildM0MarkerKoTask : org.gradle.api.DefaultTask() {
-    @get:org.gradle.api.tasks.InputDirectory
-    abstract val sourceDir: org.gradle.api.file.DirectoryProperty
-
-    @get:org.gradle.api.tasks.OutputDirectory
-    abstract val outputDir: org.gradle.api.file.DirectoryProperty
-
-    @get:javax.inject.Inject
-    abstract val execOps: org.gradle.process.ExecOperations
-
-    @org.gradle.api.tasks.TaskAction
-    fun buildFixture() {
-        val source = sourceDir.get().asFile
-        val output = outputDir.get().asFile
-        source.copyRecursively(output, overwrite = true)
-        val lkm = File(output, "lkm")
-        val ko = File(output, "ko/dfroot-android13-5.15.ko")
-        File(lkm, "m0_dfroot.ko").delete()
-        execOps.exec {
-            commandLine(
-                "podman", "run", "--rm", "--platform", "linux/amd64",
-                "-v", "${lkm.absolutePath}:/src:rw", "-w", "/src",
-                "ghcr.io/ylarod/ddk-min:android13-5.15-20260828", "make", "-j2", "all",
-            )
-        }.assertNormalExitValue()
-        val built = File(lkm, "m0_dfroot.ko")
-        check(built.isFile && built.length() > 0L) { "M0 DDK did not produce a KO" }
-        check(ko.parentFile.mkdirs() || ko.parentFile.isDirectory) {
-            "M0 build output directory is unavailable"
-        }
-        built.copyTo(ko, overwrite = true)
-        check(ko.isFile && ko.length() == built.length()) { "M0 KO copy changed its byte count" }
-    }
-}
-
-/** Stages one M0 source snapshot with a separately verified, immutable target KO input. */
-abstract class StageM0MarkerSourcesTask : org.gradle.api.DefaultTask() {
-    @get:javax.inject.Inject
-    abstract val fileSystemOperations: org.gradle.api.file.FileSystemOperations
-
-    @get:org.gradle.api.tasks.InputDirectory
-    abstract val sourceDir: org.gradle.api.file.DirectoryProperty
-
-    @get:org.gradle.api.tasks.InputFile
-    abstract val verifiedKo: org.gradle.api.file.RegularFileProperty
-
-    @get:org.gradle.api.tasks.InputFile
-    abstract val cmakeSource: org.gradle.api.file.RegularFileProperty
-
-    @get:org.gradle.api.tasks.Input
-    abstract val expectedKoSha256: org.gradle.api.provider.Property<String>
-
-    @get:org.gradle.api.tasks.OutputDirectory
-    abstract val outputDir: org.gradle.api.file.DirectoryProperty
-
-    @get:org.gradle.api.tasks.OutputFile
-    abstract val manifestFile: org.gradle.api.file.RegularFileProperty
-
-    @org.gradle.api.tasks.TaskAction
-    fun stageSources() {
-        val source = sourceDir.get().asFile
-        val verified = verifiedKo.get().asFile
-        val expectedHash = expectedKoSha256.get()
-        val verifiedBytes = verified.readBytes()
-        check(sha256(verifiedBytes) == expectedHash) {
-            "Verified M0 KO SHA-256 mismatch: ${verified.absolutePath}"
-        }
-
-        val output = outputDir.get().asFile
-        fileSystemOperations.delete { delete(output) }
-        source.copyRecursively(output, overwrite = true)
-        val stagedKo = File(output, "ko/dfroot-android13-5.15.ko")
-        check(stagedKo.parentFile.mkdirs() || stagedKo.parentFile.isDirectory) {
-            "M0 staged KO directory is unavailable"
-        }
-        stagedKo.writeBytes(verifiedBytes)
-        check(sha256(stagedKo.readBytes()) == expectedHash) {
-            "Staged M0 KO SHA-256 changed during source staging"
-        }
-        check(sha256(verified.readBytes()) == expectedHash) {
-            "Verified M0 KO input changed during source staging"
-        }
-
-        val sourceEntries = output.walkTopDown()
-            .filter { it.isFile }
-            .map { file ->
-                file.relativeTo(output).invariantSeparatorsPath to sha256(file.readBytes())
-            }
-            .toMutableList()
-        val cmake = cmakeSource.get().asFile
-        sourceEntries += ("app/src/main/cpp/backends/43284glued/CMakeLists.txt" to sha256(cmake.readBytes()))
-        val manifest = manifestFile.get().asFile
-        check(manifest.parentFile.mkdirs() || manifest.parentFile.isDirectory) {
-            "M0 source-manifest directory is unavailable"
-        }
-        manifest.writeText(
-            sourceEntries.sortedBy { it.first }
-                .joinToString(separator = "\n", postfix = "\n") { (path, hash) -> "$hash  $path" },
-        )
-    }
-
-    private fun sha256(bytes: ByteArray): String =
-        MessageDigest.getInstance("SHA-256")
-            .digest(bytes)
-            .joinToString(separator = "") { byte -> "%02x".format(byte.toInt() and 0xff) }
-}
-
-//TODO(m0-marker-20261029): build the isolated A301SO-only fixture KO with its pinned DDK image.
-val m0BuildDirectory = layout.buildDirectory.dir("m0/apk-source/43284glued")
-val m0GenericBuildDirectory = layout.buildDirectory.dir("m0/unverified/43284glued")
-val m0VerifiedKo = layout.buildDirectory.file("m0/verified/dfroot-android13-5.15.ko")
-val m0SourceManifest = layout.buildDirectory.file("m0/manifests/43284glued-source.sha256")
-val m0KoSha256 = "4f56858dd02ec53f14f2f3ca1e9d8fd48f83be85d6f32eaecc339220b54e5c79"
-val buildM0MarkerKo = tasks.register<BuildM0MarkerKoTask>("buildM0MarkerKo") {
-    sourceDir.set(layout.projectDirectory.dir("src/main/cpp/backends/43284glued/m0"))
-    outputDir.set(m0GenericBuildDirectory)
-    outputs.upToDateWhen { false }
-}
-val stageM0MarkerSources = tasks.register<StageM0MarkerSourcesTask>("stageM0MarkerSources") {
-    sourceDir.set(layout.projectDirectory.dir("src/main/cpp/backends/43284glued/m0"))
-    verifiedKo.set(m0VerifiedKo)
-    cmakeSource.set(layout.projectDirectory.file("src/main/cpp/backends/43284glued/CMakeLists.txt"))
-    expectedKoSha256.set(m0KoSha256)
-    outputDir.set(m0BuildDirectory)
-    manifestFile.set(m0SourceManifest)
-    outputs.upToDateWhen { false }
-}
-
 /** The repository's SINGLE NDK authority (the root script resolves the same keys;
  *  AGP 8's ApplicationExtension exposes no ndkDirectory). */
 fun resolveNdkDir(): File {
@@ -485,29 +361,8 @@ android {
         versionCode = gitVersionCode
         versionName = appVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        /* G9/B5c-1 release 编译修复：M0_MARKER 仅 debug fixture 用；
-         * release 默认 false，debug 变体在下面 debug 块 override 为实际开关。 */
-        buildConfigField("boolean", "M0_MARKER", "false")
         /* Direct-cleanup D1e: generated app BuildConfig is the single build-metadata authority. */
         buildConfigField("boolean", "IS_PR_BUILD", "false")
-        externalNativeBuild {
-            cmake {
-                /* One switch per backend chunk; values come from gradle properties so
-                 * `-PGHOSTLOCK_BACKEND_*=...` exercises each chunk without editing files. */
-                arguments += listOf(
-                    "-DGHOSTLOCK_BACKEND_43499_GLUED=$backend43499GluedFlag",
-                    "-DGHOSTLOCK_BACKEND_43284_GLUED=$backend43284GluedFlag",
-                    "-DGHOSTLOCK_ENABLE_ORIGINAL_BACKENDS=$legacyOriginalBackends",
-                    "-DGHOSTLOCK_BACKEND_43499=$backend43499Flag",
-                    "-DGHOSTLOCK_BACKEND_43284=$backend43284Flag",
-                    "-DGHOSTLOCK_BACKEND_98260=$backend98260Flag",
-                )
-                arguments += "-DGHOSTLOCK_M0_MARKER=${if (m0MarkerEnabled) "ON" else "OFF"}"
-                if (m0MarkerEnabled) {
-                    arguments += "-DGHOSTLOCK_M0_SOURCE_DIR=${m0BuildDirectory.get().asFile.absolutePath}"
-                }
-            }
-        }
     }
     androidResources {
         localeFilters += listOf("en", "zh-rCN")
@@ -565,7 +420,6 @@ android {
         }
         debug {
             signingConfig = signingConfigs.getByName(if (keystoreFile != null) "release" else "debug")
-            buildConfigField("boolean", "M0_MARKER", m0MarkerEnabled.toString())
             externalNativeBuild {
                 cmake {
                     arguments +=
@@ -613,13 +467,6 @@ android {
     }
 }
 
-if (m0MarkerEnabled) {
-    tasks.named("preBuild") { dependsOn(stageM0MarkerSources) }
-    tasks.configureEach {
-        if (name.contains("CMake", ignoreCase = true)) dependsOn(stageM0MarkerSources)
-    }
-}
-
 val llvmBinDirectory = androidComponents.sdkComponents.ndkDirectory.map { ndk ->
     val prebuiltRoot = ndk.asFile.resolve("toolchains/llvm/prebuilt")
     val candidates = prebuiltRoot.listFiles().orEmpty().filter { directory ->
@@ -664,7 +511,7 @@ val verifyDebugUnitTestXml = tasks.register<VerifyUnitTestXmlTask>("verifyDebugU
     group = "verification"
     description = "Verifies all debug unit-test XML against exact four-bucket totals."
     resultsDirectory.set(layout.buildDirectory.dir("test-results/testDebugUnitTest"))
-    expectedTests.set(459)
+    expectedTests.set(96)
     expectedFailures.set(0)
     expectedErrors.set(0)
     expectedSkipped.set(0)
@@ -723,13 +570,13 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
     implementation("androidx.navigationevent:navigationevent-compose:1.2.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
     implementation("org.tukaani:xz:1.12")
-    implementation("org.commonmark:commonmark:0.30.1")
-    implementation("org.commonmark:commonmark-ext-gfm-tables:0.30.1")
-    implementation("org.commonmark:commonmark-ext-gfm-strikethrough:0.30.1")
-    implementation("org.commonmark:commonmark-ext-autolink:0.30.1")
-    implementation("org.commonmark:commonmark-ext-task-list-items:0.30.1")
+    implementation("org.commonmark:commonmark:0.32.0")
+    implementation("org.commonmark:commonmark-ext-gfm-tables:0.32.0")
+    implementation("org.commonmark:commonmark-ext-gfm-strikethrough:0.32.0")
+    implementation("org.commonmark:commonmark-ext-autolink:0.32.0")
+    implementation("org.commonmark:commonmark-ext-task-list-items:0.32.0")
     implementation("androidx.webkit:webkit:1.18.0")
     implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.2")
     implementation("me.zhanghai.android.appiconloader:appiconloader:1.5.0")

@@ -155,16 +155,16 @@ class SettingsViewModel(
         copy(showLogTimestamp = enabled)
     }
 
-    /** Persists automatic log export. */
+    /** Persists whether each accepted run creates an automatic GLLOG1 document. */
     fun setAutoExportLogs(enabled: Boolean) = updateOperational {
         copy(autoExportLogs = enabled)
     }
 
     /**
-     * Selects a Downloads-compatible export directory.
+     * Selects a Downloads-compatible automatic-export directory.
      *
      * @param uri Serialized Android tree URI.
-     * @return True when the adapter accepted and persisted the tree.
+     * @return True when the adapter normalized and persisted the tree.
      */
     fun selectLogExportDirectory(uri: String): Boolean = selectLogExportDirectoryUseCase(uri)
 

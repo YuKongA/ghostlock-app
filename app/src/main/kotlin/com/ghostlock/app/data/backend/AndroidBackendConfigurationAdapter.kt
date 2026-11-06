@@ -1,110 +1,74 @@
 package com.ghostlock.app.data.backend
 
-import android.content.Context
-import com.ghostlock.app.backend.declarations.BackendSpec
+import com.ghostlock.app.domain.backend.BackendAvailability
 import com.ghostlock.app.domain.backend.BackendConfigMutationResult
-import com.ghostlock.app.domain.backend.BackendConfigValue
 import com.ghostlock.app.domain.backend.BackendConfiguration
-import com.ghostlock.app.domain.backend.BackendConfigurationMutation
 import com.ghostlock.app.domain.backend.BackendConfigurationPort
+import com.ghostlock.app.domain.backend.BackendSpec
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Generic Android adapter for configuration capabilities declared by captured [BackendSpec] values.
+ * Android composition adapter for neutral BackendSpec presentation/configuration facts.
  *
- * @param context Application context used only to create each typed backend store.
- * @param registryEntries Immutable registry membership captured by the application composition root.
- * @param sessionStore Physical typed-store owner shared with backend selection/session restore.
+ * @param registryEntries Immutable registry membership.
+ * @param availability Dynamic resource-free readiness resolver.
+ * @param presentation Neutral presentation projector.
+ * @note Configuration writes are fail-closed until a version-three profile editor port is connected; this
+ * adapter never recreates the retired SharedPreferences/backend-callback authority.
  */
 class AndroidBackendConfigurationAdapter(
-    context: Context,
     registryEntries: List<BackendSpec>,
-    private val sessionStore: BackendSessionStore,
+    private val availability: (String) -> BackendAvailability?,
+    private val presentation: BackendPresentationAdapter = BackendPresentationAdapter(),
 ) : BackendConfigurationPort {
-    private val applicationContext = context.applicationContext
     private val entriesByKey = registryEntries.associateBy(BackendSpec::key)
-    private val mutableStates = MutableStateFlow(
-        entriesByKey.values.mapNotNull { spec ->
-            snapshot(spec)?.let { state -> spec.key to state }
-        }.toMap(),
-    )
+    private val mutableStates = MutableStateFlow(buildStates())
 
     override val states: StateFlow<Map<String, BackendConfiguration>> = mutableStates.asStateFlow()
 
-    /** Rebuilds one snapshot without changing persistence; unknown/failed keys keep prior state. */
+    /** Reprojects one neutral static/readiness card. */
     override fun refresh(key: String) {
         val spec = entriesByKey[key] ?: return
-        val state = snapshot(spec) ?: return
-        mutableStates.value = mutableStates.value + (key to state)
+        val current = availability(key) ?: missingAvailability()
+        mutableStates.value = mutableStates.value + (key to presentation.project(spec, current))
     }
 
-    /** Routes one boolean command through the same generic capability path as every mutation. */
+    /** Profile mutation is unavailable until the profile-v3 editor port supplies a typed command. */
     override fun setBoolean(
         key: String,
         field: String,
         value: Boolean,
-    ): BackendConfigMutationResult = mutate(
-        key,
-        BackendConfigurationMutation.SetBoolean(field, value),
-    )
+    ): BackendConfigMutationResult = BackendConfigMutationResult.UNSUPPORTED
 
-    /** Routes one optional choice through the owning backend capability. */
+    /** Profile mutation is unavailable until the profile-v3 editor port supplies a typed command. */
     override fun selectValue(
         key: String,
         field: String,
         value: String?,
-    ): BackendConfigMutationResult = mutate(
-        key,
-        BackendConfigurationMutation.SelectValue(field, value),
-    )
+    ): BackendConfigMutationResult = BackendConfigMutationResult.UNSUPPORTED
 
-    /** Routes one document URI through the owning backend capability. */
+    /** Document import is unavailable until a dedicated data repository commits to profile-v3. */
     override fun importDocument(
         key: String,
         field: String,
         uri: String,
-    ): BackendConfigMutationResult = mutate(
-        key,
-        BackendConfigurationMutation.ImportDocument(field, uri),
-    )
+    ): BackendConfigMutationResult = BackendConfigMutationResult.UNSUPPORTED
 
-    /**
-     * Resolves a captured backend once and delegates without concrete class/key branching.
-     *
-     * @return UNSUPPORTED for unknown backend/capability/field; INVALID for thrown validation or
-     * persistence failures; APPLIED refreshes exactly once.
-     */
-    private fun mutate(
-        key: String,
-        mutation: BackendConfigurationMutation,
-    ): BackendConfigMutationResult {
-        val spec = entriesByKey[key] ?: return BackendConfigMutationResult.UNSUPPORTED
-        val capability = spec.configurationSpec ?: return BackendConfigMutationResult.UNSUPPORTED
-        val result = runCatching {
-            capability.mutate(configStore(spec), mutation)
-        }.getOrDefault(BackendConfigMutationResult.INVALID)
-        if (result == BackendConfigMutationResult.APPLIED) {
-            refresh(key)
-        }
-        return result
+    /** Builds the complete current neutral state map. */
+    private fun buildStates(): Map<String, BackendConfiguration> = entriesByKey.values.associate { spec ->
+        val current = availability(spec.key) ?: missingAvailability()
+        spec.key to presentation.project(spec, current)
     }
 
-    /** @return Complete semantic state, or null when projection failed and prior state must remain. */
-    private fun snapshot(spec: BackendSpec): BackendConfiguration? = runCatching {
-        spec.configurationSpec?.snapshot(configStore(spec)) ?: BackendConfiguration.Static(
-            key = spec.key,
-            values = spec.rows().map { row ->
-                BackendConfigValue(
-                    label = applicationContext.getString(row.label),
-                    value = row.value,
-                )
-            },
-        )
-    }.getOrNull()
-
-    /** @return Existing typed store for one captured backend identity. */
-    private fun configStore(spec: BackendSpec) =
-        sessionStore.configStore(applicationContext, spec)
+    /** Fail-closed readiness when a captured key has no provider. */
+    private fun missingAvailability(): BackendAvailability = BackendAvailability.NotReady(
+        listOf(
+            com.ghostlock.app.domain.backend.BackendAvailabilityReason(
+                code = "availability-missing",
+                message = "Backend readiness is unavailable.",
+            ),
+        ),
+    )
 }

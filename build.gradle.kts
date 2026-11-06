@@ -359,7 +359,7 @@ abstract class VerifyNativeTestInventoryTask : org.gradle.api.DefaultTask() {
         }
 
         logger.lifecycle(
-            "NATIVE_TEST_INVENTORY=PASS CANDIDATES={} HOST=33 43499GLUED=27 CONTRACTS=5 AVBCHECK=1",
+            "NATIVE_TEST_INVENTORY=PASS CANDIDATES={} HOST=29 43499GLUED=27 CONTRACTS=1 AVBCHECK=1",
             candidates.size,
         )
     }
@@ -393,16 +393,14 @@ val verifyNativeTestInventory = tasks.register<VerifyNativeTestInventoryTask>("v
             "superseded-stale-api\tnone\tnativeTest43499GluedHost",
             "manual-linux-probe\tnone\tmanual-perf-policy-probe",
             "manual-device-diagnostic\t98260\tdevice-gate-98260",
-            "manual-diagnostic\tnone\tmanual-abi-layout-probe",
             "manual-diagnostic\tnone\tmanual-perf-task-probe",
-            "android-debug-probe\t43499\tandroidTest-43499-probes",
             "android-experiment-target\t98260\tdevice-gate-98260",
         ),
     )
     expectedHostCounts.set(
         mapOf(
             "host-ctest:43499glued" to 27,
-            "host-ctest:native-contracts" to 5,
+            "host-ctest:native-contracts" to 1,
             "existing-host-ctest:avbcheck" to 1,
         ),
     )
@@ -522,7 +520,7 @@ val nativeTest43499GluedHost = tasks.register<NativeHostCmakeTestTask>("nativeTe
 
 val nativeTestContractsHost = tasks.register<NativeHostCmakeTestTask>("nativeTestContractsHost") {
     group = "verification"
-    description = "Builds and executes the five repository-wide native contract CTests."
+    description = "Builds and executes the repository-wide native logging contract CTest."
     sourceDir.set(layout.projectDirectory.dir("tools/tests"))
     sourceInputs.from(
         fileTree("tools/tests") {
@@ -530,9 +528,6 @@ val nativeTestContractsHost = tasks.register<NativeHostCmakeTestTask>("nativeTes
         },
         fileTree("app/src/main/cpp/common") {
             include("gl_log.c", "gl_log.h")
-        },
-        fileTree("app/src/main/cpp/backends/43499/core") {
-            include("**/*.h", "**/*.hpp")
         },
     )
     cmakeExecutable.set(glCmake)
@@ -549,10 +544,10 @@ val nativeTestContractsHost = tasks.register<NativeHostCmakeTestTask>("nativeTes
 
 tasks.register("nativeTestHost") {
     group = "verification"
-    description = "Runs the complete current-tree host-native aggregate (33 CTests)."
+    description = "Runs the complete current-tree host-native aggregate (29 CTests)."
     dependsOn(verifyNativeTestInventory, nativeTest43499GluedHost, nativeTestContractsHost, avbcheck)
     doLast {
-        logger.lifecycle("NATIVE_TEST_HOST=PASS TOTAL=33 FAILED=0")
+        logger.lifecycle("NATIVE_TEST_HOST=PASS TOTAL=29 FAILED=0")
     }
 }
 

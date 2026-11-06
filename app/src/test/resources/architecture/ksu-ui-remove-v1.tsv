@@ -1,4 +1,4 @@
-path	symbol_resource	current_owner	action	target	batch	evidence	literal_sha256
+path	symbol_resource	current_owner	action	target	batch	evidence	identity_state
 app/src/main/aidl/com/ghostlock/app/ui/IKsuInterface.aidl	file	ABSENT	DELETE	ABSENT	D3b	deleted-manager-closure	ABSENT
 app/src/main/kotlin/com/ghostlock/app/ui/BuildConfig.kt	file	ABSENT	DELETE	ABSENT	D1e	deleted-manager-closure	ABSENT
 app/src/main/kotlin/com/ghostlock/app/ui/KsuApp.kt	file	ABSENT	DELETE	ABSENT	D3b	deleted-manager-closure	ABSENT

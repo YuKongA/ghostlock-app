@@ -3,15 +3,13 @@ package com.ghostlock.app.domain.backend
 /**
  * Immutable application-process view of the backend registry.
  *
- * @property version Stable content version of the captured registry entries.
- * @property contentHash Full membership hash used by outer cross-process launch validation.
- * @property entries Runtime projections in registry order.
+ * @property entries Neutral immutable specs in registry order.
+ * @property availability Dynamic readiness facts keyed by stable backend key.
  * @property selectedKey Current selection key observed when this snapshot was read.
  */
 data class BackendRegistrySnapshot(
-    val version: Long,
-    val contentHash: String,
-    val entries: List<BackendRuntimeSpec>,
+    val entries: List<BackendSpec>,
+    val availability: Map<String, BackendAvailability>,
     val selectedKey: String?,
 ) {
     /**
@@ -19,8 +17,19 @@ data class BackendRegistrySnapshot(
      *
      * @return Selected selectable entry, the first selectable fallback, or null for an empty registry.
      */
-    fun selectedBackend(): BackendRuntimeSpec? =
+    fun selectedBackend(): BackendSpec? =
         entries.firstOrNull { it.selectable && it.key == selectedKey }
             ?: entries.firstOrNull { it.selectable }
             ?: entries.firstOrNull()
+
+    /** Returns current readiness for one captured key, or a fail-closed unavailable fact. */
+    fun availabilityFor(key: String): BackendAvailability = availability[key]
+        ?: BackendAvailability.NotReady(
+            listOf(
+                BackendAvailabilityReason(
+                    code = "availability-missing",
+                    message = "Backend readiness is unavailable.",
+                ),
+            ),
+        )
 }

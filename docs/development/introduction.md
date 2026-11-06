@@ -1,191 +1,117 @@
 # 从代码可辨识的事实（introduction）
 
-> **2026-10-21 重写（docs-uml）**。本文原为 R9「事实层」快照（2026-10-18）；其中
-> 「`core/src/{pipeline,profile,terminal}`」「`ghostlock` CLI + stdin 上的 GLKv3 文档（`--ghostlock-app-call`）」
-> 「Lua / script 执行体」「Native = 可执行 ELF，由 Kotlin `ProcessBuilder` 启动」等叙述**已失效**，
-> 依据：MASTER-PLAN §0.1（2026-10-17 用户裁定：Lua / GLKv3 文档 / CLI / script 面删除）、
-> 2026-10-19 43284 重置、2026-10-20 43499 kt-step 生产化。原文整篇归档在
-> [20261018-2322-introduction.md](../archive/20261018-2322-introduction.md)，不删除。
->
-> **一句话区分（本文最重要的一条）**：生产面 = **Kotlin 编排 + JNI 库**；**没有 native CLI、没有 wire 文档、
-> 没有 Lua / script 执行体**。旧文档里「native 是进程、吃文档」的描述一律按归档件读。
->
-> 本文只写**当前树可核验的事实**（给出路径）。进度见 `docs/plan/MASTER-PLAN.md`（唯一进度入口）；
-> 排期见 `docs/plan/ROADMAP.md`；执行层唯一权威见 `docs/plan/execution-architecture.md`。
+<a id="run-introduction"></a>
 
-## 零、目录结构（2026-10-21 核实）
+> **代号与快照范围**：当前条目引用[主计划语义代号](../plan/backend-root-execution-unification-plan.md#plan-semantic-identifiers)，不是统一 RUN 前缀下的旧 R 序号；下文原快照、历史批准与门禁保持原义，旧来源子号按映射定位。
 
-```text
-core/src/
-  boundary/jni/        Java_*/JNI 导出（薄壳：DTO ↔ 值，再调 platform 或 device 层）
-  boundary/protocol/   会话协议 / 句柄 / 编组 / op 表（与 JNI 无关）
-  contract/            跨端契约：attack_contract_{fields,model,reader,values} + kernel_access/kind/resource_scope/step_catalog
-  device/43499/        43499 设备侧编排（chain.cpp）
-  platform/            KernelAccess::create（access_factory.cpp）+ route_catalog + target_profile
-                       + syscalls_43499 + native_{attempt,discover,prepare}_43499
-  support/             sha256 / hmac / gl_log
-  backend/cve_2026_43284/   重置后只剩 interface.hpp / access_params.hpp / lib/{raw_esp,helper} / README
-  backend/cve_2026_43499/   按机制分：landing/ leak/ memory/ race/ route/ steps/ + kernel_access/session/abi
-  tests/               宿主测试（75 个测试源 + 3 个 manifest pin）
-  tools/               构建期工具（当前为空；设备探针已随 MASTER-PLAN §0.1 删除）
-```
+> 当前快照：Backend root-execution R4B source complete + R5-S1 common product host source complete，2026-11-05。
+> 唯一在办架构计划是 [P-RUN-X-001](../plan/backend-root-execution-unification-plan.md#p-run-x-001)；逐文件处置权威是[主计划 ledger](../plan/backend-root-execution-unification-ledger.tsv)；结构图唯一权威是 [UML 当前执行视图](full-process-uml.md#run-current-views)。
+> 旧计划只从 docs/archive/ 读取，不再授权实现。
+> 按用户明确指令，本轮没有运行 Gradle、unit、architecture verifier、AVD、Shizuku runtime 或设备门；R2-R5-S1 的相关 gate 均保持 NOT_RUN。
 
-- **已不存在的旧路径**：`core/src/jni/`、`pipeline/`、`profile/`、`terminal/`、`script/`、`device/43284/`、`core/src/main.cpp`、`core/Makefile`。
-  文档、Gradle 任务与 include 防火墙均已改到上表路径。
+## 零、当前产品边界
 
-## 一、三层结构与产物
+GhostLock 的产品成功不是 raw uid 0，而是 concrete backend 到达自己的 root execution point 后，派发公共层发布的同一份 root script，并由 typed result 证明用户 Payload 达成。Finish 是 Payload 之后的附加动作，backend cleanup 是独立层；三者不能互相冒充。
 
-| 层 | 位置 | 产物 | 说明 |
-| --- | --- | --- | --- |
-| Android | `app/` | APK | Kotlin/Compose；生产编排、profile 解析、Shizuku UserService 与日志 |
-| Native | `app/src/main/cpp/` | DSO + 以 `lib*.so` 打包的 PIE payload | AGP `externalNativeBuild` 是 Android 生产构建权威；默认图由 CMake manifest 自导出 |
-| Host native tests | `app/src/main/cpp/backends/43499glued/tests/`、`tools/tests/`、`tools/avbcheck/` | 33 个 CTest | module-local CMake 拥有 TU mapping；root Gradle 只组合三组门 |
-| Extractor | `tools/extract_rs/` | 既有 Rust CLI/库 | 新 KMP extractor 尚在独立计划中，不属于本节 current native gate |
+当前 registry 刻意没有 selectable production-root backend：
 
-当前 Android CMake authority 是 `app/src/main/cpp/CMakeLists.txt`，顺序 include `common/`、`glgeneral/`、
-`backends/`。默认 debug target graph 实得四件 arm64 artifact；具体 target/artifact/type/JNI 列表由
-`build/app/native-artifacts/debug/manifest.tsv` 在 CMake 配置期从当前 target/source graph 生成，Gradle
-不得再维护第二份名单。`verifyDebugNativeArtifacts` 从 AGP `SingleArtifact.MERGED_NATIVE_LIBS` Provider
-取得实际 merged 目录，并用同一 AGP NDK Provider 下的 `llvm-readelf`/`llvm-nm` 检查 exact set、
-non-empty regular file、ELF64/AArch64 与逐件 JNI export。
+- CUSTOM 声明 PRODUCT_ROOT capability，但 selection policy 为 DISABLED，operation catalog 为空，readiness 为 NotReady。
+- DEBUG-PROBE 只在 debug build 注册，capability 为 DIAGNOSTIC_ONLY；即使 probe 完成，产品成功投影仍为 false。
+- R5-S1曾写入neutral common product host spine，但后续用户已取消R5-S2/S3并要求断开全部真攻击backend。43499-Glued、43284-Glued、98260只保留source-only candidate；它们不在registry或APK native target graph，源码存在不等于selectable、supported或device proof。
 
-- Host module build trees 分别为 `build/cmake/host-43499glued/`、`build/cmake/host-contracts/` 与
-  `build/avbcheck-host/`；每次 `nativeTestHost` 都重新 configure/build/CTest，不能用 cached test 结果过门。
-- `tools/tests/native-test-disposition.tsv` 是 current-tree native test/probe disposition 的 machine authority；
-  root inventory 扫 suffix/prefix test 与具名 probe，module CMake 再把 host status 与实际 registration 对拍。
-- 内置 profile 在 `app/src/main/assets/profile/`：`index.conf`（`schema_version`）、`common/`、`43499/`；格式 HOCON（支持 `include`）。
-  **native 不读 profile**：Kotlin 解析后以参数/字节数组过 JNI（kt-step 不变量）。
-- 43284 侧同样由 Kotlin 编排阶段（`engine/pagecache/stage/`），C++ 只留纯函数（`lib/raw_esp`、`lib/helper`）。
+## 一、Android/Kotlin 分层
 
-## 二、常用命令（Gradle 是唯一构建入口）
-
-```sh
-# Native
-./gradlew verifyNativeTestInventory --console=plain # 43 项 candidate/disposition exact-set
-./gradlew nativeTestHost --console=plain            # 27 + 5 + 1 = 33 个 host CTest
-./gradlew nativeBuildAndroid --console=plain        # AGP build/merge + 4 件 ELF/ABI/JNI exact gate
-./gradlew :app:verifyDebugUnitTestXml --console=plain # 全量 XML 四桶 exact gate
-
-# 汇总
-./gradlew checkAll --console=plain # host 33 + Android native artifacts + Kotlin XML 459/0/0/0
-
-# Android / 提取器
-./gradlew :app:assembleDebug
-./gradlew :app:testDebugUnitTest
-cargo test --release              # 在 tools/extract_rs 下
-```
-
-- **已失效的命令名**：`make -C core check` / `make -C core android`（`core/Makefile` 已删）⇒ 分别对应
-  `nativeTestHost` / `nativeBuildAndroid`。旧 `nativeConfigureHost`、`nativeBuildHost`、`prepareGhostlockJniLibs`、
-  `verifyJniLibs` 与 `exportJniProtocolManifest` 同样不属于 current-tree task graph，不得作为验收命令复用。
-- 生成物统一在仓库内真实 `build/` 下；**禁止任何链接**；跨端列表由 native 导出，不得手抄。
-
-## 三、契约面（`core/src/contract/`）
-
-| 文件 | 权威内容 |
-| --- | --- |
-| `kernel_access.hpp` | `KernelAccess`：`create(BackendId)` / `initialize` / `read` / `write` / `read64` / `write64` / `write_zero` / `shutdown`；`AccessResult` / `AccessState` / `AccessChannel` / `AccessCarrier` / `AccessMiscParameters`（ADR-0014） |
-| `kind.hpp` | `BackendId`（值为 CVE 号：`Cve_2026_43499` / `Cve_2026_43284` …） |
-| `step_catalog.hpp` | `kStepSetAliases`（别名 → 有序 `StepId`） |
-| `resource_scope.hpp` | 能力与资源作用域声明 |
-| `attack_contract_{fields,model,reader,values}` | 跨端字段表 + 生成式 DTO 的唯一来源（Kotlin 侧 `core/generated/AttackContractDtos.kt`） |
-
-> 已删除（R9 后、随 §0.1 与后续重构）：`identity.hpp`、`chain_catalog.hpp`、`script_surface.hpp`、
-> `capability_catalog.hpp`、`layer_scope.hpp`、`op_registry.hpp`。文档中不应再引用它们。
-
-## 三·补、具名拒绝的写法
-
-- **名字的权威在各单元自己的具名表里**，中心文档不复制清单（复制就是第二份权威）。
-- 形式：`<名>` 或 `<名>:<细节>`；细节优先给 **errno / 原始计数 / 阶段码**，不给形容词。
-- 现行例子（各单元具名）：`precondition:<token>-<input>`、`precondition:<token>-no-calls`、
-  `victim-start:<errno|类型>`、`victim-uid:<uid>`、`probe:<errno>`、`page-send:<stage>`。
-- **不说成「缺设备」**：缺路径 / 缺权限 / 参数不合法 / 内核不可读 要分开报。
-
-## 四、组装与执行（`core/src/platform/`）
-
-| 文件 | 职责 |
-| --- | --- |
-| `access_factory.cpp` | `KernelAccess::create` 的唯一实现处（依赖两个 backend 的地方只此一处） |
-| `route_catalog.hpp` | `RouteId` 登记（`MulticastWaiter` / `SelectStack` / `TcpZerocopy`） |
-| `target_profile.hpp` | `KeyValue` / `KeyView`（值视图） |
-| `syscalls_43499.{hpp,cpp}` | 逐 syscall 薄包装（无状态、无决策） |
-| `native_attempt_43499.{hpp,cpp}` | actor batch 的 native 侧（参数编组、page 发送、结果编码） |
-| `native_discover_43499.{hpp,cpp}` | discover 端口（Kotlin 给参数、解释结果） |
-| `native_prepare_43499.{hpp,cpp}` | prepare 端口（`WordsRegion` handle、shaping fd） |
-
-> 旧 `pipeline/`（`component_catalog` / `executors` / `composition_root` / `plan_gate` / `run_pipeline_temp`）
-> **整体不存在**；分派与装配现由 Kotlin 执行层 + `access_factory.cpp` 承担。
-
-## 五、backend 面（`core/src/backend/`）
-
-### `cve_2026_43499`（PI-futex）
-
-| 目录/文件 | 关键单元 |
-| --- | --- |
-| `kernel_access.hpp` / `session.hpp` | `Access`（`KernelAccess` 实现）+ `TargetState` |
-| `access_params.hpp` / `abi.{hpp,cpp}` | `AccessParams` / `PayloadOffsets` |
-| `access_{multicast_waiter,select_stack,tcp_zerocopy}.hpp` | 三条 route 的访问面 |
-| `landing/` | `MulticastLanding` / `MulticastWindow` / `MulticastRoute`（`_linux`）/ `SelectStackRoute`（`_linux`） |
-| `leak/` | kernelsnitch discover：`snitch_*` / `collision_*` / `leak_*` / `candidate_match` |
-| `memory/` | 页/凭据/布局：`payload_page`、`credential_image`、`write_layout`、`write_encoder`、`prepare_*`、`page_*`、`multicast_arm` |
-| `race/` | `PiRace` / `PiWindow` / `RaceRuntime` |
-| `route/` | `lifecycle` / `route_policy` / `policy_dispatch` / `route_status` / `expected_keys` / `multicast_policy` + `*_legacy.cpp` |
-| `steps/` | `step_runner` / `window_*` / `prepare_*` / `discovery_runner` / `words_region` / `route_config` / `access_binder` |
-
-### `cve_2026_43284`（page cache，2026-10-19 重置后）
-
-| 文件 | 说明 |
-| --- | --- |
-| `interface.hpp` | `AccessParamsPod`（唯一 POD 定义） |
-| `access_params.hpp` | 旧参数面（按 v4 §2 计划在 B5 删除；当前仍在树） |
-| `lib/raw_esp.{hpp,cpp}` | `gl_esp_open/write_block/close` 薄 syscall |
-| `lib/helper.{hpp,cpp}` | `gl_helper_exec/read`、`gl_fadvise_drop` |
-| `README.md` | 本目录边界说明 |
-
-> 旧 43284 实现（会话/帧/门/ESP 链/LKM 策略）已在 2026-10-19 删除；新设计与批次见
-> `docs/analysis/43284-refactor-design-v4.md` 与 `docs/plan/43284-reset-batch.md`。
-
-## 六、JNI 边界面（`core/src/boundary/jni/`）
-
-| 文件 | 面向 | 生产? |
+| 层 | 当前 owner 与职责 | 禁止反向依赖 |
 | --- | --- | --- |
-| `native_syscalls_43499.cpp` | `gl43499syscalls`：逐 syscall | **是**（kt-step K1） |
-| `native_attempt_jni.cpp` / `native_discover_jni.cpp` / `native_prepare_jni.cpp` | `gl43499native`：actor batch / discover / prepare | 实验（N2/N3），未过 N5 不标 supported |
-| `native_select_stack_jni.cpp` / `native_select_legacy_jni.cpp` / `native_tcp_route_jni.cpp` | 43499 select / tcp 路由端口 | select 有 AVD 门禁；tcp 无通过结果 |
-| `api_43499.cpp` / `native_43499.cpp` | 43499 legacy 逻辑面 | 否（K0a 已隔离） |
-| `native_helper.cpp` / `native_raw_esp.cpp` | 43284 helper / ESP（`ghostlock_jni`） | 是（43284 阶段链） |
-| `native_finish.cpp` / `native_memfd.cpp` / `native_perf_task_jni.cpp` | 收尾 / memfd / perf 辅助 | 按调用方 |
+| domain/backend | neutral BackendSpec、presentation、configuration schema、parameter requirements、availability facts | Android、Compose、concrete backend、persistence |
+| domain/run | FrozenRunInput、RunCapability、六层 RunReport、terminal 与 product-success projector | host implementation、日志推断 |
+| domain/payload 与 domain/finish | 两份独立 version-3 document、校验和用户语义 | backend root primitive |
+| data | Android persistence、profile/config projection、workspace、PFD staging、diagnostic report | concrete backend membership |
+| backend/declarations | internal BackendPlugin：spec、resource-free readiness、fresh one-shot Flow factory | UI、profile、AIDL 暴露 |
+| backend/registry | immutable same-APK membership 与 exact key lookup | runtime register、digest、reflection |
+| backend/transport | typed RunHost clients、host state machine、event/snapshot validation、process carrier | Bundle 与动态 method lookup |
+| core/run | 一次冻结输入与 application-lifetime RunCoordinator | renderer/ViewModel lifetime ownership |
+| core/flow | Flow.run 接受 BackendFlowInput 并返回 BackendRunFacts | product script generator |
+| UI | immutable UI state 与 action contract | data/backend/core implementation import |
 
-- **没有通用 read/write JNI**：读写经 Kotlin 会话与能力接口（见 §七）；执行节点直接走 backend 端口。
+BackendSpec 不持有 Flow、Context、资源、动态 readiness cache 或 persistence callback。BackendPlugin 仅在 backend 内部可见；每次 accepted run 必须创建新的 Flow。
 
-## 七、Kotlin 执行面（生产）
+## 二、Payload、Finish 与单一 root script
 
-| 位置 | 角色 |
-| --- | --- |
-| `core/engine/PipelineEngine.kt` | **执行唯一权威**：节点顺序 / 重试 / 冻结 / 清理 / 反向 close |
-| `core/engine/BackendRun.kt` | 每次执行的边界（一次性）+ `DelegatingExecutionEngine` + `ExecutionEngineFactory` |
-| `core/engine/ExecutionEngine.kt` | UI 面状态机接口（`ExecutionState`） |
-| `core/NativeSession.kt` + `NativeSessionFactory.kt` | 会话生命周期底座（`SessionPhase` / `CleanupDisposition` / `close`） |
-| `core/access/AccessCapability.kt` | `AccessSession` + `KernelMemoryAccess` / `PageCacheAccess` 能力接口 |
-| `core/access/{LkmKernelAccess,PageCacheAccess}.kt` | LKM 与 43284 页缓存能力实现 |
-| `core/steps/{StepId,StepInputs,StepPlans,OpsInvoker}.kt` | 步骤数据与调用边界（**不是**执行权威） |
-| `engine/ktstep/` | 43499 kt-step：布局/引擎/端口/pirace/victim |
-| `backend/cve43499/ktstep/run/` | 43499 生产 run/flow/session/route 端口 |
-| `backend/cve43284/pagecache/` + `engine/pagecache/` | 43284 Stage 节点与阶段实现 |
+Payload 与 Finish 分别由自己的 repository 保存 version-3 typed document。RunInputFreezer 在一次 run 开始前同时冻结 backend key、profile-v3 snapshot、Payload 与 Finish，之后设置变化不影响 in-flight run。
 
-- 结构、状态机与「会话 close 与执行 close 互斥」的规则见 `docs/plan/execution-architecture.md`（唯一权威）。
-- `StepEngine` / `StageRunner` / `StagePageCacheEngine` 已删除；`core/steps` 只留数据与翻译器。
+RootScriptRenderer 是唯一整脚本 writer。发布过程固定为 host workspace 内写入、关闭、权限收口、同一 opened object 身份确认，再向 Flow 提供 published identity。backend 不生成 KernelSU、Payload 或 Finish 产品脚本，只负责 root primitive、exact artifact dispatch 与 attack-private cleanup facts。
 
-## 八、可核验的不变量
+结果由 typed root-result codec 与 RunReport 合成。产品成功只允许来自 PRODUCT_ROOT capability 与成功 terminal 的合法组合；raw uid 0、stdout、exit 0、callback event 或全局日志只能作为诊断事实。
 
-- **攻击状态零可写全局**：43499/43284 的 `llvm-nm` `b/B` = 0，会话由调用方持有；剩余 `d` 为 `.data.rel.ro` 常量，libc 的 `fini_array_with_sentinels` 除外。
-  例外（2026-10-22）：日志子系统 4 个 DSO-local `d` 见 [ADR-0020](../analysis/adr/0020-gl-log-exception.md)（Proposed）；长期改 session API（T-LOG）。
-- **R1 include 防火墙**：`core/src/tests/include_firewall_test.cpp`，白名单当前为空；越层 include 与 stale 条目皆 FAIL。
-- **current native 对拍**：host candidate/disposition 由 `verifyNativeTestInventory` + module CMake registration guard
-  双侧核验；Android artifact/JNI 由 app CMake manifest + AGP merged-artifact verifier 双侧核验。两者都由
-  `checkAll` 组合，root Gradle 不复制 module test list 或 artifact list。
-- **步骤数据无虚表/无继承**：`StepSpec`/`StepPlan` 是数据；backend 差异用目录表与端口，不用子类。
-- **PI 窗口内**：零分配、零打印、零间接分派、零 JNI 回调；`sched_setattr` 只在窗口外调用。
-- **owner 在 Kotlin**：fd / 映射 / actor 线程 / child 进程的创建与释放都在 Kotlin；C++ 不缓存 fd/指针。
-  沿革（2026-10-22）：actor 线程创建方按 [JNI 计划](../plan/43499-43284-jni-rewrite-plan.md) §4.3 第 2 层（待批 T-PI2）；批准前仍按本行。
-- **构建产物**在仓库内真实 `build/`；禁止链接；疑似旧树用 `realpath` 核实后清理，不得并存两棵树。
+## 三、typed RunHost 执行链
+
+合同定义：[P-RUN-IPC-001：RunHost wire 与状态机](../plan/backend-root-execution-runhost-wire.md#p-run-ipc-001)；下列为本页原快照说明，不复制合同 authority。
+
+1. UI 只提交 selected stable backend key。
+2. BackendRunSessionAdapter 重新解析 captured registry 与动态 availability。
+3. RunInputFreezer 一次冻结所有输入并创建 application-owned read-only source artifact。
+4. AppRunHostClient 或 ShizukuRunHostClient 发送相同 typed request 与只读 PFD；request 不携带 capability。
+5. RunHost 校验实际 Parcel 大小、结构、run identity、generation、semantic fingerprint、execution UID 与 SELinux domain。
+6. RunHost 从 exact plugin 投影 capability，dup PFD，stage 到 host-owned workspace，并创建 fresh Flow。
+7. Flow 返回 backend primitive、dispatch、cleanup 与 diagnostic facts；PRODUCT_ROOT carrier 还必须让公共脚本产生 Payload/Finish item facts。
+8. host 发布 immutable terminal snapshot；callback 只作低延迟通知，client 同时轮询 getSnapshot 读取 durable authority。
+9. client 先请求 requestClose；host 接受并进入 DESTROYED 后，App 才 unbind，Shizuku 才 remove UserService。
+
+running cancel 只预留取消请求并保持 RUNNING。worker 必须先停止最后访问、完成 backend cleanup，再发布 CANCELLED terminal；这段窗口内 requestClose 固定拒绝。late callback 必须同时匹配 runId、generation、strict sequence 与 non-terminal state，否则丢弃。
+
+App host workspace 位于 app-private no-backup root；Shizuku shell host 位于 shell-owned /data/local/tmp 固定 namespace。两者都拒绝 symlink、错误 owner 与未发布 executable identity。
+
+## 四、native current tree
+
+~~~text
+app/src/main/cpp/
+  CMakeLists.txt
+  common/
+  backends/CMakeLists.txt
+  backends/43499glued/   frozen future executable carrier candidate
+  backends/43284glued/   frozen future executable/bootstrap candidate
+  backends/98260/        frozen future candidate, default build disabled
+tools/tests/
+tools/avbcheck/
+~~~
+
+original 43499/43284 手写 JNI closure、glgeneral、generic access/native-handle/public victim 与旧 native log bridge 已退出 current graph。`backends/CMakeLists.txt` 现在是空的断开边界，不声明backend option或include；Gradle也不再转发backend/M0开关、注册M0 task或打包攻击ELF。current CMake只构建`gl_common` OBJECT target，future JNA尚未引入。
+
+保留 candidate 内的攻击事务不得修改。当前没有首个真实carrier排期；重新接线必须由新的L级计划明确取代2026-11-05断开裁定。
+
+## 五、日志与诊断
+
+日志是 diagnostic sink，不是成功 authority。2026-11-05 用户纠正 automatic export 的删除处置，随后批准R4B简化重写；current source保留historical flag/destination/picker与双皮肤controls，旧根级caller-zero object继续ABSENT。`domain/run`只保留neutral factory/run-scoped sink与唯一GLLOG1 formatter；current RunCoordinator在canonical lock内纯format并nonblocking enqueue，`data/run`的single MediaStore worker独占URI/output stream，App/Shizuku仍不各建exporter。
+
+用户主动触发的 diagnostic report 仍由 AndroidDiagnosticReportBuilder 生成，并包含 typed run report。manual share 与 P-LOG-IO-001/批次02 automatic export 复用同一纯 typed formatter；三者与 root-script result、产品成功判据彼此独立，export failure 不改变 RunReport 或 terminal。
+
+## 六、source guard
+
+tools/kotlin_architecture_d0.py 维护以下 source 规则：
+
+- UI/domain/core 到 concrete backend 的禁止边；
+- runtime reflection 禁止；
+- backend 生成产品 root script 禁止；
+- 旧 IFlowHost 与 IGhostlock UserService AIDL transaction 禁止；
+- frozen candidate 之外的 manual JNI object marshalling 禁止；
+- P-RUN-X-001/批次01/P-RUN-CORE-001/批次01 删除路径必须在 file-action manifest 中保持 ABSENT。
+
+本轮只更新规则与 manifest，没有执行 verifier；因此这些规则是已写入的门禁实现，不是本轮 PASS 证据。
+
+## 七、规范命令与本轮状态
+
+~~~sh
+./gradlew nativeTestHost --console=plain
+./gradlew nativeBuildAndroid --console=plain
+python3 tools/kotlin_architecture_d0.py verify --repo . --fixtures app/src/test/resources/architecture --section architecture
+~~~
+
+以上是当前规范入口。本轮按用户要求未执行门禁，不能从 source change 推导 compile、runtime、AVD、Shizuku 或设备结果。P-BACKEND-X-001/批次01 的历史证据保留在计划记录中；P-LOG-IO-001/批次02 source已接线但仍为`NOT_RUN`，P-RUN-IO-001/批次01 至 P-LOG-IO-001/批次02（原批次范围） evidence欠账必须在release或启用真实carrier前偿还。
+
+## 八、后续边界
+
+- P-BACKEND-X-001/批次02：已按用户后续裁定关闭为real-backend disconnection，不再实施43499 carrier。
+- P-DIAG-NATIVE-001/批次01 / P-BACKEND-NATIVE-001/批次01 / P-BACKEND-NATIVE-002/批次01：不自动排队；只有用户重新批准具名consumer/backend后，才可另立L级计划引入JNA或carrier delta。
+- extractor/KMP、profile v3 schema 与 LegacyProfileConverter 不由本计划顺手改动。
+- current Class、Sequence、State 与 result projection 只维护在 docs/development/full-process-uml.md。

@@ -9,9 +9,9 @@ import com.ghostlock.app.domain.backend.SelectBackendUseCase
 import com.ghostlock.app.domain.device.ReadDeviceStatusUseCase
 import com.ghostlock.app.domain.finish.ReadFinishSettingsUseCase
 import com.ghostlock.app.domain.finish.SaveFinishSettingsUseCase
-import com.ghostlock.app.domain.finish.PreviewFinishScriptUseCase
-import com.ghostlock.app.domain.finish.ReadFinishEditorUseCase
-import com.ghostlock.app.domain.finish.SaveFinishEditorUseCase
+import com.ghostlock.app.domain.payload.ReadPayloadEditorUseCase
+import com.ghostlock.app.domain.payload.SavePayloadEditorUseCase
+import com.ghostlock.app.domain.run.PreviewRootScriptUseCase
 import com.ghostlock.app.domain.privilege.ObservePrivilegeUseCase
 import com.ghostlock.app.domain.privilege.RefreshPrivilegeUseCase
 import com.ghostlock.app.domain.privilege.SelectPrivilegeExecutorUseCase
@@ -26,7 +26,7 @@ import com.ghostlock.app.domain.settings.SetNavigationRailExpandedUseCase
 import com.ghostlock.app.domain.update.CheckAppUpdateUseCase
 import com.ghostlock.app.ui.viewmodel.HomeViewModel
 import com.ghostlock.app.ui.viewmodel.FinishSettingsViewModel
-import com.ghostlock.app.ui.viewmodel.FinishEditorViewModel
+import com.ghostlock.app.ui.viewmodel.PayloadViewModel
 import com.ghostlock.app.ui.viewmodel.MainActivityViewModel
 import com.ghostlock.app.ui.viewmodel.PathViewModel
 import com.ghostlock.app.ui.viewmodel.SettingsViewModel
@@ -57,9 +57,9 @@ class AppViewModelFactory(
     private val selectPrivilegeExecutor: SelectPrivilegeExecutorUseCase,
     private val readFinishSettings: ReadFinishSettingsUseCase,
     private val saveFinishSettings: SaveFinishSettingsUseCase,
-    private val readFinishEditor: ReadFinishEditorUseCase,
-    private val saveFinishEditor: SaveFinishEditorUseCase,
-    private val previewFinishScript: PreviewFinishScriptUseCase,
+    private val readPayloadEditor: ReadPayloadEditorUseCase,
+    private val savePayloadEditor: SavePayloadEditorUseCase,
+    private val previewRootScript: PreviewRootScriptUseCase,
     private val runBackend: RunBackendUseCase,
     private val appVersionName: String,
     private val appVersionCode: Long,
@@ -118,11 +118,11 @@ class AppViewModelFactory(
                 saveFinishSettings = saveFinishSettings,
             ) as T
         }
-        if (modelClass == FinishEditorViewModel::class.java) {
-            return FinishEditorViewModel(
-                readFinishEditor = readFinishEditor,
-                saveFinishEditor = saveFinishEditor,
-                previewFinishScript = previewFinishScript,
+        if (modelClass == PayloadViewModel::class.java) {
+            return PayloadViewModel(
+                readPayloadEditor = readPayloadEditor,
+                savePayloadEditor = savePayloadEditor,
+                previewRootScript = previewRootScript,
             ) as T
         }
         if (modelClass == RunViewModel::class.java) {

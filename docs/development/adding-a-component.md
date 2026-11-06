@@ -1,5 +1,9 @@
 # 如何新增组件（backend / terminal / route / platform / ancillary）
 
+<a id="legacy-component-identifiers"></a>
+
+> **历史适用范围（编号整理）**：本文记录旧 Pipeline/terminal 架构；下文“现状/当前”、旧 core make 命令及 R1/R8 仅在该历史模型内解释，不恢复为当前实施指令。旧 R1＝include 防火墙、旧 R8＝fake backend 可组合性，与全局 [R1：单一权威](engineering-rules.md#r1) / [R8：原子写入](engineering-rules.md#r8) 不同。当前设计/批次见 [P-RUN-X-001](../plan/backend-root-execution-unification-plan.md#p-run-x-001)，门禁见 [E-REVIEW-RULE-004/§8](../../AGENTS.md#agents-gates)；旧正文与证据保留。
+
 > 现状权威：ADR-0001/0002/0004。执行链由 **`Pipeline<Backend, Terminal>`** 在编译期固定：
 > 两个装配轴是 **backend**（漏洞原语与写入步骤）与 **terminal**（启动/交接）；route 是 backend
 > **内部**策略，不是装配轴；`platform` 与 `ancillary` 是横切。旧的 frontend x backend x middleware

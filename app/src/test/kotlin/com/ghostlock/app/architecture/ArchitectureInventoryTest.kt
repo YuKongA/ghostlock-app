@@ -7,10 +7,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Runs the D0 file-action and import inventory through its single host tool.
+ * Runs the current file-action and forbidden-edge inventory through its single host tool.
  *
- * @note The test is characterization only: production Kotlin stays read-only during D0. A non-zero
- * tool exit is a hard failure and its complete merged output is included in the assertion.
+ * @note Ordinary source identity is tracked by PRESENT/ABSENT state rather than repeated SHA calculation.
+ * A non-zero tool exit is a hard failure and its complete merged output is included in the assertion.
  */
 class ArchitectureInventoryTest {
     /** Verifies that every current production Kotlin file has one explicit action row. */

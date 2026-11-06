@@ -1,185 +1,68 @@
-# 剩余计划（dev-nocpp · 2026-10-22）
+# 剩余计划（dev-nocpp · 2026-11-05）
 
-> 适用范围：当前 `dev-nocpp` 的 43499/43284 C native 分支。
-> `MASTER-PLAN.md` 与 kt-step 计划属于旧 C++/Kotlin 架构，本文件只整理**当前分支**剩余项，
-> 不覆盖历史计划。
-> **2026-10-22 JNI 重写（待批）**：P0-4 / P6c-4 / P0-1 / P0-2 / P1 已被
-> [43499-43284-jni-rewrite-plan.md](43499-43284-jni-rewrite-plan.md) 并入；本文件只保留未被并入的清理项。
-> **2026-10-28 新增计划**：[98260-backend-plan.md](98260-backend-plan.md)（CVE-2026-98260 backend，L 级，待用户批准；不取代本文件任何在办项）。
-> **2026-10-28 结构适配补编（已批）**：[98260-project-structure-adaptation-plan.md](98260-project-structure-adaptation-plan.md)（R1a→R1c→R1e→R1b+R1d；R2 另立；不取代本文件任何在办项）。
+> **代号范围**：当前项使用[主计划语义代号](backend-root-execution-unification-plan.md#plan-semantic-identifiers)；历史批准、纠错记录和 R5-S1 等来源子号保留兼容，不改变本页产品状态。
 
-## 当前事实
+> 本文件只投影尚未完成的产品项、gate与已裁定的断开状态；完整语义、逐文件scope与判据以[backend-root-execution-unification-plan.md](backend-root-execution-unification-plan.md)为唯一authority。当前没有自动排队的真实backend child。
 
-```text
-43499 冷机 A301SO：单次 PASS
-  child is root! / KernelSU ready / 无 panic
-  binary sha256 b2925af4…b2ef3
+## 未完成产品项：[P-LOG-X-001/批次01：单一日志中枢](backend-root-execution-unification-plan.md#p-log-x-001-batch-01)（source/host gates PASS，current AVD runtime pending）
 
-43499/43284 b/B = 0
-android native build = 0 warnings
-S1–S8 参数化/拆分完成
-P6c-1 GlkFdSink/glk_logf 完成，但 attachFd* 仍是 no-op
-APK 不是当前构建；Kotlin 编译仍被既有缺失类阻断
-```
+- [x] `RunCoordinator` 成为唯一日志中枢；Kotlin/Native/Shell/RunHost records 在同一 lock 内按 acceptance commit order 排序、统一 threshold、统一 fan-out。
+- [x] `Flow.run` 在中立 terminal claim 后返回最终 `RunReport`；App/Shizuku RunHost service 只调用 Flow 与转运，不再各自组合 report。
+- [x] event-as-log、独立 `RunReportRows` 与 legacy `app/log` singleton/file owner 已删除；Material3/Miuix 共用五级默认色与有界 ANSI foreground renderer。
+- [x] current exact unit gate PASS：`UNIT_TEST_XML=PASS FILES=33 TESTS=96 FAILURES=0 ERRORS=0 SKIPPED=0`；architecture inventory PASS 且 `UNCLASSIFIED=0`。
+- [x] current P-LOG-X-001/批次01 androidTest compile、native host与Android zero-target gates已按 current tree通过；clean 后 CMake 外部 manifest 需用 AGP build-model 参数重新 configure 的 producer dependency另记 build debt，不改变 gate 的最终 PASS 输出。
+- [ ] current P-LOG-X-001/批次01 AVD UI/runtime smoke仍须按 current tree取得证据后关闭；P-LOG-IO-001/批次02历史 AVD 与用户提供的旧 Shizuku 观察不代替本项。
 
-## P0：稳定性收口（完成前不得标 supported）
+- [x] P-LOG-IO-001/批次02明确取代P-LOG-IO-001/批次01 runtime topology；P-LOG-IO-001/批次01恢复的settings、GLLOG1、canonical/manual-share与partial-file产品语义继续保留。
+- [x] design-critic已关闭v0.3与P-LOG-IO-001/批次02全部阻断；single-channel/single-worker sink已删除opening、double queue、sequence/drainer、timeout与completion monitor。
+- [x] domain contract、Android worker、RunCoordinator、composition/caller、四组有效test source、architecture inventory与UML已迁移到P-LOG-IO-001/批次02；无真实双client路径的标签式parity test已按“严防过度设计”删除，本项只表示source交付。
 
-### P0-1 43499 冷机重复性
+### P-LOG-IO-001/批次01 被取代历史（不再作为 current runtime architecture）
 
-- 同一 binary、同一设备、冷机重复 5 次。
-- 每次记录：
-  `W1 / W1b / W2 prebuild / W2b / child uid=0 / KernelSU ready / bootreason`。
-- 目标：至少 4/5 冷机 PASS，且无 kernel panic；若 panic 出现，按 P0-2 分层。
-- 产物：`device-gates/20261022-43499-repeat-<n>.md`。
+- [x] 用户纠正 automatic export：它是未完成能力，不是删除项。
+- [x] 在唯一活动计划、exact ledger 与 UML 中恢复产品责任，并保留 R4 已发生删除的沿革。
+- [x] design-critic round 4 已关闭 run-scoped owner、逐行 flush、typed formatter、failure semantics、producer ordering 与 exact file rows；阻断/重要/建议均为0。
+- [x] 用户以“批准R4A和R5”批准R4A具体结构；已同批接通 settings → RunCoordinator → MediaStore exporter，没有恢复无caller UI。
+- [x] manual share与automatic export已共用唯一GLLOG1 formatter；四组有效test source与architecture current fixture已登记，RunHost client的sink零ownership改由source guard锁定。该 checkbox 只表示 source 交付，不表示 automatic export 产品项完成。
+- [x] R4A-S5 已关闭abort与backend同步返回竞争窗：active slot在`finally`结束前不释放，`NonCancellable`幂等终结保证`Aborted` trailer与single close；该回归先进入R4B历史93项基线，现继续包含在R4C current 96项unit exact PASS中。
+- [x] R4A-S6 已关闭export worker退出与producer enqueue竞争窗：closed channel不再伪报overflow，worker failure不再留下可接收但无consumer的command channel；R4B sink exact instrumentation 7项已覆盖normal close、failure与late-write拒绝并PASS。
+- [x] R4A-S7 的opening/claim topology已由R4B整体删除，current single-channel sink以blocked-open finish/drain测试取代；对应exact instrumentation已PASS，不保留旧duplicate-await判据。
+- [x] R4A-S8曾把新增abort unit method投影为168→169；R4B source复评后的历史基线为32个test source、93个`@Test`。R4C 新增 wire-value、ANSI renderer 与 central threshold/origin 判据后，current tree为33个XML suite、96项 test，`expectedTests=96`且 exact gate重跑PASS。
+- [x] R4A-S9 已移除无收益的本地BufferedOutputStream并修正failure文件合同：成功文件仍逐行完整，失败文件只保证canonical byte prefix，provider故障可留下不完整最后一行；partial-write exact instrumentation已PASS。
+- [x] source architecture verifier已经两轮失败定位与定点debug后PASS；`RUNTIME_REFLECTION=0`、`UNCLASSIFIED=0`、`REMOVE_RESIDUE=0`、`KEEP_DRIFT=0`。
+- [x] Gradle debug compile/unit XML exact gate已按 R4C current tree通过：`./gradlew clean --console=plain && ./gradlew :app:testDebugUnitTest :app:verifyDebugUnitTestXml --no-build-cache --rerun-tasks --console=plain`，exit=0，literal=`UNIT_TEST_XML=PASS FILES=33 TESTS=96 FAILURES=0 ERRORS=0 SKIPPED=0`。普通缓存命令曾从污染的Gradle资源缓存恢复带空格的duplicate packaged resources；clean + no-build-cache/rerun排除source问题并在fresh outputs通过。
+- [x] native host=`29/0`、Android zero-target build=`COUNT=0 ABI=none JNI=0`、androidTest compile、sink=`7/0/0/0`、settings=`4/0/0/0`、App RunHost=`1/0/0/0`与AVD真实MediaStore automatic/manual bytes=`1/0/0/0`均已通过。
+- [x] 用户提供Shizuku AVD production runtime证据：`uid=2000`、`domain=u:r:shell:s0\0`、Diagnostic PASS、primitive SUCCESS、script/payload/finish SKIPPED、cleanup SUCCESS、terminal DIAGNOSTIC_COMPLETE、product success NO；命令/exit未提供，因此只按用户观察的runtime evidence记录，不补造自动化结果。
+- [ ] 真实设备门与最终产品验收仍为NOT_RUN。
+- [ ] automatic export 通过上述 gates 并获最终验收后，才可从 UNFINISHED 改为完成；禁止以删除旧 `LogExport.kt` object 冒充能力完成。
 
-### P0-2 panic 分层
+## 随后：偿还 P-RUN-IO-001/批次01 至 P-LOG-X-001/批次01（原批次范围） evidence debt
 
-若重复性出现 panic，按层隔离，不混跑：
+- [x] R2-H1 Android发布纠错已在`GhostLock_6_6`完成：kernel 6.6.30，Payload Save成功，App未崩溃，published script/result mode与无temp残留符合合同；只关闭SELinux hard-link故障，不代表下项完整矩阵通过。
+- [ ] 执行 P-RUN-IO-001/批次01 root-script fault matrix 与 ordinary-file identity/staging matrix。
+- [ ] 执行 P-RUN-X-001/批次01 Kotlin compile、unit、typed App/Shizuku transport 与 AVD lifecycle matrix。
+- [x] 执行 P-RUN-CORE-001/批次01/P-LOG-IO-001/批次02 architecture source guard；exact command exit=0，literal=`D0_VERIFY=PASS ... ARCH_VIOLATIONS=0 ... OLD_AIDL_TRANSACTION=0 MANUAL_JNI_OBJECT_MARSHALLING=0 ... SUPERSEDED_RUN_LOG_TOPOLOGY=0 RUNHOST_CLIENT_LOG_SINK_OWNER=0 ... UNCLASSIFIED=0`。
+- [ ] 把失败保留为失败并回到 debug；未执行项只记 NOT_RUN，不用 source implementation 冒充 PASS。
+- [ ] 在 release 或未来重新批准的首个真实 carrier 变成 selectable 前关闭上述欠账；当前所有真攻击 backend 均已断开。
 
-```text
-A. W2 route only（不执行 W2b）
-B. W2b activation/repair only
-C. post-root G / root shell
-D. KSU late-load
-```
+## Source implementation 已完成
 
-每层记录：
+1. E-DOC-X-001/批次01/P-BACKEND-X-001/批次01：authority 收口与 disabled/original backend closure 删除。
+2. P-RUN-IO-001/批次01：Payload/Finish v3 repository、唯一 renderer、published artifact 与 typed result codec。
+3. P-RUN-X-001/批次01：neutral registry/plugin/Flow、typed RunHost、App/Shizuku clients、workspace/staging、六层 RunReport 与 UI projection。
+4. P-RUN-CORE-001/批次01 已完成部分：caller-zero SessionPhase、source guard 与非导出 pointer。
+5. P-LOG-IO-001/批次02：single-channel/single-worker automatic-export source与first-failure callback。
+6. P-LOG-X-001/批次01：唯一日志中枢、Flow-owned RunReport、typed log wire、统一 ANSI-aware UI与current docs pointer。
 
-```text
-ro.boot.bootreason
-/sys/fs/pstore（有权限时）
-kernel stack
-route_last_step / errno
-```
+automatic export 不在“已完成删除”清单；P-LOG-IO-001/批次02 负责唯一 I/O sink，P-LOG-X-001/批次01 负责其上游唯一日志中枢，当前产品状态仍为 UNFINISHED。
 
-禁止把 fd sentinel、KernelSnitch、W2b、KSU 的 panic 合并归因。
+## 真攻击 backend 断开收口
 
-### P0-3 43284 当前 C 版本真机门禁
+- [x] R5-S2 native carrier与R5-S3 Disabled plugin实施已取消；旧 R5 carrier child（已终止）只保留沿革。
+- [x] Kotlin registry中真实攻击backend数量为0。
+- [x] Gradle不再接受backend/M0开关或运行43284 M0 source staging/build task。
+- [x] app CMake backend assembly不再声明option或include 43499-Glued、43284-Glued、98260 chunk。
+- [x] native artifact verifier把header-only manifest解释为断开权威，并要求merged native output实际为空；不再以“至少一个target”反向强迫接回攻击ELF。
+- [x] 旧native tree保持source-only，不修改其攻击、handoff、waiter/race、restore或park实现。
 
-现有 43284 门禁是重构前记录。当前 C 状态需要重新跑：
-
-- 冷机
-- 固定 CPU 对
-- 单 route
-- KernelSU 未加载
-- 记录 patch1 / carrier / hook / trigger / wait 的实际结果
-
-未过只标 `device-gate-pending`。
-
-### P0-4 APK / Kotlin 解阻
-
-当前 `assembleDebug` 被既有 Kotlin 缺失类阻断：
-
-```text
-AttackSettings
-BootSettings
-LkmImagePatch
-NativeMemfd
-EngineLog
-PageCacheEngine
-RunCoordinator 2.kt 重复
-```
-
-完成后：
-
-1. `assembleDebug` 产出当前 APK；
-2. 确认 APK 只含当前 3 个 SO：
-   `libghostlock43499.so` / `libghostlock43284.so` / `libghostlock_jni.so`；
-3. 安装后通过 app/JNI 入口冷机复跑；
-4. 归档 APK 的 sha256。
-
-## P1：历史稳定性修复回移
-
-按 critic 结论，只回移行为修复，不合并 C++ 树。
-
-| 项 | 内容 | 当前状态 |
-|---|---|---|
-| `993f399e` | compact select 失败后新页重试 | 外层 retry 是否等价待确认 |
-| `452bd1fd` | leak walk 逐段推进 + 防 spin | 已加 setup 参数守卫，未移植 walk 测试 |
-| `c6776ad` | 验证改为有界重试 | 43284 C 路径待映射 |
-| `396e52d` | 测量 direct map 末端（`.ghostlock_iomem`） | 当前只用 `IDENTITY_END` 封顶 |
-| `277579ee` | 43284 retry send，不只重读 | 待核对 |
-
-每项独立 host/device 证据；不与 panic 分层批次混。
-
-## P1：P6c 日志
-
-### P6c-2 43499 调用点
-
-```text
-pr_info/pr_warning/pr_error → glk_logf(&s->log, ...)
-PI 窗口丢弃
-每批 important/flatten 计数/顺序
-```
-
-### P6c-3 43284 调用点
-
-```text
-DF_LOG* → glk_logf(&st->log, ...)
-```
-
-### P6c-4 JNI / Kotlin
-
-```text
-create43499(home, logFd)
-create43284(..., logFd)
-destroy busy 返回 1
-真机验证：写一行、destroy 后 fd 关闭
-```
-
-完成后可删除 `NativeLogBridge` 三库循环与 `libghostlock_jni` 兼容壳。
-
-## P2：清理与简化
-
-### 源树清理（确认未编译才动）
-
-```text
-app/src/main/cpp/cmake-build-debug/      IDE 构建缓存
-app/src/main/cpp/gl43499/fops 2.c       重复文件
-app/src/main/cpp/gl43284/CMakeLists.txt 根 CMake 未 add_subdirectory
-gl43284/backend_stub.c / bootstrap.c    未在根 CMake 编译
-common/hmac_sha256.*                    未加入 gl_common
-```
-
-### SO 结构
-
-保持当前 3 个 SHARED：
-
-```text
-libghostlock43499.so
-libghostlock43284.so
-libghostlock_jni.so
-```
-
-`gl_common` 仍 STATIC；不把 43284/43499 合并。
-
-## 门禁模板
-
-```text
-./gradlew :app:externalNativeBuildDebug --offline
-0 warnings
-
-host hash test rc=0
-important_flatten S1 19/19 PASS
-important_flatten S4 17/17 PASS
-llvm-nm 43499/43284 b/B = 0
-
-冷机 43499:
-  W1 SELinux permissive
-  W1b scratch repaired
-  W2 prebuild
-  W2b repair
-  child uid=0
-  KernelSU ready
-  ro.boot.bootreason != kernel_panic
-```
-
-## 不做
-
-```text
-不整树合并 origin/main 的 C++
-不把路径移动/删除/squash 当稳定性修复
-不以单次冷机 PASS 标 supported
-不同时跑多个 writer
-不未经要求 commit
-```
+P-DIAG-NATIVE-001/批次01 / P-BACKEND-NATIVE-001/批次01 / P-BACKEND-NATIVE-002/批次01不再是自动排队的future child。未来若用户重新批准任一真实backend，必须新建L级计划并明确取代本次断开裁定。

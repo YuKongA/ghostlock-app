@@ -214,7 +214,7 @@ val LocalMainPagerState = staticCompositionLocalOf<MainPagerState> { error("Loca
 /** Main-screen-owned full-page overlay; no process-global Compose state participates. */
 private enum class MainOverlay {
     NONE,
-    FINISH,
+    PAYLOAD,
     FINISH_SETTINGS,
 }
 
@@ -310,7 +310,7 @@ fun MainScreen(
                             BackendPager(
                                 bottomInnerPadding = bottomInnerPadding,
                                 isCurrentPage = isCurrentPage,
-                                onOpenFinish = { overlay = MainOverlay.FINISH },
+                                onOpenPayload = { overlay = MainOverlay.PAYLOAD },
                                 onOpenFinishSettings = { overlay = MainOverlay.FINISH_SETTINGS },
                             )
                         }
@@ -426,10 +426,10 @@ private fun MainPageOverlays(
     onClose: () -> Unit,
 ) {
     FullScreenPageOverlay(
-        visible = overlay == MainOverlay.FINISH,
+        visible = overlay == MainOverlay.PAYLOAD,
         onBack = onClose,
     ) {
-        com.ghostlock.app.ui.screen.module.backends.FinishPage(
+        com.ghostlock.app.ui.screen.module.payload.PayloadPage(
             bottomInnerPadding = 0.dp,
             onBack = onClose,
         )
@@ -438,7 +438,7 @@ private fun MainPageOverlays(
         visible = overlay == MainOverlay.FINISH_SETTINGS,
         onBack = onClose,
     ) {
-        com.ghostlock.app.ui.screen.module.backends.FinishSettingsPage(
+        com.ghostlock.app.ui.screen.module.finish.FinishSettingsPage(
             bottomInnerPadding = 0.dp,
             onBack = onClose,
         )

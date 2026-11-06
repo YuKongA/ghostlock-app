@@ -16,32 +16,29 @@ Rows explicitly marked **Shizuku required** run through a shell UserService. Sta
 
 ## Android application architecture
 
-The Kotlin application is organized as a Clean Architecture boundary: pure `domain/**` models, ports, and use cases are implemented by Android/backend adapters in `data/**`, and application-scoped wiring lives in `AppContainer`. Screens and ViewModels consume immutable semantic state plus action contracts; they do not read backend, logging, attack, or persistence globals directly. `LocalUiMode` still selects the page-level Material or Miuix renderer, so both skins share behavior without flattening their existing components or geometry.
+The current architecture authority is the [backend root-execution plan](docs/plan/backend-root-execution-unification-plan.md), with the canonical Class, Sequence, State, and result-projection diagrams in [full-process-uml.md](docs/development/full-process-uml.md).
 
-Physical runs are owned by the application-scoped `RunCoordinator` and continue when a renderer or ViewModel observer is recreated; only an explicit abort can enter the existing launcher-cancellation path. Real KernelSU/`ksud` references remain only where they implement guard, payload, finish, package-visibility, or handoff behavior. Reusable `ui/component/**` code is retained and receives caller-owned semantic inputs.
+The Kotlin application uses a neutral Clean Architecture boundary. Domain models contain no Android, Compose, concrete-backend, or persistence type. Android storage and platform effects live in data adapters; application wiring lives in AppContainer; screens and ViewModels consume immutable state plus action contracts.
 
-`BackendSpec` is the single Android outer plugin contract, while `Backends.all` remains the sole membership authority. Interactive backend configuration is exposed only through the nullable standard `BackendSpec.configurationSpec` capability and its neutral `Static`, `Toggle`, `ChoiceDocument`, or `Document` state. The data adapter delegates to that capability without importing concrete backends, and presentation uses generic semantic renderers. Device-specific A301SO/Mondrian configuration and the CVE-2026-43499 request factory remain private to that backend; UI, domain, and core contain no concrete-backend dependency.
+BackendRegistry is the immutable same-APK membership authority. A public BackendSpec contains only neutral identity, configuration schema, parameter requirements, execution domain, abort policy, and capability. The internal BackendPlugin adds resource-free readiness and a fresh one-shot Flow factory; it never crosses UI, profile, persistence, or AIDL boundaries.
+
+App-process and Shizuku-shell execution use the same typed RunHost request, event, snapshot, and lifecycle contract. RunInputFreezer captures the selected backend, profile-v3 snapshot, Payload, and Finish once. The host owns staging, workspace, script publication, Flow lifetime, terminal snapshot, and cleanup. Product status comes from the typed six-layer RunReport; raw uid 0, process exit 0, stdout, and diagnostic logs cannot upgrade a run to product success.
+
+Payload and Finish are independent version-3 documents. The common renderer publishes one root script; a concrete backend is responsible only for reaching its root execution point, dispatching that exact artifact, and reporting backend-private cleanup facts. R4 removed the caller-zero legacy SessionPhase. Automatic log export is a product capability, not dead residue: removing the capability together with its old object was the mistake. R4B keeps the obsolete root-level object retired and uses one neutral run-scoped sink, one bounded channel, and one `data/run` MediaStore worker; RunCoordinator commits, formats, and enqueues under the same ordering lock without an opening protocol, second queue, timeout, or completion monitor. Explicit diagnostic-report creation, manual sharing, and automatic export remain diagnostic sinks and never become run-result authorities.
+
+Current membership deliberately contains no selectable production-root backend. CUSTOM is disabled until an approved operation catalog exists; DEBUG-PROBE is available only in debug builds and has diagnostic-only capability. The retained 43284-Glued, 43499-Glued, and 98260 native trees are frozen future carrier candidates, not registered support.
 
 ## Quick Start
 
-Open **GhostLock** and tap **Run**. KernelSU (`me.weishu.kernelsu`), ReSukiSU (`com.resukisu.resukisu`), or KowSU (`com.kowx712.supermanager`) provides `ksud` for module loading; without it, W1/W2 still grant uid 0 but no module is loaded.
+On the current refactor branch, a release build has no selectable production-root backend. In a debug build, select Debug Probe to inspect the typed App/Shizuku transport and report projection. A completed probe remains diagnostic-only and never means that root, Payload, or Finish succeeded.
 
-The execution chain is `Pipeline<Backend, Terminal>`, fixed at compile time. Selection is exactly **one combination token** carried in `backend.<id>.steps`; `contract::kCombinationCatalog` is the single authority — **12 tokens = 7 available + 5 planned**. Available: the six `cve_2026_43499` tokens `{multicast_waiter, select_stack, tcp_zerocopy} x {rootchild, shizuku}` plus `cve_2026_43284 x umh`. Planned (`available=false`): `{mcast, pselect, tcp}_umh` and `cve_2026_43284 x {rootchild, shizuku}` — they parse, but the selection gate rejects them and the app greys them out. Both terminals (`root_child`, `umh_forward`) and both backends (`cve_2026_43499`, `cve_2026_43284`) are available; the other CVEs are header-only placeholders. The route (`select_stack` / `tcp_zerocopy` / `multicast_waiter`) is backend-internal policy **derived from the token**, not a separate component. The route races two cores: on the 6.6/6.12 tree-waiter kernels the main thread hammers `select` while a consumer thread perturbs the waiter's priority; on the 6.1 compact-waiter kernels it drives `getsockopt(TCP_ZEROCOPY_RECEIVE)` through a punched-hole page; the 5.15 kernels use the multicast waiter. The CPU pair also comes from the resolved profile.
+A real backend becomes selectable only through its own approved carrier plan and target-device gate. R2-R4B source changes are present, including the simplified automatic-export settings-to-MediaStore chain, but R4B compile, instrumentation, AVD, Shizuku, and device gates remain NOT_RUN by explicit user instruction. Source presence is not runtime proof; do not treat this branch as a supported-device release.
 
 ## Command-Line Debugging
 
-adb/shell has no seccomp filter, so W3 is skipped - handy for quick verification:
+The retired core CLI and its load-prebuilt-profile, attack-selection, and JNI bridge flags are no longer current entry points. Production execution is initiated through the Android application and the typed RunHost contract; backend choice is an immutable registry/profile decision, never an ad-hoc command-line override.
 
-```powershell
-make -C core ghostlock
-./gradlew exportProfiles
-adb push build/native/ghostlock /data/local/tmp/ghostlock
-adb push build/profile/<release>.bin /data/local/tmp/profile.bin
-adb shell chmod 755 /data/local/tmp/ghostlock
-adb shell /data/local/tmp/ghostlock --load-prebuilt-profile /data/local/tmp/profile.bin
-```
-
-The CLI carries transport, run control, safety and observability only (S4 R2b): `--ghostlock-app-call`, `--load-prebuilt-profile <bin>`, `--enable-status-record`, `--dump-kernel-log <dir>`, `--force-attack`, `--allow-dev-target` (relaxes only the binding-time carrier check), plus the read-only diagnostics `--probe-cve-2026-43284 <ko>`. Selection and policy never come from the CLI: the staged entry and the `--cve43284-*` selectors were removed, and an unknown flag fails closed.
+The retained native executable trees are frozen carrier candidates and are not a supported public CLI. Use Debug Probe in a debug APK for transport diagnostics. A future desktop extractor may expose its own CLI, but that interface is independent of backend execution and root-product success.
 
 ## Offset Extraction
 

@@ -1,4 +1,8 @@
-    # GhostLock UI · AI 生成指南
+# GhostLock UI · AI 生成指南
+
+<a id="e-doc-ui-001"></a>
+
+> **代号**：`E-DOC-UI-001`（工程支撑－文档指南－UI）；本指南章节不对应运行计划批次。身份登记见[工程代号入口](../plan/MASTER-PLAN.md#work-identifiers)，原快照、状态与界面要求保持原义。
 
 - 日期：2026-10-21
 - 状态：AI 生成 UI 的默认规范
