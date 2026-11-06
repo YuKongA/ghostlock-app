@@ -148,10 +148,22 @@ namespace ghostlock::kernel {
         SYSCHK(sched_setaffinity(0, sizeof(cpu_set_t), &cpuset));
     }
 
-    static inline void reset_cpu_pin(void) {
-        cpu_set_t cpuset;
-        memset(&cpuset, 0xff, sizeof(cpu_set_t));
-        SYSCHK(sched_setaffinity(0, sizeof(cpu_set_t), &cpuset));
+    static inline int32_t save_cpu_affinity(cpu_set_t *cpuset) {
+        if (!cpuset) {
+            errno = EINVAL;
+            return -1;
+        }
+        CPU_ZERO(cpuset);
+        return sched_getaffinity(0, sizeof(cpu_set_t), cpuset);
+    }
+
+    static inline void reset_cpu_pin(const cpu_set_t *cpuset) {
+        if (!cpuset) {
+            errno = EINVAL;
+            pr_error("reset_cpu_pin: missing saved affinity mask\n");
+            return;
+        }
+        SYSCHK(sched_setaffinity(0, sizeof(cpu_set_t), cpuset));
     }
 
     /* CPP02 review: same log-and-continue retention as pin_to_core(). */

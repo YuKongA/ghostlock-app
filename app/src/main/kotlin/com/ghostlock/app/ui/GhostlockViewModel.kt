@@ -58,7 +58,12 @@ class GhostlockViewModel(
     private val repository: GhostlockRepository,
 ) : ViewModel() {
     private val effectChannel = Channel<GhostlockEffect>(Channel.BUFFERED)
-    private val mutableState = MutableStateFlow(GhostlockUiState())
+    private val mutableState = MutableStateFlow(
+        GhostlockUiState(
+            autoRootEnabled = repository.autoRootEnabled(),
+            autoSoftRestartEnabled = repository.autoSoftRestartEnabled(),
+        ),
+    )
     private var initialized = false
     private var running = false
     private val loadKernelSnapshot = LoadKernelSnapshotUseCase(repository)
@@ -831,6 +836,11 @@ class GhostlockViewModel(
         mutableState.update { it.copy(forceAttackTestEnabled = enabled) }
     }
 
+    fun toggleAutoSoftRestart(enabled: Boolean) {
+        repository.setAutoSoftRestartEnabled(enabled)
+        mutableState.update { it.copy(autoSoftRestartEnabled = enabled) }
+    }
+
     fun toggleShizuku(enabled: Boolean) {
         repository.setShizukuEnabled(enabled)
         mutableState.update { it.copy(shizukuEnabled = enabled) }
@@ -840,6 +850,11 @@ class GhostlockViewModel(
         // The grant dialog lands in another app, so the status is re-read and
         // onResume() refreshes it again when the dialog closes.
         viewModelScope.launch { refreshSnapshot() }
+    }
+
+    fun toggleAutoRoot(enabled: Boolean) {
+        repository.setAutoRootEnabled(enabled)
+        mutableState.update { it.copy(autoRootEnabled = enabled) }
     }
 
     fun onOpenManagerPicker() {
@@ -1084,7 +1099,9 @@ class GhostlockViewModel(
                 cpuPairIndex = snapshot.selectedCpuPair,
                 safeModeEnabled = snapshot.safeModeEnabled,
                 forceAttackTestEnabled = snapshot.forceAttackTest,
+                autoSoftRestartEnabled = repository.autoSoftRestartEnabled(),
                 shizukuEnabled = snapshot.shizukuEnabled,
+                autoRootEnabled = repository.autoRootEnabled(),
                 shizukuStatus = snapshot.shizukuStatus,
                 profileInvalidPaths = loaded?.invalidPaths ?: emptySet(),
                 executionHasProfile = loaded?.hasProfile ?: false,

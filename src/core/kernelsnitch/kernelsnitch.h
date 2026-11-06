@@ -100,6 +100,9 @@ namespace ghostlock::kernelsnitch {
         pthread_t *tids;
         size_t identity_diff;
 
+        cpu_set_t restore_cpu_mask;
+        int32_t restore_cpu_mask_valid;
+
         enum kernelsnitch_state state;
     };
 
@@ -333,6 +336,11 @@ namespace ghostlock::kernelsnitch {
         auto *ks = static_cast<KernelSnitchContext *>(SYSCHK(mmap(
             0, sizeof(KernelSnitchContext), PROT_WRITE | PROT_READ,
             MAP_ANON | MAP_SHARED, -1, 0)));
+        CPU_ZERO(&ks->restore_cpu_mask);
+        ks->restore_cpu_mask_valid =
+                ghostlock::kernel::save_cpu_affinity(&ks->restore_cpu_mask) == 0 ? 1 : 0;
+        if (!ks->restore_cpu_mask_valid)
+            pr_warning("KernelSnitch could not save the caller CPU affinity\n");
         ks->mm_struct = static_cast<size_t>(-1);
         ks->scan_done = 0;
         ks->mm_struct_sz = __mm_struct_sz;
@@ -632,7 +640,8 @@ namespace ghostlock::kernelsnitch {
     int32_t context_scan(KernelSnitchContext *ks) {
         ASSERT_pr((ks->state == KERNELSNITCH_COLLISIONS_FOUND), "wrong state\n");
         if (ks->verbose) pr_info("start bruteforcing\n");
-        ghostlock::kernel::reset_cpu_pin();
+        if (ks->restore_cpu_mask_valid)
+            ghostlock::kernel::reset_cpu_pin(&ks->restore_cpu_mask);
 
         __run_mm_leak_pass(ks, 1, 0);
         if (!ks->found)

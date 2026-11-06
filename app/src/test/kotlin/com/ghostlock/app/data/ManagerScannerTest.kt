@@ -20,17 +20,17 @@ class ManagerScannerTest {
     }
 
     @Test
-    fun `resolvePackages puts chosen builtin first`() {
+    fun `resolvePackages keeps explicit builtin selection strict`() {
         assertEquals(
-            listOf("me.weishu.kernelsu", "me.weishu.kernelsu.pr", "com.resukisu.resukisu", "org.bakasu.bakasu", "com.kowx712.supermanager"),
+            listOf("me.weishu.kernelsu"),
             ManagerScanner.resolvePackages("me.weishu.kernelsu"),
         )
     }
 
     @Test
-    fun `resolvePackages puts chosen custom package first`() {
+    fun `resolvePackages keeps explicit custom selection strict`() {
         assertEquals(
-            listOf("custom.pkg") + ManagerScanner.BUILTIN,
+            listOf("custom.pkg"),
             ManagerScanner.resolvePackages("custom.pkg"),
         )
     }

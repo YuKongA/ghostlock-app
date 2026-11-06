@@ -110,6 +110,36 @@ namespace {
                      "selinux: verify_selinux retried twice");
         return ok;
     }
+
+    bool test_w3_full_restart_then_success() {
+        reset_script();
+        script().verify_seccomp = {0, 0, 0, 1};
+        const auto result = run_once();
+        bool ok = true;
+        ok &= expect(result.code == ghostlock::runtime::RunCode::Completed,
+                     "w3 restart: pipeline completes after a full restart");
+        ok &= expect(count_calls("verify_seccomp") == 4,
+                     "w3 restart: three failed attempts then one successful attempt");
+        ok &= expect(count_calls("spawn") == 2,
+                     "w3 restart: full restart creates a new victim");
+        return ok;
+    }
+
+    bool test_w3_fail_closed_after_two_restarts() {
+        reset_script();
+        script().verify_seccomp_default = 0;
+        const auto result = run_once();
+        bool ok = true;
+        ok &= expect(result.code == ghostlock::runtime::RunCode::Failed,
+                     "w3 fail-closed: pipeline fails after bounded restarts");
+        ok &= expect(result.stage == ghostlock::runtime::RunStage::Backend,
+                     "w3 fail-closed: failure stays in the backend");
+        ok &= expect(count_calls("verify_seccomp") == 9,
+                     "w3 fail-closed: exactly three attempts across three full runs");
+        ok &= expect(count_calls("spawn") == 3,
+                     "w3 fail-closed: exactly two full restarts");
+        return ok;
+    }
 } // namespace
 
 int main() {
@@ -118,6 +148,8 @@ int main() {
     ok &= test_w2_retry_until_success();
     ok &= test_w2_exhausts_attempts();
     ok &= test_selinux_retry_then_w2();
+    ok &= test_w3_full_restart_then_success();
+    ok &= test_w3_fail_closed_after_two_restarts();
     if (ok) {
         std::puts("backend_dataflow_test: ok");
         return 0;
