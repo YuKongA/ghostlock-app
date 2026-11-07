@@ -9,7 +9,7 @@ import java.io.File
 import java.security.MessageDigest
 import java.util.UUID
 
-/** Owned DebugProbe request fixture for typed RunHost instrumentation cases. */
+/** Owned Diagnose request fixture for typed RunHost instrumentation cases. */
 internal class RunHostTestFixture private constructor(
     val request: RunHostRequest,
     private val profile: File,
@@ -25,7 +25,7 @@ internal class RunHostTestFixture private constructor(
         fun create(context: Context): RunHostTestFixture {
             val runId = UUID.randomUUID().toString().replace("-", "")
             val profile = File(context.cacheDir, "$runId-profile-v3.json")
-            val bytes = "{\"backend_key\":\"DEBUG-PROBE\",\"schema_version\":3}\n"
+            val bytes = "{\"backend_key\":\"DIAGNOSE\",\"schema_version\":3}\n"
                 .toByteArray(Charsets.UTF_8)
             profile.writeBytes(bytes)
             val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
@@ -42,7 +42,7 @@ internal class RunHostTestFixture private constructor(
             val request = RunHostRequest().also { parcel ->
                 parcel.runId = runId
                 parcel.generation = 1L
-                parcel.backendKey = "DEBUG-PROBE"
+                parcel.backendKey = "DIAGNOSE"
                 parcel.profileArtifactId = "profile"
                 parcel.payloadItems = emptyList()
                 parcel.finishItems = emptyList()

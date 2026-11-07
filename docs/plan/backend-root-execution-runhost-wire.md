@@ -23,7 +23,7 @@
 | 字段 | grammar / range | owner |
 |---|---|---|
 | `runId` | exactly 32 lowercase hex：`^[0-9a-f]{32}$` | application `RunInputFreezer`；每次 run 新随机值，不复用 |
-| `generation` | signed 64-bit `1..Long.MAX_VALUE` | application `RunCoordinator`；同一 process 单调递增，溢出即拒绝新 run |
+| `generation` | signed 64-bit `1..Long.MAX_VALUE` | application `LogHub`；同一 process 单调递增，溢出即拒绝新 run |
 | `backendKey` | `^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$`，且必须 exact 命中 immutable registry | `BackendSpec.key` |
 | `logicalId` / item id | `^[a-z][a-z0-9._-]{0,63}$`，同一 request 内全局唯一 | freezer；renderer 不重命名 |
 | SHA-256 | exactly 64 lowercase hex | application 对输入 artifact 计算一次；RunHost staging 后对 staged fd 重算 |
@@ -40,7 +40,7 @@
 | 单 arg UTF-8 bytes | 4 KiB | `LIMIT_EXCEEDED` |
 | callback log message | 8 KiB printable ASCII + §3.9 SGR 子集 | 超出或非法时不发送，`droppedLogs` 加一；不截 terminal |
 | serialized callback log | 12 KiB | 该 log 不发送，`droppedLogs` 加一；不改变产品 terminal |
-| queued non-terminal logs | 256 | 超出后停止接收新 log，并增加 `droppedLogs` |
+| cumulative callback log count | 无人为条数上限；sequence 为正 `Long` | 仅单条/Parcel非法或 `Long.MAX_VALUE` 耗尽时拒绝该log并增加 `droppedLogs` |
 | snapshot Parcel | 256 KiB | 丢弃 oversized candidate，发布 bounded minimal snapshot：`lastCode=23`、未完成 result=`UNKNOWN/reason=13`、`terminal=5`；不得把 code/reason 名写进 terminal |
 | root result file | 256 KiB | parser 返回 `MALFORMED_RESULT/UNKNOWN`；不作部分解析 |
 
@@ -142,10 +142,10 @@ COMMAND 正文若超过单 arg 上限，必须作为 USER_SCRIPT artifact；不�
 | `finishItems` / `finishOverall` | typed result parcels | root result protocol解析 |
 | `backendCleanup` | typed stage parcel | backend cleanup fact |
 | `terminal` | `Int` | 仅 TERMINAL 后非 `NONE` |
-| `logSequence` | `Long` | host 最后为 callback delivery attempt 保留的 sequence；从 1 单调递增，最多 256 |
-| `droppedLogs` | `Long` | host 侧 validation、budget、parcel 或 callback delivery 日志丢弃数；不参与产品结果 |
+| `logSequence` | `Long` | host 最后为 callback delivery attempt 保留的 sequence；从 1 单调递增，至 `Long.MAX_VALUE`；无累计条数上限 |
+| `droppedLogs` | `Long` | host 侧 validation、单条/Parcel限制、sequence耗尽或callback delivery日志丢弃数；不参与产品结果 |
 
-snapshot 禁止携带 raw log、任意 evidence map、native pointer、fd 或自由 path。日志只经 callback 进入 `RunCoordinator` 单一中枢，再由同一 canonical document 分发到 UI、自动导出与手动分享 sink。
+snapshot 禁止携带 raw log、任意 evidence map、native pointer、fd 或自由 path。日志只经 callback 进入 `LogHub` 单一中枢，再经raw/processed双流与单dispatcher非阻塞分发到UI、private-file及可选MediaStore独立sink。
 
 ### 3.6 `RunHostSnapshotReply`
 
@@ -181,7 +181,7 @@ snapshot 中 Payload/Finish result list 的顺序必须与 frozen request 完全
 | 字段 | 类型 | 约束 |
 |---|---|---|
 | `runId` / `generation` | identity | 与 host identity exact 相同 |
-| `sequence` | `Long` | `1..256`，单 generation 严格递增；只拒绝重复/倒序，不成为跨来源全局顺序 |
+| `sequence` | `Long` | 正 `Long`，单 generation 严格递增；只拒绝重复/倒序，不成为跨来源全局顺序 |
 | `elapsedRealtimeMs` | `Long` | `0..Long.MAX_VALUE`，仅保留 source-side 诊断时间；不参与全局排序或 success |
 | `origin` | `Int` | `1=KOTLIN`、`2=NATIVE`、`3=SHELL`；unknown 值丢弃 |
 | `level` | `Int` | `1=VERBOSE`、`2=DEBUG`、`3=INFO`、`4=WARN`、`5=ERROR`；unknown 值丢弃 |
@@ -212,7 +212,7 @@ oneway interface IRunHostCallback {
 
 - 除 callback 外全部 synchronous；返回发生在 host mutex 内状态转移完成后，是该调用的 linearization point。
 - `RunHostSnapshotReply` 固定为 `code:Int + nullable snapshot`；仅 `code=OK` 时 snapshot 非空，其它 code 时必须 null。transport exception 不伪装成 reply code。
-- `onLog/onTerminal` oneway，经单一 serial callback queue 发送；同 generation 的 source sequence 单调。跨 App/Shizuku/Flow 来源的唯一全局顺序是 `RunCoordinator` lock 内接受并追加到 canonical list 的顺序。
+- `onLog/onTerminal` oneway，经单一 serial callback queue 发送；同 generation 的 source sequence 单调。跨 App/Shizuku/Flow 来源的唯一全局顺序是 `LogHub` lock 内接受并追加到 canonical list 的顺序。
 - host 的 terminal **publication** 由 compare-and-set 恰好一次写入 durable immutable snapshot；`onTerminal` 对某 callback 的 delivery 是 at-most-once，Binder death/未注册 callback 时可以 0 次。新 callback 不重放 terminal，client 用 `getSnapshot` 读取 authority。
 - `destroy()` 明确保留 Shizuku UserService framework 固定 transaction id `16777114`；service 端也按 §5 状态表拒绝/忽略提前 transaction，不能只依赖业务 client 自律。业务 client 只有 `requestClose=OK/ALREADY_APPLIED` 且 host 已进入 DESTROYED 后才调用 framework destroy。
 - App client 对应动作是 unbind/stop service；两端仍走相同 `requestClose` 判据。
@@ -224,6 +224,8 @@ oneway interface IRunHostCallback {
 - host identity 是 `runId + generation`；`setCallback` 与 `prepare` 都携带完整复合 identity。
 - 第一次成功 `setCallback` 可在 NEW 预留 identity；之后 `prepare` 必须相同。若没有 callback，第一次成功 `prepare` 原子建立 identity 与 PREPARED。
 - `prepare` 成功后保存 normalized typed fields + artifact metadata（logicalId/kind/byteCount/sha256）的语义指纹；不比较不稳定的 Parcel bytes 或 fd number。
+- backend Flow构造与constructor-time native load发生在任何PREPARED提交之前；只有完整`PreparedRun candidate`构造成功后，host才在同一host-lock临界区执行`lifecycle.prepare()`并原子发布`prepared + snapshot`。factory/load异常返回`IO_FAILURE`、删除workspace且lifecycle保持NEW；并发`start()`即使在该临界区内观察到state已转PREPARED，也必须等待同一host lock并取得非空`prepared`。
+- accepted `start()`的worker在调用`Flow.run`前把本次host-owned workspace root写入进程`GHOSTLOCK_HOME`；该写入与`Flow.run`位于同一terminal failure boundary。只有accepted running candidate可写，prepare loser、未启动candidate和预览路径不得写；同一host进程不重叠运行两个Flow，因此common handoff只解析当前run的`GHOSTLOCK_HOME/root-script/root-script.sh`。
 - host 实例 one-shot，不接受下一 generation 复用。
 
 所有 synchronous 方法按下列顺序返回第一个命中的 code；实现和测试不得改变优先级：
@@ -439,7 +441,7 @@ NEW 的 cancel/requestClose 只有在 identity 已由 setCallback 预留时才�
 | `UNKNOWN` | `HOST_DIED`、`MALFORMED_RESULT`、`INTERNAL_CONTRACT_FAILURE`、`ACK_MISSING` | 仅 `NONE/0` |
 | `CANCELLED` | 仅 `CANCELLED` | 仅 `NONE/0` |
 
-`RunHostLogRecord` 不携带 stage/state/reason/exit/report 字段。`origin + level + message` 只描述展示语义；unknown enum、超限、非法 ASCII/SGR、identity 不匹配、重复或倒序 sequence 一律丢弃并增加诊断丢弃计数，绝不改变 terminal。六层 `RunReport` 由 Flow 从 typed execution facts 组合并返回，`RunCoordinator` 只在 terminal commit 中将它投影成普通 canonical Info records；UI 不维护第二套 report renderer。
+`RunHostLogRecord` 不携带 stage/state/reason/exit/report 字段。`origin + level + message` 只描述展示语义；unknown enum、超限、非法 ASCII/SGR、identity 不匹配、重复或倒序 sequence 一律丢弃并增加诊断丢弃计数，绝不改变 terminal。六层 `RunReport` 由 Flow 从 typed execution facts 组合并返回，`LogHub` 只在 terminal commit 中将它投影成普通 canonical Info records；UI 不维护第二套 report renderer。
 
 ## 7. `GLR1` root result 与 terminal 合成
 
@@ -527,7 +529,7 @@ client 收到 callback 前设备重启时，下次启动只可从 identity 匹�
 3. budgets/shape：每个 count/bytes 的 0、1、limit、limit+1；PRODUCT_ROOT 的 Payload 0/1/全 optional/至少一 required 与 Finish 0/1/32/33；DIAGNOSTIC_ONLY 的两个 empty list 正例及任一 non-empty 负例；request/snapshot/event 实际 Parcel 大小而非估算。
 4. request enums：Payload kind×acceptance×artifact×args 与 Finish kind×artifact×args×alwaysRun 全表正例；REBOOT 非最后/重复；每个 unknown/reserved 值和每个跨行组合必须 `INVALID_REQUEST`。
 5. artifacts：非 regular、pipe/socket/directory、size mismatch、digest mismatch、duplicate logicalId、fd提前关闭、read error，以及 publish 后 rename/truncate/symlink/path replacement、inode/device/mode mismatch、carrier namespace 指向另一对象；验证必须基于同一 opened fd，不能只重查 path。
-6. callbacks：event enum/field conjunction、sequence、queue 256/257、8 KiB/8 KiB+1、12 KiB Parcel、Binder death、late callback、no replay、unknown enum只降级不升级。
+6. callbacks：event enum/field conjunction、sequence 16,384条及Long耗尽、8 KiB/8 KiB+1、12 KiB Parcel、Binder death、late callback、no replay、unknown enum只降级不升级。
 7. lifecycle：App unbind、Shizuku callback death、对 transaction 16777114 的 premature direct call、RUNNING unsafe close、requestClose 后 destroy、host crash；提前 destroy 必须观测为 no-op且 worker/resource未被清理。
 8. result protocol：§6.7 每个合法/非法 state×reason×exit conjunction、每个 stable integer（含 ResultReason 12 必须拒绝并映射 13/UNKNOWN）、顺序/重复/缺失/unknown key、256 KiB边界、partial/complete、handoff=0/1、reboot pre/post-fsync；Payload required `UNKNOWN+FAILED`、`FAILED+CANCELLED` 必须 malformed，另测单一 trigger、all-success、optional failed/unknown、合法/非法 skip；Finish empty、`FAILED+CANCELLED`、`CANCELLED+SKIPPED`、alwaysRun skip 与普通 NOT_RUN；六层 terminal 合成表逐行与组合穷举。
 9. capability/cross-process：同一 request 在 App RunHost 与 Shizuku RunHost 得到同一 validation/result code；BackendSpec domain 与实际 pid/uid/SELinux不一致固定为 code 24。PRODUCT_ROOT+SUCCESS 是产品 success 唯一正例；`DIAGNOSTIC_ONLY+PASS+DIAGNOSTIC_COMPLETE`、diagnostic FAIL/UNKNOWN、capability/outcome/terminal 非法组合都必须证明不能升级产品 success。

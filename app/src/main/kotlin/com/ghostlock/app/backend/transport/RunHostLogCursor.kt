@@ -1,8 +1,8 @@
 package com.ghostlock.app.backend.transport
 
-import com.ghostlock.app.domain.run.RunLogDraft
-import com.ghostlock.app.domain.run.RunLogLevel
-import com.ghostlock.app.domain.run.RunLogOrigin
+import com.ghostlock.app.domain.run.LogDraft
+import com.ghostlock.app.domain.run.LogLevel
+import com.ghostlock.app.domain.run.LogOrigin
 import com.ghostlock.app.run.RunHostLogRecord
 import java.util.concurrent.atomic.AtomicLong
 
@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * @return True only for a bounded single-line ASCII message using the approved SGR subset.
  */
-internal fun RunLogDraft.isValidRunHostLogDraft(): Boolean = isValidRunLogMessage(message)
+internal fun LogDraft.isValidRunHostLogDraft(): Boolean = isValidLogMessage(message)
 
 /**
  * Validates printable ASCII plus the exact foreground/reset SGR grammar.
@@ -19,7 +19,7 @@ internal fun RunLogDraft.isValidRunHostLogDraft(): Boolean = isValidRunLogMessag
  * @param message Producer message without a rendered origin/level prefix.
  * @return True when every byte is printable ASCII or part of one approved SGR sequence.
  */
-internal fun isValidRunLogMessage(message: String): Boolean {
+internal fun isValidLogMessage(message: String): Boolean {
     if (message.toByteArray(Charsets.US_ASCII).size > RunHostProtocol.MAX_LOG_MESSAGE_BYTES) return false
     var index = 0
     while (index < message.length) {
@@ -36,15 +36,15 @@ internal fun isValidRunLogMessage(message: String): Boolean {
 }
 
 /**
- * Reserves the next bounded log sequence without allowing callback backlog to grow unbounded.
+ * Reserves the next positive Long source sequence without a cumulative record-count limit.
  *
  * @param counter Per-run published-log sequence.
- * @return The next sequence, or null once the fixed log budget is exhausted.
+ * @return The next sequence, or null only at Long exhaustion.
  */
 internal fun reserveRunHostLogSequence(counter: AtomicLong): Long? {
     while (true) {
         val current = counter.get()
-        if (current < 0L || current >= RunHostProtocol.MAX_QUEUED_LOGS.toLong()) return null
+        if (current < 0L || current == Long.MAX_VALUE) return null
         val next = current + 1L
         if (counter.compareAndSet(current, next)) return next
     }
@@ -54,7 +54,7 @@ internal fun reserveRunHostLogSequence(counter: AtomicLong): Long? {
  * Per-run client authority for accepting ordered log callbacks from one typed RunHost.
  *
  * @param identity Immutable run identity established before callback registration.
- * @note Source sequence rejects duplicates and inversions; RunCoordinator commit order remains global authority.
+ * @note Source sequence rejects duplicates and inversions; LogHub commit order remains global authority.
  */
 internal class RunHostLogCursor(
     private val identity: RunHostIdentity,
@@ -63,7 +63,7 @@ internal class RunHostLogCursor(
     private var lastSequence: Long = 0L
 
     /**
-     * Accepts only a bounded current record with a strictly increasing source sequence.
+     * Accepts one per-record-bounded current callback with a strictly increasing positive source sequence.
      *
      * @param record Generated typed wire record.
      * @return True when the record is current, structurally valid, and newly ordered.
@@ -75,11 +75,11 @@ internal class RunHostLogCursor(
             return false
         }
         if (record.runId != identity.runId || record.generation != identity.generation) return false
-        if (record.sequence !in 1L..RunHostProtocol.MAX_QUEUED_LOGS.toLong()) return false
+        if (record.sequence <= 0L) return false
         if (record.elapsedRealtimeMs < 0L) return false
-        if (RunLogOrigin.fromWireValue(record.origin) == null) return false
-        if (RunLogLevel.fromWireValue(record.level) == null) return false
-        if (!isValidRunLogMessage(record.message)) return false
+        if (LogOrigin.fromWireValue(record.origin) == null) return false
+        if (LogLevel.fromWireValue(record.level) == null) return false
+        if (!isValidLogMessage(record.message)) return false
         return synchronized(lock) {
             if (record.sequence <= lastSequence) {
                 false

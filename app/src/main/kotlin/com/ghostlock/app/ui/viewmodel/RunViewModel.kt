@@ -6,16 +6,11 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import com.ghostlock.app.domain.run.RunBackendUseCase
 import com.ghostlock.app.domain.run.RunCommand
-import com.ghostlock.app.domain.run.RunLogLevel
-import com.ghostlock.app.domain.run.RunLogOrigin
-import com.ghostlock.app.domain.run.RunLogRecord
 import com.ghostlock.app.domain.run.RunSessionPhase
 import com.ghostlock.app.domain.run.RunSessionState
-import com.ghostlock.app.ui.screen.run.RunTerminalEntry
-import com.ghostlock.app.ui.screen.run.RunTerminalLevel
-import com.ghostlock.app.ui.screen.run.RunTerminalOrigin
 import com.ghostlock.app.ui.screen.run.RunUiPhase
 import com.ghostlock.app.ui.screen.run.RunUiState
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -76,7 +71,7 @@ class RunViewModel(
 
     /** Opens the Android share flow through the data adapter. */
     fun shareTerminal(chooserTitle: String) {
-        runBackend.shareTerminal(chooserTitle)
+        viewModelScope.launch { runBackend.shareTerminal(chooserTitle) }
     }
 
     /** Confirms the pending rerun and starts it through the same use case path. */
@@ -126,7 +121,7 @@ class RunViewModel(
             showTimestamp = session.showTimestamp,
             terminalFontFamily = terminalFont(session.terminalFontPath),
             phase = phase,
-            entries = session.entries.map { entry -> entry.toUiEntry() },
+            entries = session.entries,
             showRerunConfirmation = currentInteraction.showRerunConfirmation,
         )
     }
@@ -147,24 +142,6 @@ private fun RunSessionPhase.toUiPhase(): RunUiPhase = when (this) {
     RunSessionPhase.Done -> RunUiPhase.Done
     RunSessionPhase.HandoffRequested -> RunUiPhase.HandoffRequested
 }
-
-/** @return Renderer row equivalent of one pure domain terminal fact. */
-private fun RunLogRecord.toUiEntry(): RunTerminalEntry = RunTerminalEntry(
-    origin = when (origin) {
-        RunLogOrigin.Kotlin -> RunTerminalOrigin.Kotlin
-        RunLogOrigin.Native -> RunTerminalOrigin.Native
-        RunLogOrigin.Shell -> RunTerminalOrigin.Shell
-    },
-    level = when (level) {
-        RunLogLevel.Verbose -> RunTerminalLevel.Verbose
-        RunLogLevel.Debug -> RunTerminalLevel.Debug
-        RunLogLevel.Info -> RunTerminalLevel.Info
-        RunLogLevel.Warn -> RunTerminalLevel.Warn
-        RunLogLevel.Error -> RunTerminalLevel.Error
-    },
-    message = message,
-    elapsedMs = elapsedMs,
-)
 
 /** @return Resolved Compose font owned by presentation mapping, with a monospace fail-closed fallback. */
 private fun terminalFont(path: String?): FontFamily {

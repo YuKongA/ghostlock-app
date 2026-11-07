@@ -3,6 +3,7 @@ package com.ghostlock.app.ui.screen.run
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -15,10 +16,11 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
@@ -64,6 +66,9 @@ import com.ghostlock.app.ui.component.dialog.rememberConfirmDialog
 import com.ghostlock.app.ui.component.material.ExpressiveScaffold
 import com.ghostlock.app.ui.component.material.expressiveTopAppBarColors
 import com.ghostlock.app.ui.viewmodel.RunViewModel
+import com.ghostlock.app.domain.run.LogRecord
+import com.ghostlock.app.domain.run.LogLevel
+import com.ghostlock.app.domain.run.LogOrigin
 import java.util.Locale
 import kotlinx.coroutines.flow.collect
 import top.yukonga.miuix.kmp.basic.Button as MiuixButton
@@ -196,26 +201,45 @@ private fun elapsedText(elapsedMs: Long): String = String.format(
     elapsedMs % 1000L,
 )
 
-/**
- * Shared semantic terminal rows; only the final text primitive/style differs by renderer family.
- *
- * @param state Single ViewModel-owned run state.
- * @param modifier Shared scrolling and padding geometry.
- * @param text Renderer-specific text primitive preserving current typography.
- */
+/** Maps only a composed visible row; the ViewModel never remaps the complete history. */
+private fun LogRecord.toUiEntry(): RunTerminalEntry = RunTerminalEntry(
+    origin = when (origin) {
+        LogOrigin.Kotlin -> RunTerminalOrigin.Kotlin
+        LogOrigin.Native -> RunTerminalOrigin.Native
+        LogOrigin.Shell -> RunTerminalOrigin.Shell
+    },
+    level = when (level) {
+        LogLevel.Verbose -> RunTerminalLevel.Verbose
+        LogLevel.Debug -> RunTerminalLevel.Debug
+        LogLevel.Info -> RunTerminalLevel.Info
+        LogLevel.Warn -> RunTerminalLevel.Warn
+        LogLevel.Error -> RunTerminalLevel.Error
+    },
+    message = message,
+    elapsedMs = elapsedMs,
+)
+
+/** Shared virtualized terminal rows; only visible indices are decoded and composed. */
 @Composable
 private fun RunTerminalRows(
     state: RunUiState,
     modifier: Modifier,
+    scroll: androidx.compose.foundation.lazy.LazyListState,
     text: @Composable (AnnotatedString, Modifier, Color, FontFamily) -> Unit,
 ) {
     val font = state.terminalFontFamily
     SelectionContainer {
-        Column(
+        LazyColumn(
             modifier = modifier,
+            state = scroll,
             verticalArrangement = Arrangement.spacedBy(2.dp),
+            contentPadding = PaddingValues(bottom = 72.dp),
         ) {
-            state.entries.forEach { entry ->
+            items(
+                count = state.entries.size,
+                key = { index -> state.entries.token to state.entries[index].commitId },
+            ) { index ->
+                val entry = state.entries[index].toUiEntry()
                 val prefix = if (state.showTimestamp) {
                     elapsedText(entry.elapsedMs) + " " + originLabel(entry)
                 } else {
@@ -326,11 +350,14 @@ internal fun RunPageMaterial(
     bottomInnerPadding: Dp,
 ) {
     val labels = runLabels()
-    val scroll = rememberScrollState()
+    val scroll = rememberLazyListState()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     RunRerunDialog(state, actions, labels)
+    val latestRowCount by rememberUpdatedState(state.entries.size)
     LaunchedEffect(scroll) {
-        snapshotFlow { scroll.maxValue }.collect { target -> scroll.scrollTo(target) }
+        snapshotFlow { latestRowCount }.collect { size ->
+            if (size > 0) scroll.scrollToItem(size - 1)
+        }
     }
 
     ExpressiveScaffold(
@@ -372,11 +399,10 @@ internal fun RunPageMaterial(
             ) {
                 RunTerminalRows(
                     state = state,
+                    scroll = scroll,
                     modifier = Modifier
                         .fillMaxSize()
-                        .verticalScroll(scroll)
-                        .padding(12.dp)
-                        .padding(bottom = 72.dp),
+                        .padding(12.dp),
                 ) { value, modifier, color, font ->
                     Text(
                         text = value,
@@ -431,11 +457,14 @@ internal fun RunPageMiuix(
     bottomInnerPadding: Dp,
 ) {
     val labels = runLabels()
-    val scroll = rememberScrollState()
+    val scroll = rememberLazyListState()
     val scrollBehavior = MiuixScrollBehavior()
     RunRerunDialog(state, actions, labels)
+    val latestRowCount by rememberUpdatedState(state.entries.size)
     LaunchedEffect(scroll) {
-        snapshotFlow { scroll.maxValue }.collect { target -> scroll.scrollTo(target) }
+        snapshotFlow { latestRowCount }.collect { size ->
+            if (size > 0) scroll.scrollToItem(size - 1)
+        }
     }
 
     MiuixScaffold(
@@ -481,11 +510,10 @@ internal fun RunPageMiuix(
             ) {
                 RunTerminalRows(
                     state = state,
+                    scroll = scroll,
                     modifier = Modifier
                         .fillMaxSize()
-                        .verticalScroll(scroll)
-                        .padding(12.dp)
-                        .padding(bottom = 72.dp),
+                        .padding(12.dp),
                 ) { value, modifier, color, font ->
                     MiuixText(
                         text = value,

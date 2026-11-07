@@ -43,6 +43,15 @@ class RunHostSnapshotContractTest {
         }
     }
 
+    /** A positive source sequence above the old fixed count remains valid. */
+    @Test
+    fun snapshotAcceptsLargePositiveSequence() {
+        diagnosticSnapshot().copy(logSequence = 16_384L)
+        assertThrows(IllegalArgumentException::class.java) {
+            diagnosticSnapshot().copy(logSequence = -1L)
+        }
+    }
+
     /** Returns one legal completed diagnostic fixture snapshot. */
     private fun diagnosticSnapshot(): RunHostSnapshotModel = RunHostSnapshotModel(
         identity = RunHostIdentity("0".repeat(32), 1L),

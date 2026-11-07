@@ -5,6 +5,11 @@ import android.os.Build
 import android.system.Os
 import com.ghostlock.app.BuildConfig
 import com.ghostlock.app.domain.diagnostics.DiagnosticReportPort
+import com.ghostlock.app.data.run.copyLogPrefix
+import com.ghostlock.app.domain.run.LogDocumentFormatter
+import com.ghostlock.app.domain.run.LogFilePrefix
+import com.ghostlock.app.domain.run.LogFormatConfig
+import com.ghostlock.app.domain.run.initialLogRecords
 import com.ghostlock.app.domain.run.RunReport
 import com.ghostlock.app.domain.run.RunSessionState
 import com.ghostlock.app.domain.run.StageResult
@@ -25,13 +30,14 @@ import java.util.concurrent.TimeUnit
  *
  * @param context Application-capable context used for cache ownership.
  * @param runState Typed application-scoped session snapshot supplier.
- * @param runLog Canonical GLLOG1 snapshot supplier owned by the sole log hub.
+ * @param runLog Exact flushed GLLOG2 private-file prefix supplier owned by the sole log hub.
  * @note Collection does not invoke privileged shells or read manager-private paths and never mutates attack state.
  */
 class AndroidDiagnosticReportBuilder(
     context: Context,
     private val runState: () -> RunSessionState,
-    private val runLog: () -> ByteArray,
+    private val runLog: suspend () -> LogFilePrefix?,
+    private val formatter: LogDocumentFormatter,
 ) : DiagnosticReportPort {
     private val applicationContext = context.applicationContext
 
@@ -41,7 +47,7 @@ class AndroidDiagnosticReportBuilder(
     }
 
     /** Builds one deterministic-layout report directory and archives it as tar.gz. */
-    private fun createBlocking(): File {
+    private suspend fun createBlocking(): File {
         val timestamp = LocalDateTime.now().format(REPORT_TIME_FORMAT)
         val reportDirectory = File(applicationContext.cacheDir, "diagnostic-report-$timestamp")
         if (reportDirectory.exists()) reportDirectory.deleteRecursively()
@@ -145,9 +151,22 @@ class AndroidDiagnosticReportBuilder(
         }
     }
 
-    /** Writes the same immutable canonical bytes used by manual and automatic run-log sinks. */
-    private fun writeRuntimeLog(target: File) {
-        target.writeBytes(runLog())
+    /** Copies the same exact flushed private-file prefix used by manual sharing. */
+    private suspend fun writeRuntimeLog(target: File) {
+        val prefix = runLog()
+        if (prefix != null) {
+            copyLogPrefix(prefix, target)
+        } else {
+            target.outputStream().buffered().use { output ->
+                formatter.formatHeader(null).forEach(output::write)
+                val session = runState()
+                val config = LogFormatConfig(session.showTimestamp)
+                initialLogRecords(session.minimumLogLevel).forEach { record ->
+                    output.write(formatter.formatRecord(record, config))
+                }
+                formatter.formatTrailer(session.phase).forEach(output::write)
+            }
+        }
     }
 
     /** Captures bounded logcat output without requiring elevated privileges. */

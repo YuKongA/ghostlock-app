@@ -53,7 +53,6 @@ data class RunHostSnapshotModel(
 ) {
     init {
         require(logSequence >= 0L) { "log sequence is negative" }
-        require(logSequence <= RunHostProtocol.MAX_QUEUED_LOGS.toLong()) { "log sequence exceeds budget" }
         require(droppedLogs >= 0L) { "dropped log count is negative" }
         require(backendPrimitive.isValidStageResult()) { "invalid backend primitive result" }
         require(scriptDispatch.isValidStageResult()) { "invalid script dispatch result" }

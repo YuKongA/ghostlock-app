@@ -1,7 +1,6 @@
 package com.ghostlock.app.backend.registry
 
-import com.ghostlock.app.BuildConfig
-import com.ghostlock.app.backend.backends.debugprobe.BackendDebugProbe
+import com.ghostlock.app.backend.backends.diagnose.BackendDiagnose
 import com.ghostlock.app.backend.backends.lua.BackendCustom
 import com.ghostlock.app.backend.declarations.BackendPlugin
 import com.ghostlock.app.domain.backend.BackendSpec
@@ -11,13 +10,13 @@ import com.ghostlock.app.domain.run.RunCapability
 /**
  * Immutable same-APK backend membership and key lookup authority.
  *
- * The registry contains the disabled restricted Lua frontend and, in debug builds only, the diagnostic
- * DebugProbe. No real-attack backend is registered; reconnecting one requires a new approved L-level plan.
+ * The registry contains the disabled restricted Lua frontend and the release-visible diagnostic backend.
+ * No real-attack backend is registered; reconnecting one requires a new approved L-level plan.
  */
 object BackendRegistry {
     private val plugins: List<BackendPlugin> = buildList {
         add(BackendCustom.plugin)
-        if (BuildConfig.DEBUG) add(BackendDebugProbe.plugin)
+        add(BackendDiagnose.plugin)
     }.also { entries ->
         require(entries.map { plugin -> plugin.spec.key }.toSet().size == entries.size) {
             "duplicate immutable backend key"

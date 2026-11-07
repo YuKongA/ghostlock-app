@@ -30,6 +30,7 @@ class RootScriptRenderer {
         plan.validate()
         return buildString {
             appendLine("#!/system/bin/sh")
+            appendLine(ROOT_SCRIPT_HANDOFF_MARKER)
             appendLine("set -u")
             appendLine("RESULT=${PayloadScriptRenderer.shellQuote(resultPath)}")
             appendLine("exec 9>\"\$RESULT\"")
@@ -126,7 +127,7 @@ class RootScriptRenderer {
         Os.chmod(workspace.absolutePath, 0b111000000)
         val result = File(workspace, "root-result.glr1")
         check(!Files.exists(result.toPath(), LinkOption.NOFOLLOW_LINKS)) { "root result already exists" }
-        val script = File(workspace, "root-script.sh")
+        val script = File(workspace, ROOT_SCRIPT_HANDOFF_FILE_NAME)
         val temporary = File(workspace, ".root-script.${UUID.randomUUID()}.tmp")
         var ownsResult = false
         var ownsTemporary = false

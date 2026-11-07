@@ -1,5 +1,11 @@
 package com.ghostlock.app.core.rootscript
 
+/** Fixed published filename resolved by the native no-argument handoff helper. */
+const val ROOT_SCRIPT_HANDOFF_FILE_NAME: String = "root-script.sh"
+
+/** Exact second-line marker that distinguishes a GhostLock handoff script from an arbitrary shell file. */
+const val ROOT_SCRIPT_HANDOFF_MARKER: String = "# GHOSTLOCK_HANDOFF_V1"
+
 /**
  * One published root-script contract consumed by a backend-specific rooted carrier.
  *

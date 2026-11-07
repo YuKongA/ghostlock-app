@@ -5,7 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import com.ghostlock.app.backend.registry.BackendRegistry
 import com.ghostlock.app.backend.transport.AppRunHostClient
 import com.ghostlock.app.backend.transport.ShizukuRunHostClient
-import com.ghostlock.app.core.run.RunCoordinator
+import com.ghostlock.app.core.run.LogHub
 import com.ghostlock.app.core.run.RunInputFreezer
 import com.ghostlock.app.data.backend.BackendCatalogAdapter
 import com.ghostlock.app.data.backend.BackendRunSessionAdapter
@@ -17,7 +17,6 @@ import com.ghostlock.app.data.diagnostics.AndroidDiagnosticReportBuilder
 import com.ghostlock.app.data.finish.FinishDocumentRepository
 import com.ghostlock.app.data.payload.PayloadDocumentRepository
 import com.ghostlock.app.data.privilege.AndroidPrivilegeAdapter
-import com.ghostlock.app.data.run.AndroidRunLogSinkFactory
 import com.ghostlock.app.data.run.PackagedBackendArtifactResolver
 import com.ghostlock.app.data.run.RootManagerArtifactResolver
 import com.ghostlock.app.data.settings.SharedPreferencesUiPreferencesRepository
@@ -33,7 +32,7 @@ import com.ghostlock.app.domain.finish.SaveFinishSettingsUseCase
 import com.ghostlock.app.domain.payload.ReadPayloadEditorUseCase
 import com.ghostlock.app.domain.payload.SavePayloadEditorUseCase
 import com.ghostlock.app.domain.run.PreviewRootScriptUseCase
-import com.ghostlock.app.domain.run.RunLogDocumentFormatter
+import com.ghostlock.app.domain.run.LogDocumentFormatter
 import com.ghostlock.app.core.rootscript.PreviewRootScriptPublisher
 import com.ghostlock.app.core.rootscript.RootScriptRenderer
 import com.ghostlock.app.domain.privilege.ObservePrivilegeUseCase
@@ -109,18 +108,16 @@ class AppContainer(context: Context) {
         packagedCarrierResolver = packagedBackendArtifactResolver,
         rootManagerResolver = rootManagerArtifactResolver,
     )
-    private val runLogDocumentFormatter = RunLogDocumentFormatter()
-    private val runCoordinator = RunCoordinator(
-        sinkFactory = AndroidRunLogSinkFactory(applicationContext),
-        formatter = runLogDocumentFormatter,
-    )
+    private val logDocumentFormatter = LogDocumentFormatter()
+    private val logHub = LogHub(logDocumentFormatter)
     private val runBackend = RunBackendUseCase(
         BackendRunSessionAdapter(
             context = context,
             registryEntries = backendRegistryEntries,
             availability = BackendRegistry::availability,
             selectedKey = { backendSessionStore.selectedKey },
-            coordinator = runCoordinator,
+            logHub = logHub,
+            formatter = logDocumentFormatter,
             freezer = runInputFreezer,
             appClient = AppRunHostClient(context),
             shizukuClient = ShizukuRunHostClient(context),
@@ -130,8 +127,9 @@ class AppContainer(context: Context) {
     )
     private val diagnosticReportAdapter = AndroidDiagnosticReportBuilder(
         context = context,
-        runState = { runCoordinator.state.value },
-        runLog = runCoordinator::renderCanonicalDocument,
+        runState = { logHub.state.value },
+        runLog = logHub::filePrefix,
+        formatter = logDocumentFormatter,
     )
     private val readFinishSettings = ReadFinishSettingsUseCase(finishRepository)
     private val saveFinishSettings = SaveFinishSettingsUseCase(finishRepository)

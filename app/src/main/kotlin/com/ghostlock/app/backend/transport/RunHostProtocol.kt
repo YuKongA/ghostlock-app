@@ -67,7 +67,6 @@ object RunHostProtocol {
     const val MAX_ARG_BYTES: Int = 4 * 1024
     const val MAX_LOG_MESSAGE_BYTES: Int = 8 * 1024
     const val MAX_LOG_PARCEL_BYTES: Int = 12 * 1024
-    const val MAX_QUEUED_LOGS: Int = 256
     const val MAX_SNAPSHOT_PARCEL_BYTES: Int = 256 * 1024
     const val MAX_ROOT_RESULT_BYTES: Int = 256 * 1024
 

@@ -12,9 +12,13 @@ import com.ghostlock.app.backend.transport.AppRunHostClient
 import com.ghostlock.app.backend.transport.RunHostClientOutcome
 import com.ghostlock.app.backend.transport.RunHostCode
 import com.ghostlock.app.backend.transport.ShizukuRunHostClient
-import com.ghostlock.app.core.run.RunCoordinator
+import com.ghostlock.app.core.run.LogHub
 import com.ghostlock.app.core.run.FrozenRunInputLease
 import com.ghostlock.app.core.run.RunInputFreezer
+import com.ghostlock.app.data.run.copyLogPrefix
+import com.ghostlock.app.data.run.AndroidLogSinkFactory
+import com.ghostlock.app.domain.run.LogDocumentFormatter
+import com.ghostlock.app.domain.run.initialLogRecords
 import com.ghostlock.app.domain.backend.AbortPolicy
 import com.ghostlock.app.domain.backend.BackendAvailability
 import com.ghostlock.app.domain.backend.BackendAvailabilityReason
@@ -28,11 +32,11 @@ import com.ghostlock.app.domain.privilege.ObservePrivilegeUseCase
 import com.ghostlock.app.domain.run.RunCommand
 import com.ghostlock.app.domain.run.RunExecutionResult
 import com.ghostlock.app.domain.run.RunInputArtifactKind
-import com.ghostlock.app.domain.run.RunLogFormatConfig
-import com.ghostlock.app.domain.run.RunLogLevel
-import com.ghostlock.app.domain.run.RunLogOrigin
-import com.ghostlock.app.domain.run.RunLogRecord
-import com.ghostlock.app.domain.run.RunLogSinkRequest
+import com.ghostlock.app.domain.run.LogFormatConfig
+import com.ghostlock.app.domain.run.LogLevel
+import com.ghostlock.app.domain.run.LogOrigin
+import com.ghostlock.app.domain.run.LogRecord
+import com.ghostlock.app.domain.run.LogSinkRequest
 import com.ghostlock.app.domain.run.RunSessionPort
 import com.ghostlock.app.domain.run.RunSessionState
 import com.ghostlock.app.domain.settings.ObserveOperationalPreferencesUseCase
@@ -44,7 +48,9 @@ import com.ghostlock.app.run.RunHostLogRecord
 import com.ghostlock.app.run.RunHostRequest
 import com.ghostlock.app.run.RunInputArtifactParcel
 import java.io.File
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withContext
 
 /**
  * Android adapter from the domain run session to the shared typed App/Shizuku RunHost wire.
@@ -52,7 +58,7 @@ import kotlinx.coroutines.flow.StateFlow
  * @param registryEntries Immutable neutral registry membership.
  * @param availability Dynamic readiness resolver by stable key.
  * @param selectedKey Current selected stable key.
- * @param coordinator Application-lifetime typed run owner.
+ * @param logHub Application-lifetime typed run owner.
  * @param freezer Single backend/profile/Payload/Finish freeze boundary.
  * @param appClient App `:flowhost` typed client.
  * @param shizukuClient Optional typed Shizuku client; absence fails the shell-domain gate closed.
@@ -62,7 +68,8 @@ class BackendRunSessionAdapter(
     registryEntries: List<BackendSpec>,
     private val availability: (String) -> BackendAvailability?,
     private val selectedKey: () -> String?,
-    private val coordinator: RunCoordinator,
+    private val logHub: LogHub,
+    private val formatter: LogDocumentFormatter,
     private val freezer: RunInputFreezer,
     private val appClient: AppRunHostClient,
     private val shizukuClient: ShizukuRunHostClient?,
@@ -70,15 +77,16 @@ class BackendRunSessionAdapter(
     observePrivilege: ObservePrivilegeUseCase,
 ) : RunSessionPort {
     private val applicationContext = context.applicationContext
+    private val storageSinks = AndroidLogSinkFactory(applicationContext)
     private val entries = registryEntries.toList()
     private val operationalPreferences = observeOperationalPreferences()
     private val privilege = observePrivilege()
 
-    override val state: StateFlow<RunSessionState> = coordinator.state
+    override val state: StateFlow<RunSessionState> = logHub.state
 
     /** Refreshes current neutral spec, readiness, executor, and presentation preferences. */
     override fun refresh() {
-        coordinator.updateContext(buildContext(currentSpec()))
+        logHub.updateContext(buildContext(currentSpec()))
     }
 
     /** Freezes one input and dispatches it through the selected typed host client. */
@@ -97,11 +105,11 @@ class BackendRunSessionAdapter(
         val frozenPreferences = operationalPreferences.value
         val context = buildContext(spec, decision, frozenPreferences)
         if (!decision.allowed) {
-            coordinator.updateContext(context)
+            logHub.updateContext(context)
             return false
         }
         val lease = runCatching { freezer.freeze(spec) }.getOrElse {
-            coordinator.updateContext(
+            logHub.updateContext(
                 context.copy(
                     startAllowed = false,
                     blockedReasons = listOf("Run input freeze failed: " + it::class.java.simpleName),
@@ -113,7 +121,7 @@ class BackendRunSessionAdapter(
         val requestResult = runCatching { lease.toWireRequest() }
         lease.close()
         val request = requestResult.getOrElse {
-            coordinator.updateContext(
+            logHub.updateContext(
                 context.copy(
                     startAllowed = false,
                     blockedReasons = listOf("Typed RunHost request assembly failed: " + it::class.java.simpleName),
@@ -121,17 +129,20 @@ class BackendRunSessionAdapter(
             )
             return false
         }
-        val sinkRequest = RunLogSinkRequest(
+        val sinkRequest = LogSinkRequest(
             enabled = frozenPreferences.autoExportLogs,
             runId = frozen.runId,
             generation = frozen.generation,
             backendKey = frozen.backendKey,
             relativePath = frozenPreferences.logExportLocation,
-            formatConfig = RunLogFormatConfig(
+            formatConfig = LogFormatConfig(
                 showTimestamp = frozenPreferences.showLogTimestamp,
             ),
         )
-        val started = coordinator.start(context, sinkRequest) execution@{ onLog ->
+        val runSinks = storageSinks.create(sinkRequest) { failure ->
+            logHub.reportSinkFailure(sinkRequest, failure)
+        }
+        val started = logHub.start(context, sinkRequest, runSinks) execution@{ onLog ->
             try {
                 val executor = privilege.value.attackExecutor()
                 val outcome = when (executor.kind) {
@@ -159,33 +170,47 @@ class BackendRunSessionAdapter(
     }
 
     /** Propagates explicit cancellation through the current typed client coroutine. */
-    override fun abort(): Boolean = coordinator.requestAbort(
+    override fun abort(): Boolean = logHub.requestAbort(
         disabledMessage = applicationContext.getString(R.string.run_abort_disabled),
     )
 
     /** Clears presentation rows only. */
-    override fun clearTerminal() = coordinator.clearTerminal()
+    override fun clearTerminal() = logHub.clearTerminal()
 
-    /** Writes the coordinator's canonical GLLOG1 bytes and opens the Android chooser. */
-    override fun shareTerminal(chooserTitle: String): Boolean = runCatching {
-        val directory = File(applicationContext.cacheDir, "logs").apply { mkdirs() }
-        val file = File(directory, "ghostlock-terminal-" + System.currentTimeMillis() + ".log")
-        file.writeBytes(coordinator.renderCanonicalDocument())
-        val uri = FileProvider.getUriForFile(
-            applicationContext,
-            applicationContext.packageName + ".ghostlock.fileprovider",
-            file,
-        )
-        val send = Intent(Intent.ACTION_SEND).apply {
-            type = "text/x-log"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_TITLE, file.name)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        applicationContext.startActivity(
-            Intent.createChooser(send, chooserTitle).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) },
-        )
-    }.isSuccess
+    /** Shares an exact flushed private-file prefix without materializing the whole log. */
+    override suspend fun shareTerminal(chooserTitle: String): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val directory = File(applicationContext.cacheDir, "logs").apply { check(mkdirs() || isDirectory) }
+            val file = File(directory, "ghostlock-terminal-" + System.currentTimeMillis() + ".log")
+            val prefix = logHub.filePrefix()
+            if (prefix == null) {
+                file.outputStream().buffered().use { output ->
+                    formatter.formatHeader(null).forEach(output::write)
+                    val config = LogFormatConfig(showTimestamp = state.value.showTimestamp)
+                    initialLogRecords(state.value.minimumLogLevel).forEach { record ->
+                        output.write(formatter.formatRecord(record, config))
+                    }
+                    formatter.formatTrailer(state.value.phase).forEach(output::write)
+                }
+            } else {
+                copyLogPrefix(prefix, file)
+            }
+            val uri = FileProvider.getUriForFile(
+                applicationContext,
+                applicationContext.packageName + ".ghostlock.fileprovider",
+                file,
+            )
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "text/x-log"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_TITLE, file.name)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            applicationContext.startActivity(
+                Intent.createChooser(send, chooserTitle).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) },
+            )
+        }.isSuccess
+    }
 
     /** Returns current selectable spec or the first selectable fallback. */
     private fun currentSpec(): BackendSpec? {
@@ -201,7 +226,7 @@ class BackendRunSessionAdapter(
             listOf(BackendAvailabilityReason("backend-missing", "No backend is selected.")),
         ),
         context = RunPageContext(
-            backendRunInProgress = coordinator.isRunning(),
+            backendRunInProgress = logHub.isRunning(),
             executor = privilege.value.attackExecutor(),
             shizukuTypedHostAvailable = shizukuClient != null,
         ),
@@ -220,7 +245,7 @@ class BackendRunSessionAdapter(
         abortable = spec?.abortPolicy == AbortPolicy.SAFE_DURING_RUN,
         warnOnRerun = preferences.warnOnRerun,
         showTimestamp = preferences.showLogTimestamp,
-        minimumLogLevel = preferences.logLevel.toRunLogLevel(),
+        minimumLogLevel = preferences.logLevel.toLogLevel(),
         terminalFontPath = preferences.terminalFontPath?.takeIf { path -> File(path).isFile },
     )
 
@@ -313,19 +338,19 @@ internal fun FrozenRunInputLease.toWireRequest(): RunHostRequest {
 }
 
 /** Decodes one validated wire log into the sole canonical record shape. */
-private fun RunHostLogRecord.toDomainOrNull(): RunLogRecord? = runCatching {
-    RunLogRecord(
-        origin = requireNotNull(RunLogOrigin.fromWireValue(origin)),
-        level = requireNotNull(RunLogLevel.fromWireValue(level)),
+private fun RunHostLogRecord.toDomainOrNull(): LogRecord? = runCatching {
+    LogRecord(
+        origin = requireNotNull(LogOrigin.fromWireValue(origin)),
+        level = requireNotNull(LogLevel.fromWireValue(level)),
         message = message,
     )
 }.getOrNull()
 
 /** Maps the storage-neutral setting to the canonical run-log level. */
-private fun TerminalLogLevel.toRunLogLevel(): RunLogLevel = when (this) {
-    TerminalLogLevel.Verbose -> RunLogLevel.Verbose
-    TerminalLogLevel.Debug -> RunLogLevel.Debug
-    TerminalLogLevel.Info -> RunLogLevel.Info
-    TerminalLogLevel.Warn -> RunLogLevel.Warn
-    TerminalLogLevel.Error -> RunLogLevel.Error
+private fun TerminalLogLevel.toLogLevel(): LogLevel = when (this) {
+    TerminalLogLevel.Verbose -> LogLevel.Verbose
+    TerminalLogLevel.Debug -> LogLevel.Debug
+    TerminalLogLevel.Info -> LogLevel.Info
+    TerminalLogLevel.Warn -> LogLevel.Warn
+    TerminalLogLevel.Error -> LogLevel.Error
 }

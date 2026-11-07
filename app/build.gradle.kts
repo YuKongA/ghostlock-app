@@ -1,12 +1,12 @@
 @file:Suppress("UnstableApiUsage")
 
-import com.android.build.api.artifact.SingleArtifact
+import com.android.build.api.variant.HostTestBuilder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.io.ByteArrayOutputStream
-import java.nio.file.Files
+import java.security.MessageDigest
 import java.util.Properties
+import java.util.zip.ZipFile
 
 plugins {
     id("com.android.application")
@@ -20,170 +20,104 @@ layout.buildDirectory.set(rootProject.layout.buildDirectory.dir("app"))
 
 val appName = "GhostLock"
 val appVersionName = "2.0.12"
+val jnaVersion = "5.19.1"
+val jnaCoordinate = "net.java.dev.jna:jna:$jnaVersion@aar"
 
-val debugNativeManifest = layout.buildDirectory.file("native-artifacts/debug/manifest.tsv")
+val jnaDistributionConfiguration = configurations.create("jnaDistribution") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
+    description = "Resolves the pinned raw JNA AAR for distribution verification."
+}
+val jnaPomDistributionConfiguration = configurations.create("jnaPomDistribution") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
+    description = "Resolves the pinned JNA POM for license verification."
+}
 
-/**
- * Verifies the actual debug variant native artifacts after AGP has merged them.
- *
- * The expected artifact/JNI set comes only from the CMake-generated target
- * manifest. A header-only manifest is the authoritative disconnected state and
- * requires the merged output to contain no native artifact. LLVM tools come
- * from the same NDK Provider that AGP uses when at least one target exists.
- */
-abstract class VerifyNativeArtifactsTask : org.gradle.api.DefaultTask() {
+/** Verifies the pinned JNA AAR/POM and packaged source-tag license inventory without a second version authority. */
+abstract class VerifyJnaDistributionTask : org.gradle.api.DefaultTask() {
+    @get:org.gradle.api.tasks.Classpath
+    abstract val aarFiles: org.gradle.api.file.ConfigurableFileCollection
+
+    @get:org.gradle.api.tasks.Classpath
+    abstract val pomFiles: org.gradle.api.file.ConfigurableFileCollection
+
     @get:org.gradle.api.tasks.InputDirectory
     @get:org.gradle.api.tasks.PathSensitive(org.gradle.api.tasks.PathSensitivity.RELATIVE)
-    abstract val mergedNativeLibs: org.gradle.api.file.DirectoryProperty
+    abstract val licenseDirectory: org.gradle.api.file.DirectoryProperty
 
-    @get:org.gradle.api.tasks.InputFile
-    @get:org.gradle.api.tasks.PathSensitive(org.gradle.api.tasks.PathSensitivity.RELATIVE)
-    abstract val manifestFile: org.gradle.api.file.RegularFileProperty
+    @get:org.gradle.api.tasks.Input
+    abstract val version: org.gradle.api.provider.Property<String>
 
-    @get:org.gradle.api.tasks.InputFile
-    @get:org.gradle.api.tasks.PathSensitive(org.gradle.api.tasks.PathSensitivity.NONE)
-    abstract val llvmReadelf: org.gradle.api.file.RegularFileProperty
+    @get:org.gradle.api.tasks.Input
+    abstract val coordinate: org.gradle.api.provider.Property<String>
 
-    @get:org.gradle.api.tasks.InputFile
-    @get:org.gradle.api.tasks.PathSensitive(org.gradle.api.tasks.PathSensitivity.NONE)
-    abstract val llvmNm: org.gradle.api.file.RegularFileProperty
-
-    @get:javax.inject.Inject
-    abstract val execOps: org.gradle.process.ExecOperations
-
-    private data class NativeManifestRow(
-        val target: String,
-        val artifact: String,
-        val type: String,
-        val expectedJni: Set<String>,
-    )
-
-    /** Checks zero-target disconnection or the exact ELF architecture/JNI artifact set. */
+    /** Checks artifact identity, dual-license metadata, AAR contents, and the exact packaged source-tag bytes. */
     @org.gradle.api.tasks.TaskAction
-    fun verifyArtifacts() {
-        val manifest = manifestFile.get().asFile
-        val lines = manifest.readLines()
-        check(lines.isNotEmpty()) { "native artifact manifest is empty: ${manifest.absolutePath}" }
-        check(lines.first() == "target\tartifact\ttype\texpected_jni") {
-            "native artifact manifest header mismatch: ${lines.first()}"
-        }
-        val rows = lines.drop(1).mapIndexed { index, line ->
-            check(line.isNotBlank()) { "blank native artifact row at line ${index + 2}" }
-            val fields = line.split('\t', limit = 4)
-            check(fields.size == 4 && fields.take(3).all(String::isNotBlank)) {
-                "native artifact row ${index + 2} must contain four fields"
+    fun verifyDistribution() {
+        val aar = aarFiles.files.singleOrNull { file -> file.extension == "aar" }
+            ?: error("expected exactly one pinned JNA AAR: ${aarFiles.files}")
+        val pom = pomFiles.files.singleOrNull { file -> file.extension == "pom" }
+            ?: error("expected exactly one pinned JNA POM: ${pomFiles.files}")
+        val directory = licenseDirectory.get().asFile
+        val inventoryFile = directory.resolve("INVENTORY.txt")
+        val inventory = inventoryFile.readLines()
+            .filter { line -> '=' in line }
+            .associate { line -> line.substringBefore('=') to line.substringAfter('=') }
+        check(inventory.getValue("coordinate") == coordinate.get()) { "JNA coordinate inventory drift" }
+        check(inventory.getValue("source_tag") == version.get()) { "JNA source tag inventory drift" }
+        check(inventory.getValue("selected_license") == "Apache-2.0") { "JNA selected license drift" }
+        check(sha256(aar) == inventory.getValue("aar_sha256")) { "JNA AAR checksum drift" }
+        check(sha256(pom) == inventory.getValue("pom_sha256")) { "JNA POM checksum drift" }
+
+        val pomText = pom.readText(Charsets.UTF_8)
+        check("<name>LGPL-2.1-or-later</name>" in pomText) { "JNA POM LGPL declaration missing" }
+        check("<name>Apache-2.0</name>" in pomText) { "JNA POM Apache declaration missing" }
+        ZipFile(aar).use { archive ->
+            val names = archive.entries().asSequence().map { entry -> entry.name }.toSet()
+            check("classes.jar" in names) { "JNA AAR classes.jar missing" }
+            check("jni/arm64-v8a/libjnidispatch.so" in names) { "JNA AAR arm64 dispatch library missing" }
+            val licenseEntries = names.filter { name ->
+                val upper = name.uppercase(Locale.ROOT)
+                "LICENSE" in upper || "NOTICE" in upper
             }
-            val expectedJni = if (fields[3].isEmpty()) {
-                emptySet()
-            } else {
-                fields[3].split(',').onEach { symbol ->
-                    check(symbol.matches(Regex("Java_[A-Za-z0-9_]+"))) {
-                        "invalid JNI symbol in manifest: $symbol"
-                    }
-                }.toSet()
-            }
-            check(fields[1].endsWith(".so") && '/' !in fields[1] && '\\' !in fields[1]) {
-                "invalid native artifact name: ${fields[1]}"
-            }
-            check(fields[2] == "EXECUTABLE" || fields[2] == "SHARED_LIBRARY") {
-                "invalid native target type: ${fields[2]}"
-            }
-            NativeManifestRow(fields[0], fields[1], fields[2], expectedJni)
-        }
-        check(rows.map(NativeManifestRow::target).toSet().size == rows.size) {
-            "native artifact manifest contains duplicate targets"
-        }
-        check(rows.map(NativeManifestRow::artifact).toSet().size == rows.size) {
-            "native artifact manifest contains duplicate artifacts"
+            check(licenseEntries.isEmpty()) { "unexpected JNA AAR license/notice entries: $licenseEntries" }
         }
 
-        val mergedRoot = mergedNativeLibs.get().asFile
-        val libraryRoot = mergedRoot.resolve("lib")
-        if (rows.isEmpty()) {
-            val unexpectedArtifacts = if (libraryRoot.isDirectory) {
-                libraryRoot.walkTopDown()
-                    .filter { entry -> entry.isFile || Files.isSymbolicLink(entry.toPath()) }
-                    .map { entry -> entry.relativeTo(mergedRoot).invariantSeparatorsPath }
-                    .sorted()
-                    .toList()
-            } else {
-                emptyList()
-            }
-            check(unexpectedArtifacts.isEmpty()) {
-                "merged native artifacts exist while the CMake target manifest is empty: $unexpectedArtifacts"
-            }
-            logger.lifecycle("NATIVE_ARTIFACTS=PASS COUNT=0 ABI=none JNI=0")
-            return
+        val expectedAssets = setOf("LICENSE", "AL2.0", "LGPL2.1", "INVENTORY.txt")
+        val actualAssets = directory.listFiles().orEmpty().map { file -> file.name }.toSet()
+        check(actualAssets == expectedAssets) {
+            "JNA packaged license inventory drift: expected=$expectedAssets actual=$actualAssets"
         }
-        check(libraryRoot.isDirectory) {
-            "merged native library root is missing: ${libraryRoot.absolutePath}"
-        }
-        val abiEntries = libraryRoot.listFiles().orEmpty()
-        check(abiEntries.all { entry -> entry.isDirectory && !Files.isSymbolicLink(entry.toPath()) }) {
-            "merged native lib root contains a non-directory or symlink entry"
-        }
-        val abiDirectories = abiEntries.map { file -> file.name }.toSet()
-        check(abiDirectories == setOf("arm64-v8a")) {
-            "merged native ABI set mismatch: $abiDirectories"
-        }
-        val arm64Directory = libraryRoot.resolve("arm64-v8a")
-        val artifacts = arm64Directory.listFiles().orEmpty().associateBy { file -> file.name }
-        val expectedArtifacts = rows.map(NativeManifestRow::artifact).toSet()
-        check(artifacts.keys == expectedArtifacts) {
-            "merged native artifact drift: expected=${expectedArtifacts.sorted()} actual=${artifacts.keys.sorted()}"
-        }
-
-        var totalJni = 0
-        rows.forEach { row ->
-            val artifact = artifacts.getValue(row.artifact)
-            check(
-                Files.isRegularFile(artifact.toPath()) &&
-                    !Files.isSymbolicLink(artifact.toPath()) &&
-                    artifact.length() > 0L,
-            ) {
-                "native artifact is not a non-empty regular file: ${artifact.absolutePath}"
+        listOf("LICENSE", "AL2.0", "LGPL2.1").forEach { name ->
+            check(sha256(directory.resolve(name)) == inventory.getValue("${name}_sha256")) {
+                "JNA packaged $name checksum drift"
             }
-            val elfHeader = runTool(llvmReadelf.get().asFile, listOf("-h", artifact.absolutePath))
-            check(Regex("(?m)^\\s*Class:\\s+ELF64\\s*$").containsMatchIn(elfHeader)) {
-                "native artifact is not ELF64: ${row.artifact}"
-            }
-            check(Regex("(?m)^\\s*Machine:\\s+AArch64\\s*$").containsMatchIn(elfHeader)) {
-                "native artifact is not AArch64: ${row.artifact}"
-            }
-            val symbols = runTool(
-                llvmNm.get().asFile,
-                listOf("-D", "--defined-only", artifact.absolutePath),
-            )
-            val actualJni = Regex("\\bJava_[A-Za-z0-9_]+\\b")
-                .findAll(symbols)
-                .map { match -> match.value }
-                .toSet()
-            check(actualJni == row.expectedJni) {
-                "JNI export drift for ${row.artifact}: expected=${row.expectedJni.sorted()} actual=${actualJni.sorted()}"
-            }
-            totalJni += actualJni.size
         }
+        check(inventory.getValue("aar_license_entries") == "ABSENT") { "JNA AAR license fact drift" }
+        check(inventory.getValue("notice") == "ABSENT") { "JNA NOTICE fact drift" }
         logger.lifecycle(
-            "NATIVE_ARTIFACTS=PASS COUNT={} ABI=arm64-v8a JNI={}",
-            rows.size,
-            totalJni,
+            "JNA_DISTRIBUTION=PASS VERSION={} ABI=arm64-v8a LICENSE=3 NOTICE=ABSENT",
+            version.get(),
         )
     }
 
-    /** Runs one LLVM inspection command and returns stdout or fails with stderr. */
-    private fun runTool(executable: java.io.File, arguments: List<String>): String {
-        val stdout = ByteArrayOutputStream()
-        val stderr = ByteArrayOutputStream()
-        val result = execOps.exec {
-            commandLine(listOf(executable.absolutePath) + arguments)
-            standardOutput = stdout
-            errorOutput = stderr
-            isIgnoreExitValue = true
+    /** @return Lowercase SHA-256 of one regular input file. */
+    private fun sha256(file: java.io.File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
         }
-        check(result.exitValue == 0) {
-            "${executable.name} exited ${result.exitValue}: ${stderr.toString(Charsets.UTF_8.name())}"
+        return digest.digest().joinToString(separator = "") { byte ->
+            (byte.toInt() and 0xff).toString(16).padStart(2, '0')
         }
-        return stdout.toString(Charsets.UTF_8.name())
     }
 }
 
@@ -420,12 +354,6 @@ android {
         }
         debug {
             signingConfig = signingConfigs.getByName(if (keystoreFile != null) "release" else "debug")
-            externalNativeBuild {
-                cmake {
-                    arguments +=
-                        "-DGHOSTLOCK_NATIVE_ARTIFACT_MANIFEST=${debugNativeManifest.get().asFile.absolutePath}"
-                }
-            }
         }
     }
     buildFeatures {
@@ -447,6 +375,14 @@ android {
         jniLibs {
             useLegacyPackaging = true
             excludes += "lib/*/libandroidx.graphics.path.so"
+            excludes += setOf(
+                "lib/armeabi/**",
+                "lib/armeabi-v7a/**",
+                "lib/mips/**",
+                "lib/mips64/**",
+                "lib/x86/**",
+                "lib/x86_64/**",
+            )
         }
         dex {
             useLegacyPackaging = true
@@ -467,43 +403,14 @@ android {
     }
 }
 
-val llvmBinDirectory = androidComponents.sdkComponents.ndkDirectory.map { ndk ->
-    val prebuiltRoot = ndk.asFile.resolve("toolchains/llvm/prebuilt")
-    val candidates = prebuiltRoot.listFiles().orEmpty().filter { directory ->
-        directory.isDirectory && listOf("llvm-readelf", "llvm-nm").all { name ->
-            directory.resolve("bin/$name").isFile || directory.resolve("bin/$name.exe").isFile
-        }
-    }
-    check(candidates.size == 1) {
-        "expected exactly one NDK LLVM host prebuilt under $prebuiltRoot; " +
-            "found ${candidates.map { directory -> directory.name }}"
-    }
-    candidates.single().resolve("bin")
-}
-
-/** Resolves one LLVM tool from AGP's own NDK Provider without a second NDK policy. */
-fun ndkTool(name: String): org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile> =
-    layout.file(
-        llvmBinDirectory.map { bin ->
-            listOf(bin.resolve(name), bin.resolve("$name.exe"))
-                .single { candidate -> candidate.isFile }
-        },
-    )
-
 androidComponents {
+    /** Enables the release host-test component required by the R6 debug/release parity gate. */
+    beforeVariants(selector().withBuildType("release")) { variantBuilder ->
+        variantBuilder.hostTests[HostTestBuilder.UNIT_TEST_TYPE]?.enable = true
+    }
     onVariants(selector().withBuildType("release")) {
         it.packaging.resources.excludes
             .add("**")
-    }
-    onVariants(selector().withName("debug")) { variant ->
-        tasks.register<VerifyNativeArtifactsTask>(
-            variant.computeTaskName("verify", "NativeArtifacts"),
-        ) {
-            mergedNativeLibs.set(variant.artifacts.get(SingleArtifact.MERGED_NATIVE_LIBS))
-            manifestFile.set(debugNativeManifest)
-            llvmReadelf.set(ndkTool("llvm-readelf"))
-            llvmNm.set(ndkTool("llvm-nm"))
-        }
     }
 }
 
@@ -511,11 +418,32 @@ val verifyDebugUnitTestXml = tasks.register<VerifyUnitTestXmlTask>("verifyDebugU
     group = "verification"
     description = "Verifies all debug unit-test XML against exact four-bucket totals."
     resultsDirectory.set(layout.buildDirectory.dir("test-results/testDebugUnitTest"))
-    expectedTests.set(96)
+    expectedTests.set(111)
     expectedFailures.set(0)
     expectedErrors.set(0)
     expectedSkipped.set(0)
     dependsOn("testDebugUnitTest")
+}
+
+val verifyReleaseUnitTestXml = tasks.register<VerifyUnitTestXmlTask>("verifyReleaseUnitTestXml") {
+    group = "verification"
+    description = "Verifies all release unit-test XML against exact four-bucket totals."
+    resultsDirectory.set(layout.buildDirectory.dir("test-results/testReleaseUnitTest"))
+    expectedTests.set(111)
+    expectedFailures.set(0)
+    expectedErrors.set(0)
+    expectedSkipped.set(0)
+    dependsOn("testReleaseUnitTest")
+}
+
+val verifyJnaDistribution = tasks.register<VerifyJnaDistributionTask>("verifyJnaDistribution") {
+    group = "verification"
+    description = "Verifies the pinned JNA AAR, POM, ABI payload, and packaged source-tag licenses."
+    aarFiles.from(jnaDistributionConfiguration)
+    pomFiles.from(jnaPomDistributionConfiguration)
+    licenseDirectory.set(layout.projectDirectory.dir("src/main/assets/third_party/jna"))
+    version.set(jnaVersion)
+    coordinate.set(jnaCoordinate)
 }
 
 base {
@@ -548,6 +476,9 @@ tasks.named("preBuild") {
 
 
 dependencies {
+    implementation(jnaCoordinate)
+    add(jnaDistributionConfiguration.name, jnaCoordinate)
+    add(jnaPomDistributionConfiguration.name, "net.java.dev.jna:jna:$jnaVersion@pom")
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.compose.foundation:foundation:1.12.1")
     /* Material3：新 UI 的默认套件（另一个是 miuix，见 app/ui/kit）；本仓无 BOM，版本显式写。

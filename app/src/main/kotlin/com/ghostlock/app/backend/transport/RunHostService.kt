@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
+import android.system.Os
 import com.ghostlock.app.backend.declarations.BackendPlugin
 import com.ghostlock.app.backend.registry.BackendRegistry
 import com.ghostlock.app.core.flow.BackendFlowInput
@@ -26,7 +27,7 @@ import com.ghostlock.app.domain.run.ProfileSnapshot
 import com.ghostlock.app.domain.run.ResultReason
 import com.ghostlock.app.domain.run.RunCancellationView
 import com.ghostlock.app.domain.run.RunCapability
-import com.ghostlock.app.domain.run.RunLogDraft
+import com.ghostlock.app.domain.run.LogDraft
 import com.ghostlock.app.domain.run.RunTerminal
 import com.ghostlock.app.domain.run.StageResult
 import com.ghostlock.app.domain.run.StageState
@@ -217,31 +218,27 @@ class RunHostService : Service() {
                 schemaVersion = ProfileSnapshot.CURRENT_SCHEMA_VERSION,
                 sha256 = profileArtifact.identity.sha256,
             )
-            val code = lifecycle.prepare(identity, fingerprint)
-            if (code != RunHostCode.OK && code != RunHostCode.ALREADY_APPLIED) {
-                createdWorkspace.deleteAfterTerminal()
-                return code
-            }
-            if (code == RunHostCode.OK) {
-                val flow = plugin.createFlow()
-                val current = PreparedRun(
-                    identity = identity,
-                    plugin = plugin,
-                    flow = flow,
-                    workspace = createdWorkspace,
-                    rootScript = rootArtifact,
-                    profile = profile,
-                    artifacts = artifactCatalog,
-                    persistentStateDirectory = createdWorkspace.persistentStateDirectory.absolutePath,
-                    product = product,
-                )
-                synchronized(lock) {
-                    prepared = current
-                    snapshot = preparedSnapshot(current, code)
+            val candidate = PreparedRun(
+                identity = identity,
+                plugin = plugin,
+                flow = plugin.createFlow(),
+                workspace = createdWorkspace,
+                rootScript = rootArtifact,
+                profile = profile,
+                artifacts = artifactCatalog,
+                persistentStateDirectory = createdWorkspace.persistentStateDirectory.absolutePath,
+                product = product,
+            )
+            val candidateSnapshot = preparedSnapshot(candidate, RunHostCode.OK)
+            val code = synchronized(lock) {
+                lifecycle.prepare(identity, fingerprint).also { committed ->
+                    if (committed == RunHostCode.OK) {
+                        prepared = candidate
+                        snapshot = candidateSnapshot
+                    }
                 }
-            } else {
-                createdWorkspace.deleteAfterTerminal()
             }
+            if (code != RunHostCode.OK) createdWorkspace.deleteAfterTerminal()
             code
         } catch (problem: IllegalArgumentException) {
             workspace?.deleteAfterTerminal()
@@ -269,7 +266,10 @@ class RunHostService : Service() {
             artifacts = current.artifacts,
             persistentStateDirectory = current.persistentStateDirectory,
         )
-        val report = runCatching { current.flow.run(input) }.getOrElse {
+        val report = runCatching {
+            Os.setenv("GHOSTLOCK_HOME", current.workspace.root.absolutePath, true)
+            current.flow.run(input)
+        }.getOrElse {
             runCatching { input.completeFailure() }.getOrNull() ?: return
         }
         val terminalSnapshot = RunHostSnapshotModel(
@@ -294,7 +294,7 @@ class RunHostService : Service() {
     }
 
     /** Stamps and delivers one bounded log draft. */
-    private fun publishLog(identity: RunHostIdentity, draft: RunLogDraft) {
+    private fun publishLog(identity: RunHostIdentity, draft: LogDraft) {
         if (!draft.isValidRunHostLogDraft()) {
             droppedLogs.incrementAndGet()
             return

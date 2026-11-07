@@ -1,5 +1,6 @@
 package com.ghostlock.app.backend.transport
 
+import java.util.concurrent.atomic.AtomicLong
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
@@ -22,10 +23,22 @@ class RunHostSharedWireTest {
         assertNotEquals(first.semanticFingerprint(), second.semanticFingerprint())
     }
 
+    /** Both host producers share the same unbounded positive Long reservation contract. */
+    @Test
+    fun sharedLogSequenceSupports16384Records() {
+        val app = AtomicLong(0L)
+        val shizuku = AtomicLong(0L)
+        repeat(16_384) { index ->
+            val expected = index.toLong() + 1L
+            assertEquals(expected, reserveRunHostLogSequence(app))
+            assertEquals(expected, reserveRunHostLogSequence(shizuku))
+        }
+    }
+
     private fun request(): RunHostRequestModel = RunHostRequestModel(
         runId = "0".repeat(32),
         generation = 1L,
-        backendKey = "DEBUG-PROBE",
+        backendKey = "DIAGNOSE",
         profileArtifactId = "profile",
         payloadItems = emptyList(),
         finishItems = emptyList(),

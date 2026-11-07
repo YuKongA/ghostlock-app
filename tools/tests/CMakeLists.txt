@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 # Purpose: build the current repository-wide, host-compatible native contract
 # tests without importing Android/JNI production targets.
-# Inputs: one explicitly registered C test plus the machine-owned disposition
+# Inputs: explicitly registered C/C++ tests plus the machine-owned disposition
 # table at native-test-disposition.tsv.
 # Output: one CTest executable in this CMake binary tree.
 # Failure: missing/drifted disposition rows, compiler warnings, build failures,
@@ -10,11 +10,14 @@ cmake_minimum_required(VERSION 3.22)
 # Preconditions: configured by nativeTestContractsHost on a POSIX desktop host.
 # Phase: D7.3+D7.4-N current-tree native verification.
 
-project(ghostlock_native_contract_host_tests LANGUAGES C)
+project(ghostlock_native_contract_host_tests LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 enable_testing()
 
 get_filename_component(GL_REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
@@ -66,6 +69,30 @@ target_include_directories(gl_log_test PRIVATE "${GL_COMMON_ROOT}")
 target_compile_options(gl_log_test PRIVATE ${GL_HOST_WARNINGS})
 add_test(NAME gl_log_test COMMAND gl_log_test)
 list(APPEND GL_REGISTERED_CONTRACT_SOURCES tools/tests/gl_log_test.c)
+
+# The common handoff contract test executes the exact production locator/spawn
+# implementation with the host-only compile-time shell/fd-root selection.
+add_executable(run_handoff_test
+    "${GL_REPO_ROOT}/tools/tests/run_handoff_test.cpp"
+    "${GL_COMMON_ROOT}/common/run_handoff.c"
+    "${GL_COMMON_ROOT}/common/gl_log.c"
+)
+target_include_directories(run_handoff_test PRIVATE "${GL_COMMON_ROOT}")
+target_compile_options(run_handoff_test PRIVATE ${GL_HOST_WARNINGS})
+add_test(NAME run_handoff_test COMMAND run_handoff_test)
+list(APPEND GL_REGISTERED_CONTRACT_SOURCES tools/tests/run_handoff_test.cpp)
+
+# The direct call-contract test links the exact production Diagnose implementation
+# and logger on the host; Android logcat linkage remains exclusive to the app-native target.
+add_executable(diagnose_abi_test
+    "${GL_REPO_ROOT}/tools/tests/diagnose_abi_test.cpp"
+    "${GL_COMMON_ROOT}/backends/diagnose/diagnose.cpp"
+    "${GL_COMMON_ROOT}/common/gl_log.c"
+)
+target_include_directories(diagnose_abi_test PRIVATE "${GL_COMMON_ROOT}")
+target_compile_options(diagnose_abi_test PRIVATE ${GL_HOST_WARNINGS})
+add_test(NAME diagnose_abi_test COMMAND diagnose_abi_test)
+list(APPEND GL_REGISTERED_CONTRACT_SOURCES tools/tests/diagnose_abi_test.cpp)
 
 # Fail closed when the machine disposition and this module's CTest registry
 # diverge. The root inventory separately proves that every repository candidate

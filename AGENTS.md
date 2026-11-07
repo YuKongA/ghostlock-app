@@ -98,7 +98,7 @@
 - **守卫/断言须证「能失败」**（造错 → 预期失败 → 撤回并核验无残留）。*2026-10-07：由[审查规则 E-REVIEW-RULE-001/D1：验证覆盖](docs/development/design-review-principles.md#review-rule-d1)取代，保留为可选手段。*
 - 证伪/验证实验一律 **`make -B`**；实验后 **`rm -f <artifact>` + `make -B` 复核**（源码回位 ≠ 产物回位）。
 - **数产物不数目录**；**失败数全量读 `build/test-results/**/*.xml`**（三桶计数以 XML 为准）。
-- 普通改动：`./gradlew nativeTestHost --console=plain`（current-tree host CTest 聚合）+ `./gradlew nativeBuildAndroid --console=plain`（AGP merged native artifact/ABI/JNI 精确门）。旧 `make -C core check/android` 随 2.0.5 删除的 `core/` 构建树退役，不得恢复路径名冒充当前门禁。
+- 普通改动：`./gradlew nativeTestHost --console=plain`（current-tree host CTest 聚合）+ `./gradlew nativeBuildAndroid --console=plain`（debug/release 双 variant 构建与 JNA distribution）。`verifyDebugNativeArtifacts`/`verifyReleaseNativeArtifacts` 已按 2026-11-06 用户裁定删除，不得把普通构建结果表述为已完成 ELF/ABI/JNI 精确核验。旧 `make -C core check/android` 随 2.0.5 删除的 `core/` 构建树退役，不得恢复路径名冒充当前门禁。
 - 攻击关键路径：① **真机门禁**（冷机、固定 CPU 对、单 route、KernelSU 未加载）② 设备 `Download/ghostlock-debug-log/<时间>/*.log.txt`（含 `profile.conf`/`profile.bin`）确认 route 命中与写验证 ③ 归档 `docs/analysis/device-gates/*.md`。
 - `KERNEL-PANIC-01` 已知环境/时序：同构建可 PASS/panic/PASS；判因果须同构建复现 + 冷机复跑。**新 profile 未过真机不得标 supported。**
 

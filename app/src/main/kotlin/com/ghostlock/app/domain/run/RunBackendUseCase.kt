@@ -26,5 +26,5 @@ class RunBackendUseCase(
     fun clearTerminal() = port.clearTerminal()
 
     /** @return True when terminal sharing was launched. */
-    fun shareTerminal(chooserTitle: String): Boolean = port.shareTerminal(chooserTitle)
+    suspend fun shareTerminal(chooserTitle: String): Boolean = port.shareTerminal(chooserTitle)
 }

@@ -155,7 +155,7 @@ class SettingsViewModel(
         copy(showLogTimestamp = enabled)
     }
 
-    /** Persists whether each accepted run creates an automatic GLLOG1 document. */
+    /** Persists whether each accepted run creates an automatic GLLOG2 document. */
     fun setAutoExportLogs(enabled: Boolean) = updateOperational {
         copy(autoExportLogs = enabled)
     }

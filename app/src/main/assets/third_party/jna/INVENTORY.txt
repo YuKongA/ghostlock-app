@@ -1,0 +1,13 @@
+JNA third-party inventory
+coordinate=net.java.dev.jna:jna:5.19.1@aar
+upstream=https://github.com/java-native-access/jna/tree/5.19.1
+source_tag=5.19.1
+selected_license=Apache-2.0
+pom_licenses=LGPL-2.1-or-later OR Apache-2.0
+aar_sha256=b57125cb7d16253f0d65a80f7d3a4c3664effa711b8bdbb7f87fb572ce1624ed
+pom_sha256=911b754a03b66af0fed2bbdfdc3a86807360dd036ad3b481ef5162c685e456bf
+LICENSE_sha256=07c938b23950ab7d47a24ef35f9f5da3a05ae164278dc959ad6994135ed59ff1
+AL2.0_sha256=0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594
+LGPL2.1_sha256=eea173a556abac0370461e57e12aab266894ea6be3874c2be05fd87871f75449
+aar_license_entries=ABSENT
+notice=ABSENT

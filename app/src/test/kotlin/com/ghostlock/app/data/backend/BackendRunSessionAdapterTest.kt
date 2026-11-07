@@ -3,6 +3,8 @@ package com.ghostlock.app.data.backend
 import android.os.ParcelFileDescriptor
 import com.ghostlock.app.core.run.FrozenRunInputLease
 import com.ghostlock.app.core.run.OpenedRunInputSource
+import com.ghostlock.app.data.run.copyLogPrefix
+import com.ghostlock.app.domain.run.LogFilePrefix
 import com.ghostlock.app.domain.finish.FinishDefinition
 import com.ghostlock.app.domain.payload.PayloadDefinition
 import com.ghostlock.app.domain.payload.PayloadKind
@@ -20,6 +22,18 @@ import org.robolectric.RobolectricTestRunner
 /** Lease-to-wire ownership and normalized RootManager request checks. */
 @RunWith(RobolectricTestRunner::class)
 class BackendRunSessionAdapterTest {
+    /** An active barrier's byte length freezes the shared prefix despite later append. */
+    @Test
+    fun exactPrefixCopyDoesNotIncludeConcurrentAppend() {
+        val source = Files.createTempFile("log-prefix-source", ".txt")
+        val target = Files.createTempFile("log-prefix-target", ".txt")
+        Files.writeString(source, "first\n")
+        val prefix = LogFilePrefix(source.toString(), Files.size(source))
+        Files.writeString(source, "first\nsecond\n")
+        copyLogPrefix(prefix, target.toFile())
+        assertEquals("first\n", Files.readString(target))
+    }
+
     @Test
     fun requestUsesLeaseDuplicatesAndFrozenManagerArgv() {
         val directory = Files.createTempDirectory("lease-wire")

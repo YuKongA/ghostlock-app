@@ -8,9 +8,9 @@ import com.ghostlock.app.domain.run.BackendTerminalHint
 import com.ghostlock.app.domain.run.DiagnosticOutcome
 import com.ghostlock.app.domain.run.ExitKind
 import com.ghostlock.app.domain.run.ResultReason
-import com.ghostlock.app.domain.run.RunLogDraft
-import com.ghostlock.app.domain.run.RunLogLevel
-import com.ghostlock.app.domain.run.RunLogOrigin
+import com.ghostlock.app.domain.run.LogDraft
+import com.ghostlock.app.domain.run.LogLevel
+import com.ghostlock.app.domain.run.LogOrigin
 import com.ghostlock.app.domain.run.RunReport
 import com.ghostlock.app.domain.run.StageResult
 import com.ghostlock.app.domain.run.StageState
@@ -99,9 +99,9 @@ internal class FlowLuaImpl(
     private fun emitNotice(input: BackendFlowInput, body: String) {
         runCatching {
             input.logs.emit(
-                RunLogDraft(
-                    origin = RunLogOrigin.Kotlin,
-                    level = RunLogLevel.Debug,
+                LogDraft(
+                    origin = LogOrigin.Kotlin,
+                    level = LogLevel.Debug,
                     message = body.filter { character -> character.code in 0x20..0x7e }
                         .take(MAX_LOG_CHARACTERS),
                 ),

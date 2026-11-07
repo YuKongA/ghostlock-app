@@ -19,7 +19,7 @@ enum class TerminalLogLevel(val token: String) {
  * @property logLevel Minimum application log severity.
  * @property terminalFontPath Private copied font path, or null for the system monospace font.
  * @property showLogTimestamp Whether terminal rows include elapsed time.
- * @property autoExportLogs Whether each accepted run creates an automatic GLLOG1 document.
+ * @property autoExportLogs Whether each accepted run creates an automatic GLLOG2 document.
  * @property logExportLocation Normalized Downloads-relative export directory.
  * @property warnOnRerun Whether a completed run requires confirmation before rerunning.
  * @property autoAttackOnBoot Whether the dormant boot preference is enabled.

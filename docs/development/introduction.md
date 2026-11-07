@@ -4,10 +4,10 @@
 
 > **代号与快照范围**：当前条目引用[主计划语义代号](../plan/backend-root-execution-unification-plan.md#plan-semantic-identifiers)，不是统一 RUN 前缀下的旧 R 序号；下文原快照、历史批准与门禁保持原义，旧来源子号按映射定位。
 
-> 当前快照：Backend root-execution R4B source complete + R5-S1 common product host source complete，2026-11-05。
+> 当前快照：P-DIAG-NATIVE-001/批次01 I1→I3与V1已完成；4 KiB/16 KiB AVD的App/Shizuku debug与minified-release纵向全部PASS，2026-11-06。
 > 唯一在办架构计划是 [P-RUN-X-001](../plan/backend-root-execution-unification-plan.md#p-run-x-001)；逐文件处置权威是[主计划 ledger](../plan/backend-root-execution-unification-ledger.tsv)；结构图唯一权威是 [UML 当前执行视图](full-process-uml.md#run-current-views)。
 > 旧计划只从 docs/archive/ 读取，不再授权实现。
-> 按用户明确指令，本轮没有运行 Gradle、unit、architecture verifier、AVD、Shizuku runtime 或设备门；R2-R5-S1 的相关 gate 均保持 NOT_RUN。
+> 本批已执行的门只按§七逐项记录；Diagnose的AVD runtime matrix已齐，不把其外推为任何真攻击backend或真实设备证据。
 
 ## 零、当前产品边界
 
@@ -16,7 +16,7 @@ GhostLock 的产品成功不是 raw uid 0，而是 concrete backend 到达自己
 当前 registry 刻意没有 selectable production-root backend：
 
 - CUSTOM 声明 PRODUCT_ROOT capability，但 selection policy 为 DISABLED，operation catalog 为空，readiness 为 NotReady。
-- DEBUG-PROBE 只在 debug build 注册，capability 为 DIAGNOSTIC_ONLY；即使 probe 完成，产品成功投影仍为 false。
+- DIAGNOSE 在debug/release都注册，capability为DIAGNOSTIC_ONLY；即使native/JNA/shell纵向全部完成，产品成功投影仍为false。
 - R5-S1曾写入neutral common product host spine，但后续用户已取消R5-S2/S3并要求断开全部真攻击backend。43499-Glued、43284-Glued、98260只保留source-only candidate；它们不在registry或APK native target graph，源码存在不等于selectable、supported或device proof。
 
 ## 一、Android/Kotlin 分层
@@ -30,7 +30,7 @@ GhostLock 的产品成功不是 raw uid 0，而是 concrete backend 到达自己
 | backend/declarations | internal BackendPlugin：spec、resource-free readiness、fresh one-shot Flow factory | UI、profile、AIDL 暴露 |
 | backend/registry | immutable same-APK membership 与 exact key lookup | runtime register、digest、reflection |
 | backend/transport | typed RunHost clients、host state machine、event/snapshot validation、process carrier | Bundle 与动态 method lookup |
-| core/run | 一次冻结输入与 application-lifetime RunCoordinator | renderer/ViewModel lifetime ownership |
+| core/run | 一次冻结输入与 application-lifetime LogHub | renderer/ViewModel lifetime ownership |
 | core/flow | Flow.run 接受 BackendFlowInput 并返回 BackendRunFacts | product script generator |
 | UI | immutable UI state 与 action contract | data/backend/core implementation import |
 
@@ -69,6 +69,7 @@ app/src/main/cpp/
   CMakeLists.txt
   common/
   backends/CMakeLists.txt
+  backends/diagnose/     current non-root shared library with one ordinary-C export
   backends/43499glued/   frozen future executable carrier candidate
   backends/43284glued/   frozen future executable/bootstrap candidate
   backends/98260/        frozen future candidate, default build disabled
@@ -76,15 +77,17 @@ tools/tests/
 tools/avbcheck/
 ~~~
 
-original 43499/43284 手写 JNI closure、glgeneral、generic access/native-handle/public victim 与旧 native log bridge 已退出 current graph。`backends/CMakeLists.txt` 现在是空的断开边界，不声明backend option或include；Gradle也不再转发backend/M0开关、注册M0 task或打包攻击ELF。current CMake只构建`gl_common` OBJECT target，future JNA尚未引入。
+original 43499/43284 手写 JNI closure、glgeneral、generic access/native-handle/public victim 与旧 native log bridge 已退出 current graph。`backends/CMakeLists.txt` 仍不声明攻击backend option，只固定include非root的`diagnose` target；Gradle也不转发backend/M0开关、注册M0 task或打包攻击ELF。current CMake构建`gl_common` OBJECT target与`libghostlock_diagnose.so`，Android依赖固定为JNA 5.19.1 AAR。
+
+DIAGNOSE的Flow在RunHost prepare阶段构造backend-private binding，binding无参构造器只执行`Native.load("ghostlock_diagnose", DiagnoseJnaLibrary::class.java)`。accepted start先把当前per-run workspace绑定为`GHOSTLOCK_HOME`，再进入`DiagnoseFlow : SequentialFlow`唯一的`diagnose-native-chain` physical step。该step只调用一次不带版本号的`gl_diagnose_run`：同一次native operation完成uid/pid/nonce round-trip、Native pipe日志、common固定位置handoff、Shell pipe日志与同步reap，并一次交付primitive和dispatch两项typed fact；Kotlin不持有shell process或script path，始终不执行Payload/Finish。
 
 保留 candidate 内的攻击事务不得修改。当前没有首个真实carrier排期；重新接线必须由新的L级计划明确取代2026-11-05断开裁定。
 
 ## 五、日志与诊断
 
-日志是 diagnostic sink，不是成功 authority。2026-11-05 用户纠正 automatic export 的删除处置，随后批准R4B简化重写；current source保留historical flag/destination/picker与双皮肤controls，旧根级caller-zero object继续ABSENT。`domain/run`只保留neutral factory/run-scoped sink与唯一GLLOG1 formatter；current RunCoordinator在canonical lock内纯format并nonblocking enqueue，`data/run`的single MediaStore worker独占URI/output stream，App/Shizuku仍不各建exporter。
+日志是 diagnostic sink，不是成功 authority。2026-11-05 用户纠正 automatic export 的删除处置，随后批准R4B简化重写；current source保留historical flag/destination/picker与双皮肤controls，旧根级caller-zero object继续ABSENT。`domain/run`提供neutral `LogSinkFactory`、`LogSink`和唯一`GLLOG2`逐行formatter；current `LogHub`以raw与processed两个`Channel.UNLIMITED`、单processor及单dispatcher提交与分发，UI、private-file、可选MediaStore各有独立unlimited积压。`data/run`的文件与MediaStore worker各自独占stream，不逐行flush；App/Shizuku仍不各建exporter。
 
-用户主动触发的 diagnostic report 仍由 AndroidDiagnosticReportBuilder 生成，并包含 typed run report。manual share 与 P-LOG-IO-001/批次02 automatic export 复用同一纯 typed formatter；三者与 root-script result、产品成功判据彼此独立，export failure 不改变 RunReport 或 terminal。
+用户主动触发的 diagnostic report 仍由 AndroidDiagnosticReportBuilder 生成，并包含 typed run report。manual share、diagnostic log与automatic export复用同一逐行formatter及私有文件的已flush精确前缀；三者与 root-script result、产品成功判据彼此独立，export failure 不改变 RunReport 或 terminal。
 
 ## 六、source guard
 
@@ -95,9 +98,10 @@ tools/kotlin_architecture_d0.py 维护以下 source 规则：
 - backend 生成产品 root script 禁止；
 - 旧 IFlowHost 与 IGhostlock UserService AIDL transaction 禁止；
 - frozen candidate 之外的 manual JNI object marshalling 禁止；
+- `RunCoordinator`、旧debugprobe key/type、公共`Flow.initialize`、第二日志hub、任意JNA path/reload、backend内`ProcessBuilder`与项目JNI export禁止；`Native.load`只允许出现在Diagnose binding的constant-name无参构造路径；
 - P-RUN-X-001/批次01/P-RUN-CORE-001/批次01 删除路径必须在 file-action manifest 中保持 ABSENT。
 
-本轮只更新规则与 manifest，没有执行 verifier；因此这些规则是已写入的门禁实现，不是本轮 PASS 证据。
+current architecture fixture已登记LogHub move、retired debugprobe与Diagnose/JNA current rows；门禁结果只按下一节的literal认定。
 
 ## 七、规范命令与本轮状态
 
@@ -107,11 +111,16 @@ tools/kotlin_architecture_d0.py 维护以下 source 规则：
 python3 tools/kotlin_architecture_d0.py verify --repo . --fixtures app/src/test/resources/architecture --section architecture
 ~~~
 
-以上是当前规范入口。本轮按用户要求未执行门禁，不能从 source change 推导 compile、runtime、AVD、Shizuku 或设备结果。P-BACKEND-X-001/批次01 的历史证据保留在计划记录中；P-LOG-IO-001/批次02 source已接线但仍为`NOT_RUN`，P-RUN-IO-001/批次01 至 P-LOG-IO-001/批次02（原批次范围） evidence欠账必须在release或启用真实carrier前偿还。
+本批当前已观测：`nativeTestContractsHost`的Diagnose ABI 2/2 PASS；JNA distribution strict gate输出`JNA_DISTRIBUTION=PASS VERSION=5.19.1 ABI=arm64-v8a LICENSE=3 NOTICE=ABSENT`；`nativeBuildAndroid`同时输出debug/release `NATIVE_ARTIFACTS=PASS ... COUNT=2 ABI=arm64-v8a JNI=0 EXPORTS=1`；architecture输出`D0_VERIFY=PASS ... DIAGNOSE_NATIVE_BOUNDARY=0 UNCLASSIFIED=0`；debug/release unit XML实物均为34 files/102 tests/0 failure/error/skipped。`emulator-5556`（6.6.30、`PAGE_SIZE=4096`）与新建`GhostLock_6_6_16K`/`emulator-5558`（6.6.30、`PAGE_SIZE=16384`）的debug exact class gate都实际执行App `:flowhost`、direct JNA与Shizuku UserService三条纵向，各输出`OK (3 tests)`且`SKIPPED=0`；Shizuku运行在uid 2000/`u:r:shell:s0`。两个page-size AVD的minified-release production UI也已分别在App与Shizuku执行域显示各一次Native/Shell exact行、primitive/dispatch/cleanup三项SUCCESS、`DIAGNOSTIC_COMPLETE`与`Product success: NO`；logcat观测到Shizuku UserService加载`libjnidispatch.so`并输出project DSO round-trip行。这关闭了Diagnose V1，但只证明非root诊断纵向。
+
+2026-11-06 用户裁定移除两个 app native artifact verifier 及其 CMake manifest 生产链；上段 `NATIVE_ARTIFACTS=PASS` 只保留为当时的历史证据。当前 `nativeBuildAndroid` 的语义为构建 debug/release 两个 variant 并执行 JNA distribution 检查，不再输出 ELF/ABI/JNI 精确核验结论。
+
+P-RUN-HANDOFF-001/批次01完成后，Diagnose接口已收敛为与App同版发布的非版本化`gl_diagnose_run`；request/result不含version、size、reserved，不做运行时layout/header/size兼容检查，也不保留旧符号或结构分支。最终门为host contracts=`3/3`、native host=`31/0`、debug/release unit各`111/111`、architecture零违规、clean后双variant build/JNA distribution PASS；6.6 4 KiB与16 KiB AVD在刷新Shizuku server状态后，App/direct-JNA/Shizuku full exact class各输出`OK (3 tests)`。这些证据只覆盖非root diagnostic handoff纵向。
 
 ## 八、后续边界
 
 - P-BACKEND-X-001/批次02：已按用户后续裁定关闭为real-backend disconnection，不再实施43499 carrier。
-- P-DIAG-NATIVE-001/批次01 / P-BACKEND-NATIVE-001/批次01 / P-BACKEND-NATIVE-002/批次01：不自动排队；只有用户重新批准具名consumer/backend后，才可另立L级计划引入JNA或carrier delta。
+- P-DIAG-NATIVE-001/批次01：I1→I2→I3与V1已完成；4 KiB/16 KiB AVD的App/Shizuku debug与release runtime均已PASS，批次收口。
+- P-BACKEND-NATIVE-001/批次01 / P-BACKEND-NATIVE-002/批次01：仍不自动排队；只有用户重新批准具名product-root backend后，才可另立L级计划引入carrier delta。
 - extractor/KMP、profile v3 schema 与 LegacyProfileConverter 不由本计划顺手改动。
 - current Class、Sequence、State 与 result projection 只维护在 docs/development/full-process-uml.md。

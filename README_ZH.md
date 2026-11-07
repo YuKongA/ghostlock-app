@@ -24,21 +24,21 @@ BackendRegistry 是 same-APK immutable membership 的唯一权威。公开的 Ba
 
 App 进程与 Shizuku shell 使用同一套 typed RunHost request、event、snapshot 和生命周期合同。RunInputFreezer 一次冻结所选 backend、profile-v3 snapshot、Payload 与 Finish；host 独占 staging、workspace、脚本发布、Flow 生命周期、terminal snapshot 与 cleanup。产品状态只来自 typed 六层 RunReport；raw uid 0、进程 exit 0、stdout 与诊断日志都不能把结果升级为产品成功。
 
-Payload 与 Finish 是两份独立的 version-3 document。公共 renderer 只发布一份 root script；具体 backend 只负责到达自己的 root execution point、派发该 exact artifact，并回报 backend-private cleanup facts。R4 已删除 caller-zero 的旧 SessionPhase。自动日志导出是产品能力，不是 dead residue：错误在于把能力与旧 object 一起清零。R4B 让旧根级 object 继续退役，以一个 neutral run-scoped sink、一个 bounded channel 与一个 `data/run` MediaStore worker承接能力；RunCoordinator在同一排序锁内提交、格式化与enqueue，不再保留opening protocol、第二queue、timeout或completion monitor。显式诊断报告、手动分享与自动导出都只是 diagnostic sink，均不成为 run 结果权威。
+Payload 与 Finish 是两份独立的 version-3 document。公共 renderer 只发布一份 root script；具体 backend 只负责到达自己的 root execution point、派发该 exact artifact，并回报 backend-private cleanup facts。R4 已删除 caller-zero 的旧 SessionPhase。自动日志导出是产品能力，不是 dead residue：错误在于把能力与旧 object 一起清零。当前LogHub使用unlimited raw与processed双流、单processor和非阻塞dispatcher；UI、private-file与可选MediaStore各自拥有独立队列，文件worker缓冲写入而不逐行flush。GLLOG2 formatter对每条已提交日志只编码一次；手动分享与诊断导出复制私有文件已flush的精确前缀，不构建完整文档ByteArray。显式诊断报告、手动分享与自动导出都只是 diagnostic sink，均不成为 run 结果权威。
 
-当前 membership 刻意没有可选择的 production-root backend。CUSTOM 在获得批准的 operation catalog 前保持 disabled；DEBUG-PROBE 只在 debug build 出现且 capability 仅为 diagnostic。保留的 43284-Glued、43499-Glued 与 98260 native tree 是冻结的 future carrier candidate，不是已注册支持。
+当前 membership 刻意没有可选择的 production-root backend。CUSTOM 在获得批准的 operation catalog 前保持 disabled；DIAGNOSE 在 debug 与 release 中均可选择，但 capability 始终是 DIAGNOSTIC_ONLY。DIAGNOSE 是首个真实 JNA/shared-library 纵向：RunHost prepare 构造 Flow 并按常量名加载 `libghostlock_diagnose.so`，随后唯一的 `diagnose-native-chain` step 调用不带版本号的 `gl_diagnose_run`。同一次 native call 先写 Native record，再同步派发 host 已发布的固定位置 handoff 脚本，返回后一次交付两项 typed phase fact。保留的 43284-Glued、43499-Glued 与 98260 native tree 仍是断开的 carrier candidate，不是已注册支持。
 
 ## 快速开始
 
-当前重构分支的 release build 没有可选择的 production-root backend。debug build 可选择 Debug Probe，用于观察 typed App/Shizuku transport 与 report projection；probe 完成仍只代表诊断链完成，不代表 root、Payload 或 Finish 成功。
+当前重构分支的 release build 没有可选择的 production-root backend。两个构建类型都可选择 Diagnose，用于观察 typed App/Shizuku transport、Kotlin/Native/Shell 日志入口与 report projection；诊断完成仍不代表 root、Payload 或 Finish 成功。
 
-真实 backend 只有在自己的 carrier 计划获批并通过目标设备门后才可 selectable。R2-R4B source 已经落地，包括简化后的 automatic-export settings→RunCoordinator→single sink→MediaStore 链；但按用户明确指令，R4B 的 compile、instrumentation、AVD、Shizuku 与设备门仍为 NOT_RUN。source presence 不是 runtime 证据，不得把当前分支写成 supported-device release。
+真实 product-root backend 只有在自己的 carrier 计划获批并通过目标设备门后才可 selectable。Diagnose 的 build 与 host 结果只证明诊断机制；source presence 或 AVD diagnostic PASS 都不是 CVE、root primitive 或 supported-device 证据。
 
 ## 命令行调试
 
 旧 core CLI 及其 load-prebuilt-profile、攻击选择和 JNI bridge 参数已经退出 current entry point。production execution 统一从 Android 应用进入 typed RunHost；backend 选择来自 immutable registry 与 profile，不允许用临时命令行参数旁路。
 
-保留的 native executable tree 只是冻结的 carrier candidate，不是受支持的 public CLI。transport 诊断请在 debug APK 中使用 Debug Probe。未来桌面 extractor 可以拥有自己的 CLI，但它与 backend execution 和 root 产品成功相互独立。
+保留的 native executable tree 只是冻结的 carrier candidate，不是受支持的 public CLI。应用内 transport 诊断统一使用 Diagnose。未来桌面 extractor 可以拥有自己的 CLI，但它与 backend execution 和 root 产品成功相互独立。
 
 ## 偏移量提取
 

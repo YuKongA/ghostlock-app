@@ -359,7 +359,7 @@ abstract class VerifyNativeTestInventoryTask : org.gradle.api.DefaultTask() {
         }
 
         logger.lifecycle(
-            "NATIVE_TEST_INVENTORY=PASS CANDIDATES={} HOST=29 43499GLUED=27 CONTRACTS=1 AVBCHECK=1",
+            "NATIVE_TEST_INVENTORY=PASS CANDIDATES={} HOST=31 43499GLUED=27 CONTRACTS=3 AVBCHECK=1",
             candidates.size,
         )
     }
@@ -400,7 +400,7 @@ val verifyNativeTestInventory = tasks.register<VerifyNativeTestInventoryTask>("v
     expectedHostCounts.set(
         mapOf(
             "host-ctest:43499glued" to 27,
-            "host-ctest:native-contracts" to 1,
+            "host-ctest:native-contracts" to 3,
             "existing-host-ctest:avbcheck" to 1,
         ),
     )
@@ -520,14 +520,17 @@ val nativeTest43499GluedHost = tasks.register<NativeHostCmakeTestTask>("nativeTe
 
 val nativeTestContractsHost = tasks.register<NativeHostCmakeTestTask>("nativeTestContractsHost") {
     group = "verification"
-    description = "Builds and executes the repository-wide native logging contract CTest."
+    description = "Builds and executes the repository-wide native logging, handoff, and Diagnose ABI CTests."
     sourceDir.set(layout.projectDirectory.dir("tools/tests"))
     sourceInputs.from(
         fileTree("tools/tests") {
             include("**/*.c", "**/*.cc", "**/*.cpp", "**/*.h", "**/*.hpp", "CMakeLists.txt", "*.tsv")
         },
         fileTree("app/src/main/cpp/common") {
-            include("gl_log.c", "gl_log.h")
+            include("gl_log.c", "gl_log.h", "run_handoff.c", "run_handoff.h")
+        },
+        fileTree("app/src/main/cpp/backends/diagnose") {
+            include("**/*.cpp", "**/*.h", "CMakeLists.txt")
         },
     )
     cmakeExecutable.set(glCmake)
@@ -544,17 +547,17 @@ val nativeTestContractsHost = tasks.register<NativeHostCmakeTestTask>("nativeTes
 
 tasks.register("nativeTestHost") {
     group = "verification"
-    description = "Runs the complete current-tree host-native aggregate (29 CTests)."
+    description = "Runs the complete current-tree host-native aggregate (31 CTests)."
     dependsOn(verifyNativeTestInventory, nativeTest43499GluedHost, nativeTestContractsHost, avbcheck)
     doLast {
-        logger.lifecycle("NATIVE_TEST_HOST=PASS TOTAL=29 FAILED=0")
+        logger.lifecycle("NATIVE_TEST_HOST=PASS TOTAL=31 FAILED=0")
     }
 }
 
 tasks.register("nativeBuildAndroid") {
     group = "verification"
-    description = "Builds and verifies the debug Android native target graph."
-    dependsOn(":app:verifyDebugNativeArtifacts")
+    description = "Builds both Android variants and verifies the pinned JNA distribution."
+    dependsOn(":app:assembleDebug", ":app:assembleRelease", ":app:verifyJnaDistribution")
 }
 
 tasks.register("checkAll") {

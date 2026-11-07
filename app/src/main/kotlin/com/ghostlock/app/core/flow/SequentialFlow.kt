@@ -4,9 +4,9 @@ import com.ghostlock.app.domain.run.BackendTerminalHint
 import com.ghostlock.app.domain.run.DiagnosticOutcome
 import com.ghostlock.app.domain.run.ExitKind
 import com.ghostlock.app.domain.run.ResultReason
-import com.ghostlock.app.domain.run.RunLogDraft
-import com.ghostlock.app.domain.run.RunLogLevel
-import com.ghostlock.app.domain.run.RunLogOrigin
+import com.ghostlock.app.domain.run.LogDraft
+import com.ghostlock.app.domain.run.LogLevel
+import com.ghostlock.app.domain.run.LogOrigin
 import com.ghostlock.app.domain.run.RunReport
 import com.ghostlock.app.domain.run.StageResult
 import com.ghostlock.app.domain.run.StageState
@@ -37,8 +37,11 @@ abstract class SequentialFlow : Flow {
     /** Returns a backend held-state hint without interpreting product success. */
     protected open fun terminalHint(runs: List<FlowStepRun>): BackendTerminalHint = BackendTerminalHint.NONE
 
-    /** Returns a diagnostic-only outcome; product flows retain NOT_APPLICABLE. */
-    protected open fun diagnosticOutcome(runs: List<FlowStepRun>): DiagnosticOutcome =
+    /** Returns a diagnostic-only outcome from the executed steps and the sole cleanup fact. */
+    protected open fun diagnosticOutcome(
+        runs: List<FlowStepRun>,
+        cleanupFact: StageResult,
+    ): DiagnosticOutcome =
         DiagnosticOutcome.NOT_APPLICABLE
 
     final override suspend fun run(input: BackendFlowInput): RunReport {
@@ -48,15 +51,16 @@ abstract class SequentialFlow : Flow {
         }
         val facts = try {
             val planned = steps(input)
+            validatePlan(planned)
             runSteps(input, planned).facts
         } catch (cancelled: CancellationException) {
             cancelledFacts(input, emptyList())
         } catch (problem: Throwable) {
-            notice(input, RunLogLevel.Error, "flow-plan-failed:" + problem::class.java.simpleName)
+            notice(input, LogLevel.Error, "flow-plan-failed:" + problem::class.java.simpleName)
             val cleanupFact = runCleanup(input)
             BackendRunFacts(
                 primitive = internalUnknown(),
-                scriptDispatch = StageResult.SKIPPED,
+                scriptDispatch = internalUnknown(),
                 cleanup = cleanupFact,
                 terminalHint = BackendTerminalHint.UNKNOWN_HELD_STATE,
                 diagnosticOutcome = DiagnosticOutcome.UNKNOWN,
@@ -71,16 +75,21 @@ abstract class SequentialFlow : Flow {
     /** Runs the planned list until the first non-success terminal step fact. */
     private suspend fun runSteps(input: BackendFlowInput, planned: List<FlowStep>): FlowResult {
         val runs = mutableListOf<FlowStepRun>()
+        var active: FlowStep? = null
         try {
             for (spec in planned) {
+                active = spec
                 if (input.cancellation.isCancellationRequested()) {
+                    runs += cancelledRun(spec)
                     return FlowResult(cancelledFacts(input, runs), runs.toList())
                 }
                 val run = runStep(input, spec)
                 runs += run
-                if (run.result.state != StageState.SUCCESS) break
+                active = null
+                if (!run.facts.allSuccessful()) break
             }
         } catch (cancelled: CancellationException) {
+            active?.let { spec -> runs += cancelledRun(spec) }
             return FlowResult(cancelledFacts(input, runs), runs.toList())
         }
         val cleanupFact = runCleanup(input)
@@ -94,9 +103,9 @@ abstract class SequentialFlow : Flow {
     private suspend fun runStep(input: BackendFlowInput, spec: FlowStep): FlowStepRun {
         val startedAt = System.nanoTime()
         var attempt = 1
-        var last = internalUnknown()
+        var last = FlowStepFacts.forStages(spec.produces, internalUnknown())
         while (attempt <= spec.retry.attempts) {
-            notice(input, RunLogLevel.Debug, "step=${spec.name};attempt=$attempt;phase=start")
+            notice(input, LogLevel.Debug, "step=${spec.name};attempt=$attempt;phase=start")
             if (spec.timing.preDelayMs > 0L) delay(spec.timing.preDelayMs)
             val result = try {
                 val body: suspend () -> StepResult = {
@@ -109,37 +118,46 @@ abstract class SequentialFlow : Flow {
                 }
             } catch (timeout: TimeoutCancellationException) {
                 StepResult.Failed(
-                    StageResult(StageState.FAILED, ResultReason.TIMEOUT, ExitKind.NONE, 0),
+                    FlowStepFacts.forStages(
+                        spec.produces,
+                        StageResult(StageState.FAILED, ResultReason.TIMEOUT, ExitKind.NONE, 0),
+                    ),
                     "step-timeout",
                 )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (problem: Throwable) {
-                StepResult.Failed(internalUnknown(), "step-exception:" + problem::class.java.simpleName)
+                StepResult.Failed(
+                    FlowStepFacts.forStages(spec.produces, internalUnknown()),
+                    "step-exception:" + problem::class.java.simpleName,
+                )
             }
             if (spec.timing.postDelayMs > 0L) delay(spec.timing.postDelayMs)
-            when (result) {
+            when (val exact = exactResult(spec, result)) {
                 is StepResult.Done -> {
-                    last = result.stage
-                    notice(input, RunLogLevel.Debug, "step=${spec.name};attempt=$attempt;phase=done")
+                    last = exact.facts
+                    notice(input, LogLevel.Debug, "step=${spec.name};attempt=$attempt;phase=done")
                     break
                 }
 
                 is StepResult.Failed -> {
-                    last = result.stage
-                    notice(input, RunLogLevel.Warn, "step=${spec.name};attempt=$attempt;phase=failed")
+                    last = exact.facts
+                    notice(input, LogLevel.Warn, "step=${spec.name};attempt=$attempt;phase=failed")
                     break
                 }
 
                 is StepResult.Retry -> {
                     if (attempt >= spec.retry.attempts) {
-                        last = StageResult(
-                            StageState.FAILED,
-                            ResultReason.REJECTED,
-                            ExitKind.NONE,
-                            0,
+                        last = FlowStepFacts.forStages(
+                            spec.produces,
+                            StageResult(
+                                StageState.FAILED,
+                                ResultReason.REJECTED,
+                                ExitKind.NONE,
+                                0,
+                            ),
                         )
-                        notice(input, RunLogLevel.Warn, "step=${spec.name};attempt=$attempt;phase=exhausted")
+                        notice(input, LogLevel.Warn, "step=${spec.name};attempt=$attempt;phase=exhausted")
                         break
                     }
                     val backoff = (spec.retry.delayMs * attempt).coerceAtMost(spec.retry.maxDelayMs)
@@ -155,10 +173,53 @@ abstract class SequentialFlow : Flow {
         }
         return FlowStepRun(
             name = spec.name,
-            stage = spec.stage,
+            produces = spec.produces,
             attempts = attempt,
             elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L,
-            result = last,
+            facts = last,
+        )
+    }
+
+    /** Rejects duplicate fact writers before the first physical operation starts. */
+    private fun validatePlan(planned: List<FlowStep>) {
+        val owners = mutableSetOf<FlowStage>()
+        planned.forEach { spec ->
+            spec.produces.forEach { stage ->
+                check(owners.add(stage)) { "duplicate Flow stage producer: $stage" }
+            }
+        }
+    }
+
+    /** Converts missing or undeclared step facts into one exact internal-contract failure. */
+    private fun exactResult(spec: FlowStep, result: StepResult): StepResult = when (result) {
+        is StepResult.Retry -> result
+        is StepResult.Done -> if (result.facts.producedStages() == spec.produces) {
+            result
+        } else {
+            StepResult.Failed(
+                FlowStepFacts.forStages(spec.produces, internalUnknown()),
+                "step-facts-contract",
+            )
+        }
+        is StepResult.Failed -> if (result.facts.producedStages() == spec.produces) {
+            result
+        } else {
+            StepResult.Failed(
+                FlowStepFacts.forStages(spec.produces, internalUnknown()),
+                "step-facts-contract",
+            )
+        }
+    }
+
+    /** Returns an unexecuted current step whose complete producer set was cancelled. */
+    private fun cancelledRun(spec: FlowStep): FlowStepRun {
+        val cancelled = StageResult(StageState.CANCELLED, ResultReason.CANCELLED, ExitKind.NONE, 0)
+        return FlowStepRun(
+            name = spec.name,
+            produces = spec.produces,
+            attempts = 0,
+            elapsedMs = 0L,
+            facts = FlowStepFacts.forStages(spec.produces, cancelled),
         )
     }
 
@@ -167,7 +228,7 @@ abstract class SequentialFlow : Flow {
         try {
             cleanup(input)
         } catch (problem: Throwable) {
-            notice(input, RunLogLevel.Error, "cleanup-failed:" + problem::class.java.simpleName)
+            notice(input, LogLevel.Error, "cleanup-failed:" + problem::class.java.simpleName)
             StageResult(
                 StageState.FAILED,
                 ResultReason.CLEANUP_INCOMPLETE,
@@ -179,16 +240,18 @@ abstract class SequentialFlow : Flow {
 
     /** Builds facts from the last typed result of each owned stage. */
     private fun assembleFacts(runs: List<FlowStepRun>, cleanupFact: StageResult): BackendRunFacts {
-        val primitive = runs.lastOrNull { run -> run.stage == FlowStage.BACKEND_PRIMITIVE }?.result
-            ?: StageResult.SKIPPED
-        val dispatch = runs.lastOrNull { run -> run.stage == FlowStage.ROOT_SCRIPT_DISPATCH }?.result
-            ?: StageResult.SKIPPED
+        val primitive = runs.asReversed().firstNotNullOfOrNull { run ->
+            run.facts.fact(FlowStage.BACKEND_PRIMITIVE)
+        } ?: StageResult.SKIPPED
+        val dispatch = runs.asReversed().firstNotNullOfOrNull { run ->
+            run.facts.fact(FlowStage.ROOT_SCRIPT_DISPATCH)
+        } ?: StageResult.SKIPPED
         return BackendRunFacts(
             primitive = primitive,
             scriptDispatch = dispatch,
             cleanup = cleanupFact,
             terminalHint = terminalHint(runs),
-            diagnosticOutcome = diagnosticOutcome(runs),
+            diagnosticOutcome = diagnosticOutcome(runs, cleanupFact),
         )
     }
 
@@ -197,26 +260,16 @@ abstract class SequentialFlow : Flow {
         input: BackendFlowInput,
         runs: List<FlowStepRun>,
     ): BackendRunFacts {
-        val cancelled = StageResult(StageState.CANCELLED, ResultReason.CANCELLED, ExitKind.NONE, 0)
         val cleanupFact = runCleanup(input)
-        val prior = assembleFacts(runs, cleanupFact)
-        return prior.copy(
-            primitive = if (prior.primitive == StageResult.SKIPPED) cancelled else prior.primitive,
-            scriptDispatch = if (prior.scriptDispatch == StageResult.SKIPPED) cancelled else prior.scriptDispatch,
-            diagnosticOutcome = if (prior.diagnosticOutcome == DiagnosticOutcome.NOT_APPLICABLE) {
-                DiagnosticOutcome.NOT_APPLICABLE
-            } else {
-                DiagnosticOutcome.UNKNOWN
-            },
-        )
+        return assembleFacts(runs, cleanupFact)
     }
 
     /** Publishes one bounded Kotlin log draft without changing control flow. */
-    private fun notice(input: BackendFlowInput, level: RunLogLevel, body: String) {
+    private fun notice(input: BackendFlowInput, level: LogLevel, body: String) {
         runCatching {
             input.logs.emit(
-                RunLogDraft(
-                    origin = RunLogOrigin.Kotlin,
+                LogDraft(
+                    origin = LogOrigin.Kotlin,
                     level = level,
                     message = body.filter { character -> character.code in 0x20..0x7e }
                         .take(MAX_LOG_CHARACTERS),

@@ -33,5 +33,5 @@ interface RunSessionPort {
      * @param chooserTitle Localized system chooser title supplied by presentation.
      * @return True when the share intent was created and launched.
      */
-    fun shareTerminal(chooserTitle: String): Boolean
+    suspend fun shareTerminal(chooserTitle: String): Boolean
 }

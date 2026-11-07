@@ -56,6 +56,234 @@ class RootScriptRendererTest {
         assertTrue(script.indexOf("sync -f") < script.indexOf("ctl.restart zygote"))
     }
 
+    /** Renders every normalized Payload and Finish kind into one deterministic root script. */
+    @Test
+    fun allPayloadAndFinishKindsRenderExactGoldenScript() {
+        val plan = RootScriptExecutionPlan(
+            runId = runId,
+            generation = 7L,
+            payload = listOf(
+                RootScriptPayloadExecution(
+                    itemId = "payload-command",
+                    kind = RootScriptPayloadKind.COMMAND,
+                    required = true,
+                    stagedPath = null,
+                    args = listOf("/system/bin/id", "--context"),
+                    acceptance = RootScriptPayloadAcceptance.EXIT_ZERO,
+                ),
+                RootScriptPayloadExecution(
+                    itemId = "payload-script",
+                    kind = RootScriptPayloadKind.SCRIPT,
+                    required = true,
+                    stagedPath = "/workspace/payload-user.sh",
+                    args = listOf("--payload-arg"),
+                    acceptance = RootScriptPayloadAcceptance.EXIT_ZERO,
+                ),
+                RootScriptPayloadExecution(
+                    itemId = "payload-root-manager",
+                    kind = RootScriptPayloadKind.ROOT_MANAGER,
+                    required = true,
+                    stagedPath = "/workspace/libksud.so",
+                    args = listOf("late-load", "--allow-shell", "--kmi", "android15-6.6"),
+                    acceptance = RootScriptPayloadAcceptance.DAEMON_ACK,
+                ),
+                RootScriptPayloadExecution(
+                    itemId = "payload-lkm",
+                    kind = RootScriptPayloadKind.LKM,
+                    required = true,
+                    stagedPath = "/workspace/ghostlock_test.ko",
+                    args = listOf("mode=1"),
+                    acceptance = RootScriptPayloadAcceptance.MODULE_PRESENT,
+                ),
+                RootScriptPayloadExecution(
+                    itemId = "payload-detached",
+                    kind = RootScriptPayloadKind.DETACHED_PROCESS,
+                    required = true,
+                    stagedPath = "/workspace/root-daemon",
+                    args = listOf("--takeover"),
+                    acceptance = RootScriptPayloadAcceptance.TAKEOVER_ACK,
+                ),
+            ),
+            finish = listOf(
+                RootScriptFinishExecution(
+                    itemId = "finish-restore-selinux",
+                    kind = RootScriptFinishKind.COMMAND,
+                    severity = RootScriptFinishSeverity.SAFETY_CRITICAL,
+                    alwaysRun = true,
+                    stagedPath = null,
+                    args = listOf("/system/bin/setenforce", "1"),
+                ),
+                RootScriptFinishExecution(
+                    itemId = "finish-script",
+                    kind = RootScriptFinishKind.SCRIPT,
+                    severity = RootScriptFinishSeverity.NORMAL,
+                    alwaysRun = true,
+                    stagedPath = "/workspace/finish-user.sh",
+                    args = listOf("--finish-arg"),
+                ),
+                RootScriptFinishExecution(
+                    itemId = "finish-soft-reboot",
+                    kind = RootScriptFinishKind.REBOOT,
+                    severity = RootScriptFinishSeverity.SAFETY_CRITICAL,
+                    alwaysRun = true,
+                    stagedPath = null,
+                    args = emptyList(),
+                ),
+            ),
+        )
+
+        val script = RootScriptRenderer().renderText(plan, "/workspace/root-result.glr1")
+        val expected = """
+            #!/system/bin/sh
+            # GHOSTLOCK_HANDOFF_V1
+            set -u
+            RESULT='/workspace/root-result.glr1'
+            exec 9>"${'$'}RESULT"
+            write_item() {
+              printf '%s.%s.state=%s\n' "${'$'}1" "${'$'}2" "${'$'}3" >&9
+              printf '%s.%s.reason=%s\n' "${'$'}1" "${'$'}2" "${'$'}4" >&9
+              printf '%s.%s.exit_kind=%s\n' "${'$'}1" "${'$'}2" "${'$'}5" >&9
+              printf '%s.%s.exit_value=%s\n' "${'$'}1" "${'$'}2" "${'$'}6" >&9
+            }
+            printf 'GLR1\nrun=%s\ngeneration=%s\n' '0123456789abcdef0123456789abcdef' 7 >&9
+            PAYLOAD_REQUIRED_OK=1
+            PAYLOAD_BLOCKED=0
+            # Payload payload-command
+            if [ "${'$'}PAYLOAD_BLOCKED" -ne 0 ]; then
+              write_item payload 'payload-command' 4 1 0 0
+            else
+              ITEM_EXIT=0
+              '/system/bin/id' '--context'
+              ITEM_EXIT=${'$'}?
+              if [ "${'$'}ITEM_EXIT" -ne 0 ]; then
+                write_item payload 'payload-command' 3 5 1 "${'$'}ITEM_EXIT"
+                PAYLOAD_REQUIRED_OK=0
+                PAYLOAD_BLOCKED=1
+              elif [ "${'$'}ITEM_EXIT" -eq 0 ]; then
+                write_item payload 'payload-command' 2 0 1 0
+              else
+                write_item payload 'payload-command' 5 14 0 0
+                PAYLOAD_REQUIRED_OK=0
+                PAYLOAD_BLOCKED=1
+              fi
+            fi
+            # Payload payload-script
+            if [ "${'$'}PAYLOAD_BLOCKED" -ne 0 ]; then
+              write_item payload 'payload-script' 4 1 0 0
+            else
+              ITEM_EXIT=0
+              '/system/bin/sh' '/workspace/payload-user.sh' '--payload-arg'
+              ITEM_EXIT=${'$'}?
+              if [ "${'$'}ITEM_EXIT" -ne 0 ]; then
+                write_item payload 'payload-script' 3 5 1 "${'$'}ITEM_EXIT"
+                PAYLOAD_REQUIRED_OK=0
+                PAYLOAD_BLOCKED=1
+              elif [ "${'$'}ITEM_EXIT" -eq 0 ]; then
+                write_item payload 'payload-script' 2 0 1 0
+              else
+                write_item payload 'payload-script' 5 14 0 0
+                PAYLOAD_REQUIRED_OK=0
+                PAYLOAD_BLOCKED=1
+              fi
+            fi
+            # Payload payload-root-manager
+            if [ "${'$'}PAYLOAD_BLOCKED" -ne 0 ]; then
+              write_item payload 'payload-root-manager' 4 1 0 0
+            else
+              ITEM_EXIT=0
+              '/workspace/libksud.so' 'late-load' '--allow-shell' '--kmi' 'android15-6.6'
+              ITEM_EXIT=${'$'}?
+              if [ "${'$'}ITEM_EXIT" -ne 0 ]; then
+                write_item payload 'payload-root-manager' 3 5 1 "${'$'}ITEM_EXIT"
+                PAYLOAD_REQUIRED_OK=0
+                PAYLOAD_BLOCKED=1
+              elif command -v su >/dev/null 2>&1 || [ -d /sys/module/kernelsu ]; then
+                write_item payload 'payload-root-manager' 2 0 1 0
+              else
+                write_item payload 'payload-root-manager' 5 14 0 0
+                PAYLOAD_REQUIRED_OK=0
+                PAYLOAD_BLOCKED=1
+              fi
+            fi
+            # Payload payload-lkm
+            if [ "${'$'}PAYLOAD_BLOCKED" -ne 0 ]; then
+              write_item payload 'payload-lkm' 4 1 0 0
+            else
+              ITEM_EXIT=0
+              '/system/bin/insmod' '/workspace/ghostlock_test.ko' 'mode=1'
+              ITEM_EXIT=${'$'}?
+              if [ "${'$'}ITEM_EXIT" -ne 0 ]; then
+                write_item payload 'payload-lkm' 3 5 1 "${'$'}ITEM_EXIT"
+                PAYLOAD_REQUIRED_OK=0
+                PAYLOAD_BLOCKED=1
+              elif [ -d /sys/module/ghostlock_test ] || grep -q '^ghostlock_test ' /proc/modules 2>/dev/null; then
+                write_item payload 'payload-lkm' 2 0 1 0
+              else
+                write_item payload 'payload-lkm' 5 14 0 0
+                PAYLOAD_REQUIRED_OK=0
+                PAYLOAD_BLOCKED=1
+              fi
+            fi
+            # Payload payload-detached
+            if [ "${'$'}PAYLOAD_BLOCKED" -ne 0 ]; then
+              write_item payload 'payload-detached' 4 1 0 0
+            else
+              ITEM_EXIT=0
+              '/workspace/root-daemon' '--takeover' >/dev/null 2>&1 &
+              ITEM_EXIT=${'$'}?
+              if [ "${'$'}ITEM_EXIT" -ne 0 ]; then
+                write_item payload 'payload-detached' 3 5 1 "${'$'}ITEM_EXIT"
+                PAYLOAD_REQUIRED_OK=0
+                PAYLOAD_BLOCKED=1
+              elif [ "${'$'}ITEM_EXIT" -eq 0 ]; then
+                write_item payload 'payload-detached' 2 0 1 0
+              else
+                write_item payload 'payload-detached' 5 14 0 0
+                PAYLOAD_REQUIRED_OK=0
+                PAYLOAD_BLOCKED=1
+              fi
+            fi
+            # Finish finish-restore-selinux
+            if [ "${'$'}PAYLOAD_REQUIRED_OK" -ne 1 ] && [ 1 -ne 1 ]; then
+              write_item finish 'finish-restore-selinux' 4 1 0 0
+            else
+              '/system/bin/setenforce' '1'
+              ITEM_EXIT=${'$'}?
+              if [ "${'$'}ITEM_EXIT" -eq 0 ]; then
+                write_item finish 'finish-restore-selinux' 2 0 1 0
+              else
+                write_item finish 'finish-restore-selinux' 3 5 1 "${'$'}ITEM_EXIT"
+              fi
+            fi
+            # Finish finish-script
+            if [ "${'$'}PAYLOAD_REQUIRED_OK" -ne 1 ] && [ 1 -ne 1 ]; then
+              write_item finish 'finish-script' 4 1 0 0
+            else
+              '/system/bin/sh' '/workspace/finish-user.sh' '--finish-arg'
+              ITEM_EXIT=${'$'}?
+              if [ "${'$'}ITEM_EXIT" -eq 0 ]; then
+                write_item finish 'finish-script' 2 0 1 0
+              else
+                write_item finish 'finish-script' 3 5 1 "${'$'}ITEM_EXIT"
+              fi
+            fi
+            # Finish finish-soft-reboot
+            if [ "${'$'}PAYLOAD_REQUIRED_OK" -ne 1 ] && [ 1 -ne 1 ]; then
+              write_item finish 'finish-soft-reboot' 4 1 0 0
+            else
+              write_item finish 'finish-soft-reboot' 1 0 0 0
+              printf 'handoff=1\ncomplete=1\n' >&9
+              sync -f /proc/self/fd/9 2>/dev/null || sync
+              /system/bin/setprop ctl.restart zygote
+              exit 0
+            fi
+            printf 'handoff=0\ncomplete=1\n' >&9
+            sync -f /proc/self/fd/9 2>/dev/null || sync
+            exit 0
+        """.trimIndent() + "\n"
+        assertEquals(expected, script)
+    }
+
     @Test
     fun requiredFailFastAndFinishAlwaysRunRemainIndependent() {
         val secondPayload = commandPayload("payload-second", listOf("id"))
@@ -167,7 +395,11 @@ class RootScriptRendererTest {
         val artifact = renderer.publish(publishedWorkspace.toFile(), plan)
         val publishedScript = publishedWorkspace.resolve("root-script.sh")
         assertTrue(artifact.scriptIdentity.matches(publishedScript.toFile()))
-        assertTrue(Files.readString(publishedScript).startsWith("#!/system/bin/sh\n"))
+        assertTrue(
+            Files.readString(publishedScript).startsWith(
+                "#!/system/bin/sh\n# GHOSTLOCK_HANDOFF_V1\n",
+            ),
+        )
         Files.list(publishedWorkspace).use { entries ->
             assertFalse(entries.anyMatch { path -> path.fileName.toString().endsWith(".tmp") })
         }

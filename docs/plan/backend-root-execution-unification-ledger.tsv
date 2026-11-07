@@ -275,6 +275,7 @@ app/src/main/kotlin/com/ghostlock/app/ui/screen/module/backends/FinishSettingsUi
 app/src/main/kotlin/com/ghostlock/app/ui/screen/module/backends/FinishUi.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/ui/screen/module/payload/PayloadUi.kt	P-RUN-IO-001/批次01	whole-file	Payload settings UI
 app/src/main/kotlin/com/ghostlock/app/ui/viewmodel/FinishEditorViewModel.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/ui/viewmodel/PayloadViewModel.kt	P-RUN-IO-001/批次01	whole-file	current editor owns Payload and moves to correct owner
 app/src/main/kotlin/com/ghostlock/app/ui/viewmodel/FinishSettingsViewModel.kt	MODIFY	-	P-RUN-IO-001/批次01	whole-file	FinishRepository
+app/src/androidTest/kotlin/com/ghostlock/app/data/run/RootArtifactStagingAdapterTest.kt	ADD	-	P-RUN-IO-001/批次01	whole-file	Android PFD staging and ordinary-file identity matrix
 app/src/test/kotlin/com/ghostlock/app/core/rootscript/PublishedArtifactIdentityTest.kt	ADD	-	P-RUN-IO-001/批次01	whole-file	same-open-file identity and replacement/symlink negative cases
 app/src/test/kotlin/com/ghostlock/app/core/rootscript/RootScriptRendererTest.kt	ADD	-	P-RUN-IO-001/批次01	whole-file	Payload then Finish rendering and fail-fast golden
 app/src/test/kotlin/com/ghostlock/app/core/rootscript/RootScriptResultCodecTest.kt	ADD	-	P-RUN-IO-001/批次01	whole-file	strict line-protocol positive and malformed cases
@@ -798,6 +799,8 @@ app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/jna/DiagnoseNati
 app/src/main/kotlin/com/ghostlock/app/core/flow/SequentialFlow.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	diagnostic-cleanup-template	pass the sole cleanup fact into diagnostic outcome assembly without changing the public Flow lifecycle
 app/src/main/kotlin/com/ghostlock/app/backend/registry/BackendRegistry.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	diagnose-membership	replace debug-only membership with one debug and release DIAGNOSE plugin
 app/src/main/kotlin/com/ghostlock/app/data/run/RootArtifactStagingAdapter.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	diagnostic-shell-artifact	emit exactly one bounded Shell log record and exit zero
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostService.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	atomic-prepare-publication	build the constructor-loaded candidate before atomically committing lifecycle prepared and snapshot under the host lock
+app/src/main/kotlin/com/ghostlock/app/shizuku/GhostlockUserService.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	atomic-prepare-publication	mirror App host candidate construction and atomic lifecycle prepared snapshot publication
 app/src/main/kotlin/com/ghostlock/app/core/run/RunCoordinator.kt	MOVE_REWRITE	app/src/main/kotlin/com/ghostlock/app/core/run/LogHub.kt	P-DIAG-NATIVE-001/批次01	sole-log-hub-name	mechanically rename the sole canonical log hub without changing lock queue or lifecycle topology
 app/src/test/kotlin/com/ghostlock/app/core/run/RunCoordinatorLogSinkTest.kt	MOVE_REWRITE	app/src/test/kotlin/com/ghostlock/app/core/run/LogHubSinkTest.kt	P-DIAG-NATIVE-001/批次01	log-hub-tests	mechanically rename and retain accepted run ordering sink and terminal criteria
 app/src/androidTest/kotlin/com/ghostlock/app/data/run/RunCoordinatorMediaStoreIntegrationTest.kt	MOVE_REWRITE	app/src/androidTest/kotlin/com/ghostlock/app/data/run/LogHubMediaStoreIntegrationTest.kt	P-DIAG-NATIVE-001/批次01	log-hub-runtime-test	mechanically rename the canonical MediaStore parity gate
@@ -811,7 +814,7 @@ build.gradle.kts	MODIFY	-	P-DIAG-NATIVE-001/批次01	root-native-gates	register 
 gradle/verification-metadata.xml	ADD	-	P-DIAG-NATIVE-001/批次01	jna-checksums	strictly verify the resolved JNA AAR POM and metadata without a dynamic version
 app/src/main/assets/third_party/jna/LICENSE	ADD	-	P-DIAG-NATIVE-001/批次01	jna-license	package the upstream 5.19.1 license selector bytes
 app/src/main/assets/third_party/jna/AL2.0	ADD	-	P-DIAG-NATIVE-001/批次01	jna-license	package the full Apache-2.0 license selected for distribution
-app/src/main/assets/third_party/jna/LGPL2.1	ADD	-	P-DIAG-NATIVE-001/批次01	jna-license	package the resolved AAR LGPL2.1 bytes while distribution selects Apache-2.0
+app/src/main/assets/third_party/jna/LGPL2.1	ADD	-	P-DIAG-NATIVE-001/批次01	jna-license	package the upstream 5.19.1 tag LGPL2.1 bytes while distribution selects Apache-2.0
 app/src/main/assets/third_party/jna/INVENTORY.txt	ADD	-	P-DIAG-NATIVE-001/批次01	jna-inventory	record coordinate upstream selected license packaged files and absent NOTICE fact
 tools/tests/diagnose_abi_test.cpp	ADD	-	P-DIAG-NATIVE-001/批次01	whole-file	prove host layout status initialization no-mutation and raw-bit nonce contract
 tools/tests/CMakeLists.txt	MODIFY	-	P-DIAG-NATIVE-001/批次01	diagnose-host-test	register the Diagnose ABI source in native contracts
@@ -822,6 +825,11 @@ app/src/androidTest/kotlin/com/ghostlock/app/backend/transport/RunHostTestFixtur
 app/src/androidTest/kotlin/com/ghostlock/app/backend/transport/AppRunHostSmokeTest.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	diagnose-app-flowhost	prove App client to flowhost Diagnose typed result and log path
 app/src/androidTest/kotlin/com/ghostlock/app/backend/transport/ShizukuRunHostSmokeTest.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	diagnose-shizuku	prove Shizuku UserService Diagnose typed result and log path
 app/src/androidTest/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseJnaSmokeTest.kt	ADD	-	P-DIAG-NATIVE-001/批次01	whole-file	prove C JNA layout constant load native log shell handoff and both execution domains
+app/src/test/kotlin/com/ghostlock/app/backend/transport/RunHostProtocolTest.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	diagnose-key-fixture	replace the retired DEBUG-PROBE valid-key literal with DIAGNOSE
+app/src/test/kotlin/com/ghostlock/app/backend/transport/RunHostRequestValidationTest.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	diagnose-key-fixture	replace the retired DEBUG-PROBE request fixture with DIAGNOSE
+app/src/test/kotlin/com/ghostlock/app/backend/transport/RunHostSharedWireTest.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	diagnose-key-fixture	replace the retired DEBUG-PROBE shared-wire fixture with DIAGNOSE
+app/src/test/kotlin/com/ghostlock/app/backend/transport/RunHostStateMachineTest.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	prepare-start-interleaving	prove candidate factory failure leaves NEW and successful host-lock commit never exposes an empty prepared slot to start
+app/src/androidTest/kotlin/com/ghostlock/app/architecture/UiBaselineFixtures.kt	MODIFY	-	P-DIAG-NATIVE-001/批次01	diagnose-key-fixture	replace the retired DEBUG-PROBE UI fixture constant with DIAGNOSE
 README.md	MODIFY	-	P-DIAG-NATIVE-001/批次01	current-log-and-diagnose-summary	replace current RunCoordinator and DEBUG-PROBE claims with LogHub and DIAGNOSE
 README_ZH.md	MODIFY	-	P-DIAG-NATIVE-001/批次01	current-log-and-diagnose-summary	keep the Chinese root README synchronized with LogHub and DIAGNOSE
 app/src/main/kotlin/com/ghostlock/app/backend/README.md	MODIFY	-	P-DIAG-NATIVE-001/批次01	current-diagnose-contract	record Flow initialize LogHub JNA and non-root diagnostic boundaries
@@ -836,3 +844,105 @@ docs/plan/MASTER-PLAN.md	MODIFY	-	P-DIAG-NATIVE-001/批次01	progress-projection
 docs/plan/REMAINING-PLAN.md	MODIFY	-	P-DIAG-NATIVE-001/批次01	checkbox-projection	track only remaining approved R6 delivery gates
 docs/plan/ROADMAP.md	MODIFY	-	P-DIAG-NATIVE-001/批次01	roadmap-projection	replace not-scheduled R6 with its evidence-qualified current state
 docs/plan/developer-defined-tasks.md	MODIFY	-	P-DIAG-NATIVE-001/批次01	checkbox-only	change only the three existing Diagnose checkboxes after their literal delivery criteria pass
+# P-LOG-X-001 batch 02 v3 current candidate; v2.1 journal actions were unapproved and superseded by 2026-11-06 user ruling.
+app/src/main/kotlin/com/ghostlock/app/domain/run/RunLogSink.kt	MOVE	app/src/main/kotlin/com/ghostlock/app/domain/run/LogSink.kt	P-LOG-X-001/批次02	stream-sink-contract	replace 512-command sink contract with run-scoped nonblocking processed-event consumer contract; rename RunLog-only symbols to Log-only symbols
+app/src/main/kotlin/com/ghostlock/app/domain/run/RunLogDocumentFormatter.kt	MOVE	app/src/main/kotlin/com/ghostlock/app/domain/run/LogDocumentFormatter.kt	P-LOG-X-001/批次02	gllog2-row-format	encode GLLOG2 header ordinary entry and terminal marker without typed report trailer or whole-document ByteArray; rename RunLog-only symbols to Log-only symbols
+app/src/main/kotlin/com/ghostlock/app/domain/run/RunLogRecord.kt	MOVE	app/src/main/kotlin/com/ghostlock/app/domain/run/LogRecord.kt	P-LOG-X-001/批次02	commit-key	carry immutable hub commit identity for keyed full-history UI rows; rename RunLog-only symbols to Log-only symbols
+app/src/main/kotlin/com/ghostlock/app/domain/run/RunSessionState.kt	MODIFY	-	P-LOG-X-001/批次02	ui-history	project complete current-run UI sink rows without viewport budget or report renderer
+app/src/main/kotlin/com/ghostlock/app/domain/run/RunSessionPort.kt	MODIFY	-	P-LOG-X-001/批次02	async-share	allow active stream barrier and file-prefix copy off the UI thread
+app/src/main/kotlin/com/ghostlock/app/domain/run/RunBackendUseCase.kt	MODIFY	-	P-LOG-X-001/批次02	async-share	forward async share without file ownership
+app/src/main/kotlin/com/ghostlock/app/core/run/LogHub.kt	MODIFY	-	P-LOG-X-001/批次02	dual-stream-hub	own raw and processed unlimited channels single processor single dispatcher normal Info report rows and nonblocking sink fanout
+app/src/main/kotlin/com/ghostlock/app/data/run/AndroidRunLogSinkFactory.kt	MOVE	app/src/main/kotlin/com/ghostlock/app/data/run/AndroidLogSinkFactory.kt	P-LOG-X-001/批次02	independent-stream-sinks	own private-file and optional MediaStore buffered output workers and their independent unlimited backlogs; rename RunLog-only symbols to Log-only symbols
+app/src/main/kotlin/com/ghostlock/app/data/backend/BackendRunSessionAdapter.kt	MODIFY	-	P-LOG-X-001/批次02	file-prefix-share	share exact flushed private-file prefix from async barrier without whole-document ByteArray
+app/src/main/kotlin/com/ghostlock/app/data/diagnostics/AndroidDiagnosticReportBuilder.kt	MODIFY	-	P-LOG-X-001/批次02	stream-diagnostic-copy	copy same exact flushed private-file prefix into diagnostic archive without whole-document ByteArray
+app/src/main/kotlin/com/ghostlock/app/AppContainer.kt	MODIFY	-	P-LOG-X-001/批次02	stream-composition	inject one LogHub stream runtime and private-file diagnostic source
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostProtocol.kt	MODIFY	-	P-LOG-X-001/批次02	remove-256	delete cumulative log count cap while retaining per-record and parcel validation
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostLogCursor.kt	MODIFY	-	P-LOG-X-001/批次02	long-sequence	accept strictly increasing positive Long source sequence without 256 limit
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostSnapshot.kt	MODIFY	-	P-LOG-X-001/批次02	snapshot-sequence	remove sequence less-than-or-equal-to-256 invariant
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostService.kt	MODIFY	-	P-LOG-X-001/批次02	app-producer	remove cumulative 256 drops without changing RunHost terminal authority
+app/src/main/kotlin/com/ghostlock/app/shizuku/GhostlockUserService.kt	MODIFY	-	P-LOG-X-001/批次02	shizuku-producer	mirror App positive Long source sequence without a second log hub
+app/src/main/kotlin/com/ghostlock/app/ui/viewmodel/RunViewModel.kt	MODIFY	-	P-LOG-X-001/批次02	async-share-ui	collect full-history UI sink publication and launch active share in viewModelScope
+app/src/main/kotlin/com/ghostlock/app/ui/screen/run/RunUiState.kt	MODIFY	-	P-LOG-X-001/批次02	stable-ui-key	carry full-history row commit ids without special RunReport renderer
+app/src/main/kotlin/com/ghostlock/app/ui/screen/run/RunPage.kt	MODIFY	-	P-LOG-X-001/批次02	lazy-full-history	replace full Column composition with keyed LazyColumn for both renderer families
+app/src/main/kotlin/com/ghostlock/app/domain/settings/OperationalPreferences.kt	MODIFY	-	P-LOG-X-001/批次02	gllog2-kdoc	update automatic export format reference after the formatter switch
+app/src/main/kotlin/com/ghostlock/app/ui/viewmodel/SettingsViewModel.kt	MODIFY	-	P-LOG-X-001/批次02	gllog2-kdoc	update automatic export format reference after the formatter switch
+app/src/test/kotlin/com/ghostlock/app/core/run/LogHubSinkTest.kt	MODIFY	-	P-LOG-X-001/批次02	dual-stream-tests	prove raw and processed order report Info threshold and blocked-sink isolation without arbitrary count limits
+app/src/test/kotlin/com/ghostlock/app/domain/run/RunLogDocumentFormatterTest.kt	MOVE	app/src/test/kotlin/com/ghostlock/app/domain/run/LogDocumentFormatterTest.kt	P-LOG-X-001/批次02	gllog2-tests	prove row-only GLLOG2 grammar and no hidden typed report trailer; rename RunLog-only symbols to Log-only symbols
+app/src/test/kotlin/com/ghostlock/app/data/backend/BackendRunSessionAdapterTest.kt	MODIFY	-	P-LOG-X-001/批次02	share-tests	prove active barrier prefix and async FileProvider share path
+app/src/test/kotlin/com/ghostlock/app/backend/transport/RunHostProtocolTest.kt	MODIFY	-	P-LOG-X-001/批次02	sequence-volume	prove above-256 producer sequence and Long overflow behavior
+app/src/test/kotlin/com/ghostlock/app/backend/transport/RunHostSharedWireTest.kt	MODIFY	-	P-LOG-X-001/批次02	shared-volume	prove App and Shizuku cursor grammar at 16384 sequential records
+app/src/test/kotlin/com/ghostlock/app/backend/transport/RunHostSnapshotContractTest.kt	MODIFY	-	P-LOG-X-001/批次02	snapshot-volume	prove positive sequence above 256 and invalid value rejection
+app/src/androidTest/kotlin/com/ghostlock/app/data/run/AndroidRunLogSinkFactoryTest.kt	MOVE	app/src/androidTest/kotlin/com/ghostlock/app/data/run/AndroidLogSinkFactoryTest.kt	P-LOG-X-001/批次02	sink-isolation-tests	prove private and MediaStore independent buffered streams blocked provider first failure and partial file; rename RunLog-only symbols to Log-only symbols
+app/src/androidTest/kotlin/com/ghostlock/app/data/run/LogHubMediaStoreIntegrationTest.kt	MODIFY	-	P-LOG-X-001/批次02	large-parity	prove over-10MiB full current-run stream and private MediaStore byte equality after both sink drain
+app/src/androidTest/kotlin/com/ghostlock/app/backend/transport/AppRunHostSmokeTest.kt	MODIFY	-	P-LOG-X-001/批次02	app-smoke	retain real App Diagnose log report and typed terminal path
+app/src/androidTest/kotlin/com/ghostlock/app/backend/transport/ShizukuRunHostSmokeTest.kt	MODIFY	-	P-LOG-X-001/批次02	shizuku-smoke	retain real Shizuku Diagnose log report and typed terminal path
+app/src/androidTest/kotlin/com/ghostlock/app/ui/screen/run/RunPageLogStreamTest.kt	ADD	-	P-LOG-X-001/批次02	whole-file	prove both UI families render ordinary Info report and keyed LazyColumn full-history behavior
+app/build.gradle.kts	MODIFY	-	P-LOG-X-001/批次02	exact-test-inventory	update exact unit and instrumentation source expectations only for delivered tests
+tools/kotlin_architecture_d0.py	MODIFY	-	P-LOG-X-001/批次02	stream-guard	forbid old 256 and 512 log caps report-special UI whole-document ByteArray and second log hub
+app/src/test/resources/architecture/kotlin-file-actions-v1.tsv	MODIFY	-	P-LOG-X-001/批次02	current-inventory	classify added run page stream test and current dual-stream files
+docs/plan/backend-root-execution-runhost-wire.md	MODIFY	-	P-LOG-X-001/批次02	log-wire-contract	state positive Long source sequence and ordinary Info report projection
+docs/development/full-process-uml.md	MODIFY	-	P-LOG-X-001/批次02	dual-stream-diagrams	update current log IPO class sequence and ownership drawings for two streams and independent sinks
+docs/development/introduction.md	MODIFY	-	P-LOG-X-001/批次02	current-architecture	replace 512 command sink description after implementation
+app/src/main/kotlin/com/ghostlock/app/backend/README.md	MODIFY	-	P-LOG-X-001/批次02	backend-log-boundary	record Flow typed report and ordinary Info log projection with sink-owned backlog
+README.md	MODIFY	-	P-LOG-X-001/批次02	current-summary	replace old 512 queue description after source delivery
+README_ZH.md	MODIFY	-	P-LOG-X-001/批次02	current-summary	keep bilingual root README synchronized
+docs/analysis/architecture-review-log.md	MODIFY	-	P-LOG-X-001/批次02	v3-critic-record	record supersession and read-only v3 critic verdict
+docs/plan/backend-root-execution-unification-ledger.tsv	MODIFY	-	P-LOG-X-001/批次02	v3-exact-scope	replace unapproved v2.1 ledger actions with current v3 actions
+docs/plan/backend-root-execution-unification-plan.md	MODIFY	-	P-LOG-X-001/批次02	v3-authority	record user route selection exact design critic approval and evidence
+docs/plan/MASTER-PLAN.md	MODIFY	-	P-LOG-X-001/批次02	progress-projection	mark v2.1 superseded and v3 as current candidate without source pass claim
+docs/plan/REMAINING-PLAN.md	MODIFY	-	P-LOG-X-001/批次02	checkbox-projection	track v3 design and delivery without retaining v2.1 implementation tasks
+docs/plan/ROADMAP.md	MODIFY	-	P-LOG-X-001/批次02	roadmap-projection	show current dual-stream batch and old candidate replacement
+app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseFlow.kt	MODIFY	-	P-LOG-X-001/批次02	mechanical-log-symbol-rename	use Log-prefixed log DTO names without behavior change
+app/src/main/kotlin/com/ghostlock/app/backend/backends/lua/FlowLuaImpl.kt	MODIFY	-	P-LOG-X-001/批次02	mechanical-log-symbol-rename	use Log-prefixed log DTO names without behavior change
+app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/jna/DiagnoseNativeBinding.kt	MODIFY	-	P-LOG-X-001/批次02	mechanical-log-symbol-rename	use Log-prefixed log DTO names without behavior change
+app/src/main/kotlin/com/ghostlock/app/core/flow/SequentialFlow.kt	MODIFY	-	P-LOG-X-001/批次02	mechanical-log-symbol-rename	use Log-prefixed log DTO names without behavior change
+app/src/main/kotlin/com/ghostlock/app/core/flow/BackendFlowInput.kt	MODIFY	-	P-LOG-X-001/批次02	mechanical-log-symbol-rename	use Log-prefixed log DTO names without behavior change
+app/src/test/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseFlowTest.kt	MODIFY	-	P-LOG-X-001/批次02	mechanical-log-symbol-rename	use Log-prefixed log DTO names without behavior change
+app/src/test/kotlin/com/ghostlock/app/core/flow/FlowRequestTest.kt	MODIFY	-	P-LOG-X-001/批次02	mechanical-log-symbol-rename	use Log-prefixed log DTO names without behavior change
+app/src/androidTest/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseJnaSmokeTest.kt	MODIFY	-	P-LOG-X-001/批次02	mechanical-log-symbol-rename	use Log-prefixed log DTO names without behavior change
+app/src/androidTest/kotlin/com/ghostlock/app/architecture/UiBaselineFixtures.kt	MODIFY	-	P-LOG-X-001/批次02	ui-snapshot-test-fixture	construct fixed-prefix log snapshot for existing UI baseline tests
+# P-RUN-HANDOFF-001/批次01 current approved common handoff chain.
+app/src/main/cpp/common/run_handoff.h	ADD	-	P-RUN-HANDOFF-001/批次01	common-handoff-contract	declare one no-argument fixed-location synchronous shell handoff and its observed status domain
+app/src/main/cpp/common/run_handoff.c	ADD	-	P-RUN-HANDOFF-001/批次01	common-handoff-implementation	open the fixed workspace script without following links validate the exact marker on the same fd and spawn wait reap synchronously
+app/src/main/cpp/common/CMakeLists.txt	MODIFY	-	P-RUN-HANDOFF-001/批次01	common-target	compile the common handoff helper into the shared common object target
+app/src/main/cpp/backends/diagnose/api/diagnose_api.h	MODIFY	-	P-RUN-HANDOFF-001/批次01	direct-jna-contract	replace versioned compatibility fields with the minimal same-release request and result plus one unversioned symbol
+app/src/main/cpp/backends/diagnose/diagnose.cpp	MODIFY	-	P-RUN-HANDOFF-001/批次01	single-native-chain	emit Native and Shell records in separate fd windows call common handoff once and commit one result
+app/src/main/cpp/backends/diagnose/CMakeLists.txt	MODIFY	-	P-RUN-HANDOFF-001/批次01	diagnose-export	export only gl_diagnose_run and remove versioned interface wording
+app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptArtifact.kt	MODIFY	-	P-RUN-HANDOFF-001/批次01	fixed-script-contract	own the shared fixed filename and exact handoff marker constants
+app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptRenderer.kt	MODIFY	-	P-RUN-HANDOFF-001/批次01	product-publisher	publish the common marker at the fixed root-script filename
+app/src/main/kotlin/com/ghostlock/app/data/run/RootArtifactStagingAdapter.kt	MODIFY	-	P-RUN-HANDOFF-001/批次01	diagnostic-publisher	publish the controlled diagnostic script with the same fixed filename and marker
+app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostService.kt	MODIFY	-	P-RUN-HANDOFF-001/批次01	app-home-binding	bind accepted App host workspace root to GHOSTLOCK_HOME immediately before Flow run
+app/src/main/kotlin/com/ghostlock/app/shizuku/GhostlockUserService.kt	MODIFY	-	P-RUN-HANDOFF-001/批次01	shizuku-home-binding	mirror the accepted shell host GHOSTLOCK_HOME binding and terminal failure boundary
+app/src/main/kotlin/com/ghostlock/app/core/flow/FlowStep.kt	MODIFY	-	P-RUN-HANDOFF-001/批次01	planned-fact-owner	replace one stage field with a nonempty exact producer set
+app/src/main/kotlin/com/ghostlock/app/core/flow/StepResult.kt	MODIFY	-	P-RUN-HANDOFF-001/批次01	multi-fact-result	carry typed primitive and dispatch facts from one physical operation
+app/src/main/kotlin/com/ghostlock/app/core/flow/FlowStepRun.kt	MODIFY	-	P-RUN-HANDOFF-001/批次01	multi-fact-history	retain the planned producer set and exact typed facts for each physical run
+app/src/main/kotlin/com/ghostlock/app/core/flow/SequentialFlow.kt	MODIFY	-	P-RUN-HANDOFF-001/批次01	fact-owner-runtime	reject duplicate producers and preserve every declared fact through cancellation timeout exception and completion
+app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/jna/DiagnoseJnaLibrary.kt	MODIFY	-	P-RUN-HANDOFF-001/批次01	direct-jna-mapping	map only gl_diagnose_run and the minimal same-release request and result fields
+app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/jna/DiagnoseNativeBinding.kt	MODIFY	-	P-RUN-HANDOFF-001/批次01	two-source-binding	own two independent pipe pairs invoke one direct native chain and decode both source records
+app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseFlow.kt	MODIFY	-	P-RUN-HANDOFF-001/批次01	one-physical-step	remove Kotlin shell process execution and map one native chain into two independent facts
+app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/BackendDiagnose.kt	MODIFY	-	P-RUN-HANDOFF-001/批次01	abort-policy	make synchronous handoff cancellable only before accepted start
+tools/tests/run_handoff_test.cpp	ADD	-	P-RUN-HANDOFF-001/批次01	common-handoff-host-test	cover fixed location marker no-follow child output exit signal and spawn wait semantics
+tools/tests/diagnose_abi_test.cpp	MODIFY	-	P-RUN-HANDOFF-001/批次01	direct-call-host-test	cover the unversioned call status sentinel two log windows nonce bits and one handoff invocation without size assertions
+tools/tests/CMakeLists.txt	MODIFY	-	P-RUN-HANDOFF-001/批次01	native-contract-registration	register the common helper and updated direct Diagnose call tests
+tools/tests/native-test-disposition.tsv	MODIFY	-	P-RUN-HANDOFF-001/批次01	native-contract-disposition	classify the common helper test in the exact host contract inventory
+build.gradle.kts	MODIFY	-	P-RUN-HANDOFF-001/批次01	native-contract-count	update the exact host inventory to 31 total and 3 native contracts
+app/src/test/kotlin/com/ghostlock/app/core/flow/FlowRequestTest.kt	MODIFY	-	P-RUN-HANDOFF-001/批次01	multi-fact-flow-tests	cover dual facts duplicate producers exact coverage cancellation and exception ownership
+app/src/test/kotlin/com/ghostlock/app/core/rootscript/RootScriptRendererTest.kt	MODIFY	-	P-RUN-HANDOFF-001/批次01	product-marker-tests	freeze the fixed filename and two-line handoff header
+app/src/test/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseFlowTest.kt	MODIFY	-	P-RUN-HANDOFF-001/批次01	diagnose-chain-tests	cover phase independence call status helper failure and before-start cancellation
+app/src/androidTest/kotlin/com/ghostlock/app/data/run/RootArtifactStagingAdapterTest.kt	ADD	-	P-RUN-HANDOFF-001/批次01	diagnostic-publisher-test	prove the fixed marker filename identity and executable mode on Android
+app/src/androidTest/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseJnaSmokeTest.kt	MODIFY	-	P-RUN-HANDOFF-001/批次01	direct-runtime-test	verify behavior of the direct same-release mapping and full native handoff chain without layout or size assertions
+app/build.gradle.kts	MODIFY	-	P-RUN-HANDOFF-001/批次01	unit-count	update debug and release exact unit expectations to the delivered 111 tests
+tools/kotlin_architecture_d0.py	MODIFY	-	P-RUN-HANDOFF-001/批次01	current-boundary-guard	remove the Diagnose ProcessBuilder exemption and classify the approved handoff Kotlin changes
+app/src/test/resources/architecture/kotlin-file-actions-v1.tsv	MODIFY	-	P-RUN-HANDOFF-001/批次01	generated-current-inventory	mark the approved handoff source and test rows without unfreezing real attack backends
+README.md	MODIFY	-	P-RUN-HANDOFF-001/批次01	current-summary	record the one unversioned native chain and same-call handoff in English
+README_ZH.md	MODIFY	-	P-RUN-HANDOFF-001/批次01	current-summary-zh	keep the Chinese current summary synchronized
+app/src/main/kotlin/com/ghostlock/app/backend/README.md	MODIFY	-	P-RUN-HANDOFF-001/批次01	backend-owner-summary	record home binding direct JNA mapping common spawn ownership and no compatibility layer
+docs/development/introduction.md	MODIFY	-	P-RUN-HANDOFF-001/批次01	current-architecture-summary	replace the two-step Diagnose description with the one physical native chain
+docs/development/full-process-uml.md	MODIFY	-	P-RUN-HANDOFF-001/批次01	current-handoff-uml	update the sole Diagnose IPO class sequence and state diagrams
+docs/plan/backend-root-execution-runhost-wire.md	MODIFY	-	P-RUN-HANDOFF-001/批次01	runhost-home-contract	freeze accepted-start workspace home binding before Flow run
+docs/analysis/architecture-review-log.md	MODIFY	-	P-RUN-HANDOFF-001/批次01	critic-record	record the unversioned same-release simplification verdict and zero blockers
+docs/plan/backend-root-execution-unification-plan.md	MODIFY	-	P-RUN-HANDOFF-001/批次01	active-batch-authority	record user correction exact design implementation checklist and evidence
+docs/plan/backend-root-execution-unification-ledger.tsv	MODIFY	-	P-RUN-HANDOFF-001/批次01	exact-handoff-ledger	list every current implementation documentation and verification action
+docs/plan/MASTER-PLAN.md	MODIFY	-	P-RUN-HANDOFF-001/批次01	progress-projection	add the current common handoff batch without changing attack backend status
+docs/plan/REMAINING-PLAN.md	MODIFY	-	P-RUN-HANDOFF-001/批次01	checkbox-projection	track implementation and remaining source and AVD gates
+docs/plan/ROADMAP.md	MODIFY	-	P-RUN-HANDOFF-001/批次01	roadmap-projection	insert the approved common handoff batch after Diagnose and log restructuring

@@ -1,42 +1,67 @@
 package com.ghostlock.app.domain.run
 
 /** Execution lifecycle exposed by the application-scoped run session. */
-enum class RunSessionPhase {
-    /** No backend execution has started for the current selection. */
-    Idle,
-
-    /** The launcher owns an active backend execution. */
-    Running,
-
-    /** An explicit abort is propagating through the existing launcher cancellation path. */
-    Aborting,
-
-    /** The explicit abort completed and the launcher released its current binding. */
-    Aborted,
-
-    /** The backend returned a terminal success, failure, or refusal. */
-    Done,
-
-    /** The backend requested handoff; the UI must not infer a later terminal result. */
-    HandoffRequested,
-}
+enum class RunSessionPhase { Idle, Running, Aborting, Aborted, Done, HandoffRequested }
 
 /**
- * Pure projection of the selected backend and its application-scoped execution session.
+ * Stable read-only prefix of one append-only log row array.
  *
- * @property backendKey Stable selected backend identity, or null when none is available.
- * @property backendLabel Human-readable backend identity resolved by the outer adapter.
- * @property startAllowed Result of the existing authoritative run gate for a fresh start.
- * @property blockedReasons Localized gate reasons in stable order.
- * @property abortable Whether explicit user cancellation may propagate to the launcher.
- * @property warnOnRerun Whether presentation must confirm a repeated run.
- * @property showTimestamp Whether terminal rows include elapsed time.
- * @property minimumLogLevel Frozen minimum severity applied before every log sink.
- * @property terminalFontPath Validated custom terminal-font path, or null for monospace.
- * @property phase Current session lifecycle.
- * @property entries Immutable terminal facts retained across renderer recreation.
- * @note This type contains no Android, Compose, backend-plugin, core-flow, or JNI type.
+ * Equality uses only O(1) publication identity; neither StateFlow nor Compose walks old rows on append.
+ * The owner may append after publication, but never mutates a published prefix.
  */
+class LogRowsSnapshot private constructor(
+    private val backingRows: ArrayList<LogRecord>,
+    private val rowsLock: Any,
+    val token: Long,
+    val revision: Long,
+    val size: Int,
+) : Iterable<LogRecord> {
+    /** Returns only a row in the prefix fixed at publication. */
+    operator fun get(index: Int): LogRecord {
+        require(index in 0 until size) { "log row index is outside the published prefix" }
+        return synchronized(rowsLock) { backingRows[index] }
+    }
+
+    /** @return True when this published prefix has no rows. */
+    fun isEmpty(): Boolean = size == 0
+
+    /** Iterates by indexed access without copying the backing history. */
+    override fun iterator(): Iterator<LogRecord> = object : Iterator<LogRecord> {
+        private var index = 0
+        override fun hasNext(): Boolean = index < size
+        override fun next(): LogRecord {
+            if (!hasNext()) throw NoSuchElementException()
+            return get(index++)
+        }
+    }
+
+    /** Compares scalar publication identity rather than every historical row. */
+    override fun equals(other: Any?): Boolean = other is LogRowsSnapshot &&
+        token == other.token && revision == other.revision && size == other.size
+
+    /** Hashes scalar publication identity rather than every historical row. */
+    override fun hashCode(): Int = 31 * (31 * token.hashCode() + revision.hashCode()) + size
+
+    companion object {
+        /** Copies a small external seed such as the idle greeting into a stable snapshot. */
+        fun fromRecords(records: List<LogRecord>, token: Long = 0L, revision: Long = 0L): LogRowsSnapshot {
+            val rows = ArrayList(records)
+            return LogRowsSnapshot(rows, Any(), token, revision, rows.size)
+        }
+
+        /** Publishes a fixed-size view of an owner-controlled append-only array without copying it. */
+        internal fun fromBacking(
+            rows: ArrayList<LogRecord>,
+            rowsLock: Any,
+            token: Long,
+            revision: Long,
+        ): LogRowsSnapshot = synchronized(rowsLock) {
+            LogRowsSnapshot(rows, rowsLock, token, revision, rows.size)
+        }
+    }
+}
+
+/** Pure projection of the selected backend and its application-scoped execution session. */
 data class RunSessionState(
     val backendKey: String? = null,
     val backendLabel: String = "-",
@@ -45,35 +70,23 @@ data class RunSessionState(
     val abortable: Boolean = false,
     val warnOnRerun: Boolean = true,
     val showTimestamp: Boolean = false,
-    val minimumLogLevel: RunLogLevel = RunLogLevel.Info,
+    val minimumLogLevel: LogLevel = LogLevel.Info,
     val terminalFontPath: String? = null,
     val phase: RunSessionPhase = RunSessionPhase.Idle,
-    val entries: List<RunLogRecord> = initialRunLogRecords(),
+    val entries: LogRowsSnapshot = LogRowsSnapshot.fromRecords(initialLogRecords()),
     val report: RunReport? = null,
 )
 
-/**
- * Creates the unchanged two-line terminal greeting under the same minimum-level rule as a run.
- *
- * @param minimumLevel Frozen minimum severity.
- * @return Canonical greeting records visible at [minimumLevel].
- */
-fun initialRunLogRecords(minimumLevel: RunLogLevel = RunLogLevel.Info): List<RunLogRecord> = listOf(
-    RunLogRecord(RunLogOrigin.Kotlin, RunLogLevel.Info, "ghostlock terminal"),
-    RunLogRecord(RunLogOrigin.Kotlin, RunLogLevel.Info, "waiting for execution"),
-).filter { record -> record.level.wireValue >= minimumLevel.wireValue }
+/** Creates the two idle greeting rows under the same minimum-level rule as an accepted run. */
+fun initialLogRecords(minimumLevel: LogLevel = LogLevel.Info): List<LogRecord> = listOf(
+    LogRecord(LogOrigin.Kotlin, LogLevel.Info, "ghostlock terminal", commitId = 1L),
+    LogRecord(LogOrigin.Kotlin, LogLevel.Info, "waiting for execution", commitId = 2L),
+).filter { it.level.wireValue >= minimumLevel.wireValue }
 
 /** Typed result returned by a RunHost client and normalized by the outer data adapter. */
 sealed interface RunExecutionResult {
-    /** The authoritative gate rejected dispatch before RunHost ownership began. */
     data class Blocked(val reasons: List<String>) : RunExecutionResult
-
-    /** A synchronous typed RunHost method rejected the request. */
     data class Refused(val reasons: List<String>) : RunExecutionResult
-
-    /** The host returned one immutable six-layer report. */
     data class Completed(val report: RunReport) : RunExecutionResult
-
-    /** Binder death or malformed typed wire produced an explicit unknown terminal. */
     data class TransportFailure(val reason: String) : RunExecutionResult
 }

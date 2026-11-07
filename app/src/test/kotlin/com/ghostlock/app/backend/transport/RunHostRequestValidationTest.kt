@@ -70,7 +70,7 @@ class RunHostRequestValidationTest {
     private fun baseRequest(): RunHostRequestModel = RunHostRequestModel(
         runId = "0".repeat(32),
         generation = 1L,
-        backendKey = "DEBUG-PROBE",
+        backendKey = "DIAGNOSE",
         profileArtifactId = "profile",
         payloadItems = emptyList(),
         finishItems = emptyList(),

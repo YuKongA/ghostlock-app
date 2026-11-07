@@ -6,13 +6,16 @@ import android.net.Uri
 import android.provider.MediaStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.ghostlock.app.core.run.RunCoordinator
+import com.ghostlock.app.core.run.LogHub
 import com.ghostlock.app.domain.run.DiagnosticOutcome
 import com.ghostlock.app.domain.run.RunCapability
 import com.ghostlock.app.domain.run.RunExecutionResult
-import com.ghostlock.app.domain.run.RunLogDocumentFormatter
-import com.ghostlock.app.domain.run.RunLogFormatConfig
-import com.ghostlock.app.domain.run.RunLogSinkRequest
+import com.ghostlock.app.domain.run.LogDocumentFormatter
+import com.ghostlock.app.domain.run.LogFormatConfig
+import com.ghostlock.app.domain.run.LogSinkRequest
+import com.ghostlock.app.domain.run.LogLevel
+import com.ghostlock.app.domain.run.LogOrigin
+import com.ghostlock.app.domain.run.LogRecord
 import com.ghostlock.app.domain.run.RunReport
 import com.ghostlock.app.domain.run.RunSessionPhase
 import com.ghostlock.app.domain.run.RunSessionState
@@ -31,10 +34,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** AVD integration gate for the production coordinator-to-MediaStore automatic-export path. */
+/** AVD integration gate for the production log-hub-to-MediaStore automatic-export path. */
 @RunWith(AndroidJUnit4::class)
-class RunCoordinatorMediaStoreIntegrationTest {
-    /** One accepted diagnostic run publishes bytes identical to the same coordinator's manual document. */
+class LogHubMediaStoreIntegrationTest {
+    /** A >10 MiB accepted run reaches private file and MediaStore with byte-identical GLLOG2. */
     @Test
     fun acceptedRunMatchesManualDocumentAndDeletesItsOwnRow() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -42,39 +45,46 @@ class RunCoordinatorMediaStoreIntegrationTest {
         val runId = UUID.randomUUID().toString().replace("-", "")
         val generation = 1L
         val displayName = "ghostlock-run-$runId-g$generation.log.txt"
-        val coordinator = RunCoordinator(
-            sinkFactory = AndroidRunLogSinkFactory(context),
-            formatter = RunLogDocumentFormatter(),
+        val logHub = LogHub(LogDocumentFormatter())
+        val sinkRequest = LogSinkRequest(
+            enabled = true,
+            runId = runId,
+            generation = generation,
+            backendKey = BACKEND_KEY,
+            relativePath = EXPORT_PATH,
+            formatConfig = LogFormatConfig(showTimestamp = false),
         )
+        val storageSinks = AndroidLogSinkFactory(context).create(sinkRequest) { failure ->
+            logHub.reportSinkFailure(sinkRequest, failure)
+        }
         var stored: StoredDocument? = null
 
         try {
             assertTrue(
-                coordinator.start(
+                logHub.start(
                     context = RunSessionState(
                         backendKey = BACKEND_KEY,
                         backendLabel = "Debug Probe",
                         startAllowed = true,
                         abortable = true,
                     ),
-                    sinkRequest = RunLogSinkRequest(
-                        enabled = true,
-                        runId = runId,
-                        generation = generation,
-                        backendKey = BACKEND_KEY,
-                        relativePath = EXPORT_PATH,
-                        formatConfig = RunLogFormatConfig(showTimestamp = false),
-                    ),
-                ) {
+                    sinkRequest = sinkRequest,
+                    storageSinks = storageSinks,
+                ) { emit ->
+                    val message = "x".repeat(640)
+                    repeat(16_384) { emit(LogRecord(LogOrigin.Native, LogLevel.Info, message)) }
                     RunExecutionResult.Completed(diagnosticReport())
                 },
             )
             withTimeout(WAIT_TIMEOUT_MS) {
-                coordinator.state.first { state -> state.phase == RunSessionPhase.Done }
-                while (coordinator.isRunning()) yield()
+                logHub.state.first { state -> state.phase == RunSessionPhase.Done }
+                while (logHub.isRunning()) yield()
             }
 
-            val manualBytes = coordinator.renderCanonicalDocument()
+            val prefix = withTimeout(WAIT_TIMEOUT_MS) { requireNotNull(logHub.filePrefix()) }
+            val manualBytes = java.io.File(prefix.path).readBytes()
+            assertEquals(prefix.byteLength, manualBytes.size.toLong())
+            assertTrue(manualBytes.size > 10 * 1024 * 1024)
             withTimeout(WAIT_TIMEOUT_MS) {
                 while (stored == null) {
                     val candidate = readDocument(resolver, displayName)
@@ -88,8 +98,8 @@ class RunCoordinatorMediaStoreIntegrationTest {
 
             val completed = requireNotNull(stored)
             assertArrayEquals(manualBytes, completed.bytes)
-            assertTrue(completed.bytes.toString(Charsets.UTF_8).endsWith("end\tcomplete=true\n"))
-            assertFalse(coordinator.state.value.report?.isProductSuccess == true)
+            assertTrue(completed.bytes.toString(Charsets.UTF_8).endsWith("end\tterminal_received=true\n"))
+            assertFalse(logHub.state.value.report?.isProductSuccess == true)
             assertEquals(1, resolver.delete(completed.uri, null, null))
             stored = null
         } finally {
@@ -151,9 +161,9 @@ class RunCoordinatorMediaStoreIntegrationTest {
     )
 
     private companion object {
-        const val BACKEND_KEY: String = "DEBUG-PROBE"
+        const val BACKEND_KEY: String = "DIAGNOSE"
         const val EXPORT_PATH: String = "Download/ghostlock-log"
-        const val WAIT_TIMEOUT_MS: Long = 10_000L
+        const val WAIT_TIMEOUT_MS: Long = 60_000L
         const val POLL_INTERVAL_MS: Long = 50L
     }
 }

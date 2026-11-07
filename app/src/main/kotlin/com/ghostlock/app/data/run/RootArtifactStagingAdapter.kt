@@ -8,6 +8,8 @@ import com.ghostlock.app.backend.transport.RunHostArtifactKind
 import com.ghostlock.app.backend.transport.RunHostIdentity
 import com.ghostlock.app.core.flow.PublishedFlowArtifact
 import com.ghostlock.app.core.rootscript.PublishedArtifactIdentity
+import com.ghostlock.app.core.rootscript.ROOT_SCRIPT_HANDOFF_FILE_NAME
+import com.ghostlock.app.core.rootscript.ROOT_SCRIPT_HANDOFF_MARKER
 import com.ghostlock.app.core.rootscript.RootScriptArtifact
 import com.ghostlock.app.domain.run.RunInputArtifactKind
 import java.io.File
@@ -80,9 +82,21 @@ class RootArtifactStagingAdapter {
         workspace: AndroidRunWorkspace,
         identity: RunHostIdentity,
     ): RootScriptArtifact {
-        val script = File(workspace.rootScript, "diagnostic-noop.sh")
+        val script = File(workspace.rootScript, ROOT_SCRIPT_HANDOFF_FILE_NAME)
         val result = File(workspace.rootScript, "diagnostic-result.empty")
-        writeExclusive(script, "#!/system/bin/sh\nexit 0\n".toByteArray(Charsets.US_ASCII), 0b101000000)
+        writeExclusive(
+            script,
+            (
+                "#!/system/bin/sh\n" +
+                    ROOT_SCRIPT_HANDOFF_MARKER + "\n" +
+                    "false\n" +
+                    "DIAGNOSE_STATUS=\$?\n" +
+                    "if [ \"\$DIAGNOSE_STATUS\" -ne 1 ]; then exit 126; fi\n" +
+                    "printf '%s\\n' '[I/0ms] diagnose:shell:handoff-ok'\n" +
+                    "exit 0\n"
+                ).toByteArray(Charsets.US_ASCII),
+            0b101000000,
+        )
         writeExclusive(result, ByteArray(0), 0b110000000)
         return RootScriptArtifact(
             runId = identity.runId,

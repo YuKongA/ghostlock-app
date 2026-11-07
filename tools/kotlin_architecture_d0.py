@@ -38,6 +38,7 @@ ARCHITECTURE_RULES = (
     "runhost-client-log-sink-owner",
     "old-aidl-transaction",
     "manual-jni-object-marshalling",
+    "diagnose-native-boundary",
 )
 
 REFLECTION_FORBIDDEN_PREFIXES = (
@@ -221,9 +222,9 @@ KEEP_NATIVE = {
 }
 
 ADD_TARGETS = {
-    "app/src/main/kotlin/com/ghostlock/app/data/run/AndroidRunLogSinkFactory.kt": "R4B",
-    "app/src/main/kotlin/com/ghostlock/app/domain/run/RunLogDocumentFormatter.kt": "R4A",
-    "app/src/main/kotlin/com/ghostlock/app/domain/run/RunLogSink.kt": "R4B",
+    "app/src/main/kotlin/com/ghostlock/app/data/run/AndroidLogSinkFactory.kt": "R4B",
+    "app/src/main/kotlin/com/ghostlock/app/domain/run/LogDocumentFormatter.kt": "R4A",
+    "app/src/main/kotlin/com/ghostlock/app/domain/run/LogSink.kt": "R4B",
     "app/src/main/kotlin/com/ghostlock/app/domain/settings/UiPreferences.kt": "D1a",
     "app/src/main/kotlin/com/ghostlock/app/domain/settings/UiPreferencesPort.kt": "D1a",
     "app/src/main/kotlin/com/ghostlock/app/domain/settings/ObserveUiPreferencesUseCase.kt": "D1a",
@@ -342,13 +343,13 @@ ADD_TARGETS = {
     "app/src/main/kotlin/com/ghostlock/app/backend/transport/ShizukuRunHostClient.kt": "R3",
     "app/src/main/kotlin/com/ghostlock/app/core/flow/BackendFlowInput.kt": "R3",
     "app/src/main/kotlin/com/ghostlock/app/core/flow/BackendRunFacts.kt": "R3",
-    "app/src/main/kotlin/com/ghostlock/app/core/run/RunCoordinator.kt": "R3",
+    "app/src/main/kotlin/com/ghostlock/app/core/run/LogHub.kt": "R6",
     "app/src/main/kotlin/com/ghostlock/app/core/run/RunInputFreezer.kt": "R3",
     "app/src/main/kotlin/com/ghostlock/app/data/run/AndroidRunWorkspace.kt": "R3",
     "app/src/main/kotlin/com/ghostlock/app/data/run/RootArtifactStagingAdapter.kt": "R3",
     "app/src/main/kotlin/com/ghostlock/app/domain/backend/BackendSpec.kt": "R3",
     "app/src/main/kotlin/com/ghostlock/app/domain/run/FrozenRunInput.kt": "R3",
-    "app/src/main/kotlin/com/ghostlock/app/domain/run/RunLogRecord.kt": "R4C",
+    "app/src/main/kotlin/com/ghostlock/app/domain/run/LogRecord.kt": "R4C",
     "app/src/main/kotlin/com/ghostlock/app/domain/run/RunReport.kt": "R3",
     "app/src/main/kotlin/com/ghostlock/app/backend/declarations/BackendCarrierArtifact.kt": "R5-S1",
     "app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostProductPipeline.kt": "R5-S1",
@@ -363,16 +364,87 @@ ADD_TARGETS = {
 }
 
 AUTOMATIC_LOG_TEST_TARGETS = {
-    "app/src/androidTest/kotlin/com/ghostlock/app/data/run/AndroidRunLogSinkFactoryTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/data/run/AndroidLogSinkFactoryTest.kt",
     "app/src/androidTest/kotlin/com/ghostlock/app/data/settings/OperationalPreferencesExportContractTest.kt",
-    "app/src/test/kotlin/com/ghostlock/app/core/run/RunCoordinatorLogSinkTest.kt",
-    "app/src/test/kotlin/com/ghostlock/app/domain/run/RunLogDocumentFormatterTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/run/LogHubSinkTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/domain/run/LogDocumentFormatterTest.kt",
     "app/src/test/kotlin/com/ghostlock/app/ui/screen/run/AnsiRunLogTextTest.kt",
 }
 
 ADD_TARGETS.update({path: "R4B" for path in AUTOMATIC_LOG_TEST_TARGETS})
 ADD_TARGETS["app/src/androidTest/kotlin/com/ghostlock/app/data/settings/OperationalPreferencesExportContractTest.kt"] = "R4A"
-ADD_TARGETS["app/src/test/kotlin/com/ghostlock/app/domain/run/RunLogDocumentFormatterTest.kt"] = "R4A"
+ADD_TARGETS["app/src/test/kotlin/com/ghostlock/app/domain/run/LogDocumentFormatterTest.kt"] = "R4A"
+
+R6_FILE_MOVES = {
+    "app/src/main/kotlin/com/ghostlock/app/core/run/RunCoordinator.kt":
+        "app/src/main/kotlin/com/ghostlock/app/core/run/LogHub.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/run/RunCoordinatorLogSinkTest.kt":
+        "app/src/test/kotlin/com/ghostlock/app/core/run/LogHubSinkTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/data/run/RunCoordinatorMediaStoreIntegrationTest.kt":
+        "app/src/androidTest/kotlin/com/ghostlock/app/data/run/LogHubMediaStoreIntegrationTest.kt",
+}
+
+R6_FILE_DELETES = {
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/debugprobe/BackendDebugProbe.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/debugprobe/DebugProbeFlow.kt",
+}
+
+LOG_V3_FILE_MOVES = {
+    "app/src/main/kotlin/com/ghostlock/app/domain/run/RunLogRecord.kt":
+        "app/src/main/kotlin/com/ghostlock/app/domain/run/LogRecord.kt",
+    "app/src/main/kotlin/com/ghostlock/app/domain/run/RunLogSink.kt":
+        "app/src/main/kotlin/com/ghostlock/app/domain/run/LogSink.kt",
+    "app/src/main/kotlin/com/ghostlock/app/domain/run/RunLogDocumentFormatter.kt":
+        "app/src/main/kotlin/com/ghostlock/app/domain/run/LogDocumentFormatter.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/run/AndroidRunLogSinkFactory.kt":
+        "app/src/main/kotlin/com/ghostlock/app/data/run/AndroidLogSinkFactory.kt",
+    "app/src/test/kotlin/com/ghostlock/app/domain/run/RunLogDocumentFormatterTest.kt":
+        "app/src/test/kotlin/com/ghostlock/app/domain/run/LogDocumentFormatterTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/data/run/AndroidRunLogSinkFactoryTest.kt":
+        "app/src/androidTest/kotlin/com/ghostlock/app/data/run/AndroidLogSinkFactoryTest.kt",
+}
+
+R6_KOTLIN_TARGETS = {
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/BackendDiagnose.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseFlow.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/jna/DiagnoseJnaLibrary.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/jna/DiagnoseNativeBinding.kt",
+    "app/src/test/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseFlowTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/run/LogHubSinkTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseJnaSmokeTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/data/run/LogHubMediaStoreIntegrationTest.kt",
+}
+
+ADD_TARGETS.update({path: "R6" for path in R6_KOTLIN_TARGETS})
+LOG_V3_KOTLIN_TARGETS = {
+    "app/src/androidTest/kotlin/com/ghostlock/app/ui/screen/run/RunPageLogStreamTest.kt",
+}
+ADD_TARGETS.update({target: "P-LOG-X-001/批次02" for target in LOG_V3_FILE_MOVES.values()})
+ADD_TARGETS.update({target: "P-LOG-X-001/批次02" for target in LOG_V3_KOTLIN_TARGETS})
+
+HND_MODIFY_TARGETS = {
+    "app/src/androidTest/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseJnaSmokeTest.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/BackendDiagnose.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseFlow.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/jna/DiagnoseJnaLibrary.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/jna/DiagnoseNativeBinding.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostService.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/flow/FlowStep.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/flow/FlowStepRun.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/flow/SequentialFlow.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/flow/StepResult.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptArtifact.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptRenderer.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/run/RootArtifactStagingAdapter.kt",
+    "app/src/main/kotlin/com/ghostlock/app/shizuku/GhostlockUserService.kt",
+    "app/src/test/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseFlowTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/flow/FlowRequestTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/rootscript/RootScriptRendererTest.kt",
+}
+HND_ADD_TARGETS = {
+    "app/src/androidTest/kotlin/com/ghostlock/app/data/run/RootArtifactStagingAdapterTest.kt",
+}
+ADD_TARGETS.update({path: "P-RUN-HANDOFF-001/批次01" for path in HND_ADD_TARGETS})
 
 D7_FILE_MOVES = {
     "app/src/main/kotlin/com/ghostlock/app/ui/backend/Backend43284ConfigCard.kt":
@@ -992,14 +1064,50 @@ def architecture_violations(repo: Path) -> list[str]:
     source_prefix = "app/src/main/kotlin/com/ghostlock/app/"
     import_pattern = re.compile(r"(?m)^\s*import\s+([A-Za-z_][A-Za-z0-9_.]*)")
     violations: list[str] = []
+    log_hub_declarations: list[str] = []
 
     for path in kotlin_source_paths(repo):
         rel = relative(path, repo)
         if not rel.startswith(source_prefix):
             continue
         layer = rel.removeprefix(source_prefix).split("/", 1)[0]
-        stripped = strip_kotlin(path.read_text(encoding="utf-8"))
+        raw_text = path.read_text(encoding="utf-8")
+        stripped = strip_kotlin(raw_text)
         reflection_forbidden = is_reflection_forbidden_scope(rel)
+
+        for match in re.finditer(r"\bclass\s+LogHub\b", stripped):
+            line = stripped.count("\n", 0, match.start()) + 1
+            log_hub_declarations.append(f"{rel}:{line}")
+
+        for match in re.finditer(r"\b(?:RunCoordinator|DebugProbe)\b|DEBUG-PROBE", raw_text):
+            line = raw_text.count("\n", 0, match.start()) + 1
+            violations.append(
+                f"diagnose-native-boundary|{rel}:{line}|retired-{match.group(0)}"
+            )
+
+        if rel == source_prefix + "core/flow/Flow.kt":
+            for match in re.finditer(r"\bfun\s+initialize\s*\(", stripped):
+                line = stripped.count("\n", 0, match.start()) + 1
+                violations.append(
+                    f"diagnose-native-boundary|{rel}:{line}|public-flow-initialize"
+                )
+
+        if (
+            rel == source_prefix + "backend/registry/BackendRegistry.kt"
+            or rel.startswith(source_prefix + "backend/backends/diagnose/")
+        ):
+            for match in re.finditer(r"\bBuildConfig\b", stripped):
+                line = stripped.count("\n", 0, match.start()) + 1
+                violations.append(
+                    f"diagnose-native-boundary|{rel}:{line}|diagnose-build-type-gate"
+                )
+
+        for match in re.finditer(r"\bNative\s*\.\s*load\s*\(", stripped):
+            line = stripped.count("\n", 0, match.start()) + 1
+            if rel != source_prefix + "backend/backends/diagnose/jna/DiagnoseNativeBinding.kt":
+                violations.append(
+                    f"diagnose-native-boundary|{rel}:{line}|arbitrary-jna-loader"
+                )
 
         for match in import_pattern.finditer(stripped):
             imported = match.group(1)
@@ -1104,11 +1212,20 @@ def architecture_violations(repo: Path) -> list[str]:
             )
 
         if rel in {
+            source_prefix + "core/run/LogHub.kt",
+            source_prefix + "data/run/AndroidLogSinkFactory.kt",
+            source_prefix + "domain/run/LogDocumentFormatter.kt",
+        }:
+            for match in re.finditer(r"\b(?:COMMAND_CAPACITY|MAX_QUEUED_LOGS|renderCanonicalDocument|GLLOG1|ByteArrayOutputStream)\b", stripped):
+                line = stripped.count("\n", 0, match.start()) + 1
+                violations.append(f"superseded-run-log-topology|{rel}:{line}|{match.group(0)}")
+
+        if rel in {
             source_prefix + "backend/transport/AppRunHostClient.kt",
             source_prefix + "backend/transport/ShizukuRunHostClient.kt",
         }:
             for match in re.finditer(
-                r"\b(?:RunLogSink|RunLogSinkFactory|AndroidRunLogSinkFactory)\b",
+                r"\b(?:LogSink|LogSinkFactory|AndroidLogSinkFactory|RunLogSink|RunLogSinkFactory)\b",
                 stripped,
             ):
                 line = stripped.count("\n", 0, match.start()) + 1
@@ -1139,6 +1256,70 @@ def architecture_violations(repo: Path) -> list[str]:
                 violations.append(
                     f"backend-declaration-concrete-implementation|{rel}:{line}|{match.group(0)}"
                 )
+
+    if len(log_hub_declarations) != 1 or not log_hub_declarations[0].startswith(
+        source_prefix + "core/run/LogHub.kt:"
+    ):
+        violations.append(
+            "diagnose-native-boundary|app/src/main/kotlin:1|log-hub-declarations="
+            + ",".join(log_hub_declarations)
+        )
+
+    binding_path = repo / (
+        source_prefix + "backend/backends/diagnose/jna/DiagnoseNativeBinding.kt"
+    )
+    if binding_path.is_file():
+        binding_text = binding_path.read_text(encoding="utf-8")
+        exact_loads = re.findall(
+            r'Native\s*\.\s*load\s*\(\s*"ghostlock_diagnose"\s*,\s*'
+            r'DiagnoseJnaLibrary::class\.java\s*\)',
+            binding_text,
+        )
+        if len(exact_loads) != 1:
+            violations.append(
+                "diagnose-native-boundary|"
+                + relative(binding_path, repo)
+                + ":1|constant-name-load-count="
+                + str(len(exact_loads))
+            )
+
+    prepare_commit_hosts = (
+        source_prefix + "backend/transport/RunHostService.kt",
+        source_prefix + "shizuku/GhostlockUserService.kt",
+    )
+    for host_rel in prepare_commit_hosts:
+        host_path = repo / host_rel
+        if not host_path.is_file():
+            violations.append(
+                f"diagnose-native-boundary|{host_rel}:1|missing-atomic-prepare-host"
+            )
+            continue
+        host_text = strip_kotlin(host_path.read_text(encoding="utf-8"))
+        required_order = (
+            r"val\s+candidate\s*=\s*PreparedRun\s*\("
+            r"(?:(?!val\s+candidateSnapshot).)*?"
+            r"flow\s*=\s*plugin\.createFlow\s*\(\s*\)"
+            r"(?:(?!val\s+candidateSnapshot).)*?"
+            r"val\s+candidateSnapshot\s*=\s*preparedSnapshot\s*\(\s*candidate"
+            r"(?:(?!val\s+code).)*?"
+            r"val\s+code\s*=\s*synchronized\s*\(\s*lock\s*\)\s*\{"
+            r"\s*lifecycle\.prepare\s*\(\s*identity\s*,\s*fingerprint\s*\)"
+            r"(?:(?!prepared\s*=\s*candidate).)*?prepared\s*=\s*candidate"
+            r"(?:(?!snapshot\s*=\s*candidateSnapshot).)*?snapshot\s*=\s*candidateSnapshot"
+        )
+        if re.search(required_order, host_text, flags=re.DOTALL) is None:
+            violations.append(
+                f"diagnose-native-boundary|{host_rel}:1|non-atomic-prepare-publication"
+            )
+        throwable_cleanup = (
+            r"catch\s*\(\s*problem\s*:\s*Throwable\s*\)\s*\{"
+            r"\s*workspace\?\.deleteAfterTerminal\s*\(\s*\)"
+            r"\s*RunHostCode\.IO_FAILURE"
+        )
+        if re.search(throwable_cleanup, host_text, flags=re.DOTALL) is None:
+            violations.append(
+                f"diagnose-native-boundary|{host_rel}:1|prepare-load-failure-not-cleaned"
+            )
 
     old_aidl_pattern = re.compile(
         r"\b(?:" + "|".join(re.escape(name) for name in OLD_AIDL_CONTRACTS) + r")\b"
@@ -1178,7 +1359,8 @@ def architecture_violations(repo: Path) -> list[str]:
 
     manual_jni_pattern = re.compile(
         r"\b(?:JNIEnv|JavaVM|jobject|jclass|jstring|jarray|NewGlobalRef|"
-        r"DeleteGlobalRef|GetObjectClass|Call[A-Za-z]+Method|RegisterNatives|FindClass)\b"
+        r"DeleteGlobalRef|GetObjectClass|Call[A-Za-z]+Method|RegisterNatives|FindClass|"
+        r"Java_[A-Za-z0-9_]+)\b"
     )
     native_root = repo / "app/src/main/cpp"
     for path in sorted(native_root.rglob("*")):
@@ -1200,12 +1382,17 @@ def architecture_violations(repo: Path) -> list[str]:
 def file_action_rows(repo: Path) -> list[dict[str, object]]:
     paths = kotlin_source_paths(repo)
     paths += [repo / rel for rel in sorted(AUTOMATIC_LOG_TEST_TARGETS) if (repo / rel).is_file()]
+    paths += [repo / rel for rel in sorted(R6_KOTLIN_TARGETS) if (repo / rel).is_file()]
+    paths += [repo / rel for rel in sorted(LOG_V3_KOTLIN_TARGETS) if (repo / rel).is_file()]
+    paths += [repo / rel for rel in sorted(HND_MODIFY_TARGETS | HND_ADD_TARGETS) if (repo / rel).is_file()]
     paths += sorted((repo / "app/src/main/aidl").rglob("*.aidl"))
     paths += sorted((repo / "app/src/main/res").rglob("*.xml"))
     paths += [repo / "app/src/main/AndroidManifest.xml"]
     rows: list[dict[str, object]] = []
     component_root = "app/src/main/kotlin/com/ghostlock/app/ui/component/"
     d7_move_targets = set(D7_FILE_MOVES.values())
+    r6_move_targets = set(R6_FILE_MOVES.values())
+    log_v3_move_targets = set(LOG_V3_FILE_MOVES.values())
     for path in sorted(set(paths)):
         rel = relative(path, repo)
         text = path.read_text(encoding="utf-8", errors="replace")
@@ -1213,7 +1400,17 @@ def file_action_rows(repo: Path) -> list[dict[str, object]]:
         target = rel
         batch = "FROZEN"
         evidence = "existing-unlisted-path"
-        if rel in D7_FILE_MOVES:
+        if rel in R6_FILE_MOVES:
+            action = "move-source-1to1"
+            target = R6_FILE_MOVES[rel]
+            batch = "R6"
+            evidence = "stale-r6-source"
+        elif rel in R6_FILE_DELETES:
+            action = "delete"
+            target = "ABSENT"
+            batch = "R6"
+            evidence = "stale-r6-deleted-source"
+        elif rel in D7_FILE_MOVES:
             action = "move-source-1to1"
             target = D7_FILE_MOVES[rel]
             batch = ADD_TARGETS[target]
@@ -1223,10 +1420,14 @@ def file_action_rows(repo: Path) -> list[dict[str, object]]:
             target = "ABSENT"
             batch = "D7.4"
             evidence = "stale-d7-deleted-source"
+        elif rel in HND_MODIFY_TARGETS:
+            action = "modify-in-place"
+            batch = "P-RUN-HANDOFF-001/批次01"
+            evidence = "approved-common-handoff-chain"
         elif rel in ADD_TARGETS:
-            action = "move-target-1to1" if rel in d7_move_targets else "added-approved"
+            action = "move-target-1to1" if rel in d7_move_targets | r6_move_targets | log_v3_move_targets else "added-approved"
             batch = ADD_TARGETS[rel]
-            evidence = "d7-one-to-one-target" if rel in d7_move_targets else "delivered-target"
+            evidence = "one-to-one-target" if rel in d7_move_targets | r6_move_targets | log_v3_move_targets else "delivered-target"
         elif rel in DELETE_KOTLIN or rel == DELETE_AIDL:
             action = "delete"
             target = "ABSENT"
@@ -1277,6 +1478,45 @@ def file_action_rows(repo: Path) -> list[dict[str, object]]:
             "target": target,
             "batch": ADD_TARGETS[target],
             "evidence": "retired-d7-source",
+            "source_state": "ABSENT",
+        })
+    for rel, target in sorted(R6_FILE_MOVES.items()):
+        if rel in current_paths:
+            continue
+        rows.append({
+            "path": rel,
+            "symbol_resource": "file",
+            "current_owner": "ABSENT",
+            "action": "move-source-1to1",
+            "target": target,
+            "batch": "R6",
+            "evidence": "retired-r6-source",
+            "source_state": "ABSENT",
+        })
+    for rel, target in sorted(LOG_V3_FILE_MOVES.items()):
+        if rel in current_paths:
+            continue
+        rows.append({
+            "path": rel,
+            "symbol_resource": "file",
+            "current_owner": "ABSENT",
+            "action": "move-source-1to1",
+            "target": target,
+            "batch": "P-LOG-X-001/批次02",
+            "evidence": "retired-log-v3-source",
+            "source_state": "ABSENT",
+        })
+    for rel in sorted(R6_FILE_DELETES):
+        if rel in current_paths:
+            continue
+        rows.append({
+            "path": rel,
+            "symbol_resource": "file",
+            "current_owner": "ABSENT",
+            "action": "delete",
+            "target": "ABSENT",
+            "batch": "R6",
+            "evidence": "retired-r6-diagnostic-fixture",
             "source_state": "ABSENT",
         })
     for rel in sorted(D7_FILE_DELETES):
@@ -1603,6 +1843,44 @@ def verify_inventory(repo: Path, fixtures: Path, section: str = "all") -> dict[s
                 or deleted_row.get("target") != "ABSENT"
             ):
                 raise ValueError("invalid D7 delete row: " + deleted)
+        for source, target in R6_FILE_MOVES.items():
+            source_row = by_path.get(source)
+            target_row = by_path.get(target)
+            if (repo / source).exists():
+                raise ValueError("stale R6 move source: " + source)
+            if source_row is None or source_row.get("source_state") != "ABSENT":
+                raise ValueError("missing retired R6 source row: " + source)
+            if source_row.get("action") != "move-source-1to1" or source_row.get("target") != target:
+                raise ValueError("invalid R6 source mapping: " + source)
+            if target_row is None or target_row.get("source_state") != "PRESENT":
+                raise ValueError("missing R6 move target: " + target)
+            if target_row.get("action") != "move-target-1to1" or target_row.get("batch") != "R6":
+                raise ValueError("invalid R6 target action: " + target)
+        for source, target in LOG_V3_FILE_MOVES.items():
+            source_row = by_path.get(source)
+            target_row = by_path.get(target)
+            if (repo / source).exists():
+                raise ValueError("stale log v3 move source: " + source)
+            if source_row is None or source_row.get("source_state") != "ABSENT":
+                raise ValueError("missing retired log v3 source row: " + source)
+            if source_row.get("action") != "move-source-1to1" or source_row.get("target") != target:
+                raise ValueError("invalid log v3 source mapping: " + source)
+            if target_row is None or target_row.get("source_state") != "PRESENT":
+                raise ValueError("missing log v3 move target: " + target)
+            if target_row.get("action") != "move-target-1to1" or target_row.get("batch") != "P-LOG-X-001/批次02":
+                raise ValueError("invalid log v3 target action: " + target)
+        for deleted in R6_FILE_DELETES:
+            deleted_row = by_path.get(deleted)
+            if (repo / deleted).exists():
+                raise ValueError("stale R6 deleted source: " + deleted)
+            if (
+                deleted_row is None
+                or deleted_row.get("source_state") != "ABSENT"
+                or deleted_row.get("action") != "delete"
+                or deleted_row.get("target") != "ABSENT"
+                or deleted_row.get("batch") != "R6"
+            ):
+                raise ValueError("invalid R6 delete row: " + deleted)
         for deleted in R3_FILE_DELETES:
             deleted_row = by_path.get(deleted)
             if (repo / deleted).exists():

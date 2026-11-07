@@ -1,7 +1,11 @@
 package com.ghostlock.app.backend.transport
 
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -59,6 +63,55 @@ class RunHostStateMachineTest {
         assertEquals(RunHostCode.OK, machine.prepare(identity, fingerprint))
         assertEquals(RunHostCode.ALREADY_APPLIED, machine.preparePreflight(identity, fingerprint))
         assertEquals(RunHostCode.ALREADY_APPLIED, machine.prepare(identity, fingerprint))
+    }
+
+    /** A start that observes PREPARED blocks on the host lock until the complete candidate is published. */
+    @Test
+    fun hostLockPreventsStartFromObservingUnpublishedCandidate() {
+        listOf("app", "shizuku").forEach { host ->
+            val machine = RunHostStateMachine()
+            val hostLock = Any()
+            val candidate = Any()
+            val prepared = AtomicReference<Any?>(null)
+            val prepareCommitted = CountDownLatch(1)
+            val startCommitted = CountDownLatch(1)
+            val allowPublication = CountDownLatch(1)
+            val observed = AtomicReference<Any?>(null)
+            val prepareResult = AtomicReference<RunHostCode>()
+            val startResult = AtomicReference<RunHostCode>()
+
+            val prepareThread = Thread({
+                synchronized(hostLock) {
+                    val code = machine.prepare(identity, fingerprint)
+                    prepareResult.set(code)
+                    prepareCommitted.countDown()
+                    check(allowPublication.await(5L, TimeUnit.SECONDS))
+                    if (code == RunHostCode.OK) prepared.set(candidate)
+                }
+            }, "prepare-$host")
+            val startThread = Thread({
+                check(prepareCommitted.await(5L, TimeUnit.SECONDS))
+                startResult.set(machine.start(identity))
+                startCommitted.countDown()
+                synchronized(hostLock) { observed.set(prepared.get()) }
+            }, "start-$host")
+
+            prepareThread.start()
+            startThread.start()
+            assertTrue("$host start did not observe PREPARED", startCommitted.await(5L, TimeUnit.SECONDS))
+            assertEquals(RunHostState.RUNNING, machine.state())
+            assertTrue("$host start must wait for candidate publication", startThread.isAlive)
+            allowPublication.countDown()
+            prepareThread.join(5_000L)
+            startThread.join(5_000L)
+
+            assertFalse("$host prepare thread remained live", prepareThread.isAlive)
+            assertFalse("$host start thread remained live", startThread.isAlive)
+            assertEquals(RunHostCode.OK, prepareResult.get())
+            assertEquals(RunHostCode.OK, startResult.get())
+            assertNotNull("$host start observed an empty prepared slot", observed.get())
+            assertTrue(observed.get() === candidate)
+        }
     }
 
     /** Exact mismatch codes are stable after an identity has been reserved. */

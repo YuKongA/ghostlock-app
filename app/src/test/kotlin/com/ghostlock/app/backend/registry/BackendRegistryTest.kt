@@ -1,9 +1,7 @@
 package com.ghostlock.app.backend.registry
 
-import com.ghostlock.app.BuildConfig
 import com.ghostlock.app.domain.run.RunCapability
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -22,12 +20,11 @@ class BackendRegistryTest {
         )
     }
 
-    /** DebugProbe resolves by key and creates a new one-shot Flow for every request. */
+    /** Diagnose resolves without a build-type gate and registry membership contains only current keys. */
     @Test
-    fun debugProbeFactoryNeverReusesFlow() {
-        if (!BuildConfig.DEBUG) return
-        val plugin = requireNotNull(BackendRegistry.plugin("DEBUG-PROBE"))
+    fun diagnoseMembershipHasNoLegacyAlias() {
+        val plugin = requireNotNull(BackendRegistry.plugin("DIAGNOSE"))
         assertEquals(RunCapability.DIAGNOSTIC_ONLY, plugin.spec.runCapability)
-        assertNotSame(plugin.createFlow(), plugin.createFlow())
+        assertEquals(listOf("CUSTOM", "DIAGNOSE"), BackendRegistry.specs.map { spec -> spec.key })
     }
 }

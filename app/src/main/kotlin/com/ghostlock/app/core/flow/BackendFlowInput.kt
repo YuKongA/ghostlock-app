@@ -10,7 +10,7 @@ import com.ghostlock.app.domain.run.ProfileSnapshot
 import com.ghostlock.app.domain.run.ResultReason
 import com.ghostlock.app.domain.run.RunCancellationView
 import com.ghostlock.app.domain.run.RunCapability
-import com.ghostlock.app.domain.run.RunLogEmitter
+import com.ghostlock.app.domain.run.LogEmitter
 import com.ghostlock.app.domain.run.RunReport
 import com.ghostlock.app.domain.run.RunTerminal
 import com.ghostlock.app.domain.run.StageResult
@@ -64,7 +64,7 @@ data class BackendFlowInput(
     val generation: Long,
     val rootScript: RootScriptArtifact,
     val profile: ProfileSnapshot,
-    val logs: RunLogEmitter,
+    val logs: LogEmitter,
     val cancellation: RunCancellationView,
     val reportContext: FlowReportContext,
     val terminalClaim: FlowTerminalClaim,

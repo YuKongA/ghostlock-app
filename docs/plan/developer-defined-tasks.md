@@ -12,6 +12,6 @@
 - [ ] Payload 页面右上角增加 Payload-only Preview。
 - [ ] Preview 返回纯文本且对 Finish 零读取。
 - [ ] 完成代码编辑器依赖 Spike 与最终选型。
-- [ ] Diagnose backend 在 debug 与 release 构建中均可用。
-- [ ] Diagnose backend 包含实际 native C++ 实现并编译为 shared library。
-- [ ] Diagnose Flow 实际编排 native、JNA、shared library、log 与 handoff shell 全链路。
+- [x] Diagnose backend 在 debug 与 release 构建中均可用。
+- [x] Diagnose backend 包含实际 native C++ 实现并编译为 shared library。
+- [x] Diagnose Flow 实际编排 native、JNA、shared library、log 与 handoff shell 全链路。

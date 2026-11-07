@@ -52,10 +52,9 @@ import com.ghostlock.app.ui.screen.module.finish.FinishSettingsUiState
 import com.ghostlock.app.ui.screen.run.RunPageMaterial
 import com.ghostlock.app.ui.screen.run.RunPageMiuix
 import com.ghostlock.app.ui.screen.run.RunActions
-import com.ghostlock.app.ui.screen.run.RunTerminalEntry
-import com.ghostlock.app.ui.screen.run.RunTerminalLevel
-import com.ghostlock.app.ui.screen.run.RunTerminalOrigin
 import com.ghostlock.app.ui.screen.run.RunUiPhase
+import com.ghostlock.app.domain.run.LogRowsSnapshot
+import com.ghostlock.app.domain.run.initialLogRecords
 import com.ghostlock.app.ui.screen.run.RunUiState
 import com.ghostlock.app.ui.screen.settings.SettingPagerMaterial
 import com.ghostlock.app.ui.screen.settings.SettingPagerMiuix
@@ -350,7 +349,7 @@ internal object UiBaselineFixtures {
             "finish_settings" -> FinishSettingsPage(bottomInnerPadding = 0.dp, onBack = {})
             "config_43499" -> CardFrame { backendConfigRenderer.render(NEUTRAL_PROFILE_KEY) }
             "config_43284" -> CardFrame { backendConfigRenderer.render(NEUTRAL_TOGGLE_KEY) }
-            "config_debug" -> CardFrame { backendConfigRenderer.render(DEBUG_PROBE_KEY) }
+            "config_debug" -> CardFrame { backendConfigRenderer.render(DIAGNOSE_KEY) }
             "config_custom" -> CardFrame { backendConfigRenderer.render(CUSTOM_KEY) }
             "confirm_dialog" -> ConfirmDialog(miuix)
             "component_gallery" -> ComponentGallery()
@@ -420,8 +419,8 @@ internal object UiBaselineFixtures {
                         disabledSummary = "Off",
                         icon = BackendConfigIcon.SECURITY,
                     ),
-                    DEBUG_PROBE_KEY to BackendConfiguration.Static(
-                        key = DEBUG_PROBE_KEY,
+                    DIAGNOSE_KEY to BackendConfiguration.Static(
+                        key = DIAGNOSE_KEY,
                         values = listOf(BackendConfigValue("ID", "Debug Probe")),
                     ),
                     CUSTOM_KEY to BackendConfiguration.Document(
@@ -465,10 +464,7 @@ internal object UiBaselineFixtures {
         startAllowed = false,
         blockedReasons = listOf("D0 capture does not dispatch"),
         phase = RunUiPhase.Idle,
-        entries = listOf(
-            RunTerminalEntry(RunTerminalOrigin.Kotlin, RunTerminalLevel.Info, "ghostlock terminal"),
-            RunTerminalEntry(RunTerminalOrigin.Kotlin, RunTerminalLevel.Info, "waiting for execution"),
-        ),
+        entries = LogRowsSnapshot.fromRecords(initialLogRecords()),
     )
 
     /** @return Inert semantic callbacks proving the capture does not dispatch or mutate a session. */
@@ -483,10 +479,10 @@ internal object UiBaselineFixtures {
     /** @return Stable selector state for both production path-page skins. */
     private fun backendState(): BackendPageUiState = BackendPageUiState(
         options = listOf(
-            BackendOptionUiState(DEBUG_PROBE_KEY, "Debug Probe", true),
+            BackendOptionUiState(DIAGNOSE_KEY, "Diagnose", true),
             BackendOptionUiState(CUSTOM_KEY, "Lua operation flow", false),
         ),
-        selectedKey = DEBUG_PROBE_KEY,
+        selectedKey = DIAGNOSE_KEY,
     )
 
     /** @return Empty deterministic finish-editor state for path-page summary rendering. */
@@ -663,6 +659,6 @@ internal object UiBaselineFixtures {
 
     private const val NEUTRAL_PROFILE_KEY: String = "NEUTRAL-PROFILE"
     private const val NEUTRAL_TOGGLE_KEY: String = "NEUTRAL-TOGGLE"
-    private const val DEBUG_PROBE_KEY: String = "DEBUG-PROBE"
+    private const val DIAGNOSE_KEY: String = "DIAGNOSE"
     private const val CUSTOM_KEY: String = "CUSTOM"
 }

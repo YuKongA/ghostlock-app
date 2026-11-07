@@ -1,6 +1,7 @@
 package com.ghostlock.app.ui.screen.run
 
 import androidx.compose.runtime.Immutable
+import com.ghostlock.app.domain.run.LogRowsSnapshot
 import androidx.compose.ui.text.font.FontFamily
 
 /** Renderer-facing run lifecycle, including the page-local rerun-ready interaction state. */
@@ -57,7 +58,7 @@ data class RunTerminalEntry(
  * @property showTimestamp Whether terminal prefixes include elapsed time.
  * @property terminalFontFamily Resolved terminal font consumed without renderer-side file access.
  * @property phase Current semantic page phase.
- * @property entries Immutable terminal rows.
+ * @property entries Fixed-prefix view of all committed rows, with O(1) publication equality.
  * @property showRerunConfirmation Whether the renderer should show its current-theme confirmation.
  */
 @Immutable
@@ -70,7 +71,7 @@ data class RunUiState(
     val showTimestamp: Boolean = false,
     val terminalFontFamily: FontFamily = FontFamily.Monospace,
     val phase: RunUiPhase = RunUiPhase.Idle,
-    val entries: List<RunTerminalEntry> = emptyList(),
+    val entries: LogRowsSnapshot = LogRowsSnapshot.fromRecords(emptyList()),
     val showRerunConfirmation: Boolean = false,
 ) {
     /** @return True only when a start/rerun button must be visually and interactively disabled. */

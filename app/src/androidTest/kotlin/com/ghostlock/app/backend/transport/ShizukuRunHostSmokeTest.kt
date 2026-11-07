@@ -3,8 +3,10 @@ package com.ghostlock.app.backend.transport
 import android.content.pm.PackageManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.ghostlock.app.BuildConfig
 import com.ghostlock.app.domain.run.DiagnosticOutcome
+import com.ghostlock.app.domain.run.LogOrigin
+import com.ghostlock.app.domain.run.StageState
+import com.ghostlock.app.run.RunHostLogRecord
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -16,10 +18,9 @@ import rikka.shizuku.Shizuku
 /** Typed Shizuku UserService smoke when a shell-domain service is available. */
 @RunWith(AndroidJUnit4::class)
 class ShizukuRunHostSmokeTest {
-    /** DebugProbe uses the same request and terminal schema in the shell host. */
+    /** Diagnose uses the same native and shell chain inside the shell-domain UserService. */
     @Test
-    fun debugProbeCompletesThroughShizukuRunHost() = runBlocking {
-        assumeTrue(BuildConfig.DEBUG)
+    fun diagnoseCompletesThroughShizukuRunHost() = runBlocking {
         assumeTrue(
             runCatching {
                 Shizuku.pingBinder() &&
@@ -30,11 +31,23 @@ class ShizukuRunHostSmokeTest {
         )
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         RunHostTestFixture.create(context).use { fixture ->
-            val outcome = ShizukuRunHostClient(context).run(fixture.request)
+            val logs = mutableListOf<RunHostLogRecord>()
+            val outcome = ShizukuRunHostClient(context).run(fixture.request) { record -> logs += record }
             assertTrue(outcome is RunHostClientOutcome.Terminal)
             val report = (outcome as RunHostClientOutcome.Terminal).snapshot.toRunReport()
             assertTrue(report.diagnosticOutcome == DiagnosticOutcome.PASS)
+            assertTrue(report.backendPrimitive.state == StageState.SUCCESS)
+            assertTrue(report.rootScriptDispatch.state == StageState.SUCCESS)
+            assertTrue(report.backendCleanup.state == StageState.SUCCESS)
             assertFalse(report.isProductSuccess)
+            assertTrue(logs.count { record ->
+                record.origin == LogOrigin.Native.wireValue &&
+                    record.message == "diagnose:native:roundtrip-ok"
+            } == 1)
+            assertTrue(logs.count { record ->
+                record.origin == LogOrigin.Shell.wireValue &&
+                    record.message == "diagnose:shell:handoff-ok"
+            } == 1)
         }
     }
 }
