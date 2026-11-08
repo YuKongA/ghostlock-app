@@ -2,6 +2,7 @@ package com.ghostlock.app.data
 
 import com.ghostlock.app.data.ManagerScanner.Candidate
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ManagerScannerTest {
@@ -22,9 +23,23 @@ class ManagerScannerTest {
     @Test
     fun `resolvePackages puts chosen builtin first`() {
         assertEquals(
-            listOf("me.weishu.kernelsu", "me.weishu.kernelsu.pr", "com.resukisu.resukisu", "org.bakasu.bakasu", "com.kowx712.supermanager"),
+            listOf(
+                "me.weishu.kernelsu",
+                "me.weishu.kernelsu.pr",
+                "com.sukisu.ultra.pr",
+                "com.sukisu.ultra",
+                "com.resukisu.resukisu",
+                "org.bakasu.bakasu",
+                "com.kowx712.supermanager",
+            ),
             ManagerScanner.resolvePackages("me.weishu.kernelsu"),
         )
+    }
+
+    @Test
+    fun `builtin list covers SukiSU Ultra and its PR build`() {
+        assertTrue("com.sukisu.ultra" in ManagerScanner.BUILTIN)
+        assertTrue("com.sukisu.ultra.pr" in ManagerScanner.BUILTIN)
     }
 
     @Test

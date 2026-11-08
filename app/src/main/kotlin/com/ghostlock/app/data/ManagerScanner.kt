@@ -12,6 +12,8 @@ object ManagerScanner {
     val BUILTIN = listOf(
         "me.weishu.kernelsu.pr",
         "me.weishu.kernelsu",
+        "com.sukisu.ultra.pr",
+        "com.sukisu.ultra",
         "com.resukisu.resukisu",
         "org.bakasu.bakasu",
         "com.kowx712.supermanager",
