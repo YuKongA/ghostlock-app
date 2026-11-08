@@ -6,6 +6,7 @@ on:
       - "**.md"
     branches:
       - main
+      - ci/verify-sukisu-ultra
   pull_request:
     branches:
       - main
@@ -54,6 +55,9 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
+
+      - name: Run app unit tests
+        run: ./gradlew :app:testDebugUnitTest --no-daemon
 
       - name: Cache ONDK
         id: ondk-cache
