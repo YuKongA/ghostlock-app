@@ -107,6 +107,13 @@ internal class AndroidProfileConfigController(
         requireNonZero(*RouteCommonRequired.toTypedArray())
         val major = value("kernel_major")
         if (major != 5L && major != 6L) invalid += "kernel_major"
+        /* The profile states the waiter layout: 0x40 is the flat waiter,
+         * 0x44 or absent is the split layout. */
+        val waiterPrioOff = value("waiter_prio_off")
+        val flatWaiter = waiterPrioOff == 0x40L
+        if (waiterPrioOff != null && waiterPrioOff != 0x40L && waiterPrioOff != 0x44L) {
+            invalid += "waiter_prio_off"
+        }
 
         val copySize = value("cred.copy_size")
         if (copySize == null || copySize == 0L) invalid += "cred.copy_size"
@@ -157,6 +164,14 @@ internal class AndroidProfileConfigController(
                     shift < Int.MIN_VALUE.toLong() || shift > Int.MAX_VALUE.toLong()
                 ) {
                     invalid += "$routePrefix.waiter_shift"
+                }
+                /* A flat waiter needs the compact word table; a split profile
+                 * may omit it or keep it for the compact split layout. */
+                val compact = value("$routePrefix.compact_waiter")
+                if (flatWaiter) {
+                    if (compact != 1L) invalid += "$routePrefix.compact_waiter"
+                } else if (compact != null && (compact < 0L || compact > 0xffL)) {
+                    invalid += "$routePrefix.compact_waiter"
                 }
             }
 
@@ -217,6 +232,12 @@ internal class AndroidProfileConfigController(
                         shift < Int.MIN_VALUE.toLong() || shift > Int.MAX_VALUE.toLong()
                     ) {
                         invalid += "$fallbackPrefix.waiter_shift"
+                    }
+                    val compact = value("$fallbackPrefix.compact_waiter")
+                    if (flatWaiter) {
+                        if (compact != 1L) invalid += "$fallbackPrefix.compact_waiter"
+                    } else if (compact != null && (compact < 0L || compact > 0xffL)) {
+                        invalid += "$fallbackPrefix.compact_waiter"
                     }
                 }
 
@@ -709,6 +730,7 @@ internal class AndroidProfileConfigController(
         val out = profile.copyValue().asValueMap() ?: return profile
         if (!out.containsKey("kernel_phys_load")) out["kernel_phys_load"] = null
         if (!out.containsKey("kernel_phys_offset")) out["kernel_phys_offset"] = null
+        if (!out.containsKey("waiter_prio_off")) out["waiter_prio_off"] = null
         completeSection(out, "task_struct", TaskStructFieldNames)
         completeSection(out, "cred", CredFieldNames)
         completeSection(out, "offset", OffsetFieldNames)
@@ -874,7 +896,7 @@ internal class AndroidProfileConfigController(
         /** Fields each route branch carries, used to seed a switched-to route. */
         private val RouteBranchFields = mapOf(
             "tcp_zerocopy" to listOf("compact_waiter"),
-            "select_stack" to listOf("waiter_shift"),
+            "select_stack" to listOf("waiter_shift", "compact_waiter"),
             "multicast_waiter" to listOf(
                 "waiter_off", "buffer_size", "task_offset", "lock_offset",
                 "compact_waiter",
