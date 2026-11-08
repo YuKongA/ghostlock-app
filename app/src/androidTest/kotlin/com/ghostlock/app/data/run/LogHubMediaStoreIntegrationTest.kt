@@ -7,6 +7,7 @@ import android.provider.MediaStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ghostlock.app.core.run.LogHub
+import com.ghostlock.app.core.run.KotlinLogConnector
 import com.ghostlock.app.domain.run.DiagnosticOutcome
 import com.ghostlock.app.domain.run.RunCapability
 import com.ghostlock.app.domain.run.RunExecutionResult
@@ -15,13 +16,15 @@ import com.ghostlock.app.domain.run.LogFormatConfig
 import com.ghostlock.app.domain.run.LogSinkRequest
 import com.ghostlock.app.domain.run.LogLevel
 import com.ghostlock.app.domain.run.LogOrigin
-import com.ghostlock.app.domain.run.LogRecord
+import com.ghostlock.app.domain.run.LogDraft
 import com.ghostlock.app.domain.run.RunReport
 import com.ghostlock.app.domain.run.RunSessionPhase
 import com.ghostlock.app.domain.run.RunSessionState
 import com.ghostlock.app.domain.run.RunTerminal
 import com.ghostlock.app.domain.run.StageResult
 import java.util.UUID
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -70,10 +73,18 @@ class LogHubMediaStoreIntegrationTest {
                     ),
                     sinkRequest = sinkRequest,
                     storageSinks = storageSinks,
-                ) { emit ->
-                    val message = "x".repeat(640)
-                    repeat(16_384) { emit(LogRecord(LogOrigin.Native, LogLevel.Info, message)) }
-                    RunExecutionResult.Completed(diagnosticReport())
+                ) { attach ->
+                    coroutineScope {
+                        val source = KotlinLogConnector()
+                        val collection = async { attach(source) }
+                        val message = "x".repeat(640)
+                        repeat(16_384) {
+                            source.emit(LogDraft(LogOrigin.Native, LogLevel.Info, message))
+                        }
+                        source.finishInput()
+                        collection.await()
+                        RunExecutionResult.Completed(diagnosticReport())
+                    }
                 },
             )
             withTimeout(WAIT_TIMEOUT_MS) {

@@ -1,5 +1,7 @@
 # Kotlin Clean Architecture D0 盘点与 characterization
 
+> **历史状态（2026-11-08）**：本文保留旧 D7 阶段的调查输入；其中 `BackendSpec`、generic configuration、43499 owner 与当时的保留/删除裁定已被后续重构取代，不再指导当前实施。当前 Kotlin 全树边界、批次与判据只以 [P-RUN-X-001/批次02：Kotlin production tree Clean Architecture 纠正](../plan/backend-root-execution-unification-plan.md#p-run-x-001-batch-02) 为权威；下方旧状态与 checkbox 仅作历史证据。
+
 > 状态：2026-11-04 D7 的标准 `BackendSpec.configurationSpec`、generic adapter/renderer 与 attack owner 迁移已经落到 source，当前 architecture、full unit、Android native/APK 构建与既有 AVD semantic walk 已通过；A301SO 的 mDNS 服务重新出现，但当前 endpoint 拒绝连接，因此 attack 冷机门和依赖它的 D7 最终闭环仍明确未完成。
 
 ## 实时进度

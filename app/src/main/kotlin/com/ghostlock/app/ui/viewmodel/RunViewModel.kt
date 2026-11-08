@@ -91,7 +91,8 @@ class RunViewModel(
         val backendKey = current.backendKey ?: return
         if (!current.startAllowed) return
         interaction.value = RunInteraction()
-        runBackend.start(RunCommand(backendKey))
+        val accepted = runBackend.start(RunCommand(backendKey))
+        viewModelScope.launch { runCatching { accepted.await() } }
     }
 
     /** Maps pure session state plus page-local rerun overlay to the shared renderer contract. */

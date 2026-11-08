@@ -3,7 +3,7 @@ package com.ghostlock.app.data.run
 import android.content.Context
 import android.os.Process
 import android.system.Os
-import com.ghostlock.app.backend.transport.RunHostIdentity
+import com.ghostlock.app.core.runhost.RunHostIdentity
 import java.io.File
 import java.nio.file.FileVisitResult
 import java.nio.file.Files

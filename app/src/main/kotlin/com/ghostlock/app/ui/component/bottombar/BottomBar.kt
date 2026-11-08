@@ -1,20 +1,9 @@
 package com.ghostlock.app.ui.component.bottombar
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import androidx.annotation.StringRes
 import androidx.compose.foundation.pager.PagerState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Route
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.PlayArrow
-import androidx.compose.material.icons.outlined.Route
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.rounded.Cottage
-import androidx.compose.material.icons.rounded.PlayArrow as RoundedPlayArrow
-import androidx.compose.material.icons.rounded.Route as RoundedRoute
-import androidx.compose.material.icons.rounded.Settings as RoundedSettings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
@@ -114,10 +103,10 @@ enum class MainNavigationDestination(
     val materialUnselectedIcon: ImageVector,
     val miuixIcon: ImageVector,
 ) {
-    Home(R.string.home, Icons.Filled.Home, Icons.Outlined.Home, Icons.Rounded.Cottage),
-    Backend(R.string.paths, Icons.Filled.Route, Icons.Outlined.Route, Icons.Rounded.RoundedRoute),
-    Run(R.string.run_page_title, Icons.Filled.PlayArrow, Icons.Outlined.PlayArrow, Icons.Rounded.RoundedPlayArrow),
-    Settings(R.string.settings, Icons.Filled.Settings, Icons.Outlined.Settings, Icons.Rounded.RoundedSettings),
+    Home(R.string.home, ProjectIcons.Filled.Home.material, ProjectIcons.Outlined.Home.material, ProjectIcons.Rounded.Cottage.material),
+    Backend(R.string.paths, ProjectIcons.Filled.Route.material, ProjectIcons.Outlined.Route.material, ProjectIcons.Rounded.Route.material),
+    Run(R.string.run_page_title, ProjectIcons.Filled.PlayArrow.material, ProjectIcons.Outlined.PlayArrow.material, ProjectIcons.Rounded.PlayArrow.material),
+    Settings(R.string.settings, ProjectIcons.Filled.Settings.material, ProjectIcons.Outlined.Settings.material, ProjectIcons.Rounded.Settings.material),
 }
 
 internal enum class BadgeTone { Alert, Accent }

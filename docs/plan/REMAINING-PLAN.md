@@ -1,8 +1,88 @@
-# 剩余计划（dev-nocpp · 2026-11-07）
+# 剩余计划（dev · 2026-11-08）
 
 > **代号范围**：当前项使用[主计划语义代号](backend-root-execution-unification-plan.md#plan-semantic-identifiers)；历史批准、纠错记录和 R5-S1 等来源子号保留兼容，不改变本页产品状态。
 
 > 本文件只投影尚未完成的产品项、gate与已裁定的断开状态；完整语义、逐文件scope与判据以[backend-root-execution-unification-plan.md](backend-root-execution-unification-plan.md)为唯一authority。当前没有自动排队的真实backend child。
+
+## 已完成：[P-UI-ICON-001/批次01：全项目语义图标目录](backend-root-execution-unification-plan.md#p-ui-icon-001-batch-01)
+
+> 状态：source与自动局部门已完成；2026-11-08开发者完成Material3/Miuix目视检查并确认无显示错误，明确关闭IC-V1。随后开发者裁定`verifyJnaDistribution`为不必要检查并从current Gradle task graph删除；历史checksum失败保留为发生过的记录，不再是current gate。
+
+- [x] IC-I1：新增唯一人工 `ui/icon/Icons.kt`，提供Material/Miuix pair、UiMode resolver与单侧问号fallback。
+- [x] IC-I2：迁移ledger内全部current direct upstream icon callsite，architecture guard要求目录外命中0。
+- [x] IC-V1：自动source/compile门通过，开发者目视Material3/Miuix页面无显示错误并接受当前图标UI。
+
+## 后续需求：[P-UI-ICON-002：Material/Miuix 全量图标目录](backend-root-execution-unification-plan.md#p-ui-icon-002)
+
+> 状态：开发者需求已登记；全量生成、命名、配对与体积合同尚待单独设计，不夹入P-UI-ICON-001。
+
+- [ ] IC2-D1：冻结当前依赖全部style/weight的生成输入、并集配对、fallback、升级重生成与APK/编译成本判据，再提交critic和用户批准。
+
+## 已完成：[P-BACKEND-CORE-001/批次01：BackendDefinition、BackendDescriptor 与具名BackendUi边界](backend-root-execution-unification-plan.md#p-backend-core-001-batch-01)
+
+> 状态：BD-I1/I2 source、architecture、unit、host native、6.6 AVD两皮肤Backend UI均通过；删除不必要的JNA distribution task后，clean与只构建debug/release的`nativeBuildAndroid`均通过，BD-V1关闭。
+
+- [x] BD-I1：完成 `BackendSpec→BackendDescriptor`，把 `BackendPlugin/BackendRegistry` 移到outer `composition/backend`，新增backend-owned runtime entry与UI-owned `BackendUi/BackendUiCatalog`；删除旧data/domain catalog链，同一private definition list只派生inner投影且保持双向禁边。
+- [x] BD-I2：删除 `BackendCarrierArtifact`、presentation facts、generic configuration四变体/adapter/renderer/cards；接通Diagnose具名UI与Custom disabled占位。
+- **BD-I3（DEFERRED）**：等具体backend出现真实配置consumer时重新设计并批准；本批不新增repository/schema/shared reference/JCS freeze或Diagnose配置开关。
+- [x] BD-V1：普通门、architecture、旧generic配置残留0、配置延后边界与两皮肤Backend页证据通过；不接回真攻击backend。
+
+## 已完成：[P-LOG-X-001/批次03：LogConnector 与全局顺序](backend-root-execution-unification-plan.md#p-log-x-001-batch-03)
+
+> 状态：2026-11-08开发者批准的46行source/caller闭包已实施；批次01-02的双流、普通Info报告行与独立sink结果继续保留。debug/release各120项unit、architecture、host 31项、双variant build、>10 MiB MediaStore/两皮肤UI 7项以及App/Shizuku exact connector路径均通过，LC-I1/I2/V1关闭。
+
+- [x] LC-I1：加入返回 `Drained/Incomplete` 的最小 `LogConnector` 与Kotlin/RunHost/FD实现；LogHub/forwarder支持动态attach/detach并删除direct callback ingress。
+- [x] LC-I2：落实各source的producer/write/read owner、stop→EOF/terminal marker→collect drain→reader close、peer-death/incomplete语义，以及source FIFO、transport-private sequence、raw acceptance全局commit和timestamp仅元数据。
+- [x] LC-V1：普通门、>10 MiB、App/Shizuku并发source、detach前缀完整性与UI/private/MediaStore同commit order证据通过。
+
+## 当前插入批：[P-SETTINGS-IO-001/批次01：全项目 typed DataStore 持久化收口](backend-root-execution-unification-plan.md#p-settings-io-001)
+
+> 状态：五个已有真实consumer的完整data class typed DataStore、主进程初始化、accepted transaction、Payload-only preview exact handle与run cutoff均已实施；旧SharedPreferences adapter和Payload/Finish v3/JCS内部authority已清零。JVM/architecture/普通§8门通过；当前无获准AVD，Android instrumentation runtime保持`NOT_RUN`。Diagnose没有在本批预建空store，未来由P-DIAG在真实consumer同批拥有其具名typed DataStore与snapshot链。
+
+- [x] DS-R1：完成UI/Operational/执行器/backend选择/Diagnose设置/Payload/Finish、导入资产、profile、custom包、workspace、日志、诊断包、build asset与transient state分类。
+- [x] DS-G0：用户修订AGENTS §4，限定GLK profile只服务需要系统内核偏移信息的backend；Diagnose/43284/应用设置使用具名typed authority，SETTINGS-REQ-CONFIG-01关闭且不构成越权技术债。
+- [x] DS-D1：五aggregate、不迁移、损坏/backup/UI-process/幂等首帧、accepted transaction与cutoff snapshot及93行scope已冻结；同岗critic阻断=0。
+- [x] DS-I1：五个typed stores/suspend repositories已实施，被取代的SharedPreferences adapter、内部手写codec/document authority与无职责空壳层已清零。
+- [x] DS-I2：启动加载、自动保存→Payload-only preview exact handle、Operational/Payload/Finish Flow cutoff、执行器/backend选择已接通；Diagnose store/snapshot/跨进程承载全部留给真实consumer所在的P-DIAG批。本批未扩入script/LKM resolver、profile editor、custom package或log retention。
+- [ ] DS-V1：debug/release JVM exact各130项覆盖round-trip/reopen、默认/损坏、幂等初始化、首帧输入、保存顺序、owner隔离和旧authority归零；Android test Kotlin源码编译通过，但instrumentation runtime因当前无获准AVD而`NOT_RUN`。
+- [x] DS-V2：`nativeTestHost`=`TOTAL=31 FAILED=0`；`nativeBuildAndroid`在旧输出重复class后按既定规则`clean`并重跑通过debug/release双variant。该证据不外推为root或真攻击backend成功。
+
+## 已完成批次：[P-RUN-X-001/批次02：Kotlin 全树 Clean Architecture 与 RunHost owner 收口](backend-root-execution-unification-plan.md#p-run-x-001-batch-02)
+
+> 状态：exact RunHost owner/package 收口已完成，旧package/类名、双owner和caller-zero carrier已清零；source critic确认源码与结构PASS、阻断=0，最终architecture/unit/native/build/AIDL/6.6 AVD App+Shizuku门已关闭。`P-DIAG-NATIVE-001/批次02` 的产品需求保留，但逐文件 ledger 要等后续获批Kotlin owner批次稳定后重生。
+
+- [x] KT-D0：扫描全部 production Kotlin 文件，确认 `backend/transport` 混合 pure contract、wire、client、framework service、host preparation、通用 FD reader 与 caller-zero carrier；确认 `backend.transport ↔ data.run`、`core.run → data.run/Android` 及 UI 双向包边。
+- [x] KT-D1：核对现行统一计划、已归档 D7 与 `64a56cd6`/`f878ba08` 历史，确认在 `P-RUN-X-001` 内修订而不是恢复第二份并行 Clean Architecture 计划。
+- [x] KT-D2：design-critic 首轮与定点复审已关闭 KT-CA-01..08；74 行 exact ledger 路径唯一、直接 caller 闭包完整，总判 PASS、阻断=0、重要=0。
+- [x] KT-D3：用户明确批准 `P-RUN-X-001/批次02`；本授权不扩展到 core/data 拆分、Host 去重、backend package 或 UI feature 后续批。
+- [x] KT-I1：仅实施获批的 RunHost owner/package 收口；74行exact ledger闭包失败数为0，core/data、Host 去重、backend package 与 UI feature 收口没有偷做。
+- [x] KT-V1：architecture=`PASS/RUNHOST_OWNER_BOUNDARY=0/FILE_ACTION_ROWS=562`，debug/release unit各`128`且四桶全0，androidTest compile、native host=`31/31`、双variant build与AIDL zero-diff通过。
+- [x] KT-V2：6.6 AVD `emulator-5554` 上 App/Shizuku exact smoke各`OK (1 test)`；不外推为lifecycle全矩阵、真实设备、carrier、root或产品成功。
+
+## 下一设计门：P-RUN-CORE-001/批次02 core/data 依赖方向修复
+
+> 状态：仅需求与owner债务已登记，source尚未授权。下一个允许动作只是在现有 `P-RUN-X-001` 计划内细化exact design/ledger，完成design-critic并取得用户批准；不因批次02完成而自动改production source。
+
+- [ ] KTC-D1：细化 `RunInputFreezer`/root-script I/O、`AndroidRunSessionAdapter`与`ProductRunPreparer`的core/data边界、逐文件ledger、失败语义与对应AVD/设备判据；经critic后等待用户批准。
+
+随后固定顺序为：
+
+1. `P-RUN-X-001/批次03` App/Shizuku Host去重；
+2. `P-BACKEND-CORE-001/批次02` backend package纯化；
+3. `P-UI-CORE-001/批次01` UI feature/package与root composition收口；
+4. 上述Kotlin owner批稳定后才重新细化 `P-DIAG-NATIVE-001/批次02`。
+
+## 上述 Kotlin owner 批完成后重新细化的暂缓门：[P-DIAG-NATIVE-001/批次02：并发source churn与>10 MiB压力](backend-root-execution-unification-plan.md#p-diag-native-001-batch-02)
+
+> 状态：v4 producer/lifecycle部分保留；旧通用GLK schema/repository/JCS `PROFILE` freeze与51行scope不再授权。当前没有`stress_enabled`真实consumer，也没有预建Diagnose store；P-DIAG未来同批拥有Diagnose具名typed DataStore、per-run immutable snapshot、跨进程承载和Flow消费，并重新复审/批准。production仍为`NOT_RUN`，不能拿旧critic PASS直接实施。
+
+- [x] AS-R0：记录native线程+Kotlin协程并发、运行中停旧增新、动态FD connector、>10 MiB无累计上限、drain后native handoff及产品false。
+- [ ] AS-D1R：producer/lifecycle/ABI/故障矩阵候选保留；Diagnose具名typed setting、per-run snapshot与逐文件ledger等待四个 Kotlin owner 批按批准顺序完成后，再以最终路径重生并复审；旧通用GLK/JCS配置切片不得实施。
+- [ ] AS-I1：实现获批的producer churn与Flow条件step；开关关闭时steps中不存在stress step。
+- [ ] AS-V1：4/16 KiB短链不回归，6.6 AVD App/Shizuku stress达到>10 MiB、动态attach/detach、三sink同commit order且产品false。
+- [ ] AS-V2：最终树执行 `RunHostLifecycleTest`、`RunHostCancellationTest`、`RunHostHostDeathTest` exact AVD class。
+- [ ] AS-V3：具名真实Android设备完成automatic-export exact bytes/order/finalization与最终产品验收。
+- [ ] AS-V4：真实carrier设备门（三.2）保持 `NOT_RUN`。
 
 ## 已完成本批：[P-RUN-HANDOFF-001/批次01：common 固定位置 handoff](backend-root-execution-unification-plan.md#p-run-handoff-001)
 
@@ -63,7 +143,7 @@
 - [ ] 补齐P-RUN-X-001/批次01专属`RunHostLifecycleTest`、`RunHostCancellationTest`、`RunHostHostDeathTest` exact AVD证据；正常Diagnose/Handoff纵向不替代生命周期、取消与host-death判据。
 - [x] 执行 P-RUN-CORE-001/批次01/P-LOG-IO-001/批次02 architecture source guard；exact command exit=0，literal=`D0_VERIFY=PASS ... ARCH_VIOLATIONS=0 ... OLD_AIDL_TRANSACTION=0 MANUAL_JNI_OBJECT_MARSHALLING=0 ... SUPERSEDED_RUN_LOG_TOPOLOGY=0 RUNHOST_CLIENT_LOG_SINK_OWNER=0 ... UNCLASSIFIED=0`。
 - 证据纪律：失败保留为失败并回到debug；未执行项只记`NOT_RUN`，不用source implementation冒充PASS。本句是执行规则，不作为开发交付checkbox。
-- [ ] 在 release 或未来重新批准的首个真实 carrier 变成 selectable 前关闭上述欠账；当前所有真攻击 backend 均已断开。
+- [ ] lifecycle/cancel/host-death欠账由AS-V2在本轮最终树偿还；真实carrier设备门不再作为本轮前置，按AS-V4继续`NOT_RUN`。当前所有真攻击 backend 均已断开。
 
 ## Source implementation 已完成
 

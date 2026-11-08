@@ -1,5 +1,7 @@
 package com.ghostlock.app.ui.screen.home
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -29,19 +31,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.filled.DeveloperBoard
-import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.Fingerprint
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Smartphone
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.SupervisorAccount
-import androidx.compose.material.icons.filled.Tag
-import androidx.compose.material.icons.filled.VolunteerActivism
-import androidx.compose.material.icons.rounded.CheckCircleOutline
-import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
@@ -219,7 +208,7 @@ private fun SupportLinks(
             summary = stringResource(R.string.home_click_to_learn_ghostlock),
             startAction = {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                    imageVector = ProjectIcons.AutoMirrored.Filled.MenuBook.material,
                     contentDescription = stringResource(R.string.home_learn_ghostlock),
                     modifier = Modifier.padding(end = 6.dp),
                     tint = colorScheme.onBackground,
@@ -294,17 +283,17 @@ private fun InfoCard(
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
                 InfoText(
-                    icon = Icons.Filled.Tag,
+                    icon = ProjectIcons.Filled.Tag.material,
                     title = stringResource(R.string.home_manager_version),
                     content = systemInfo.appVersion,
                 )
                 InfoText(
-                    icon = Icons.Filled.DeveloperBoard,
+                    icon = ProjectIcons.Filled.DeveloperBoard.material,
                     title = stringResource(R.string.home_kernel),
                     content = systemInfo.kernelVersion,
                 )
                 InfoText(
-                    icon = Icons.Filled.Smartphone,
+                    icon = ProjectIcons.Filled.Smartphone.material,
                     title = stringResource(R.string.home_device_model),
                     content = systemInfo.deviceModel,
                     bottomPadding = 0.dp,
@@ -319,7 +308,7 @@ private fun InfoCard(
                 summary = selinuxDisplay,
                 startAction = {
                     Icon(
-                        imageVector = Icons.Filled.Security,
+                        imageVector = ProjectIcons.Filled.Security.material,
                         contentDescription = null,
                         modifier = Modifier.padding(end = 6.dp),
                         tint = colorScheme.onBackground,
@@ -331,7 +320,7 @@ private fun InfoCard(
                 summary = privilegeStatus,
                 startAction = {
                     Icon(
-                        imageVector = Icons.Filled.SupervisorAccount,
+                        imageVector = ProjectIcons.Filled.SupervisorAccount.material,
                         contentDescription = null,
                         modifier = Modifier.padding(end = 6.dp),
                         tint = colorScheme.onBackground,

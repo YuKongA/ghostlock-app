@@ -1,8 +1,8 @@
 package com.ghostlock.app.ui.component.material
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -26,7 +26,7 @@ fun TopBarBackButton(
         ),
     ) {
         Icon(
-            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+            imageVector = ProjectIcons.AutoMirrored.Rounded.ArrowBack.material,
             contentDescription = contentDescription,
         )
     }

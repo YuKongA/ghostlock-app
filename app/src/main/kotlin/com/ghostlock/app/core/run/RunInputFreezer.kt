@@ -1,9 +1,8 @@
 package com.ghostlock.app.core.run
 
 import android.content.Context
-import com.ghostlock.app.data.run.PackagedBackendArtifactResolver
 import com.ghostlock.app.data.run.RootManagerArtifactResolver
-import com.ghostlock.app.domain.backend.BackendSpec
+import com.ghostlock.app.domain.backend.BackendDescriptor
 import com.ghostlock.app.domain.finish.FinishDefinition
 import com.ghostlock.app.domain.finish.FinishKind
 import com.ghostlock.app.domain.finish.FinishRepository
@@ -17,21 +16,22 @@ import com.ghostlock.app.domain.run.RunCapability
 import com.ghostlock.app.domain.run.RunInputArtifactKind
 import java.io.File
 import java.util.UUID
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 
 /**
  * Single application boundary that freezes backend/profile/Payload/Finish and opened source objects.
  *
  * @param context Application context used for the private immutable profile fixture directory.
- * @param payloadRepository Canonical version-three Payload authority.
- * @param finishRepository Canonical version-three Finish authority.
- * @param packagedCarrierResolver Backend declaration to packaged same-object carrier resolver.
+ * @param payloadRepository Complete typed Payload authority.
+ * @param finishRepository Complete typed Finish authority.
  * @param rootManagerResolver Installed manager executable and exact argv resolver.
+ * @note Product carriers are supplied only by a concrete backend artifact design; no global carrier wrapper exists.
  */
 class RunInputFreezer(
     context: Context,
     private val payloadRepository: PayloadRepository,
     private val finishRepository: FinishRepository,
-    private val packagedCarrierResolver: PackagedBackendArtifactResolver,
     private val rootManagerResolver: RootManagerArtifactResolver,
 ) {
     private val lock = Any()
@@ -39,27 +39,40 @@ class RunInputFreezer(
     private var generation: Long = 0L
 
     /**
+     * Queues Payload and Finish snapshots at the caller's run-action cutoff.
+     *
+     * @param spec Exact selected backend descriptor.
+     * @return Handles whose immutable values cannot include later accepted edits.
+     */
+    fun cutoff(spec: BackendDescriptor): RunInputCutoff = when (spec.runCapability) {
+        RunCapability.DIAGNOSTIC_ONLY -> RunInputCutoff(
+            backendKey = spec.key,
+            payload = CompletableDeferred(PayloadDefinition(items = emptyList())),
+            finish = CompletableDeferred(FinishDefinition()),
+        )
+        RunCapability.PRODUCT_ROOT -> RunInputCutoff(
+            backendKey = spec.key,
+            payload = payloadRepository.snapshot(),
+            finish = finishRepository.snapshot(),
+        )
+        RunCapability.UNRESOLVED -> error("cannot freeze unresolved backend capability")
+    }
+
+    /**
      * Freezes one run and returns ownership of every master descriptor in one closeable lease.
      *
-     * @param spec Exact selected backend spec.
+     * @param spec Exact selected backend descriptor.
      * @return Immutable run input plus opaque-token descriptor ownership.
-     * @throws IllegalStateException When an input, carrier, or manager object cannot be fixed exactly once.
+     * @throws IllegalStateException When an input or manager object cannot be fixed exactly once.
      */
-    fun freeze(spec: BackendSpec): FrozenRunInputLease {
+    suspend fun freeze(spec: BackendDescriptor, cutoff: RunInputCutoff): FrozenRunInputLease {
+        require(cutoff.backendKey == spec.key) { "run input cutoff backend mismatch" }
         val identity = nextIdentity()
         val profileFile = publishProfileFixture(identity.first, spec)
         val sources = mutableListOf<OpenedRunInputSource>()
         try {
-            val payload = when (spec.runCapability) {
-                RunCapability.DIAGNOSTIC_ONLY -> PayloadDefinition(items = emptyList())
-                RunCapability.PRODUCT_ROOT -> payloadRepository.read()
-                RunCapability.UNRESOLVED -> error("cannot freeze unresolved backend capability")
-            }
-            val finish = when (spec.runCapability) {
-                RunCapability.DIAGNOSTIC_ONLY -> FinishDefinition()
-                RunCapability.PRODUCT_ROOT -> finishRepository.read()
-                RunCapability.UNRESOLVED -> error("cannot freeze unresolved backend capability")
-            }
+            val payload = cutoff.payload.await()
+            val finish = cutoff.finish.await()
             val profileSource = OpenedRunInputSource.open(
                 file = profileFile,
                 logicalId = PROFILE_ARTIFACT_ID,
@@ -69,7 +82,6 @@ class RunInputFreezer(
             sources += profileSource
             val invocations = mutableListOf<FrozenArtifactInvocation>()
             if (spec.runCapability == RunCapability.PRODUCT_ROOT) {
-                sources += packagedCarrierResolver.resolve(spec.key)
                 val rootManagerItems = payload.enabledItems().filter { item ->
                     item.kind == PayloadKind.RootManager
                 }
@@ -126,7 +138,7 @@ class RunInputFreezer(
      *
      * @note Product enablement remains blocked on the separate canonical profile-v3 encoder/decoder closure.
      */
-    private fun publishProfileFixture(runId: String, spec: BackendSpec): File {
+    private fun publishProfileFixture(runId: String, spec: BackendDescriptor): File {
         check(sourceDirectory.isDirectory || sourceDirectory.mkdir()) { "cannot create run input directory" }
         val file = File(sourceDirectory, "$runId-profile-v3.json")
         check(file.createNewFile()) { "run profile fixture already exists" }
@@ -148,3 +160,10 @@ class RunInputFreezer(
         const val PROFILE_ARTIFACT_ID: String = "profile"
     }
 }
+
+/** Exact DataStore actor-cutoff handles captured synchronously by one run action. */
+class RunInputCutoff internal constructor(
+    val backendKey: String,
+    val payload: Deferred<PayloadDefinition>,
+    val finish: Deferred<FinishDefinition>,
+)

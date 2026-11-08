@@ -81,7 +81,7 @@ internal class DiagnoseFlow internal constructor(
     }
 
     /** Executes the one synchronous JNA/native/handoff chain and maps each phase independently. */
-    private fun runNativeChain(input: BackendFlowInput): StepResult {
+    private suspend fun runNativeChain(input: BackendFlowInput): StepResult {
         if (input.cancellation.isCancellationRequested()) {
             val cancelled = StageResult(StageState.CANCELLED, ResultReason.CANCELLED, ExitKind.NONE, 0)
             return StepResult.Failed(

@@ -1,9 +1,9 @@
 package com.ghostlock.app.ui.component.profile
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Create
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -35,7 +35,7 @@ fun TemplateConfigMiuix(
             title = stringResource(R.string.app_profile_template_create),
             startAction = {
                 Icon(
-                    Icons.Rounded.Create,
+                    ProjectIcons.Rounded.Create.material,
                     null,
                     modifier = Modifier.padding(end = 16.dp),
                     tint = MiuixTheme.colorScheme.onBackground

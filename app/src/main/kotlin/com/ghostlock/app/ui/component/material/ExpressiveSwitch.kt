@@ -1,10 +1,9 @@
 package com.ghostlock.app.ui.component.material
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -33,7 +32,7 @@ fun ExpressiveSwitch(
         thumbContent = thumbContent ?: if (showThumbIcon && (checked || enabled)) {
             {
                 Icon(
-                    imageVector = if (checked) Icons.Filled.Check else Icons.Filled.Close,
+                    imageVector = if (checked) ProjectIcons.Filled.Check.material else ProjectIcons.Filled.Close.material,
                     contentDescription = null,
                     modifier = Modifier.size(SwitchDefaults.IconSize),
                 )

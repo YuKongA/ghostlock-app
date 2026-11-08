@@ -19,7 +19,7 @@ import com.ghostlock.app.ui.theme.ThemeController
  * @param savedStateHandle Activity navigation-state owner.
  * @param observeUiPreferences Domain stream for renderer preferences.
  * @param setNavigationRailExpanded Domain command for the only shell preference mutated by navigation chrome.
- * @note SharedPreferences listener ownership now belongs to the data adapter in AppContainer.
+ * @note Typed-store ownership belongs to the data adapter in AppContainer.
  */
 class MainActivityViewModel(
     savedStateHandle: SavedStateHandle,

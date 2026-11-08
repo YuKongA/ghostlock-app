@@ -6,6 +6,12 @@ const val RESTORE_SELINUX_FINISH_ID: String = "finish-restore-selinux"
 /** Stable identity of the built-in soft reboot action. */
 const val SOFT_REBOOT_FINISH_ID: String = "finish-soft-reboot"
 
+/** @return New-install Finish authority with SELinux restoration enabled by default. */
+fun defaultFinishDefinition(): FinishDefinition = FinishSettings(
+    restoreSelinux = true,
+    softRebootAfterFinish = false,
+).applyTo(FinishDefinition())
+
 /**
  * UI projection over the typed [FinishDefinition].
  *

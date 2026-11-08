@@ -1,5 +1,7 @@
 package com.ghostlock.app.ui.component.material
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -17,8 +19,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.SelectableDropdownMenuItem
 import androidx.compose.material3.Icon
@@ -509,7 +509,7 @@ fun SegmentedDropdownItem(
                     trailingContent = if (index == safeIndex) {
                         {
                             Icon(
-                                Icons.Filled.Check,
+                                ProjectIcons.Filled.Check.material,
                                 contentDescription = null,
                                 modifier = Modifier.size(MenuDefaults.LeadingIconSize),
                             )

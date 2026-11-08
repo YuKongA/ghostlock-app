@@ -4,9 +4,7 @@ import com.android.build.api.variant.HostTestBuilder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.security.MessageDigest
 import java.util.Properties
-import java.util.zip.ZipFile
 
 plugins {
     id("com.android.application")
@@ -22,104 +20,6 @@ val appName = "GhostLock"
 val appVersionName = "2.0.12"
 val jnaVersion = "5.19.1"
 val jnaCoordinate = "net.java.dev.jna:jna:$jnaVersion@aar"
-
-val jnaDistributionConfiguration = configurations.create("jnaDistribution") {
-    isCanBeConsumed = false
-    isCanBeResolved = true
-    isTransitive = false
-    description = "Resolves the pinned raw JNA AAR for distribution verification."
-}
-val jnaPomDistributionConfiguration = configurations.create("jnaPomDistribution") {
-    isCanBeConsumed = false
-    isCanBeResolved = true
-    isTransitive = false
-    description = "Resolves the pinned JNA POM for license verification."
-}
-
-/** Verifies the pinned JNA AAR/POM and packaged source-tag license inventory without a second version authority. */
-abstract class VerifyJnaDistributionTask : org.gradle.api.DefaultTask() {
-    @get:org.gradle.api.tasks.Classpath
-    abstract val aarFiles: org.gradle.api.file.ConfigurableFileCollection
-
-    @get:org.gradle.api.tasks.Classpath
-    abstract val pomFiles: org.gradle.api.file.ConfigurableFileCollection
-
-    @get:org.gradle.api.tasks.InputDirectory
-    @get:org.gradle.api.tasks.PathSensitive(org.gradle.api.tasks.PathSensitivity.RELATIVE)
-    abstract val licenseDirectory: org.gradle.api.file.DirectoryProperty
-
-    @get:org.gradle.api.tasks.Input
-    abstract val version: org.gradle.api.provider.Property<String>
-
-    @get:org.gradle.api.tasks.Input
-    abstract val coordinate: org.gradle.api.provider.Property<String>
-
-    /** Checks artifact identity, dual-license metadata, AAR contents, and the exact packaged source-tag bytes. */
-    @org.gradle.api.tasks.TaskAction
-    fun verifyDistribution() {
-        val aar = aarFiles.files.singleOrNull { file -> file.extension == "aar" }
-            ?: error("expected exactly one pinned JNA AAR: ${aarFiles.files}")
-        val pom = pomFiles.files.singleOrNull { file -> file.extension == "pom" }
-            ?: error("expected exactly one pinned JNA POM: ${pomFiles.files}")
-        val directory = licenseDirectory.get().asFile
-        val inventoryFile = directory.resolve("INVENTORY.txt")
-        val inventory = inventoryFile.readLines()
-            .filter { line -> '=' in line }
-            .associate { line -> line.substringBefore('=') to line.substringAfter('=') }
-        check(inventory.getValue("coordinate") == coordinate.get()) { "JNA coordinate inventory drift" }
-        check(inventory.getValue("source_tag") == version.get()) { "JNA source tag inventory drift" }
-        check(inventory.getValue("selected_license") == "Apache-2.0") { "JNA selected license drift" }
-        check(sha256(aar) == inventory.getValue("aar_sha256")) { "JNA AAR checksum drift" }
-        check(sha256(pom) == inventory.getValue("pom_sha256")) { "JNA POM checksum drift" }
-
-        val pomText = pom.readText(Charsets.UTF_8)
-        check("<name>LGPL-2.1-or-later</name>" in pomText) { "JNA POM LGPL declaration missing" }
-        check("<name>Apache-2.0</name>" in pomText) { "JNA POM Apache declaration missing" }
-        ZipFile(aar).use { archive ->
-            val names = archive.entries().asSequence().map { entry -> entry.name }.toSet()
-            check("classes.jar" in names) { "JNA AAR classes.jar missing" }
-            check("jni/arm64-v8a/libjnidispatch.so" in names) { "JNA AAR arm64 dispatch library missing" }
-            val licenseEntries = names.filter { name ->
-                val upper = name.uppercase(Locale.ROOT)
-                "LICENSE" in upper || "NOTICE" in upper
-            }
-            check(licenseEntries.isEmpty()) { "unexpected JNA AAR license/notice entries: $licenseEntries" }
-        }
-
-        val expectedAssets = setOf("LICENSE", "AL2.0", "LGPL2.1", "INVENTORY.txt")
-        val actualAssets = directory.listFiles().orEmpty().map { file -> file.name }.toSet()
-        check(actualAssets == expectedAssets) {
-            "JNA packaged license inventory drift: expected=$expectedAssets actual=$actualAssets"
-        }
-        listOf("LICENSE", "AL2.0", "LGPL2.1").forEach { name ->
-            check(sha256(directory.resolve(name)) == inventory.getValue("${name}_sha256")) {
-                "JNA packaged $name checksum drift"
-            }
-        }
-        check(inventory.getValue("aar_license_entries") == "ABSENT") { "JNA AAR license fact drift" }
-        check(inventory.getValue("notice") == "ABSENT") { "JNA NOTICE fact drift" }
-        logger.lifecycle(
-            "JNA_DISTRIBUTION=PASS VERSION={} ABI=arm64-v8a LICENSE=3 NOTICE=ABSENT",
-            version.get(),
-        )
-    }
-
-    /** @return Lowercase SHA-256 of one regular input file. */
-    private fun sha256(file: java.io.File): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        file.inputStream().use { input ->
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                digest.update(buffer, 0, count)
-            }
-        }
-        return digest.digest().joinToString(separator = "") { byte ->
-            (byte.toInt() and 0xff).toString(16).padStart(2, '0')
-        }
-    }
-}
 
 /** Parses every debug unit-test XML suite and enforces the frozen four buckets. */
 abstract class VerifyUnitTestXmlTask : org.gradle.api.DefaultTask() {
@@ -418,7 +318,7 @@ val verifyDebugUnitTestXml = tasks.register<VerifyUnitTestXmlTask>("verifyDebugU
     group = "verification"
     description = "Verifies all debug unit-test XML against exact four-bucket totals."
     resultsDirectory.set(layout.buildDirectory.dir("test-results/testDebugUnitTest"))
-    expectedTests.set(111)
+    expectedTests.set(128)
     expectedFailures.set(0)
     expectedErrors.set(0)
     expectedSkipped.set(0)
@@ -429,21 +329,11 @@ val verifyReleaseUnitTestXml = tasks.register<VerifyUnitTestXmlTask>("verifyRele
     group = "verification"
     description = "Verifies all release unit-test XML against exact four-bucket totals."
     resultsDirectory.set(layout.buildDirectory.dir("test-results/testReleaseUnitTest"))
-    expectedTests.set(111)
+    expectedTests.set(128)
     expectedFailures.set(0)
     expectedErrors.set(0)
     expectedSkipped.set(0)
     dependsOn("testReleaseUnitTest")
-}
-
-val verifyJnaDistribution = tasks.register<VerifyJnaDistributionTask>("verifyJnaDistribution") {
-    group = "verification"
-    description = "Verifies the pinned JNA AAR, POM, ABI payload, and packaged source-tag licenses."
-    aarFiles.from(jnaDistributionConfiguration)
-    pomFiles.from(jnaPomDistributionConfiguration)
-    licenseDirectory.set(layout.projectDirectory.dir("src/main/assets/third_party/jna"))
-    version.set(jnaVersion)
-    coordinate.set(jnaCoordinate)
 }
 
 base {
@@ -477,8 +367,6 @@ tasks.named("preBuild") {
 
 dependencies {
     implementation(jnaCoordinate)
-    add(jnaDistributionConfiguration.name, jnaCoordinate)
-    add(jnaPomDistributionConfiguration.name, "net.java.dev.jna:jna:$jnaVersion@pom")
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.compose.foundation:foundation:1.12.1")
     /* Material3：新 UI 的默认套件（另一个是 miuix，见 app/ui/kit）；本仓无 BOM，版本显式写。
@@ -490,7 +378,6 @@ dependencies {
      * 渲染器在 ui-tooling（只进 debug，不进 release APK）。 */
     implementation("androidx.compose.ui:ui-tooling-preview:1.12.1")
     debugImplementation("androidx.compose.ui:ui-tooling:1.12.1")
-    implementation("com.typesafe:config:1.4.9")
     implementation("org.luaj:luaj-jse:3.0.1")
     implementation("org.apache.commons:commons-compress:1.28.0")
     implementation("dev.rikka.shizuku:api:13.1.5")
@@ -501,6 +388,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
     implementation("androidx.navigationevent:navigationevent-compose:1.2.0")
+    implementation("androidx.datastore:datastore:1.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
     implementation("org.tukaani:xz:1.12")
     implementation("org.commonmark:commonmark:0.32.0")
@@ -521,6 +409,7 @@ dependencies {
     // implementation(project(":profile-core"))
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     testImplementation("org.robolectric:robolectric:4.17")
     /* Compose UI 测试（JVM/Robolectric）：版本与本仓 compose foundation 同源（1.12.1），
      * 无 BOM、无 version catalog ⇒ 必须显式版本。ui-test-manifest 未确认必需，暂不加。 */

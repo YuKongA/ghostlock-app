@@ -1,5 +1,7 @@
 package com.ghostlock.app.ui.component.miuix
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -8,9 +10,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Save
-import androidx.compose.material.icons.rounded.Share
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -86,7 +85,7 @@ fun SendLogDialog(
                 title = stringResource(id = R.string.save_log),
                 startAction = {
                     Icon(
-                        Icons.Rounded.Save,
+                        ProjectIcons.Rounded.Save.material,
                         contentDescription = null,
                         modifier = Modifier.padding(end = 16.dp),
                         tint = colorScheme.onSurface
@@ -104,7 +103,7 @@ fun SendLogDialog(
                 title = stringResource(id = R.string.send_log),
                 startAction = {
                     Icon(
-                        Icons.Rounded.Share,
+                        ProjectIcons.Rounded.Share.material,
                         contentDescription = null,
                         modifier = Modifier.padding(end = 16.dp),
                         tint = colorScheme.onSurface

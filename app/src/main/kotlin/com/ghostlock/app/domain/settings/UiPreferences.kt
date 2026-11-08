@@ -1,5 +1,7 @@
 package com.ghostlock.app.domain.settings
 
+import kotlinx.serialization.Serializable
+
 /**
  * Application-shell preferences consumed by presentation without Android storage knowledge.
  *
@@ -19,8 +21,9 @@ package com.ghostlock.app.domain.settings
  * @property enablePredictiveBack Whether the activity opts into Android predictive back.
  * @property enableSwipeDismiss Whether page swipe-dismiss is enabled.
  * @property pagerInterceptionMode Persisted pager interception ordinal.
- * @note Defaults preserve the existing SharedPreferences behavior and contain no Android types.
+ * @note Defaults preserve the product behavior and contain no Android types.
  */
+@Serializable
 data class UiPreferences(
     val uiMode: String = DEFAULT_UI_MODE,
     val checkUpdate: Boolean = true,

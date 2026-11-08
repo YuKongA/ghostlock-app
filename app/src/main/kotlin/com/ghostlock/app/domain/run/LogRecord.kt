@@ -20,8 +20,21 @@ enum class LogOrigin(val wireValue: Int) {
     }
 }
 
-/** Producer message before RunHost validates and stamps its transport sequence. */
-data class LogDraft(val origin: LogOrigin, val level: LogLevel, val message: String)
+/**
+ * Producer message before LogHub assigns global commit order and run-relative time.
+ *
+ * @property sourceElapsedMs Optional source-local elapsed time retained only as diagnostic metadata.
+ */
+data class LogDraft(
+    val origin: LogOrigin,
+    val level: LogLevel,
+    val message: String,
+    val sourceElapsedMs: Long? = null,
+) {
+    init {
+        require(sourceElapsedMs == null || sourceElapsedMs >= 0L) { "negative source elapsed time" }
+    }
+}
 
 /** Immutable row committed in LogHub order; [commitId] is unique within its document. */
 data class LogRecord(
@@ -30,6 +43,7 @@ data class LogRecord(
     val message: String,
     val elapsedMs: Long = 0L,
     val commitId: Long = 0L,
+    val sourceElapsedMs: Long? = null,
 )
 
 /** Producer boundary supplied to one Flow; delivery failure never changes execution facts. */

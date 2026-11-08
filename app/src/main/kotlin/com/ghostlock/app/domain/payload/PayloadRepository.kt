@@ -1,16 +1,12 @@
 package com.ghostlock.app.domain.payload
 
-/** Persistence boundary for the canonical version-three Payload document. */
-interface PayloadRepository {
-    /** @return Current Payload definition, or the deterministic default when no document exists. */
-    fun read(): PayloadDefinition
+import kotlinx.coroutines.Deferred
 
-    /**
-     * Atomically publishes a canonical version-three Payload document.
-     *
-     * @param definition Complete definition to persist.
-     * @throws IllegalArgumentException When the definition violates the document contract.
-     * @throws IllegalStateException When publication fails.
-     */
-    fun save(definition: PayloadDefinition)
+/** Persistence boundary for the complete independent Payload aggregate. */
+interface PayloadRepository {
+    /** Submits one transform against the DataStore actor's current definition. */
+    fun submit(transform: (PayloadDefinition) -> PayloadDefinition): Deferred<PayloadDefinition>
+
+    /** @return Exact immutable definition at the current actor cutoff. */
+    fun snapshot(): Deferred<PayloadDefinition>
 }

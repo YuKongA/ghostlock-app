@@ -1,6 +1,7 @@
 package com.ghostlock.app.domain.settings
 
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.Deferred
 
 /** Observes operational preferences without exposing their Android storage owner. */
 class ObserveOperationalPreferencesUseCase(
@@ -10,14 +11,16 @@ class ObserveOperationalPreferencesUseCase(
     operator fun invoke(): StateFlow<OperationalPreferences> = port.preferences
 }
 
-/** Saves one immutable operational preference snapshot. */
+/** Saves one actor-current operational preference transform. */
 class SaveOperationalPreferencesUseCase(
     private val port: OperationalPreferencesPort,
 ) {
     /**
-     * @param value Complete storage-neutral state.
+     * @param transform Field-preserving transform over the authoritative current state.
      */
-    operator fun invoke(value: OperationalPreferences) = port.save(value)
+    operator fun invoke(
+        transform: (OperationalPreferences) -> OperationalPreferences,
+    ): Deferred<OperationalPreferences> = port.submit(transform)
 }
 
 /** Imports a terminal font selected by the Android document picker. */
@@ -28,7 +31,7 @@ class ImportTerminalFontUseCase(
      * @param uri Serialized picker URI.
      * @return True when the font became the selected terminal font.
      */
-    operator fun invoke(uri: String): Boolean = port.importTerminalFont(uri)
+    operator fun invoke(uri: String): Deferred<Boolean> = port.importTerminalFont(uri)
 }
 
 /** Selects a Downloads-compatible directory returned by the Android tree picker. */
@@ -39,5 +42,5 @@ class SelectLogExportDirectoryUseCase(
      * @param uri Serialized tree URI.
      * @return True when the directory was normalized and persisted.
      */
-    operator fun invoke(uri: String): Boolean = port.selectLogExportDirectory(uri)
+    operator fun invoke(uri: String): Deferred<Boolean> = port.selectLogExportDirectory(uri)
 }

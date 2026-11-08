@@ -1,5 +1,7 @@
 package com.ghostlock.app.ui.screen.about
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -16,8 +18,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
@@ -53,7 +53,7 @@ fun AboutScreenMaterial(state: AboutUiState, actions: AboutActions) {
                 scrollBehavior = scrollBehavior,
                 navigationIcon = {
                     IconButton(onClick = actions.onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                        Icon(ProjectIcons.AutoMirrored.Filled.ArrowBack.material, contentDescription = stringResource(R.string.action_back))
                     }
                 },
             )

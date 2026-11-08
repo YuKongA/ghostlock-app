@@ -1,5 +1,7 @@
 package com.ghostlock.app.ui.screen.run
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,14 +23,6 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.HourglassEmpty
-import androidx.compose.material.icons.filled.IosShare
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -143,14 +137,14 @@ private fun runLabel(phase: RunUiPhase): String = stringResource(
 
 /** @return Material primary-button icon for the semantic phase. */
 private fun stateIcon(phase: RunUiPhase) = when (phase) {
-    RunUiPhase.Idle -> Icons.Filled.PlayArrow
-    RunUiPhase.Running -> Icons.Filled.Pause
-    RunUiPhase.Aborting -> Icons.Filled.HourglassEmpty
+    RunUiPhase.Idle -> ProjectIcons.Filled.PlayArrow.material
+    RunUiPhase.Running -> ProjectIcons.Filled.Pause.material
+    RunUiPhase.Aborting -> ProjectIcons.Filled.HourglassEmpty.material
     RunUiPhase.Aborted,
     RunUiPhase.Done,
-    RunUiPhase.HandoffRequested -> Icons.Filled.Check
+    RunUiPhase.HandoffRequested -> ProjectIcons.Filled.Check.material
 
-    RunUiPhase.RerunReady -> Icons.Filled.Refresh
+    RunUiPhase.RerunReady -> ProjectIcons.Filled.Refresh.material
 }
 
 /** @return Miuix textual icon retained from the existing rounded button. */
@@ -371,10 +365,10 @@ internal fun RunPageMaterial(
                 scrollBehavior = scrollBehavior,
                 actions = {
                     IconButton(onClick = actions.onClearTerminal) {
-                        Icon(Icons.Filled.Delete, contentDescription = labels.clearLog)
+                        Icon(ProjectIcons.Filled.Delete.material, contentDescription = labels.clearLog)
                     }
                     IconButton(onClick = { actions.onShareTerminal(labels.shareChooser) }) {
-                        Icon(Icons.Filled.IosShare, contentDescription = labels.shareLog)
+                        Icon(ProjectIcons.Filled.IosShare.material, contentDescription = labels.shareLog)
                     }
                 },
             )
@@ -475,14 +469,14 @@ internal fun RunPageMiuix(
                 actions = {
                     IconButton(onClick = actions.onClearTerminal) {
                         Icon(
-                            Icons.Filled.Delete,
+                            ProjectIcons.Filled.Delete.material,
                             contentDescription = labels.clearLog,
                             tint = MiuixTheme.colorScheme.onBackground,
                         )
                     }
                     IconButton(onClick = { actions.onShareTerminal(labels.shareChooser) }) {
                         Icon(
-                            Icons.Filled.IosShare,
+                            ProjectIcons.Filled.IosShare.material,
                             contentDescription = labels.shareLog,
                             tint = MiuixTheme.colorScheme.onBackground,
                         )

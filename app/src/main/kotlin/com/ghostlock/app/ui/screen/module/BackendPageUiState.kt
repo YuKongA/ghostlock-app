@@ -1,6 +1,7 @@
 package com.ghostlock.app.ui.screen.module
 
 import androidx.compose.runtime.Immutable
+import com.ghostlock.app.ui.icon.IconPair
 
 /** One renderer-neutral backend selector row. */
 @Immutable
@@ -8,6 +9,7 @@ data class BackendOptionUiState(
     val key: String,
     val title: String,
     val selectable: Boolean,
+    val icon: IconPair,
 )
 
 /** Shared semantic state for the Material and Miuix path-page renderers. */

@@ -22,7 +22,7 @@ data class BackendAvailabilityReason(
     }
 }
 
-/** Dynamic readiness result provided by [com.ghostlock.app.backend.declarations.BackendPlugin]. */
+/** Dynamic readiness result provided by one backend-owned `BackendRuntime`. */
 sealed interface BackendAvailability {
     /** The backend may be prepared; notes are non-blocking diagnostic facts. */
     data class Ready(val notes: List<BackendAvailabilityReason> = emptyList()) : BackendAvailability

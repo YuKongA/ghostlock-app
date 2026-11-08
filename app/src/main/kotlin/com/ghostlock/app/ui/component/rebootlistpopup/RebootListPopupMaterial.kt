@@ -1,7 +1,7 @@
 package com.ghostlock.app.ui.component.rebootlistpopup
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PowerSettingsNew
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import androidx.compose.material3.DropdownMenuGroup
 import androidx.compose.material3.SelectableDropdownMenuItem
 import androidx.compose.material3.DropdownMenuPopup
@@ -41,7 +41,7 @@ fun RebootListPopupMaterial(
 
     IconButton(onClick = { expanded = true }) {
         Icon(
-            imageVector = Icons.Filled.PowerSettingsNew,
+            imageVector = ProjectIcons.Filled.PowerSettingsNew.material,
             contentDescription = stringResource(id = R.string.reboot)
         )
     }

@@ -14,6 +14,8 @@
 >
 > **2026-11-07 账本收口**：后继P-LOG-X-001/批次02 LS-V3与P-RUN-HANDOFF-001/批次01 HND-V1的current-tree 4 KiB/16 KiB AVD证据已覆盖P-LOG-X-001/批次01的旧wire/UI/runtime欠账；P-RUN-X-001的正常App/Shizuku transport/runtime亦已有current证据。仍未关闭的是RunHost lifecycle/cancel/host-death专属exact AVD判据、真实carrier设备门，以及automatic export真实设备门/最终产品验收。未执行项继续记`NOT_RUN`，不恢复任何真实攻击backend。
 >
+> **2026-11-07 Backend／图标／日志 connector 二次纠正**：用户否定未实施的通用 semantic menu graph，改为一个后端一个 `BackendDefinition` 组合权威，由它引用纯领域 `BackendDescriptor`、运行端 `BackendRuntime` 与 Android `BackendUi`；官方后端使用具名 Compose UI，Custom 后端未来统一使用 ZIP+Lua+WebUI。低层配置字段保持文件化，不从 schema 自动生成 Compose。日志源改经统一 `LogConnector` 接入，source-local FIFO 与 LogHub acceptance/commit order 分离，Unix 时间戳不作为排序权威。原 `P-BACKEND-CORE-001/决策02+批次01` 和 `P-DIAG-NATIVE-001/批次02` 的旧 critic PASS 仅保留沿革，不再授权旧菜单图、旧直接 callback ingress 或旧 stress exact scope。当前顺序改为 `P-UI-ICON-001/批次01` → 修订后的 `P-BACKEND-CORE-001/批次01` → `P-LOG-X-001/批次03` → 重新细化的 `P-DIAG-NATIVE-001/批次02` → 最终 lifecycle/automatic-export 门；真实 carrier 设备门继续 `NOT_RUN`。
+>
 > 权威顺序：docs/development/软件工程守则.md > AGENTS.md > engineering-standards.md / design-philosophy.md > 本计划。
 
 ## 0. 沿革、取代关系与实时进度
@@ -71,7 +73,7 @@
 | D3 | `P-PAYLOAD-CORE-001/决策02` | [Payload 成功判据](#p-payload-core-001-decision-02) |
 | D4 | `P-PAYLOAD-IO-001/决策01` | [detached Payload 与 retention](#p-payload-io-001-decision-01) |
 | D5 | `P-RUN-IO-001/决策01` | [staging policy](#p-run-io-001-decision-01) |
-| D6 | `P-BACKEND-CORE-001/决策01` | [BackendSpec 最小字段](#p-backend-core-001-decision-01) |
+| D6 | `P-BACKEND-CORE-001/决策01` | [BackendDescriptor 最小领域描述](#p-backend-core-001-decision-01) |
 | D7 | `P-BACKEND-X-001/决策01` | [旧 backend disposition](#p-backend-x-001-decision-01) |
 | D8 | `P-RUN-CORE-001/决策01` | [结果 authority](#p-run-core-001-decision-01) |
 | D9 | `P-RUN-CORE-001/决策02` | [取消、host death 与不确定终态](#p-run-core-001-decision-02) |
@@ -143,7 +145,7 @@ backend 原语成功
 - **Payload**：root 权限最终要启动的用户目标，例如 root manager / `ksud`、用户命令、用户脚本或 LKM。它是产品主结果。
 - **Finish**：Payload 之后的附加功能，例如恢复某种状态、软重启、写最终标记或其它结束动作。它不拥有 Payload，也不决定 backend 如何拿 root。
 - Payload 与 Finish 都不属于具体 backend；二者各自拥有设置、持久化、校验与脚本片段生成。
-- backend 配置仍只来自 GLK profile v3；Payload 与 Finish 则各自使用独立的 version=3 typed document/JCS authority，三者分别冻结、互不嵌入、互不反向写回，不用 SharedPreferences 建第二权威。
+- 只有需要系统内核偏移信息的 backend 配置才来自 GLK profile v3；43284、Diagnose 等不需要系统内核偏移的 backend 使用自己的具名 typed authority。Payload 与 Finish 继续独立于 backend，内部持久化按 P-SETTINGS-IO-001 直接序列化完整 data class；各权威分别冻结、互不嵌入、互不反向写回。
 - 运行时把 Payload 片段与 Finish 片段按固定顺序合成**一份脚本文件**。不存在运行时 `PayloadExecutor` / `FinishExecutor` / `PostRootExecutor` 对象链。
 
 ## 2. 统一端到端流程
@@ -211,29 +213,19 @@ backend 统一消费同一类脚本 artifact，但执行动作位于各自 root 
 
 ## 3. Backend 的共同部分：应抽离复用
 
-### 3.1 BackendSpec 与 catalog
+### 3.1 BackendDefinition、BackendDescriptor 与 catalog
 
-所有随 App 发布的 backend 共同使用标准化、不可变的 `BackendSpec` 描述：
+所有随 App 发布的 built-in backend 由外层 `composition/backend` 的一个不可变 `BackendDefinition` 列表注册。每个 definition 组合三项，但不把它们混入同一层：
 
-- 稳定 `key`；
-- 中性的展示 identity；
-- backend profile/config schema 的中性描述；
-- 执行域要求（App / Shizuku）与取消策略；
-- 可用 Flow 能力声明；
-- backend 所需参数集合。
+- `BackendDescriptor`：domain 中的稳定 `key`、selection、abort、execution-domain 与 capability；
+- `BackendRuntime`：backend 层的 dynamic availability 与 fresh `Flow` 创建；
+- `BackendUi`：UI 层的 Android 文案、项目图标和可选具名设置页面。
 
-`BackendSpec` 不包含 Payload、Finish、Android `Context`、mutable runtime state、reflection class name、JNA object 或 concrete backend configuration object，也不需要为“App 与 backend 版本错位”制造静态 contract digest。backend 与 App 同产物发布，registry 是同一构建内的 membership authority。
+`BackendRegistry` 与 `BackendDefinition` 均位于允许同时装配 domain/backend/UI 的外层 `composition/backend`，不是 `backend/declarations`。registry 私有持有唯一 definition list：RunHost／Shizuku只通过 `runtime(key)` 获得backend层定义的 `BackendRuntimeEntry(descriptor, runtime)`；AppContainer只从同一snapshot取得UI层定义的 `BackendUiEntry(descriptor, ui)` 并构造唯一 `BackendUiCatalog`。两个entry都是由definition即时派生的只读投影，不保存第二份membership/key表。普通inner caller不得import outer registry/definition；唯一例外是框架直接构造的`RunHostService.kt`与`GhostlockUserService.kt`两个物理入口，它们只可调用`BackendRegistry.runtime(key)`并立即只持有`BackendRuntimeEntry`，不得访问definition、UI projection、snapshot/list或其它outer API。现有data层 `BackendCatalogAdapter` 及domain `BackendCatalogPort/GetBackendCatalogUseCase/BackendRegistrySnapshot` 随旧presentation DTO一并删除，Home／Path／BackendPage只消费UI层catalog，data层selection/run adapter只消费descriptor/runtime投影。architecture guard须把上述两个绝对路径作为唯一窄allowlist；除此以外任何inner production source import outer registry/definition均FAIL。现行 `backend/data/core → ui` 与 `ui → backend/data/core` 禁边保持不变，不得因本批放宽。
 
-registry 内部保存 `BackendPlugin(spec, readinessProbe, flowFactory)`：
+built-in backend 与 App 同产物发布，不增加 contract digest、interface version、size/reserved 或旧兼容分支。registry拒绝空/重复/unknown key，不支持运行时 `register/unregister/resetToBuiltins`。Lua脚本是数据，只调用受限 operation catalog；它不动态注册新的 built-in definition。
 
-- `spec` 是 UI/domain 能看到的唯一 backend 描述；
-- `readinessProbe` 在 composition/data 边界读取运行环境，投影独立的 runtime readiness；immutable `spec` 本身不读取环境；
-- `flowFactory` 只在 RunHost 内按 `backendKey` 创建该 backend 的 Flow；
-- `BackendPlugin` 不是第二份公开 spec，也不进入 wire/persistence；
-- registry 在构建时一次形成 immutable map，拒绝空 key、重复 key 与 unknown key；不再支持运行时 `register/unregister/resetToBuiltins`；
-- Lua 脚本是数据，不通过动态注册新的 `BackendSpec`；Lua 使用固定的 Lua spec 与受限 operation catalog。
-
-backend-private 配置（例如 `Cve43499DebugConfig` 及其 A301SO/Mondrian 解析结果）仍留在对应 backend 内；公共层只看其声明的中性 schema 与冻结后的 profile snapshot，不 import 具体类型。旧 P-BACKEND-X-001/决策01 把 `BackendSpec` 固定为 Android outer contract 的决定由本计划候选取代，原因是它仍把 `Context`、资源与 reflection symbol 带进执行合同；最终取代只在本计划获批后生效。
+2026-11-08开发者进一步裁定：当前没有需要配置的真实backend，故本批不预建GLK profile repository、manual schema或selected-backend JCS freeze。现有最小diagnostic profile fixture保持原行为，只随`BackendSpec→BackendDescriptor`做必要的类型名迁移；待某个具体backend提出真实配置字段、consumer与运行映射时，再恢复BD-I3并按该backend的实际需求设计。offset/waiter等字段继续只存在于既有backend文件，不进入`BackendDescriptor`或通用Compose模型。现有 `BackendSpec/BackendPlugin` 是本批实施前的current source名；本节与P-BACKEND-CORE-001/决策01-02是下一动作唯一authority，旧spec/plugin模型不得再作为未来重建模板。
 
 ### 3.2 一次运行的准备
 
@@ -577,20 +569,95 @@ App `:flowhost` load成功不能替代UserService load证据，UI App process不
 
 <a id="p-run-x-001-d6"></a>
 
-### P-BACKEND-CORE-001/决策01 BackendSpec 最小字段
+### P-BACKEND-CORE-001/决策01 BackendDescriptor 最小领域描述（已批准）
 
-`BackendSpec` 只含：
+现有 `BackendSpec` 同时承载领域执行属性、展示文案、配置 schema 与参数要求，已经跨越 domain、Android UI 和 backend 私有配置三个 owner。本决策把它机械改名并收窄为 `BackendDescriptor`；旧标题与旧字段表只保留历史来源，不再指导下一批。
+
+`BackendDescriptor` 只保存同一 APK 内稳定、无 Android/Compose/JNA 对象的领域事实：
 
 1. `key`；
-2. 中性 presentation identity；
-3. selection policy；动态 readiness provider 由 internal `BackendPlugin` 持有；
-4. `AbortPolicy`；
-5. `ExecutionDomain`；
-6. neutral profile/config schema；
-7. parameter requirements；
-8. 互斥 `RunCapability`：`PRODUCT_ROOT` 或 `DIAGNOSTIC_ONLY`；由 registry/spec 投影，caller request 不得覆盖。
+2. `BackendSelectionPolicy`；
+3. `AbortPolicy`；
+4. `ExecutionDomain`；
+5. `RunCapability`。
 
-它不含 Payload、Finish、Android `Context`、mutable runtime state、reflection class name、save/restore callback、JNA `Pointer/Structure`。registry 的 internal `BackendPlugin` 持有唯一 `flowFactory`，不进入 UI/wire。
+动态 readiness、`Flow` 构造、配置文件解析、JNA binding、展示名称、图标、页面与本地化均不进入 descriptor。Payload、Finish、mutable runtime state、`Context`、`@Composable`、`ImageVector`、JNA `Pointer/Structure` 与兼容版本字段同样不进入 descriptor。
+
+<a id="p-backend-core-001-decision-02"></a>
+
+### P-BACKEND-CORE-001/决策02 BackendDefinition 组合权威与 Custom UI 边界（已批准；配置实现延后）
+
+2026-11-07 的旧候选把复杂 backend 设置建模为通用 semantic menu graph，并由 schema 自动投影 Compose。用户随后否定该方向：内置 backend 需要表达复杂状态，但不应把 Compose 节点塞入领域声明，也不应维护一套通用 schema→Compose DSL。该旧候选及其 critic PASS 只保留沿革；本节以更直接的同 APK 组合根取代它。
+
+#### P-BACKEND-CORE-001/决策02.1 唯一 Kotlin 组合根
+
+```text
+BackendDefinition
+  descriptor: BackendDescriptor
+  runtime: BackendRuntime
+  ui: BackendUi
+```
+
+- `BackendDefinition` 是一个内置 backend 在 Kotlin 侧的唯一注册与导航入口；每个内置 backend 在外层 `composition/backend` 只有一个具名 root definition 文件。由该文件及其显式引用可到达领域描述、运行实现与 Android UI 实现。
+- `BackendRuntime` 位于 backend 层，只负责动态 availability、每次 accepted run 创建新 `Flow`，以及读取/转换该 backend 私有配置所需的运行依赖；它不import或渲染 UI。
+- `BackendUi` 位于 UI 层，是具名 Android 实现，拥有 selector 文案/图标和可选设置页面。它可直接组合项目现有 Compose 组件，但不把 `@Composable` lambda 或 UI 对象反向写入 `BackendDescriptor`。
+- `BackendDefinition` 与 `BackendRegistry` 位于外层 `composition/backend`。registry私有保存一个不可变 `List<BackendDefinition>`；RunHost/Shizuku只取得backend层 `BackendRuntimeEntry`，AppContainer只取得UI层 `BackendUiEntry`并构造 `BackendUiCatalog`。投影不持有第二份membership/key authority，也不允许runtime/UI caller访问另一侧对象或outer definition。`RunHostService`与`GhostlockUserService`是分别由Android与Shizuku框架反射构造的物理入口，无法使用普通constructor injection；两者允许只调用outer registry的`runtime(key)`投影函数并立即持有`BackendRuntimeEntry`，不得取得`BackendDefinition`、UI projection或definition列表，也不为此新增service wrapper、全局locator或第二registry。
+- `BackendUiCatalog` 是UI层的一个具体process-local对象：它只保存同一definition snapshot派生的UI entries，并通过AppContainer注入的`selectedKey`与`availability(key)`函数读取domain facts；它不import data/backend/composition实现、不做I/O、不复制本地化文案/图标/设置页为domain DTO。HomeViewModel、PathViewModel与BackendPage直接消费它；旧data catalog adapter与domain catalog port/use case/snapshot没有剩余职责，直接删除。
+- `BackendDefinition` 是组合/注册 authority，不是 runtime state、配置值、日志或产品成功 authority。built-in backend 与 App 同版发布，不增加 digest、API version、size/reserved 或旧兼容分支；architecture guard继续拒绝 backend/data/core import UI，只有outer composition可同时引用三层。
+- 现有 `BackendPlugin` 由外层 `BackendDefinition` 取代；现有 `BackendCarrierArtifact` 及只消费该声明的`PackagedBackendArtifactResolver`职责与通用 staging/artifact owner 重复，当前没有可运行的`PRODUCT_ROOT` consumer，故连同其测试直接删除，而不是改名重造等价wrapper。需要 carrier 的未来具体 backend 必须在其纵向设计中定义如何请求标准 frozen artifact，再由冻结边界打开、hash并持有，不再复制一层全局声明。
+
+#### P-BACKEND-CORE-001/决策02.2 配置实现延后边界
+
+2026-11-08开发者明确把BD-I3移出本批：当前Diagnose只需要具名信息UI，Custom仍是disabled占位，真实攻击backend全部断开，因此没有真实配置consumer。当前批只删除无consumer的generic `BackendConfiguration`/schema→Compose链，不新增`GlkProfileRepository`、manual schema、shared-reference resolver、selected-backend JCS wire、通用文本/树状editor或Diagnose设置开关，也不改变`LegacyProfileConverter.kt`与现有最小diagnostic profile fixture。
+
+触发BD-I3的条件是某个具体backend进入实施并给出真实配置字段、共享字段、UI/文件入口及Flow/JNA消费关系。届时在同一主计划内重新细化该backend需要的source authority、引用模型、validation和freeze，更新exact ledger并重新经过critic与用户批准；本批不提前固定目录、递归模型或通用配置数据结构。
+
+旧 `BackendConfiguration` 四变体、`BackendConfigurationSpec`、`BackendConfigSchema`、`BackendPresentationAdapter` 与四个generic card仍在本批删除，因为它们当前没有consumer，且保留它们只会继续把未来配置误表述成通用Compose DSL。删除旧DSL不等于BD-I3已经实施。
+
+#### P-BACKEND-CORE-001/决策02.3 多语言与图标
+
+内置 backend 的静态文案使用普通 Android `R.string`，但资源引用只存在于其 `BackendUi`，不进入 domain descriptor、profile、AIDL 或 JNA。动态证据继续使用运行时文本。图标统一引用 [P-UI-ICON-001](#p-ui-icon-001) 的项目 `Icons` 目录；backend 不直接 import Material/Miuix 图标库，也不另建自己的 resolver。
+
+这避免了 stable text key catalog、反射资源解析、每 backend 翻译映射表与 domain 中的 Android resource ID。若未来 backend 真正迁入 KMP common 或跨 APK 传输，再以新的跨平台需求设计稳定 key；当前 Android/JVM 单 APK 不预建该层。
+
+#### P-BACKEND-CORE-001/决策02.4 Custom backend 包边界
+
+Custom backend 继续保持 disabled，当前批只冻结未来包边界，不实现 loader。未来外部格式采用用途明确的 `*.glbackend` ZIP，借鉴 KernelSU module 的 ZIP、manifest 与 `webroot` 组织方式，但不继承其 boot scripts、system overlay 或 sepolicy 语义：
+
+```text
+backend.json
+flow/main.lua
+config/default.json              # optional
+webroot/index.html               # optional
+webroot/**                       # optional assets
+locales/**                       # optional
+icon/**                          # optional
+```
+
+- `backend.json` 保存 package `formatVersion`、stable key、入口与资产相对路径；这个版本只服务第三方外部包解析，不扩散到同版发布的 built-in JNA 接口。
+- Lua 只组合已发布 operation/JNA 能力；复杂设置统一进入固定 WebUI host。Custom 不声明任意 Compose 元素，也不要求项目维护 Lua→Compose 映射。
+- 包内路径必须是相对路径并在解包根内；具体签名、安装、更新与权限模型等出现真实 consumer 后另立设计，不在本批预建。
+- 当前 `BackendCustom` 只迁到 `BackendDefinition` 并显示 disabled/未完成入口；旧单一 `script_uri` 假设不再作为未来格式 authority。
+
+<a id="p-ui-icon-001"></a>
+
+<a id="p-ui-icon-001-decision-01"></a>
+
+### P-UI-ICON-001/决策01 Material/Miuix 统一语义图标目录（已批准并落地）
+
+项目新增唯一 `com.ghostlock.app.ui.icon.Icons`。在目录实现内部，把 Compose upstream `Icons` import alias 为 `MaterialIcons`；每个项目语义项显式映射一个 Material icon 与一个 Miuix icon，并由唯一 `resolve(UiMode)` 选择当前皮肤。交集与并集都允许：某一皮肤缺少对应项时只对该侧回退到问号/帮助图标，不影响另一侧。
+
+P-UI-ICON-001采用人工维护的语义目录，不使用反射：Material 与 Miuix 图标主要以生成的 Kotlin extension property 暴露，反射会丢失 extension receiver、受 shrink/版本实现细节影响，并把编译期缺失变成运行时错误。本批只收录项目实际使用的语义，不为每个 screen 建第二 resolver。
+
+P-UI-ICON-001/批次01将迁移当前所有直接 `androidx.compose.material.icons.Icons` 与 `MiuixIcons` callsite；批后只有 `ui/icon/Icons.kt` 可以直接引用两个上游目录。
+
+<a id="p-ui-icon-002"></a>
+
+### P-UI-ICON-002/需求01 Material/Miuix 全量图标目录（开发者需求已登记；设计待定）
+
+2026-11-08开发者明确要求目录最终覆盖Material与Miuix当前依赖版本导出的每一个icon，而不是只覆盖项目current callsite。当前依赖静态证据为Material Extended 1.7.8共11,105个Kotlin图标源/类（五个普通style各2,083，加690个AutoMirrored），Miuix Icons 0.9.4共156个图标名、每个extended icon通常有default及Light/Normal/Regular/Medium/Demibold六个入口；对应上游Android archive约34 MiB与1.8 MiB。
+
+该需求不回滚已批准的001语义入口和current caller迁移，但取代“项目目录永久只收录current usage”的长期结论。002须在单独设计中冻结style/weight命名、Material与Miuix并集配对、单侧fallback、生成输入权威、依赖升级重生成、R8可达性/APK体积与编译时间判据；在这些合同和逐文件scope获批前，002只作为后续需求，不把全集引用夹入001 source。
 
 <a id="p-backend-x-001"></a>
 
@@ -602,7 +669,7 @@ App `:flowhost` load成功不能替代UserService load证据，UI App process不
 
 - **original 43499 / original 43284**：未实现 Kotlin/JNI/public-victim closure 从 production source、registry、CMake option 与测试中删除，不做 parity migration；Git 历史保留研究来源。
 - **43499-Glued / 43284-Glued / 98260**：保留 backend-private native attack/core executable 形态，但先从 selectable registry 与默认 APK native graph 移除；只有完成本计划纵向接线与设备门后再启用。
-- 旧 Glued Kotlin connector 不作为接口兼容基线；对应 backend 纵向批按新 `BackendSpec + Flow + RunHost` 重建。
+- 旧 Glued Kotlin connector 不作为接口兼容基线；对应 backend 纵向批按外层 `BackendDefinition`、纯 `BackendDescriptor`、具名 `BackendRuntime + Flow + RunHost` 重建。
 - **Lua**：保留为 operation-composition frontend；删除任意 Java reflection/constructor bridge，只能调用 registry 发布的 typed operation catalog。
 - **DebugProbe**：保留为 `RunCapability.DIAGNOSTIC_ONLY` 的 debug-only RunHost/transport fixture；它只能产出 typed `DiagnosticOutcome.PASS/FAIL/UNKNOWN`。即使结果是 `PASS + DIAGNOSTIC_COMPLETE`，产品 success projector 仍为 false。
 - 首个 carrier 纵向推荐选择 43499-Glued，因为现有 rooted child 已有 `/system/bin/sh <script>` 执行点；这只减少接线变量，不继承其 KSU hardcode 或旧成功语义。
@@ -638,17 +705,19 @@ App `:flowhost` load成功不能替代UserService load证据，UI App process不
 
 | owner | 唯一职责 | 明确不拥有 |
 |---|---|---|
-| `domain/backend` | neutral `BackendSpec` 投影、selection/readiness/config schema | Flow factory、JNA、Payload/Finish |
-| `backend/registry` | 同 APK immutable `BackendPlugin(spec + readinessProbe + flowFactory)` membership | digest/version handshake、runtime register/unregister |
+| `domain/backend` | 纯 `BackendDescriptor`、selection/capability/abort/execution-domain 事实 | Compose、resource ID、Flow factory、配置文件、JNA |
+| `backend/declarations` / `backend/backends/<key>` | `BackendRuntime`接口、`BackendRuntimeEntry`只读投影与具名runtime实现；profile→typed request、JNA/ELF、root point与cleanup | UI、membership list、Payload/Finish renderer |
+| `ui/backend` | `BackendUi`接口、`BackendUiEntry`/唯一`BackendUiCatalog`与具名Android实现 | runtime factory、JNA、profile文件I/O、membership authority |
+| `composition/backend` | 每backend一个 `BackendDefinition` root；唯一immutable definition list与runtime/UI投影 | mutable runtime state、第二key表、动态register/unregister |
 | `domain/payload` | 用户主目标、顺序、required、acceptance 与持久化接口 | backend root 原语、Finish |
 | `domain/finish` | Payload 后附加动作、severity/alwaysRun 与持久化接口 | Payload、backend cleanup |
 | `core/rootscript` | 合并 Payload/Finish、render 一份脚本、result codec | 执行脚本、选择 workspace |
 | `data/run` | per-run workspace、输入 staging、App/Shell adapter、preview 隔离 | exploit/root carrier |
-| `core/flow` | backend logical orchestration、step/retry/stop | reflection symbol、UI、具体 CVE |
-| `backend/transport` | App/Shizuku RunHost、typed AIDL、进程生命周期、process carrier | 漏洞算法、产品成功推断 |
-| `domain/run` / `core/run` | immutable run input、typed event、六层 report、application lifetime | 日志文本解析、native ownership |
-| `backend/backends/<key>` | profile→operation 参数、JNA/ELF、root point、carrier、attack cleanup | Payload/Finish renderer |
-| `log` | ASCII diagnostic sink/export | success authority、控制流 |
+| `core/flow` | backend logical orchestration、step/retry/stop；关闭的 option 不返回对应 step | reflection symbol、UI、具体 CVE |
+| `backend/transport` | App/Shizuku RunHost、typed AIDL、进程生命周期与 RunHost 日志转运 | 漏洞算法、全局日志排序、产品成功推断 |
+| `domain/run` / `core/run` | immutable run input、typed report、单一 `LogHub` commit/fan-out | backend 私有解析、native ownership |
+| `ui/icon` | 项目语义 `Icons` 到 Material/Miuix 的唯一人工映射 | backend 状态、导航、字符串资源 |
+| log connectors / sinks | source FIFO 接入与独立流式消费 | 产品成功、Flow 控制、跨 source 时间戳重排 |
 
 ### 11.2 最小运行数据结构
 
@@ -705,7 +774,7 @@ data class RunReport(
 )
 ```
 
-`BackendSpec.runCapability` 是 `RunCapability` 唯一 authority；`BackendRunFacts` 只报告该 run 的 diagnostic outcome，不能改 capability。`PRODUCT_ROOT` 必须报告 `DiagnosticOutcome.NOT_APPLICABLE`；`DIAGNOSTIC_ONLY` 只能按 wire 附件得到 `PASS/FAIL/UNKNOWN/NOT_RUN`。应用层产品成功 projector 只接受 `PRODUCT_ROOT + RunTerminal.SUCCESS`，因此 DebugProbe 的 PASS 不能进入 Home/Run 的产品成功状态。
+`BackendDescriptor.runCapability` 是 `RunCapability` 唯一 authority；`BackendRunFacts` 只报告该 run 的 diagnostic outcome，不能改 capability。`PRODUCT_ROOT` 必须报告 `DiagnosticOutcome.NOT_APPLICABLE`；`DIAGNOSTIC_ONLY` 只能按 wire 附件得到 `PASS/FAIL/UNKNOWN/NOT_RUN`。应用层产品成功 projector 只接受 `PRODUCT_ROOT + RunTerminal.SUCCESS`，因此 DebugProbe 的 PASS 不能进入 Home/Run 的产品成功状态。
 
 runtime SHA-256 在 publish 与 carrier 对同一 opened object 验证时各计算一次；它与 device/inode/size/mode 共同证明 identity。它不是普通源码 SHA 清单，也不得被重复轮询。
 
@@ -721,7 +790,7 @@ interface Flow {
 ```
 
 - `BackendFlowInput` 只含 run identity、host-local `RootScriptArtifact`、profile snapshot、typed event sink 与 cancellation view；不含 Android UI/Context。
-- registry 的 `flowFactory` 每次 run 创建新 Flow；Flow 不跨 run 复用 mutable state。
+- 外层 registry 的 `runtime(key)` 投影调用 `BackendRuntime.createFlow()`，每次 run 创建新 Flow；Flow 不跨 run 复用 mutable state，RunHost不接收 `BackendUi`。
 - backend 将复杂 native 工作拆成**粗粒度且物理上可暂停的 operation**。PI race、waiter 生命周期、shared handle transaction、98260 self-reentry/park 等不可拆序列仍是单个 operation。
 - Lua 通过 `LuaOperationCatalog` 获取批准 operation，不获得 JNA library name、symbol lookup、raw address、`Pointer` 或 `Native.invoke*`。
 
@@ -960,11 +1029,11 @@ JNA-specific Kotlin/C files不在 cleanup 批预建；它们只在 §14 P-DIAG-N
 - `LegacyProfileConverter.kt`：继续是 v1/v2→3 唯一迁移点。
 - `app/src/main/cpp/backends/43499glued/kernelsnitch/**`：随 43499-Glued native tree 冻结；`app/src/main/cpp/glgeneral/kernelsnitch/**` 与 caller-zero general JNI façade则在 P-BACKEND-X-001/批次01 同 closure 删除，二者不能用同一简称混淆。
 - `backends/43499glued/**`、`backends/43284glued/**`、`backends/98260/**` native attack/core：在本计划中逐文件标成 `FREEZE_FUTURE_CANDIDATE`，只保留 executable/self-reentry/park 物理语义且默认 build 关闭；未来子计划重新 inventory 后才可授权实际 delta。
-- `backend/backends/cve43499glued/**` 与 `backend/backends/cve43284glued/**` 旧 Kotlin connector **不在冻结集**，P-RUN-X-001/批次01 同执行 spine 删除；未来从 neutral `BackendSpec + BackendPlugin + Flow` 重建。
+- `backend/backends/cve43499glued/**` 与 `backend/backends/cve43284glued/**` 旧 Kotlin connector **不在冻结集**，P-RUN-X-001/批次01 同执行 spine 删除；未来只按修订后的 `BackendDefinition + BackendDescriptor + BackendRuntime + Flow` 重建。
 - `common/gl_log.*` 与 current native aggregate test infrastructure：保留，日志仍不作成功 authority。
 - automatic export 产品能力、既有 `ghostlock.log` 的 `auto_export`/`export_location` keys、Downloads-relative destination 语义与两套 Settings UI：保留并在 P-LOG-IO-001/批次01 补完；旧 `log/LogExport.kt` 路径本身不在保留集，不能把 caller-zero 旧实现与产品能力混为同一对象。
 - `ui/component/**`：本计划不顺手重写视觉组件。
-- profile v3 JSON/JCS/schema authority 与 extractor/KMP 计划：不在本次范围。
+- profile v3 JSON source/JCS wire/manual-schema authority：2026-11-08开发者把BD-I3移出P-BACKEND-CORE-001/批次01；当前不实施repository/schema/freeze，待具体配置backend出现真实consumer后重新设计与批准。
 
 ## 13. 所有权与生命周期表
 
@@ -1050,7 +1119,7 @@ JNA-specific Kotlin/C files不在 cleanup 批预建；它们只在 §14 P-DIAG-N
 - [x] 一批内完成 neutral immutable BackendSpec + internal BackendPlugin/readinessProbe/flowFactory、immutable registry、统一 Flow input/facts。`runtime-reflection` guard只覆盖backend execution spine及其`AppContainer` composition owner；Android/OEM/display compatibility utility不属于该合同，也不使用逐文件allowlist伪装全局禁令。
 - [x] 一批内完成 typed RunHost AIDL/state machine、App/Shizuku clients、host-owned workspace/staging/render、process carrier、RunReport application/UI/log 投影；terminal callback 之外由 getSnapshot 轮询 durable authority。
 - [x] 同批删除 dynamic registry、reflection `FlowSymbol/KClass`、digest、old AIDL/host/launcher 与 arbitrary Bundle；不留双轨，并把 no-reflection/no-backend-product-script 纳入 architecture source guard。
-- [x] `BackendConfig*` 移到 neutral domain 的同批删除 `SharedPreferencesBackendConfigStore`，由 `BackendSessionStore` 收口到 GLK profile v3；fixture/guard 与最后 caller 同批改，不把 ordinary source SHA 当 inventory authority。
+- [x] `BackendConfig*` 移到neutral domain并删除`SharedPreferencesBackendConfigStore`；该历史批实际只让`BackendSessionStore`拥有selection，`RunInputFreezer`仍发布diagnostic fixture，**没有**完成canonical GLK profile v3 editor/repository。旧句“由BackendSessionStore收口profile”由本句纠正；2026-11-08开发者又把真实JSON source/JCS wire/manual schema closure延后到具体配置backend实施时，当前P-BACKEND-CORE-001/批次01不再拥有该source范围。
 - [x] 删除旧 Glued Kotlin connector（native source继续冻结）；registry 仅保留 diagnostic DebugProbe 与受限 Lua，production backend 数量可为 0。
 - [x] `RunCommand` 只携 selected stable key，并在 dispatch 前由唯一 `RunInputFreezer` 原子冻结 backend/profile/Payload/Finish；设置漂移不影响 in-flight run；late callback按 `runId+generation+sequence+terminal state` 丢弃；RunCapability只由命中的BackendSpec投影，request不可伪造。
 - [x] DebugProbe source 链贯通 bind→prepare→stage→render→Flow→snapshot→requestClose/destroy，只返回 typed `DiagnosticOutcome`；`PASS + DIAGNOSTIC_COMPLETE` 的产品 success projector 固定为 false；UI显示六层产品结果与独立 diagnostic 结果，raw uid0不等于产品成功。
@@ -1619,6 +1688,55 @@ end\tterminal_received=true
 
 **LS 最终收口证据（2026-11-06）**：旧任务在本轮 `./gradlew clean --console=plain` exit=0 后，`./gradlew nativeBuildAndroid --console=plain` exit=0、`JNA_DISTRIBUTION=PASS VERSION=5.19.1 ABI=arm64-v8a LICENSE=3 NOTICE=ABSENT`、`:app:assembleDebug`/`:app:assembleRelease`/`:nativeBuildAndroid` 均实际执行、`BUILD SUCCESSFUL in 31s`；构建任务图不再出现 `verifyDebugNativeArtifacts` 或 `verifyReleaseNativeArtifacts`。`./gradlew :app:testDebugUnitTest :app:testReleaseUnitTest :app:verifyDebugUnitTestXml :app:verifyReleaseUnitTestXml nativeTestHost :app:assembleDebugAndroidTest --console=plain` exit=0，debug/release 各 `UNIT_TEST_XML=PASS FILES=34 TESTS=104 FAILURES=0 ERRORS=0 SKIPPED=0`、`NATIVE_TEST_HOST=PASS TOTAL=30 FAILED=0`。architecture verifier exit=0、`D0_VERIFY=PASS ARCH_VIOLATIONS=0 ... UNCLASSIFIED=0`。本次 debug/test APK 重新安装到 `emulator-5556` 均为 `Success`；storage/MediaStore/两皮肤 UI exact class=`OK (7 tests)`，App 与 Shizuku Diagnose exact class各=`OK (1 test)`，三次 adb 命令 exit=0。新的 build gate 只证双版 APK 构建与 JNA distribution，不证被删除 verifier 的 ELF/ABI/JNI 精确集合；LS-V1/V2/V3 按用户修订准出关闭，真攻击 backend 和产品 root 仍未接通。
 
+<a id="p-log-x-001-batch-03"></a>
+
+### P-LOG-X-001/批次03 LogConnector、动态 source 与全局顺序（已完成）
+
+#### 取代与保留
+
+本批只重构日志 ingress，不改已经完成的双流/sink 结果：仍只有一个应用 `LogHub`，raw 与 processed 使用 `Channel.UNLIMITED`，每个 sink 有独立 unlimited queue；`RunReport` 摘要仍只是普通 Info 行并服从统一阈值，typed report 仍是产品结果 authority。旧的 Flow/RunHost client 直接调用 `(LogRecord) -> Unit` 入口被统一 connector 取代。
+
+#### 最小 connector 合同
+
+```kotlin
+sealed interface LogConnectorEnd {
+    data object Drained : LogConnectorEnd
+    data class Incomplete(val reason: String) : LogConnectorEnd
+}
+
+interface LogConnector : AutoCloseable {
+    suspend fun collect(emit: suspend (LogDraft) -> Unit): LogConnectorEnd
+}
+```
+
+- `LogDraft` 是尚未全局提交的来源记录；只有LogHub single processor创建 `LogRecord`、`commitId` 与run-relative `elapsedMs`。`LogConnectorEnd` 只报告日志source是否完整drain，不进入 `RunReport` 或产品成功。
+- LogHub拥有独立run-scoped `CoroutineScope(SupervisorJob + background dispatcher)`。attach为connector启动一个collect job；**正常detach不先调用 `close()`**，而由producer owner先停止新写入并形成该source的完成条件，LogHub/forwarder等待collect返回 `Drained/Incomplete`，随后才调用 `close()` 释放reader/transport资源并移除job。`close()` 是终结释放，不是正常stop请求；只有run abort/coroutine cancel才允许取消collect并提前close，此时结果视为partial/incomplete。
+- `KotlinLogConnector` 的producer/write-side owner是Flow或producer coroutine group；owner调用implementation-private `finishInput()` 关闭内部channel写端，collect排空channel后返回 `Drained`。producer throw/cancel先关闭写端并保存reason，collect排空已接受draft后返回 `Incomplete`。
+- `FdLogConnector` 的write-side owner是native binding或shell child；正常顺序固定为stop producer→join thread/reap child→关闭write fd→reader读至EOF并处理完整尾行→collect返回→关闭read fd。reader不得为normal detach主动关闭read fd；EOF前peer/error、残缺尾行或read失败返回 `Incomplete`。RunHost forwarder可动态attach/detach多个FD connector，但它不是第二hub，只给每条转发记录分配source-private transport sequence。
+- `RunHostLogConnector` 的远端producer owner是App/Shizuku RunHost，应用侧connector只读typed transport。RunHost必须在全部本地Kotlin/FD source drain后发送连续final sequence与terminal-delivery marker；应用collect仅在序列连续且marker到达时返回 `Drained`。typed terminal snapshot仍由callback/poller独立取得，但poller看到terminal不能立即关闭transport：client现有唯一completion deadline负责等待terminal snapshot与日志marker两者；deadline届满、gap/inversion/duplicate、Binder peer death或lifecycle关闭transport而无marker时，connector排空已接收prefix后返回 `Incomplete`。LogHub不另建第二deadline。
+- LogHub不认识FD/PFD、AIDL、JNA、shell grammar或具体backend；connector/forwarder负责边界解析与origin/level校验。`Incomplete`或connector throw只提交一条普通Warn/Error draft并继续关闭该source，不改变攻击流程或产品成功。
+- reader、raw、processed与sink queue都不设累计记录/字节上限；实际进程资源是唯一物理边界。每行仍服从现有单条wire/parcel/ASCII规则，不把“不限累计”解释成单条消息无限大。
+
+#### 顺序 authority
+
+1. 每个 connector 必须保留自身 source FIFO；同一 native FD、Kotlin channel 或 RunHost transport 内不重排。
+2. RunHost transport sequence 只在 `RunHostLogConnector` 内检测 drop、duplicate、inversion 与 terminal delivery，不参与不同 source 的排序，也不成为 UI/file commit ID。
+3. 多 connector 的全局顺序以 draft 被 raw ingress 接受的先后为唯一 authority；single processor 按该顺序分配连续 `commitId`。
+4. source Unix timestamp、native clock、transport arrival timestamp只作为可选元数据展示/诊断；不回溯重排，不增加 watermark、reorder window 或跨时钟校准。
+5. 结束run时，producer owner先停止新写入并关闭write side/发送terminal marker；connector collect先drain并返回end状态，随后owner关闭reader资源。single processor再提交剩余draft、任何Incomplete warning、普通Info `RunReport` 行与End；dispatcher把同一processed order交给所有sink。慢sink只积压自己的queue，不能拖慢connector、processor或其它sink。
+
+#### 批次边界与验收
+
+本批修改 `LogHub`、日志 source contract、App/Shizuku client/RunHost forwarder、Diagnose现有短日志 adapter、相应 unit/AVD fixtures、architecture guard 与唯一日志 UML；不加入 async stress producer、不改变 JNA ABI、不接回真攻击 backend。
+
+验收必须证明：动态attach/detach前缀不丢不重；Kotlin与RunHost两source并发时各自FIFO、global `commitId`连续且只按raw acceptance；Unix时间倒退不导致重排；Kotlin channel partial buffer、FD read suspend/EOF/残缺尾行、transport gap/duplicate/inversion、Binder peer death、close与collect并发均得到唯一Drained/Incomplete结果；terminal snapshot早于callback marker时client仍等待marker，唯一completion deadline届满才把已接收prefix终结为Incomplete；单connector异常不终止其它connector；>10 MiB累计日志经UI/private/MediaStore启用sink保持同一committed order；正常结束必须stop writer→drain collect→close reader→report/End；Info阈值过滤report行时typed `RunReport`不变。
+
+- [x] LC-I1：加入返回 `Drained/Incomplete` 的最小 `LogConnector`、Kotlin/RunHost/FD实现与动态attach/detach，删除direct callback ingress。
+- [x] LC-I2：把三类source的producer/write/read owner、stop→EOF/terminal marker→drain→close、peer-death/incomplete、source FIFO、transport-private sequence、raw acceptance/commit与report/End顺序同步到tests、guard和UML。
+- [x] LC-V1：普通门、>10 MiB、App/Shizuku并发 source 与两套 UI/文件 sink 证据通过；结果不外推为Diagnose stress或root成功。
+
+**LC current-tree证据（2026-11-08，AVD `emulator-5556`，kernel `6.6.30-android15-8-gdd9c02ccfe27-ab11987101-4k`，page=4096）**：debug/release unit XML各为`FILES=34 TESTS=120 FAILURES=0 ERRORS=0 SKIPPED=0`；`nativeTestHost`为`TOTAL=31 FAILED=0`；architecture all为`D0_VERIFY=PASS ARCH_VIOLATIONS=0 ... SUPERSEDED_RUN_LOG_TOPOLOGY=0 ... UNCLASSIFIED=0 FILE_ACTION_ROWS=507 COMPONENT_FILES=72 COMPONENT_API_ROWS=334`，并定点确认direct callback ingress、bounded log queue与source timestamp排序残留均为0。`nativeBuildAndroid`在删除用户否定的JNA distribution verifier后exit=0、`BUILD SUCCESSFUL in 22s`，只证明debug/release双variant构建，不恢复已删除的ELF/ABI/JNI或distribution精确核验。storage/MediaStore/两皮肤UI exact instrumentation为`OK (7 tests)`；其中16,384条640-byte记录生成的private file超过10 MiB并与MediaStore逐字节一致。direct-JNA、App RunHost及host-death connector路径先完成4项，Shizuku因server authorization为`permission=-1`发生2项assumption skip；在Shizuku Manager刷新授权后，两个Shizuku exact class复跑为`OK (2 tests)`。unit同时覆盖两source并发raw acceptance、各source FIFO、倒退source clock不重排、Kotlin/FD/RunHost的Drained/Incomplete与accepted-prefix保留。以上关闭LC-I1/I2/V1，但不证明P-DIAG-NATIVE-001/批次02压力编排、真攻击backend或root产品成功。
+
 <a id="p-backend-x-001-batch-02"></a>
 
 <a id="p-run-x-001-r5"></a>
@@ -1632,6 +1750,80 @@ end\tterminal_received=true
 - [x] `backends/CMakeLists.txt` 删除全部 real-attack option/include；Gradle 删除对应 properties、M0 staging/build task与marker wiring，不留开关旁路。
 - [x] R5-S2 的局部新文件/编辑已清零，43499-Glued旧实现保持 source-only 且不修改；R5-S2/S3 checkbox关闭为`CANCELLED`。
 - [x] child plan、ledger、backend README、UML、introduction、MASTER/REMAINING/ROADMAP同步为断开状态。
+
+<a id="p-ui-icon-001-batch-01"></a>
+
+### P-UI-ICON-001/批次01 全项目 Material/Miuix 语义图标收口（开发者验收完成）
+
+#### 目标与 scope
+
+先建立全项目唯一图标目录，避免 BackendUi 又产生第三套 resolver。新增 `ui/icon/Icons.kt`，人工声明当前实际使用的语义项与 Material/Miuix pair；把现有 30 个直接 upstream icon callsite 全部迁到项目 `Icons`。没有对应图标的一侧回退问号图标，另一侧仍使用真实映射。
+
+本批只改变图标取得位置，不改页面布局、文案、click action、导航、状态判断或 backend 行为。exact callsite 由同批 ledger 固定；发现额外 production callsite 时先补 ledger，不顺手改其它 UI。
+
+#### 验收
+
+- production source 中 `androidx.compose.material.icons.Icons` 与 `MiuixIcons` 的直接引用只允许出现在 `ui/icon/Icons.kt`；测试可引用 fake pair，但不复制 production catalog。
+- 每个已迁移语义在 Material3/Miuix 两套 UI 都能解析；至少一项验证单侧 fallback；RTL automirrored 图标语义不退化。
+- 本批不使用反射、生成全库镜像、字符串图标名或 backend-private resolver；catalog 未设置人为数量上限。P-UI-ICON-002的全量生成需求独立设计，不在本批提前实现。
+- 现有页面 screenshot/语义测试只验证图标选择与原 action 不变，不借本批重做页面视觉。
+
+- [x] IC-I1：建立人工 `Icons` pair catalog、唯一 resolver 与 fallback。
+- [x] IC-I2：迁移 ledger 中所有 current callsite，并增加禁止绕过目录的 architecture guard。
+- [x] IC-V1：architecture/unit/androidTest compile/双variant assemble/host-native证据已通过；开发者完成Material3/Miuix页面目视检查并确认无显示错误，接受其作为本批UI验收。
+
+#### 当前实施与验证边界（2026-11-08）
+
+- `Icons.kt` 已提供88个current语义/变体pair；原30个production文件中的175条upstream icon import已归零，目录外import与fully-qualified引用均由architecture guard拒绝。`IconsTest`覆盖Material/Miuix选择、单侧Miuix Help fallback及AutoMirrored语义。
+- `python3 tools/kotlin_architecture_d0.py verify --repo . --fixtures app/src/test/resources/architecture --section all`：exit 0，`D0_VERIFY=PASS`、`PROJECT_ICON_AUTHORITY=0`；`testDebugUnitTest`为114 tests / 0 failures / 0 errors / 0 skipped，`compileDebugAndroidTestKotlin` exit 0；`:app:assembleDebug :app:assembleRelease` exit 0；`nativeTestHost`为31/31。
+- `nativeBuildAndroid`在clean前后均先于本批Kotlin编译失败于既有`verifyJnaDistribution`：current/HEAD `LGPL2.1` SHA-256均为`c38856d04dc924d23f8d18b83238c3d56c44a5ada7d33fc4e185a9430078c8da`，而current/HEAD `INVENTORY.txt`登记`eea173a556abac0370461e57e12aab266894ea6be3874c2be05fd87871f75449`。本批未修改JNA文件、Gradle gate或inventory；该矛盾保留为独立构建债，不再阻断开发者已经接受的图标UI验收，也不被独立assemble结果改写成JNA gate PASS。
+- 2026-11-08开发者已手工检查当前UI并确认没有显示错误，明确关闭IC-V1；该用户观察只证明图标显示验收，不生成未执行的自动截图命令或JNA distribution PASS。
+
+<a id="p-backend-core-001-batch-01"></a>
+
+### P-BACKEND-CORE-001/批次01 BackendDefinition、BackendDescriptor 与具名BackendUi边界（已批准；BD-I3延后）
+
+#### 目标、行为差异与 owner
+
+本批把现有 `BackendPlugin + BackendSpec + generic configuration renderer` 三条并行权威收敛为外层 `BackendDefinition(descriptor, runtime, ui)`：
+
+- `BackendSpec.kt` 改名为domain `BackendDescriptor.kt` 并删除 presentation/config/parameter 字段；`BackendPlugin.kt` 移到 `composition/backend/BackendDefinition.kt`，新增backend层 `BackendRuntime` 与UI层 `BackendUi` 接口。
+- `backend/registry/BackendRegistry.kt` 移到 `composition/backend/BackendRegistry.kt`；Diagnose与Custom各把当前声明移成一个outer root definition，并分别引用backend runtime实现与UI实现。registry私有只列一次definitions；App/Shizuku RunHost两个框架入口只调用`runtime(key)`并取得backend层`BackendRuntimeEntry`，AppContainer取得UI层`BackendUiEntry`并构造`BackendUiCatalog`，任何inner caller都不接收完整definition或outer类型。
+- architecture guard新增outer composition分类但不放宽现有 `backend/data/core → ui` 与 `ui → backend/data/core` 禁边；`composition/backend` 是唯一可同时import三层的装配点。
+- `BackendCarrierArtifact.kt`、只消费它的`PackagedBackendArtifactResolver.kt`及测试删除；当前无可运行`PRODUCT_ROOT`，不预建替代请求wrapper。未来具体runtime的标准artifact请求与staging随该backend纵向批设计。
+- generic `BackendConfiguration` 四变体、spec/schema UI wrapper、presentation adapter、旧data/domain catalog链、generic renderer 与四个 card 清零。Diagnose 使用一个具名 UI；Custom 使用 disabled 占位页，未来 WebUI 包不在本批实现。
+- 本批不新增GLK profile repository、manual schema、shared-reference resolver或selected-backend JCS freeze；`RunInputFreezer`只随descriptor改名保持现有diagnostic fixture。BD-I3待具体配置backend出现真实consumer时重新设计、critic和批准。
+- Diagnose Flow与RunHost输入行为保持现状；未接通且无consumer的product carrier自动注入分支随旧resolver删除。本批不建立配置`wire` class family，不改RunHost AIDL、Payload/Finish、LogHub或真攻击 backend。
+
+#### Exact source scope 类别
+
+| 类别 | 计划动作 |
+|---|---|
+| composition/domain | MOVE_REWRITE `BackendSpec.kt→domain/backend/BackendDescriptor.kt`、`BackendPlugin.kt→composition/backend/BackendDefinition.kt`、`backend/registry/BackendRegistry.kt→composition/backend/BackendRegistry.kt`；ADD backend层 `BackendRuntime.kt`、UI层 `BackendUi.kt`；DELETE `BackendCarrierArtifact.kt`及无consumer的声明式packaged resolver/test。 |
+| built-in roots/registry | MOVE_REWRITE Diagnose、Custom current declaration为两个 `composition/backend/*BackendDefinition.kt` root；ADD两个backend-private runtime实现与两个UI实现；所有 `BackendSpec/BackendPlugin` caller机械迁移到descriptor/runtime或descriptor/UI投影。 |
+| remove generic UI DSL | DELETE `BackendConfiguration.kt`、`BackendConfigurationSpec.kt`、generic UI `BackendConfigSchema.kt`、`BackendPresentationAdapter.kt`、`AndroidBackendConfigurationAdapter.kt`、`BackendConfigRenderer.kt` 与四个 config card。 |
+| app/UI | MODIFY `AppContainer`/`AppViewModelFactory`、session/selection adapters、BackendPage/Home/Path caller；ADD UI-owned `BackendUiCatalog`；DELETE旧data catalog adapter与domain catalog port/use case/snapshot。UI只消费同一definition snapshot派生的`BackendUiEntry`与全局`Icons`，不import outer definition。 |
+| tests/guards/docs | 改写 domain/registry/UI tests；guard要求零旧类型、零generic schema→Compose、零direct backend icon resolver；更新 backend README、current architecture说明与唯一 UML。 |
+
+逐文件 scope 以 `backend-root-execution-unification-ledger.tsv` 为准；`developer-defined-tasks.md` 继续只接受开发者明确条目，本批不修改。
+
+#### 验收矩阵
+
+| 场景 | 必须观察 |
+|---|---|
+| registry/root | 每个 key恰有一个 definition；descriptor/runtime/ui均非空且同 root 可达；duplicate key fail-closed；runtime/UI entries均从同一snapshot即时派生且不形成第二membership/key authority；两个框架宿主入口只调用`runtime(key)`投影且不取得outer/UI对象；release PRODUCT_ROOT 可为0。 |
+| 层级边界 | `domain/backend` 无 Android/Compose/JNA/resource ID、presentation/config schema或catalog DTO；Flow factory与availability只在runtime；backend/data/core仍不能import UI且UI不能import实现层；除`RunHostService.kt`与`GhostlockUserService.kt`只调用`BackendRegistry.runtime(key)`的exact allowlist外，inner source import outer registry/definition均FAIL；两个例外只收到backend-owned runtime entry且不能调用UI/list/definition API，UI caller只收到UI-owned catalog。 |
+| UI | Material3/Miuix selector、Home状态与Backend页从同一 `BackendUiCatalog`/`BackendUi`取得本地化文案和项目Icons；Diagnose显示具名信息UI；Custom仍disabled且不伪装WebUI已实现。 |
+| 配置延后边界 | 新profile repository/manual schema/shared resolver/selected-backend JCS及Diagnose配置开关均保持ABSENT；现有diagnostic fixture与`LegacyProfileConverter.kt`行为不变。 |
+| cleanup | `BackendCarrierArtifact`、`PackagedBackendArtifactResolver`、`BackendPresentationFact`、generic configuration四变体、四个generic card、`BackendCatalogAdapter/Port/GetBackendCatalogUseCase/BackendRegistrySnapshot`与旧adapter/renderer命中0；无兼容 alias或等价carrier wrapper。 |
+| regression | selection、RunHost prepare/Flow构造、Payload/Finish、LogHub、DIAGNOSTIC_ONLY与真攻击backend断开状态不变。 |
+
+- [x] BD-I1：完成outer composition的definition/唯一registry、domain descriptor、backend runtime entry、UI-owned catalog及runtime/UI投影的机械迁移；删除旧data/domain catalog链，现有双向禁边保持。
+- [x] BD-I2：删除 carrier wrapper及generic UI/config DSL，接通 Diagnose具名 UI 与 Custom disabled占位。
+- **BD-I3（DEFERRED，不属于本批准出）**：待具体backend需要配置时，以其真实字段与consumer重新设计GLK v3 source/freeze；当前不预建repository、schema、shared reference或设置开关。
+- [x] BD-V1：普通门、architecture、旧generic配置残留0、配置延后边界与两皮肤Backend页证据通过；不外推为async stress或root成功。
+
+**P-BACKEND-CORE-001/批次01 current-tree实施证据（2026-11-08）**：75行exact ledger的source、caller与用户纠正闭包已落地；同岗source复评在逐token收紧两个framework service的`BackendRegistry.runtime(...)` guard后关闭`BACKEND-GUARD-01/BACKEND-UI-01`，静态阻断=0。debug/release unit各`111/111`、host native=`31/31`、debug/release APK及debug androidTest assemble、6.6 AVD `BackendUiTest`四项（中英资源、Material/Miuix、Backend页/Diagnose/Custom实际Compose）均PASS；architecture all为`D0_VERIFY=PASS ... BACKEND_COMPOSITION_BOUNDARY=0 BACKEND_RETIRED_CONTRACT=0 ... UNCLASSIFIED=0`，旧Kotlin合同与延后配置新文件的production命中均为0，真攻击registry命中0。首次普通门曾被既有`verifyJnaDistribution`阻断；开发者随后裁定该检查不必要并要求删除。current tree已删除task class、注册、两套verification-only configuration/POM依赖及root task dependency，保留普通JNA implementation和许可assets；`./gradlew clean --console=plain` exit=0，随后`./gradlew nativeBuildAndroid --console=plain`直接执行debug/release assemble并exit=0，literal=`BUILD SUCCESSFUL in 39s`、`95 actionable tasks: 54 executed, 39 from cache, 2 up-to-date`。因此BD-I1/I2/V1全部关闭；该结果只证明两variant构建，不声明JNA distribution、ELF、ABI或JNI精确核验。
 
 <a id="p-diag-native-001"></a>
 
@@ -1788,6 +1980,8 @@ constructor load属于RunHost prepare，不属于下表的Flow facts：成功才
 
 #### P-DIAG-NATIVE-001/批次01.7 验证矩阵
 
+> **2026-11-08 current-tree取代说明**：下表的`verifyJnaDistribution`、旧native artifact verifier及其literal只记录P-DIAG-NATIVE-001/批次01当时的历史准出。开发者已裁定这些额外检查不必要并从current Gradle task graph删除；当前普通Android门仅为`nativeBuildAndroid`直接构建debug/release两variant，不再要求或声称JNA distribution、ELF、ABI、JNI精确核验。
+
 | 层 | 命令/输入 | 必须literal证明 |
 |---|---|---|
 | dependency/license | 分三次执行：`./gradlew --dependency-verification=strict :app:dependencies --configuration debugRuntimeClasspath --console=plain`；`./gradlew --dependency-verification=strict :app:dependencies --configuration releaseRuntimeClasspath --console=plain`；`./gradlew --dependency-verification=strict :app:verifyJnaDistribution --console=plain` | 两classpath各自只解析`net.java.dev.jna:jna:5.19.1@aar`；metadata checksum匹配；POM声明`LGPL-2.1-or-later`/`Apache-2.0`双许可；AAR含arm64`libjnidispatch.so`且不含LICENSE/LGPL2.1/NOTICE正文；APK assets与JNA `5.19.1` source tag逐字包含LICENSE/AL2.0/LGPL2.1；literal=`JNA_DISTRIBUTION=PASS VERSION=5.19.1 ABI=arm64-v8a LICENSE=3 NOTICE=ABSENT`。 |
@@ -1828,6 +2022,233 @@ AVD只证明Diagnose机制与release包装，不证明任何CVE、root primitive
 - `2026-11-06T03:26:36Z | R6 v3 定点复评 | D1-02/03/05/06/08=CLOSED | 新增阻断=0 | 总判=仍需修订 | 阻断=1`。唯一剩余`R6-V2-01`：首个primitive step可在accepted start内直接load，公共`Flow.initialize`会额外扩散到Flow/SequentialFlow/Lua/两个RunHost与专门测试；只有用户明确知情强制保留，或改用primitive-step直接方案，才可关闭并进入source批准gate。
 - `2026-11-05 用户知情强制裁定 | R6 v4 | 选择native-backed Flow/binding构造器在prepare加载；删除公共Flow.initialize方案；接受start前load、load不可由RUNNING取消、失败只返回RunHost IO_FAILURE且无RunReport/Flow log；明确要求本决定不再提交design-critic`。由Lead按AGENTS §1记录沿革与技术债，不把“未复评”写成critic PASS；R6-D2 source批准仍独立未通过。
 - `2026-11-06T05:43:42Z | R6 prepare-order定点复评 | 总判=仍需修订 | 阻断=2 | P-DIAG-PREP-01：仅把createFlow前移仍会留下prepare/start发布窗口，必须锁外构造完整candidate并在host lock内原子提交lifecycle+prepared+snapshot；P-DIAG-PREP-02：两个host、计划ledger与prepare/start交错判据必须同批补齐`。本批按该最小闭包实施，不增加rollback、loader层、公共接口或新状态。
+
+<a id="p-settings-io-001"></a>
+
+### P-SETTINGS-IO-001/批次01 全项目 typed DataStore 持久化收口（source 实施完成；Android exact runtime 待补）
+
+#### 取代、保留与本批边界
+
+**2026-11-08 用户裁定**：内部持久状态直接使用 `kotlinx.serialization` 序列化完整 Kotlin data class，并由 typed `DataStore<T>` 持有；不再保留“Preferences key 映射 + Payload/Finish 手写 canonical JSON/JCS codec”这两套内部机制。该裁定取代本节上一版的“两份 Preferences DataStore、两份保留 v3 文件格式的 typed DataStore、Hub 全局 mutex”设计；旧 `payload-v3.json`、`finish-v3.json` 的具体内部字节格式和纯内部 `*DocumentV3` wrapper 不再是目标合同。
+
+**SETTINGS-REQ-CONFIG-01 已关闭（2026-11-08 用户规则修订）**：AGENTS §4 现只要求“需要系统内核偏移信息的 backend”以 GLK profile 为配置权威；Diagnose 与 43284 明确不在该集合。`stress_enabled` 因此可以由 Diagnose 自己的 serializable settings data class/typed DataStore 持久化，并在 run 前单向冻结为 immutable snapshot；GLK profile、SharedPreferences、环境变量和 native global 不得镜像该值。该修订是配置分类规则本身的收窄，不是知情越权，也不产生例外技术债。
+
+继续保留的产品边界只有：Payload 与 Finish 仍是两个相互独立、且独立于 backend 的 domain authority；用户发起 Flow 前必须把当前编辑状态真正写入并等待完成；需要系统内核偏移信息的 backend profile 仍是该 backend 自己的 `.conf`/GLK profile 文件；Flow/RunHost 只消费一次冻结的输入，不直接打开应用设置存储。本批已按冻结职责完成 production source；未修改开发者定义任务清单的结构或新增条目。
+
+#### 最小存储规则
+
+1. **DataStore 只保存小型结构化状态**：应用设置、用户选择、不依赖系统内核偏移的 backend 设置、Payload 与 Finish。每个 aggregate 直接序列化自己的完整 data class；repository 只做 domain 校验和 Android 副作用，不再逐 key 搬运字段。需要系统内核偏移的 backend 配置仍进入自己的 GLK profile，不能在 DataStore 镜像。
+2. **SettingsHub 只表示 UI 进程内的唯一装配/所有权入口**：它可以持有具名 typed stores，但不得增加 factory、反射注册表、第二缓存、revision、全局 mutex、后台重试队列、数据库或跨 store 事务协议。若直接由具名 repository 唯一持有 store 更简单，实施设计应删除空壳 Hub，而不是为名称保留一层。
+3. **DataStore actor 是唯一写顺序 owner**：每次编辑都以 `updateData { current -> current.copy(...) }` 或具名 aggregate transform 直接提交，不从观察流取旧快照后整对象覆盖。一次用户命令仅在 repository 的 application-scoped `async(start = CoroutineStart.UNDISPATCHED)` 已进入对应 `updateData` 调用并返回 completion handle 后才算 `accepted`；因此 callback 返回前，命令已经交给同一个 DataStore actor，后续事件即使首个写仍在途也继续提交，不能静默丢弃。每个 repository 只跟踪未完成 completion handle 与首个写失败，用于 await/fail-closed；它不重排、不重放、不保存数据，也不是第二条 writer queue。不得增加全局 mutex、revision protocol 或“稍后自动落盘”。Payload 与 Finish 分别提交，不声称崩溃时跨文件原子性。
+4. **进程边界固定**：UI/application 主进程是 typed DataStore 的唯一 reader/writer。当前 `:flowhost` 以及 Shizuku host 不构造 SettingsHub、不打开同一 DataStore，只接收已经冻结并完成身份绑定的请求/文件。
+5. **内部格式不等于导出格式**：DataStore JSON 是实现细节，不能直接作为“导出 conf/备份包”交给用户。后续导出从 domain data class 生成明确的 `.conf`、JSON 或 ZIP 产品格式；修改导出格式不产生第二个运行时 authority。
+6. **字节资产不塞进 DataStore**：字体、脚本、LKM、profile、custom backend ZIP/WebUI 文件和日志使用文件存储；DataStore 最多保存稳定 logical id、相对位置或选择状态。绝对 app-private path、短期 picker URI、fd、PID、运行时 token/端口均不进入持久 data class。
+7. **启动与失败语义**：缺失 store 使用 data class 默认值；UI 首帧须等主题所需状态完成首次读取，不能先绘默认主题再闪变。可执行配置读取/校验失败时 preview 与 Flow fail closed；普通显示偏好损坏时允许回到默认并记录一条错误。不得静默拿旧缓存继续攻击。
+8. **迁移只允许一次且不是双权威**：是否保留当前开发期 SharedPreferences/旧 Payload/Finish 数据在实施设计中作一次明确裁定；若迁移，只做单次 import，成功后 DataStore 是唯一 authority，不保留长期双写、legacy codec 或通用迁移框架。
+
+#### 全项目持久化需求总表
+
+| 数据类别 | 当前实现/位置 | 目标 authority 与介质 | 生命周期、备份和约束 |
+|---|---|---|---|
+| UI 外观与交互设置 | `ui-preferences.json` 中的完整 `UiPreferences` typed DataStore | `UiPreferences` 整体 typed DataStore | 跨进程重建/重启保留；主题字段首次读取前保持 splash；不由 `:flowhost` 打开。 |
+| 日志、运行提示与开机行为设置 | `operational-preferences.json` 中的完整 `OperationalPreferences` typed DataStore | `OperationalPreferences` 整体 typed DataStore | 只保存选择与策略；日志内容、字体字节和运行结果不放入该对象。 |
+| 权限执行器选择 | `app-selection.json` 的 `AppSelection.selectedExecutor` | 与 backend 选择共享同一个完整 `AppSelection` typed aggregate，但只以字段 transform 修改 | 只持久化 App/Shizuku 选择；binder 在线、permission、uid 等事实每次实时读取，禁止缓存为 authority。 |
+| 当前 backend 选择 | `app-selection.json` 的 `AppSelection.selectedBackendKey`，`BackendSessionStore`只保留运行期投影 | 与执行器选择共享同一个完整 `AppSelection` typed aggregate，但只以字段 transform 修改 | 恢复 stable backend key；key 不存在或不可选时回退当前 registry 首个 selectable。backend membership/descriptor 本身不持久化。 |
+| backend 设置 | Diagnose stress 等尚未落地；旧候选错误地强制使用 GLK profile | 不依赖系统内核偏移的 backend 使用自己的 serializable settings data class；需要系统内核偏移的 backend 使用 GLK profile | Diagnose `stress_enabled`以typed DataStore为唯一持久authority并单向派生run snapshot，禁止profile镜像。43284同样不被强制放入GLK。Custom backend当前只允许WebUI，其数据随package自管。 |
+| Payload | `payload.json` 中的完整 `PayloadDefinition` typed DataStore | `PayloadDefinition` 整体 typed DataStore | 与 backend/Finish 独立；页面编辑可在内存实时显示，但 preview/Flow 前必须等待 durable save。内部不再要求 v3/JCS wrapper。 |
+| Finish | `finish.json` 中的完整 `FinishDefinition` typed DataStore | `FinishDefinition` 整体 typed DataStore | 与 Payload 独立；内置动作更新必须保留同一 definition 中其它 action；preview 只读取 Payload，Finish 仅在完整 root script 生成时读取。 |
+| 导入字体 | `files/fonts/terminal-font.ttf`，`OperationalPreferences`只保存`fonts/terminal-font.ttf`相对引用 | app-private durable asset + typed settings 中的稳定引用 | picker 后复制完整文件再发布选择；替换成功前旧文件仍可用。DataStore 不保存字体 bytes，也不依赖临时 URI。 |
+| Payload/Finish 脚本与 LKM | data class 目前保存 `content://` URI，但未取得 persistable grant；freezer 当前明确拒绝这些 kind | app-private durable artifact library，data class 只保存 artifact id | 这是后续真实 consumer 需求；必须 copy-on-import 或持久 grant 二选一。为保证 run 冻结的 exact object，推荐 copy-on-import；未接 resolver 前继续显示 incomplete/fail closed。 |
+| backend `.conf`/GLK profile | APK `assets/kernel_profiles/*.conf` 为内置只读；用户 profile repository 尚未落地 | backend-owned profile file library | kernel offset、`kernel_phys_load`、waiter 等继续是文件配置，不塞 Compose/DataStore。内置 asset 不可变；用户导入/生成文件有稳定 id，run 时复制/打开并冻结 exact bytes。设备专属 profile 默认不参加跨设备自动备份。 |
+| extractor 输出 | KMP extractor/桌面 JVM 前端尚未落地 | extractor common 返回 typed result；Android/desktop frontend 显式导出 `.conf`/报告 | common 模块不持久化、不知道 Android DataStore。CLI 默认无状态；GUI 自己保存界面偏好，生成 profile 进入上述 profile library 或用户选择路径。 |
+| custom backend 包 | 未来 ZIP（manifest、Lua、WebUI、资源），当前未实现 | package directory + package manifest | 包体不进 DataStore；DataStore 只可保存已选 package id/入口偏好。安装、升级、卸载和 WebUI 数据隔离随 custom backend 专项设计。 |
+| run input 与 root-script workspace | `noBackupFilesDir/run-input`、app/shell `runhost/<run>`、`files/root-script-preview` | run-scoped ordinary files | 目标是lease/terminal/preview结束即清理且不参与backup；这是目标合同，不是current preview行为。 |
+| backend persistent state | `runhost/backend-state/<backendKey>` 每次无条件创建，但当前没有 backend consumer | 暂无通用持久化需求 | 在真实 backend 声明跨 run 状态前不应创建通用目录或协议；未来由该 backend 独占、放在 no-backup 区，禁止借它保存 app 设置。 |
+| Run 日志 | `files/run-logs` private GLLOG2 + 可选 MediaStore Downloads | append-only streaming file sink | 单次 run 不设累计上限并支持 10 MiB+；LogHub/`RunReport` 不另建数据库。private 日志的保留/清理是独立 retention policy；已成功发布的 MediaStore 文档归用户，app 不自动回收。 |
+| 手动分享日志与诊断包 | `cacheDir/logs`、`cacheDir/diagnostic-*`、`.tar.gz` | cache/share artifact | 可重建、可被系统回收；分享/另存成功不令 cache 成为 authority。FileProvider grant 只覆盖一次分享。 |
+| RunHost 状态、LogHub 流、设备/manager 探测 | 内存、binder、`/proc`/系统 API | 不持久化 | run lifecycle、在线状态、SELinux、安装包、root manager 可用性、fd/PID/timestamp 每次重新观察；`RunReport`只作为普通 Info 日志行进入现有 sink。 |
+| Compose/SavedStateHandle 页面状态 | `remember`、`rememberSaveable`、`SavedStateHandle` | UI transient state | 只跨重组或系统保存恢复；弹窗、拖拽、滚动、搜索、临时编辑焦点不进入产品 DataStore。真正的用户配置仍由对应 typed repository 保存。 |
+| APK/构建期资产 | kernel profile assets、WebView/JNA license assets、Gradle 生成物 | immutable packaged/build artifacts | 不属于运行时持久化中枢；更新随 APK。`build/`、`.so`、测试 fixture 不作为用户数据。 |
+| 未来密钥/敏感会话 | 当前无可持久 secret | 默认不持久化；确需长期 secret 时单独使用 Keystore-backed owner | runtime key、SPI、端口、token 用会话帧并用后清零，禁止进入 DataStore、profile、日志或文档。 |
+
+#### DS-D1 exact implementation design（2026-11-08 开发者要求实施）
+
+本轮“实施 DataStore”授权取代本节此前的 `implementation 批批准待申请` 状态，但不放宽先完成 exact design、同岗 critic 与最终树门禁的顺序。实现只包含已有真实 consumer 的五个 aggregate，不建立 `SettingsHub`、反射注册表、第二缓存 authority、全局 mutex、迁移框架或尚无 consumer 的 Diagnose store：
+
+| DataStore 文件 | 直接序列化的完整 data class | owner / consumer |
+|---|---|---|
+| `ui-preferences.json` | `UiPreferences` | 主进程 application scope；MainActivity/Settings/Home |
+| `operational-preferences.json` | `OperationalPreferences` | 主进程 application scope；Settings/Run |
+| `app-selection.json` | `AppSelection(selectedExecutor, selectedBackendKey)` | 主进程 application scope；Privilege 与 backend selection 以 `updateData` 分别只改自己的字段 |
+| `payload.json` | `PayloadDefinition` | 主进程 application scope；Payload editor/preview/Run freezer |
+| `finish.json` | `FinishDefinition` | 主进程 application scope；Finish settings/Run freezer |
+
+`DiagnoseSettings` 仍是 P-DIAG-NATIVE-001/批次02 的已冻结需求，但当前没有 stress UI、Flow snapshot 或 ABI consumer；本批不预建空 store。P-DIAG 实施时必须按 AGENTS §4 新增自己的具名 typed DataStore authority，不能回到 GLK profile，也不能把它塞进上述五个 app aggregate。
+
+1. **库与字节格式**：使用稳定版 `androidx.datastore:datastore:1.3.0` 与现有 `kotlinx.serialization-json`。一个最小 `KotlinxDataStoreSerializer<T>` 只做 immutable data class 的 JSON read/write 与注入的 domain validation；`encodeDefaults=true`、`ignoreUnknownKeys=false`、`explicitNulls=true`。不再写 version wrapper、canonical JCS、key mapper或兼容分支。
+2. **旧数据裁定**：不迁移开发期 `settings`、`ghostlock.log/attack/boot/privilege` SharedPreferences，也不导入 `files/definitions/payload-v3.json`/`finish-v3.json`。旧文件可留在安装数据中但没有 production reader/writer；不保留 importer、marker或双写。首次没有新 store 时直接使用 aggregate default。
+3. **默认与损坏语义**：UI、Operational、AppSelection 的 malformed store 经 DataStore corruption handler 记录一条 Android error 后原子替换为默认值；Payload/Finish malformed store不装 replacement handler，`read/save/preview/run`传播失败并 fail closed。Payload/Finish 保存前和读取后继续执行现有 identity/kind/shape/size domain validation，不再要求 canonical whitespace/key order。新 store 的 Finish default 精确包含 `finish-restore-selinux`，但显式 `FinishDefinition(items=emptyList())` 仍可用于 Diagnose/preview 的“无 Finish”输入。
+4. **进程 owner**：`GhostLockApp` 只在 `Application.getProcessName()==packageName` 时构造 `AppContainer`；`:flowhost` 与 Shizuku host 不构造任何 repository/DataStore。`AppContainer` 自身对错误进程 fail fast，RunHost 继续只消费已冻结 wire/file。
+5. **启动边界**：UI、Operational、AppSelection repository 各自只有一个 application-scoped read-only `StateFlow` 投影；`awaitInitial()` 先从真实 DataStore 读取并把该精确值写入投影，再返回。`AppContainer` 只有一个 application-scoped lazy `Deferred<Unit>` 初始化任务，所有 `initialize()` 调用等待同一任务，因此 Activity 重建或某个 caller 取消不会启动第二次读取或留下半初始化状态。该任务完成三个首次读取、恢复 backend stable key并刷新 privilege 后，`MainActivity` 才调用 `setContent`。非 corruption I/O 失败是终态：释放 splash、结束 Activity并记录错误，不用默认值继续，也不无限悬挂。首次非默认主题测试必须观察到 `setContent` 的第一份输入就是落盘值。
+6. **顺序与并发**：DataStore actor 是唯一 writer/顺序 owner。Settings/Operational/AppSelection 的命令只提交字段 transform，Payload/Finish 的编辑命令也在当前 authority 上按稳定 identity 做 transform，禁止从 `StateFlow.value` 生成会覆盖其它已提交字段的 stale full snapshot。repository 的 submit 是非阻塞 acceptance 边界并返回 `Deferred`；ViewModel 可立即更新页面 draft，但 committed 投影、跳页或选择成功只在 handle 成功后发布。第二次事件在第一次 save 未完成时仍须被 accepted 并进入同一 actor，测试必须证明第二次 Payload 编辑最终胜出。Payload preview 在 callback 尚未让出主线程时提交当前完整 editor，随后直接使用该 exact transaction handle 返回的 immutable `PayloadDefinition`；不得完成后再 live-read，Finish 始终是显式空值。Run action 同样在 callback 尚未让出主线程时，向 Payload、Finish、Operational 各自的同一 DataStore actor 排入具名 cutoff snapshot transaction/fence；等待并直接使用这三个 fence 返回的 immutable aggregate，再冻结 exact objects、组装 RunHost request。cutoff 后的新编辑排在 fence 后，只进入下一次 run。任一此前已记录失败或 fence 失败都 fail closed。该 fence 只是同一 actor 的线性化读取，不得把普通 `data.first()`叫作barrier，也不得增加第二writer queue、全局mutex、revision或跨store transaction。
+7. **字体引用**：Operational aggregate只保存 app-private 相对引用 `fonts/terminal-font.ttf`；picker先完整写入同目录临时文件并原子替换，再提交引用。Run/UI consumer在 `filesDir` 内解析并拒绝绝对路径或 traversal，不持久化 picker URI/绝对 path/font bytes。
+8. **备份**：本批在 manifest 显式设置 `android:allowBackup="false"`；不把设备选择、URI、未来 profile 或攻击配置交给 Android cloud/device-transfer。本轮不启用现有未引用 sample backup XML，也不新增一套 include/exclude 规则。
+9. **范围边界**：不实现 Diagnose stress、script/LKM artifact resolver、profile library/editor、custom package/WebUI persistence、preview workspace GC或日志 retention；不修改真攻击 backend。Preview workspace GC 的明确 owner 是 `data/run PreviewRootScriptPublisher`，触发器是首次实现重复/连续 preview 生命周期或页面关闭清理；届时同批关闭旧 workspace，不在本批顺手扩展。
+
+逐文件 exact scope 以同批 ledger 的 `P-SETTINGS-IO-001/批次01` 行为唯一权威。验证固定覆盖：五个完整 aggregate round-trip/reopen/default；显示型 corruption→default、Payload/Finish corruption→fail closed；旧 authority production 命中0；主进程/`:flowhost` owner；application初始化幂等、失败有终态且首次非默认主题早于 `setContent`；backend/executor key恢复；两个不同字段并发 transform 不丢失；首写阻塞时接受第二次Payload编辑、preview fence后再接受第三次编辑，当前preview使用第二次而下次使用第三次；save/run交错时run等待已接受提交，run cutoff fence后再接受第三次编辑且当前run仍使用fence值；普通写失败不发布成功、不跳页、不preview/run；Payload-only preview对Finish零读取；manifest backup关闭。Android instrumentation只证明真实DataStore文件、picker和进程边界，不外推为root或真攻击成功。
+
+#### 实施后保留边界
+
+- `GhostLockApp` 已只在精确主进程构造 `AppContainer`；`:flowhost` 与 Shizuku host 不创建或打开上述 DataStore，未引入 multi-process DataStore。
+- Payload/LKM/Finish script picker 当前只保存 URI 字符串，既没有 persistable grant，也没有 durable copy；在 artifact library 接通前它们仍不是可跨重启执行的输入。
+- `PreviewRootScriptPublisher` 当前每次创建 `files/root-script-preview/<UUID>` 后只返回路径，没有页面结束、下一次preview替换或启动清理；本批只把 `PreviewRootScriptUseCase` 改为 durable Payload-only 读取并对 Finish 零读取。GC 债由 `data/run PreviewRootScriptPublisher` 持有，首次实现重复/连续 preview 生命周期或页面关闭清理时触发偿还；不把“preview结束即清理”写成current事实。
+- `runhost/backend-state/<backendKey>` 当前无 consumer；它只是已存在的空 capability，不得被本批解释成已经批准的 backend persistence framework。
+- private run log 支持无限累计写入，但当前没有明确 retention UI/策略；本批不以截断单次日志解决磁盘保留问题，retention 是否实现须单独裁定。
+- manifest 已显式设置 `android:allowBackup=false`，未启用 sample backup XML。旧 SharedPreferences/旧 Payload/Finish 未迁移，production reader/writer与architecture命中均已归零。
+
+#### 交付跟踪
+
+- [x] DS-R1：记录“完整 data class + typed DataStore、内部格式不再保留 v3/JCS”用户裁定，并完成全项目持久/临时/导出/构建资产分类。
+- [x] DS-D1：五个 aggregate、文件名、默认/损坏语义、不迁移、backup关闭、UI-process owner、幂等首帧加载、单actor写顺序、exact cutoff snapshot、失败终态与93行逐文件 scope 已冻结；2026-11-08同岗design-critic三次定点复审关闭SETTINGS-ORDER-01/FIRSTFRAME-01/LEDGER-01，阻断=0。开发者已直接要求“实施DataStore”，无需重复申请 implementation 批批准。
+- [x] DS-I1：五个完整 data class typed stores 与 suspend repository 已落地；被取代的 SharedPreferences adapter、Payload/Finish手写内部codec/document repository/wrapper及无职责空壳层已清零。
+- [x] DS-I2：主进程幂等启动加载、自动保存→Payload-only preview exact handle、Operational/Payload/Finish run cutoff、权限执行器与backend选择均已接通；当前无stress UI/Flow consumer的Diagnose setting仍留给重新批准的P-DIAG-NATIVE-001，同批新增其具名typed DataStore，不预建空store。本批未扩入真实攻击backend、script/LKM resolver、profile editor、custom package或log retention。
+- [ ] DS-V1：JVM exact已证明完整data class round-trip/reopen、默认/损坏、幂等初始化、首帧输入、保存/preview/run顺序、owner隔离及旧authority归零；Android test Kotlin源码编译通过，但当前没有获准AVD，instrumentation runtime保持`NOT_RUN`，故本项不提前关闭。
+- [x] DS-V2：普通§8门已通过：`nativeTestHost`=`TOTAL=31 FAILED=0`；`nativeBuildAndroid`在首次旧输出重复class失败后按既定规则执行`clean`并重跑，debug/release双variant构建exit=0。该证据只覆盖持久化与调用顺序相关回归，不外推为root、真攻击backend、设备profile或目标设备成功。
+
+<a id="p-diag-native-001-batch-02"></a>
+
+### P-DIAG-NATIVE-001/批次02 Diagnose 并发 source churn 与 >10 MiB 全链路压力（producer/lifecycle 需求保留；持久化切片已重开）
+
+#### 取代与保留
+
+旧候选把 stress 冻结成单个同步 `gl_diagnose_log_stress`、4×8192 records 与一次调用范围 reader；它已不足以覆盖用户要求的动态 connector 与“运行中停止旧 producer、同时新增 native/Kotlin producer”。旧 AS-D1 critic PASS 仅保留沿革，37-row source ledger已经撤销，不授权该ABI。本节v4依据已经落地的`LogConnector`、`BackendDefinition/BackendUi`与当前JNA binding冻结了producer/lifecycle候选。
+
+**2026-11-08 持久化纠正**：v4 中过早冻结的通用 `profile-v3/schema.json`、`ProfileDocumentPort`、`FileProfileDocumentRepository`、`DiagnoseProfileCodec`、JCS `PROFILE` freeze 及相应51行exact ledger不再授权实施。用户已修订AGENTS §4：只有需要系统内核偏移信息的backend配置以GLK profile为权威，Diagnose不属于该集合；因此`stress_enabled`以Diagnose typed DataStore data class为唯一持久authority。native ABI、A/B producer churn、connector drain、handoff与>10 MiB判据仍作为候选保留；snapshot跨进程承载及逐文件scope须在DS-D1后重新细化并复审，不能拿旧critic PASS直接进source。
+
+2026-11-08同岗critic对v2给出`仍需修订`、阻断5、重要1：独立`backend-config`形成第二配置authority；ABI域、数值status和result sentinel未冻结；取消时collector可能先停而让pipe写端与join死锁；A/B交错只证明B开始、未证明A两侧在B后仍被中枢接受；ledger含无consumer的component-api行且重复安排direct-JNA device stress；10 MiB又混用了body、canonical record与GLLOG2 file三种口径。本v3逐项改为同一PROFILE authority、完整ABI矩阵、collector-drains-first终结、四个accepted happens-before事实、单一runtime stress入口及三种字节计数分离；production仍保持`NOT_RUN`。
+
+2026-11-08同岗critic对v3关闭`DIAG-CONFIG-01`、`DIAG-LEDGER-01`与`DIAG-EVID-01`，但保留三个精确终结缺口：partial thread create之后若清理join失败，`out=null`会遗失live owner；可恢复join持续失败会让write fd与collector互等；source validator只能证明validated/emitted，不能把返回`Unit`的`LogEmitter.emit`表述为LogHub committed。本v4让partial-start返回cleanup-only handle、把不可能的production `pthread_join`错误收敛到RunHost进程固定fatal exit并由既有host-death路径终结，同时把source事实与最终commit-order gate分开；不扩展`LogEmitter`，不增加ack、timeout、detached thread或第二状态机。
+
+本批继续保持：Diagnose为 `DIAGNOSTIC_ONLY`、`DiagnoseFlow : SequentialFlow`、binding构造器constant-name加载、同版发布无version/size/reserved兼容层、正常 `gl_diagnose_run` 在native内完成fixed-home handoff、Payload/Finish跳过且产品成功恒false。stress关闭时，Flow返回的steps中完全不包含stress step，不执行no-op step。
+
+#### 已冻结的场景需求
+
+一次正常 Diagnose Flow 在stress选项开启时至少包含以下阶段，累计有效日志必须大于10 MiB，reader/connector/主流/sink不设累计上限：
+
+1. **阶段A**：attach native FD source A；native启动多个producer线程；Kotlin同时启动多个协程producer，全部进入各自 connector并并发输出。
+2. **阶段B**：A仍有输出时attach native FD source B，并新增native线程与Kotlin协程组B；同时请求停止部分A线程/协程，join已停止producer，再drain并detach source A。新增与中止必须真实交错，不能先全部停完再串行启动B。
+3. **阶段C**：B继续输出；验证单个producer失败/取消不会停止其它source；随后停止并join全部producer、drain/detach全部connector。
+4. **handoff**：connector drain完成后仍通过现有 `gl_diagnose_run` 在native侧执行fixed-home handoff，Flow组合完整typed facts；日志不是成功authority。
+
+#### 设置 authority 与条件 step（SETTINGS-REQ-CONFIG-01 已关闭）
+
+- Diagnose serializable settings data class 是 `stress_enabled` 的唯一持久 authority；具名 `DiagnoseBackendUi` 自动保存它。Flow启动前等待durable read，由P-DIAG批制作一次immutable backend-specific snapshot；GLK profile、SharedPreferences、环境变量和native global均不得镜像该值，Flow也不得回读live DataStore。
+- `stress_enabled=false` 时，`DiagnoseFlow.steps(input)`不包含 stress step；true 时才加入一个真实 `DIAGNOSTIC_CHECK` physical step，原 primitive/handoff chain不变。缺失值使用最终获批authority的default false；已提交 snapshot 损坏或不一致则在调用stress ABI前fail closed。
+- 本批不实现 kernel profile repository、profile引用、tree editor、custom package WebUI映射、export-conf或其它 backend codec。只有需要系统内核偏移信息的backend攻击参数由其具体`.conf`/GLK profile设计负责；Diagnose、43284等其余backend使用各自具名typed authority。
+
+#### Native/JNA最小ABI与显式FD writer
+
+current `gl_log`每个DSO只有一个process-global export fd，不能同时代表source A与B。把它在producer线程间反复attach会产生fd owner竞争，给每个source再建logger/queue又会重复LogConnector。因此本批只给common C logger增加一个无状态direct helper：
+
+```c
+int gl_log_write_fd_record(
+    int fd,
+    gl_log_level level,
+    uint64_t source_elapsed_ms,
+    const char *message
+);
+```
+
+helper复用既有ASCII规整和`[级/毫秒] body\n`编码，要求NUL在第385字节前出现且规整后body为`1..384` ASCII bytes；越界或非法level在write前返回0。合法记录每条最多一次`write(2)`，只有完整写入才返回1，EINTR/partial/error均返回0且不补写第二片；不保存fd、不增加queue/thread/global或累计容量。现有`gl_log_write`行为不变，Diagnose producer group各自借用自己的duplicated pipe write fd调用该helper。stress单条canonical record固定小于448 bytes，reader/connector/run/sink累计不设记录数或字节cap。
+
+不建立native session、registry或进程全局handle表。每个active native source只对应一个opaque `gl_diagnose_stress_group *`，由Kotlin binding的nested owner持有；same-release ABI固定为三个新增ordinary-C symbol：
+
+```c
+typedef struct gl_diagnose_stress_group gl_diagnose_stress_group;
+
+typedef struct gl_diagnose_stress_request {
+    int32_t log_fd;
+    uint32_t group_id;
+    uint32_t thread_count;
+    uint32_t record_limit;
+    uint32_t message_bytes;
+    uint32_t delay_us;
+    int32_t failure_thread_index;
+    uint32_t failure_after_records;
+} gl_diagnose_stress_request;
+
+typedef struct gl_diagnose_stress_result {
+    uint32_t threads_started;
+    uint32_t threads_completed;
+    uint32_t threads_failed;
+    uint64_t records_written;
+    uint64_t bytes_written;
+} gl_diagnose_stress_result;
+
+int32_t gl_diagnose_stress_start(
+    const gl_diagnose_stress_request *request,
+    gl_diagnose_stress_group **group
+);
+int32_t gl_diagnose_stress_request_stop(gl_diagnose_stress_group *group);
+int32_t gl_diagnose_stress_join(
+    gl_diagnose_stress_group *group,
+    gl_diagnose_stress_result *result
+);
+```
+
+没有version、size、reserved、runtime layout检查、旧symbol或兼容分支。字段合法域冻结为：`log_fd>=0`；`group_id=1..UINT32_MAX`；`thread_count=1..8`；`record_limit=0`或`1..1,000,000`；`message_bytes=64..384`；`delay_us=0..1,000,000`；`failure_thread_index=-1`表示无故障且必须搭配`failure_after_records=0`，否则index必须位于`0..thread_count-1`、failure-after必须大于0且在finite group中小于record-limit。所有counter加法与`thread_count×record_limit×message_bytes`使用checked `uint64_t`，任一溢出在创建fd/thread前以`INVALID_FIELD`拒绝；完整canonical record长度固定小于448 bytes，低于Android/POSIX pipe的512-byte最小原子写边界和FD parser单行预算。
+
+三个symbol使用独立的`GL_DIAGNOSE_STRESS_STATUS_*`数值集合：`OK=0`、`NULL_REQUEST=1`、`NULL_OUT=2`、`OUT_NOT_NULL=3`、`INVALID_FIELD=4`、`DUP_FD=5`、`ALLOCATE=6`、`THREAD_CREATE=7`、`NULL_GROUP=8`、`NULL_RESULT=9`、`RESULT_SENTINEL=10`、`INTERNAL=11`。`start`要求非null request/out且输入`*out==NULL`。validation/dup/allocation以及首个`pthread_create`失败时没有live thread，关闭已取得资源并保持out为null；若第N个create失败且已有`1..N-1`个thread，native只原子置stop，把持有这些joinable threads、duplicate fd和thread args的cleanup-only group写入out并返回`THREAD_CREATE`，不在start内部join或释放。binding必须无可抛出间隙地接管这个non-null handle并执行同一stop→join→EOF路径，不能只按status丢弃out。全部创建成功才以`OK+non-null group`交付active owner。
+
+`request_stop(NULL)=NULL_GROUP`，对仍由caller拥有的live group重复调用均为OK，只原子置stop，不join、不close。`join`要求live group、non-null result，且caller预置`threads_started/threads_completed/threads_failed=UINT32_MAX`与`records_written/bytes_written=UINT64_MAX`；sentinel不符返回`RESULT_SENTINEL`且不改变group/result。在single owner、joinable、non-self、每thread恰好join一次的不变量下，production `pthread_join`必须成功；任一非0返回表示所有权合同已破坏，native立即`_exit(86)`终止当前RunHost进程，依靠OS一次关闭fd/线程/地址空间，由既有App/Shizuku host-death路径形成terminal，不返回悬空handle、伪EOF或cleanup fact。host CTest在fork child中以test-only join seam制造该分支并断言exit 86；production不带seam。正常join逐个回收thread、关闭最后write fd、一次提交全部result并消费handle，旧pointer随即失效，JNA wrapper置null并拒绝重复调用。线程不detach，opaque pointer不进wire、日志、文件或全局表。
+
+正常join结果冻结为：`threads_started`等于成功create的thread数；`threads_completed`只计finite自然结束或观察到stop后正常结束的thread；`threads_failed`只计注入fault或完整record write失败的thread；恒有`threads_completed + threads_failed == threads_started`。`records_written/bytes_written`包含所有thread在正常、stop或fault终结前已经完整写出的record及其canonical bytes，expected fault之前的完整prefix不得丢弃；producer fault不改变join的`OK`，只由result计数表达。
+
+JNA以`Int`承载`uint32_t` raw bits、以`Long`承载`uint64_t` raw bits，以`PointerByReference`接收opaque group；Kotlin只通过`toUInt()/toULong()`解释raw bits并在转回有符号API前做范围检查，不增加size/layout/header检查。`record_limit=0`只用于A组“直到显式stop”；B组使用有限记录数保证终结。fault字段用于Diagnose真实隔离验证，不是兼容字段或用户可编辑数值；production UI只暴露一个stress开关。`records_written`只统计native完整canonical records，`bytes_written`只统计这些native canonical record的完整字节；Kotlin streaming validator另行累计native+Kotlin message body bytes，二者与最终GLLOG2文件byte count分别报告、不得相互替代。
+
+#### Kotlin binding、Flow编排与可观察不变量
+
+`DiagnoseNativeBinding`继续由构造器constant-name load并成为全部native生命周期owner。它新增private `NativeStressGroup`：创建Java pipe、把read端包装成`FdLogConnector`、把write fd借给start、成功后立刻关闭Java write端，只保留native duplicate。JNA start返回后先检查out：无论status为`OK`还是partial `THREAD_CREATE`，non-null pointer都先被局部owner接管并登记到active set，之后才解释status或执行其它可抛出操作；partial owner立即进入stop/join/drain并让diagnostic step失败。binding维护active group集合，正常join移除，`close()`对残留group执行request-stop→join并只在EOF后关闭reader。production join要么成功消费handle，要么native `_exit(86)`令RunHost host-death；不存在“返回后仍持有write fd、反复重试且让collector等待”的第三态。JNA mapping仍只是direct function/struct/pointer mapping，不增加loader、callback、executor或对象转换层。
+
+`DiagnoseStressScenario`是backend-private具体编排，不是通用stress framework。它按以下固定preset执行：A为2个native thread+2个Kotlin coroutine，stop-controlled并带小延迟；各侧恰有一个producer在达到256条后按预期提前失败/取消，另一个继续。A connector与Kotlin producer都ready后attach B；B为3个native thread+3个Kotlin coroutine，每个6144条、384-byte body。先等B至少一条native和一条Kotlin record已被validator验证并调用现有`LogEmitter.emit`，再继续等待仍存活的A native和A Kotlin producer各自至少一条post-B record也完成同样的validated/emitted事实；只有这四个source-side事实齐全后才request-stop/cancel A。它们只决定producer编排，不冒充LogHub commit acknowledgement；同一run的最终commit order由下述sink gate独立证明。A join/drain期间B继续，随后等待B自然完成并join/drain。B planned body=`6×6144×384=14,155,776` bytes，独立大于10 MiB。
+
+每条stress body包含`source/group/producer/ordinal`，但不携带全局序号。每个FD connector的streaming validator只保存“每producer下一ordinal、record/body-byte计数、ready/failure/post-B事实”，边收边转发到现有`LogEmitter`，不保存完整日志；Kotlin producer使用相同body grammar直接写RunHost Kotlin connector。validation必须观测：A/B各producer ready、B首条先于对应A post-B、A预期单producer failure/cancel、同组其它producer在其后继续、B finite count完整、每producer ordinal连续、所有FD connector=`Drained`、有效stress message body bytes>10 MiB。任一不成立使`DIAGNOSTIC_CHECK`失败；native canonical-record bytes、body bytes和GLLOG2 file bytes分别记录，日志本身仍不升级产品成功。
+
+正常顺序固定为：创建pipe/read connector→启动structured collector并通过ready signal确认其已进入`withContext(NonCancellable + Dispatchers.IO)`的read循环→native start duplicate write fd→关闭Java write端→producer输出→request-stop（如需）→join native或cancel/join Kotlin→native最后write fd关闭→FD reader EOF→connector drain result→关闭read端。collector仍是scenario scope的child，不使用detached/global scope；只是它的collect临界区不可被父取消提前截断。取消或exception的`finally`也在`NonCancellable`清理区内：先cancel/join Kotlin，再request-stop所有native group，在collector仍持续读取时join native，最后await EOF并close reader。不得在EOF前以close模拟正常detach，也不得增加detached scope、第二timeout状态机或reader累计cap。pipe接近满载时取消、partial start及active-set登记窗口进入focused tests；unexpected production join error由forked host fatal-exit test和既有RunHost host-death class覆盖，不构造可恢复retry状态。stress step全部drain后才执行现有`gl_diagnose_run`，所以fixed-home handoff、short Native/Shell log和typed primitive/dispatch仍由原chain交付。
+
+#### 故障、取消与结果矩阵
+
+| 位置 | 必须行为 | 禁止结果 |
+|---|---|---|
+| settings snapshot false | stress step absent；现有chain不变 | no-op stress step、live UI/DataStore读取 |
+| committed snapshot invalid/inconsistent | plan失败、binding cleanup、无stress/handoff调用 | 第二配置fallback、猜默认true、把GLK profile当设置 |
+| pipe/JNA start/partial pthread create失败 | 0 thread时out=null且关闭资源；已有thread时返回cleanup-only handle，binding先登记owner再stop/join、drain已验证prefix、diagnostic check失败 | out=null同时遗失live group、live fd/thread、继续chain |
+| 预期A producer fault | 只结束指定producer，其它A/B producer继续并留下after-fault记录 | supervisor取消全组、把预期fault当产品成功 |
+| unexpected write/count/ordinal/EOF错误 | drain可证明prefix，connector/validator返回失败，chain不运行 | drop后仍PASS、timestamp重排 |
+| Flow coroutine取消/exception | non-cancellable finally中collector继续drain；先cancel/join Kotlin，再request-stop/join native，再等EOF/close reader | collector先取消、reader先close、pipe写阻塞后join死锁、handle丢失 |
+| unexpected production `pthread_join` error | `_exit(86)`终止仅承载当前Flow的RunHost进程；OS回收fd/thread/address-space，parent走既有host-death terminal | 返回live handle后永等EOF、detach、伪Drained、继续同host运行 |
+| normal stress complete | diagnostic check SUCCESS，之后原chain primitive/dispatch/cleanup SUCCESS | stress代替handoff或新建RunReport authority |
+| RunHost transport gap/host death | 既有RunHostLogConnector保留prefix并Incomplete；typed product success仍false | sequence当global sort、日志错误升级root |
+
+#### Exact source ledger与守卫
+
+旧51行ledger已因持久化owner纠正撤销；当前没有可实施的exact source ledger。重新细化时只允许一个concrete stress scenario和Diagnose typed-setting snapshot的必要闭包；不加入session manager、stress framework、第二hub、sink factory、generic settings schema或UI element DSL。architecture guard必须拒绝：Flow读取live DataStore、把Diagnose设置塞入GLK profile、JNA callback、native global handle表、detached producer、version/size/reserved/compat、第二日志queue、reader累计cap、timestamp排序及stress关闭仍返回step。
+
+#### 准出顺序
+
+1. v4 producer/lifecycle部分保留既有critic意见，但旧配置owner候选与逐文件ledger不再授权；SETTINGS-REQ-CONFIG-01已由用户规则修订关闭，下一步完成P-SETTINGS-IO-001/DS-D1，再重新细化Diagnose typed authority的run snapshot和exact scope并复审，之后才可申请production source批准。
+2. source完成后先跑debug/release unit XML、architecture、`nativeTestHost`与只构建双variant的`nativeBuildAndroid`；不得恢复已删除的JNA distribution或native artifact verifier。
+3. 4 KiB/16 KiB App/direct-JNA/Shizuku短链先证明现有handoff不回归；stress ABI边界由host CTest覆盖，不另做重复direct-JNA device stress。6.6 AVD分别以App和Shizuku走production Flow运行stress，证明真实A/B交错、expected producer fault隔离、有效stress body>10 MiB、零transport drop、typed report完整与product=false。
+4. stress storage exact gate读取同一run的UI committed entries、private GLLOG2和MediaStore bytes：明确断言`B-native first commit < A-native post-B commit`及`B-Kotlin first commit < A-Kotlin post-B commit`，private/MediaStore逐字节一致、正文commit id连续、每producer ordinal连续、final End存在且文件>10 MiB；测试删除自己创建的MediaStore row。source-side validated/emitted只控制停启时机，这两条same-run commit关系才是LogHub接受顺序证据。
+5. 最终树执行`RunHostLifecycleTest`、`RunHostCancellationTest`、`RunHostHostDeathTest` exact AVD欠账。automatic-export真实设备门与最终产品验收保持独立；真实carrier设备门继续`NOT_RUN`。
+
+- [x] AS-R0：保留用户要求的native+Kotlin并发、运行中停旧增新、动态FD connector、>10 MiB无累计上限、正常handoff与产品false需求。
+- [ ] AS-D1R：producer/lifecycle/ABI/故障矩阵候选保留；获批setting authority的run snapshot与逐文件ledger等待DS-D1后重写并复审，旧通用GLK/JCS配置切片不得实施。
+- [ ] AS-I1：按获批exact设计实现并发producer churn与Flow条件step。
+- [ ] AS-V1：普通门、4/16 KiB短链与6.6 AVD App/Shizuku >10 MiB场景通过。
+- [ ] AS-V2：最终树三个RunHost exact AVD class通过。
+- [ ] AS-V3：真实设备automatic-export与最终产品验收通过。
+- [ ] AS-V4：真实carrier继续 `NOT_RUN`。
 
 <a id="p-run-handoff-001"></a>
 
@@ -1955,7 +2376,11 @@ source gate 至少执行 current exact Kotlin unit/architecture gate、`nativeTe
 | P-LOG-IO-001/批次02 | neutral factory→coordinator lock内format/tryEmit→single-channel data/run worker；GLLOG1 completed bytes与manual share一致；legacy prefs保留 | create触发inline I/O、第二queue/opening/completion monitor残留、重复callback/close、first-failure被覆盖、orphan URI、terminal等待、bytes分叉或日志升级产品成功均FAIL | instrumentation只核 MediaStore/lifecycle；不接触攻击算法，不替代 P-RUN-IO-001/批次01 至 P-RUN-X-001/批次01（原批次范围）的 transport evidence |
 | P-LOG-X-001/批次01 | Kotlin/Native/Shell/RunHost records→单一LogHub commit order→UI/manual/automatic/diagnostic sinks；Flow claim后返回RunReport；两皮肤统一五级色与有界SGR | 恢复RunEvent/legacy logger/独立report renderer、Flow依赖service、unknown origin/level、非法SGR、threshold分叉、source timestamp重排或日志升级产品成功均FAIL | AVD核App/Shizuku typed log callback、prefix/ANSI渲染与MediaStore parity；不接触攻击算法，不替代真实设备门 |
 | P-BACKEND-X-001/批次02/断开 | registry=0 real backend；Gradle无backend/M0开关；CMake manifest target rows=0且merged native output为空；三个native tree零写 | 任一真实plugin、option/include、M0 task、攻击ELF或旧backend diff重新出现即 FAIL | 无攻击门；本批只证明断开，不证明漏洞或root能力 |
-| P-DIAG-NATIVE-001/批次01 Diagnose JNA（已完成；接口由 P-RUN-HANDOFF-001/批次01 取代） | pinned AAR/license、Flow/binding构造器prepare-time load、完整candidate后原子PREPARED发布、SequentialFlow、非版本化同版发布C call mapping、native fd log、common shell handoff与唯一LogHub | 公共Flow.initialize、run-time重复load、factory throwable后残留PREPARED、prepare/start观察空prepared、恢复version/size/reserved或旧兼容分支、reorder/missing/extra symbol、fd/process未终结、reader/collector thread、`RunCoordinator` current名称、自由path/fallback、sequence inversion或缺license inventory均FAIL | App `:flowhost`/Shizuku × debug/minified release + 16 KiB AVD全绿；Diagnose PASS不是exploit/root validation |
+| P-DIAG-NATIVE-001/批次01 Diagnose JNA（已完成；handoff接口由 P-RUN-HANDOFF-001/批次01 取代） | pinned AAR/license、Flow/binding构造器prepare-time load、完整candidate后原子PREPARED发布、SequentialFlow、非版本化同版发布C call mapping、短Native fd log、common shell handoff与唯一LogHub | 公共Flow.initialize、run-time重复load、factory throwable后残留PREPARED、prepare/start观察空prepared、恢复version/size/reserved或旧兼容分支、reorder/missing/extra symbol、fd/process未终结、短链无理由reader、`RunCoordinator` current名称、自由path/fallback、sequence inversion或缺license inventory均FAIL | App `:flowhost`/Shizuku × debug/minified release + 16 KiB AVD全绿；Diagnose PASS不是exploit/root validation |
+| P-UI-ICON-001/批次01（developer accepted） | 单一人工项目Icons目录；Material/Miuix pair与单侧问号fallback；全项目current callsite收口 | 反射、字符串图标名、全库镜像、backend-private resolver或目录外direct/fully-qualified upstream icon引用均FAIL | architecture/unit/androidTest compile/双variant assemble/host native已PASS；开发者目视两皮肤无显示错误并关闭IC-V1；既有JNA inventory checksum矛盾单独保留为构建债 |
+| P-BACKEND-CORE-001/批次01（complete；BD-I3 deferred） | outer composition的BackendDefinition/唯一registry、纯BackendDescriptor、分层BackendRuntime/BackendUi及runtime/UI投影；删除carrier wrapper与generic UI DSL | descriptor含Android/Compose/JNA/config、第二registry/UI清单、schema→Compose、per-backend preference、旧alias、预建profile repository或Custom伪装WebUI均FAIL | source、unit、architecture、host native、双variant build与6.6 AVD两皮肤Backend页均PASS；BD-I3等待真实配置consumer |
+| P-LOG-X-001/批次03（complete） | LogConnector统一source并返回Drained/Incomplete；Kotlin/RunHost/FD各自stop-write→drain→close；source FIFO、raw acceptance全局commit、动态attach/detach、unlimited累计流 | LogHub识别FD/AIDL/JNA、timestamp重排、第二hub、累计cap、direct callback ingress、close-before-drain、detach丢accepted prefix、peer death伪Drained或慢sink反压主流均FAIL | unit/architecture/host/双variant build、>10 MiB MediaStore、两皮肤UI及App/Shizuku exact connector路径均PASS；不外推为Diagnose stress或root成功 |
+| P-DIAG-NATIVE-001/批次02（requirements frozen） | native+Kotlin并发producer churn、运行中停旧增新、动态FD connector、>10 MiB、drain后native handoff、产品false | 恢复旧单同步operation/32768固定scope、disabled no-op step、未join线程、detach丢日志、第二hub或日志升级成功均FAIL | 前置三批后补exact ABI/lifecycle/ledger并重新critic+用户批准；source与runtime均NOT_RUN |
 | future executable carrier（未排期） | 若用户重新批准：具名backend自己的host/build、root-script identity、分层facts与完整物理事务 | raw uid0-only、dispatch-only、missing result或改变handoff/self-reentry/restore/park顺序均 FAIL | 对应目标设备冷机门与`device-gates`归档 |
 
 普通 production 批最终树至少执行：
@@ -1986,15 +2411,16 @@ source gate 至少执行 current exact Kotlin unit/architecture gate、`nativeTe
 
 P-LOG-IO-001/批次02/P-LOG-IO-001/批次01保留的exact test files由ledger固定为五组：`RunCoordinatorLogSinkTest`、`RunLogDocumentFormatterTest`、`AndroidRunLogSinkFactoryTest`、`OperationalPreferencesExportContractTest`与`RunCoordinatorMediaStoreIntegrationTest`。source复评删除了一个无真实双client路径的`RunLogSinkParityTest` method；随后批准的backend closure删除使current JVM tree精确变为32个test source、93个`@Test`。首轮XML已观测32个suite、93个test、93项通过，但任务因旧的`expectedTests=168`而失败；该值改为93后exact gate重跑通过，literal=`UNIT_TEST_XML=PASS FILES=32 TESTS=93 FAILURES=0 ERRORS=0 SKIPPED=0`。source architecture、Gradle debug compile/unit exact gate、sink/settings exact instrumentation与AVD MediaStore runtime均为PASS；Shizuku与真实设备判据仍为`NOT_RUN`，且`NOT_RUN`不等于删除判据。
 
-### 15.4 JNA 专项门
+### 15.4 JNA current边界
 
-1. dependency 固定 `net.java.dev.jna:jna:5.19.1@aar`并由Gradle strict verification metadata校验；resolved coordinate/checksum漂移、third-party inventory或`LICENSE/AL2.0/LGPL2.1`缺失、AAR缺`arm64-v8a/libjnidispatch.so`即失败。
-2. merged native artifact expected set = project CMake manifest + approved dependency manifest；foreign ABI/so、symlink、空文件、非 ELF64/AArch64均失败。
-3. `libjnidispatch.so`、project DSO、final APK检查 16KiB alignment；16KiB AVD实际 `Native.load`。
-4. JNA DSO只导出 symbol authority 中 ordinary C symbols；任何 `Java_*`、意外 C++ mangled、missing/extra symbol失败。
+1. dependency继续固定为`net.java.dev.jna:jna:5.19.1@aar`，third-party许可assets继续随APK打包；current tree不再注册`verifyJnaDistribution`或为它单独解析AAR/POM，不把inventory checksum当构建门。
+2. current普通门不维护merged native expected-set manifest，也不执行foreign ABI/so、symlink、ELF或导出符号精确检查；历史结果不得写成current verifier PASS。
+3. `libjnidispatch.so`与project DSO在4 KiB/16 KiB AVD上的既有`Native.load`/round-trip证据继续有效，但不等于每次构建重新检查16 KiB alignment。
+4. project JNA mapping继续只调用同版发布的ordinary C symbol；current构建不另设导出集合检查任务。
 5. JNA `@FieldOrder`只描述当前同版发布的最小request/result字段顺序；接口不定义version、size或reserved，不做`Structure.size`、`sizeof/alignof/offsetof`兼容检查，也不保留旧符号/旧结构分支。direct call test只验证null、`HANDOFF_NOT_RUN`执行语义、字段回显、两条日志与handoff结果；function `int32_t` return是唯一call-status authority。
 6. RunHost在prepare执行`plugin.createFlow()`，`DiagnoseFlow`/binding构造器当场constant-name load且只load一次；公共`Flow`不增加initialize，`run()`不重复load。constructor不创建调用期fd/process/thread，call-return后不保留transient pointer/fd；本Diagnose无opaque handle、callback或unload状态机。
 7. 实际Flow execution domain只有App `:flowhost`与Shizuku UserService，两域分别在debug/minified release load/round-trip；不要求UI App process加载DSO。Shizuku同样只用APK constant-name候选，禁止PFD staging/fallback；任一域失败停批回设计，不能以另一域成功代表全部。
+8. P-DIAG-NATIVE-001/批次02的旧“精确两个symbol、单调用reader、禁止handle/start-stop”候选已被动态producer churn需求取代。批次02须在LogConnector批完成后重新冻结最小session/producer lifecycle与exact symbol authority；同版发布无version/size/reserved兼容层、constructor constant-name load及handoff ABI继续保留。新exact设计获critic与用户批准前，current source不变。
 
 ## 16. 活跃计划关系与取代动作
 
@@ -2031,8 +2457,9 @@ E-DOC-X-001/批次01 执行 disposition 后，机械扫描必须同时证明：
 | parked/held carrier 的 UNKNOWN 恢复 | `backend/transport` + 对应 backend | P-RUN-X-001/批次01只保留durable terminal snapshot与`REBOOT_REQUIRED/UNKNOWN`，不自动kill/retry；当前无真实carrier | 未来重新批准的production backend可留下parked child/zombie/held kernel state | 对应新L级计划；冷机恢复、重启识别、证据保留与人工处置路径进入device gate |
 | production backend catalog 为空的过渡期 | `backend/registry` | 当前production backend count=0，仅release-visible DIAGNOSE diagnostic与受限Lua；UI必须显示Not Ready而非伪成功 | 未来新L级计划通过target device gate | 同一新计划才把backend加回production registry；未过门不得提前selectable/supported |
 | old active-plan authority 收口 | docs owner | R0 设计阶段仍保留 72 个待归档 source，只有 exact disposition 决定去向 | 用户批准 D1-D9 与 R0 disposition | R0 production 前置；72 source→72 archive target、pointer/index scan全绿 |
-| R2-R4B 运行时门暂缓 | core/rootscript + data/run + backend/transport + log + release owner | source architecture、debug/release exact unit各`111/111`、native host、双variant build/JNA distribution、root-script host fault matrix=`31/31`、6.6 AVD ordinary-file staging/identity=`3/3`、日志storage/UI及4 KiB/16 KiB App/direct-JNA/Shizuku正常纵向均已PASS；RunHost lifecycle/cancel/host-death专属exact AVD、真实carrier设备与automatic export最终产品验收仍未执行 | 用户先要求“不要验证”，随后以“继续”恢复验证；正常host/AVD纵向已完成定点debug | 最迟release或未来重新批准的首个真实carrier前；补齐专属lifecycle matrix、真实设备evidence与最终验收并记录literal result |
+| R2-R4B 运行时门暂缓 | core/rootscript + data/run + backend/transport + log + release owner | source architecture、debug/release exact unit各`111/111`、native host、双variant build/JNA distribution、root-script host fault matrix=`31/31`、6.6 AVD ordinary-file staging/identity=`3/3`、日志storage/UI及4 KiB/16 KiB App/direct-JNA/Shizuku正常纵向均已PASS；RunHost lifecycle/cancel/host-death专属exact AVD与automatic export真实设备/最终验收仍未执行；真实carrier设备门被本轮明确延期 | 用户要求先完成二/三，三.2等真实carrier；当前先执行Icons→BackendDefinition→LogConnector，再细化Diagnose stress | AS-V2关闭三个具名exact AVD class，AS-V3关闭真实设备automatic-export与最终验收；真实carrier只按AS-V4触发，不再作为本轮前置 |
 | MediaStore provider调用不可中断 | `data/run` | 单worker可在insert/open永久阻塞；finish关闭channel但cleanup/callback只能等provider返回或进程死亡；不增timeout/monitor伪造完成 | 观察到provider永久阻塞，或产品批准“导出终结必须有时限”的新需求 | 独立Android平台设计；只接受可证明取消provider调用或隔离进程的方案，并补URI/FD设备证据 |
+| preview workspace 未回收 | `data/run PreviewRootScriptPublisher` | P-SETTINGS-IO-001只把preview收口为durable Payload-only读取，不改变current每次创建UUID workspace且不回收的行为 | 首次实现重复/连续preview生命周期，或页面关闭清理 | 触发后的同一批；定义唯一owner并证明旧workspace在不删除当前可见preview的前提下被清理 |
 
 ## 18. 下一道阶段门
 
@@ -2043,5 +2470,197 @@ P-RUN-CORE-001/批次01 的 automatic-export 部分已被用户纠正并重新�
 3. P-RUN-IO-001/批次01 root-script host fault matrix与6.6 AVD ordinary-file staging/identity gate已经PASS，真实carrier设备门仍保持`NOT_RUN`；P-RUN-X-001/批次01正常App/Shizuku AVD runtime与P-LOG-IO-001/批次02 export AVD runtime matrix已经PASS，但RunHost lifecycle/cancel/host-death专属exact AVD判据仍为`NOT_RUN`，且不把任何AVD结果外推为真实设备、真攻击backend或产品root成功。
 4. 不修改或接回43499-Glued、43284-Glued、98260；未来若用户重新启动任一真实backend，必须建立新的L级计划并明确取代本次断开裁定。
 5. 2026-11-05新增R6 Diagnose候选；三轮critic关闭全部非争议合同项，用户随后知情强制选择constructor load并要求该决定不再复评，沿革与技术债已登记。2026-11-06完成`P-DIAG-NATIVE-001/批次01` I1→I3与V1，4 KiB/16 KiB App/Shizuku debug/minified-release纵向全绿；真实攻击 backend 仍保持断开。
+6. 2026-11-07用户再次纠正当前候选：旧semantic menu graph与单同步stress exact scope失效。新顺序是 `P-UI-ICON-001/批次01` → 修订后的 `P-BACKEND-CORE-001/批次01` → `P-LOG-X-001/批次03` → 重新细化 `P-DIAG-NATIVE-001/批次02` → 三个RunHost exact AVD class → automatic-export真实设备/最终验收。前三批修订候选已在2026-11-08同岗critic最终复评中关闭BRU-01/02与LOG-01，阻断=0；开发者同日批准P-UI-ICON-001/批次01进入source，并登记P-UI-ICON-002全量图标目录为独立后续需求。Diagnose只冻结需求，旧critic PASS不授权被取代结构，三.2真实carrier设备门继续`NOT_RUN`。
+7. 2026-11-08开发者目视确认Material3/Miuix图标没有显示错误并关闭IC-V1；随后批准P-BACKEND-CORE-001/批次01和P-LOG-X-001/批次03，同时把BD-I3移到具体可配置backend出现真实consumer时再设计。本批Backend exact ledger已删除profile repository/manual schema/shared-reference/JCS及其tests/docs，只保留existing diagnostic fixture的descriptor机械迁移；Log批原42行scope在实施前caller闭包中补入`RunHostSnapshotPoller`及App/Shizuku/host-death三个既有instrumentation caller，现为46行并继续排在Backend批之后。既有JNA inventory checksum矛盾继续按真实失败记录，不阻断用户已接受的图标UI，也不被改写成JNA PASS。
 
 当前仍不得把 preview、codec、raw uid 0、AVD、DIAGNOSE PASS、source guard implementation 或JNA load冒充真实backend Ready、supported、产品root成功或尚未执行的runtime gate PASS。
+
+<a id="p-run-x-001-batch-02"></a>
+
+## 19. Kotlin production tree Clean Architecture 纠正（2026-11-08 用户纠正）
+
+### 19.1 取代关系、阶段与当前授权边界
+
+用户本轮明确指出，前一轮只删除 `data/` 中旧 43499 HOCON/profile/route 残留并不构成完整整理；新的目标是扫描整个 production Kotlin tree，并按真实职责与依赖方向归位。该纠正：
+
+- **保留**已经完成的 caller-zero HOCON/profile/wire/route 删除以及 typed DataStore、BackendDefinition、LogHub、Diagnose/Handoff 的产品合同；
+- **取代** `introduction.md`、backend README 与本计划中把 `backend/transport`、混合 Android I/O 的 `core/run` 描述为合理 current owner 的条款；
+- **暂停细化** `P-DIAG-NATIVE-001/批次02` 的逐文件 ledger，保留 native/Kotlin producer churn、动态 FD、>10 MiB、drain 后 handoff 与产品 false 的需求；Kotlin owner 清理完成后再按新路径重生 ledger；
+- 不改 AIDL method/field/integer、RunReport 成功语义、Payload/Finish、JNA ABI、native source、攻击 backend 或设备支持结论。
+
+本节经 design-critic 两轮复审在 2026-11-08 得到阻断=0、重要=0 的 PASS，随后用户明确批准 `P-RUN-X-001/批次02`进入实施。该批准只覆盖§19.4 和 exact ledger；后续批只登记需求与 owner，不因本节存在而自动获准。
+
+### 19.2 全树事实与必须修复的问题
+
+2026-11-08 对 `app/src/main/kotlin` 的当前工作树扫描得到 266 个 production Kotlin 文件、124 个 package；下列结论均来自显式 import/caller 与历史核对，而不是仅凭目录名：
+
+1. `backend/transport` 有 15 个文件，却同时包含 pure RunHost contract/state、AIDL codec、App/Shizuku client、Android Service、host staging/root-script preparation、通用 FD reader 与 caller-zero process carrier；它不是 concrete backend implementation。
+2. `backend.transport -> data.run -> backend.transport` 是直接 package 环；`core/run/RunInputFreezer.kt -> data.run.RootManagerArtifactResolver` 是 inner-ish core 对具体 Android adapter 的反向依赖。
+3. `RunHostService.kt` 与 `GhostlockUserService.kt` 分别复制 prepare/start/cancel/close、snapshot、log publication 与 terminal callback。Shizuku 实现的 16 个 override/private 方法名全部能在 App 实现中找到；这不是两个独立业务实现。
+4. `RunHostService.kt` 文件尾部拥有共享 wire encode/decode，Shizuku entrypoint 再跨 package import；共享 codec 被错误挂在 App framework class 上。
+5. `BackendRunSessionAdapter.kt` 位于 `data/backend`，实际实现 `domain.run.RunSessionPort`，并同时承担 admission、input freeze、AIDL request mapping、host selection、LogHub 与 Android share；owner 与名称都失真。
+6. `BackendProcessCarrier.kt`、`core/flow/FlowRequest.kt`、`backend/backends/lua/FlowLuaRequest.kt` 均无 production caller；前者只有自测，且全部真实攻击 backend 已断开。
+7. `ui/component/profile/**`、`ui/component/rebootlistpopup/**` 与 `ui/component/miuix/effect/**` 在包外 production/test/androidTest caller 都为 0；旧 component fixture 仍把它们视为必须保留，不能继续用旧 fixture 证明其必要性。
+8. UI 现有 `ui.screen <-> ui.viewmodel` 与 `ui.backend <-> ui.component <-> ui.kit` 包环；`ui/screen/module` 还是旧 KernelSU “module” 命名，不表达 Backend/Payload/Finish feature。
+9. `tools/kotlin_architecture_d0.py` 目前硬编码多处 `backend/transport` 路径与 host allowlist；当前 `D0_VERIFY=PASS` 只验证旧规则，没有检查上述环、`core -> data` 或 caller-zero protected package。
+10. 根 package 也混合了 framework、composition 与 presentation：`AppContainer.kt` 同时装配 backend/core/data/domain/UI，`AppViewModelFactory.kt` 属于 UI factory；Home、Run、Backend、Payload、Finish、Settings、ColorPalette 等页面又各自通过 `LocalContext -> GhostLockApp.container` 做 service location，形成 root/composition 对 UI 的依赖与 UI 对 root/container 的反向依赖。
+11. `BackendRunSessionAdapter.kt` 同时承担 admission、freeze、wire request、transport selection、LogHub 与 Android share；`RunHostProductPipeline.kt` 同时承担 product plan 映射、staging、root-script publish 与 workspace。批次02只把它们移出错误 owner，不把“移动目录”冒充职责拆分；二者由后续 `P-RUN-CORE-001/批次02` 具名承接。
+
+历史来源为 `64a56cd6 refactor(app): unify backend execution and run logging` 与后继 `f878ba08 refactor(run): finalize log hub and diagnose handoff`。前者把执行主干一次性放入按功能集合命名的 package，后者沿用该位置；这解释来源，但不使当前 owner 合理。
+
+### 19.3 采用的最小目标边界
+
+本轮不为了“看起来像教科书”而把 266 个文件全部换成 `presentation/application/infrastructure` 名称。项目继续使用已有的 `domain/core/data/backend/composition/ui/shizuku` 词汇，但每个词只表达一种职责：
+
+~~~mermaid
+flowchart LR
+  UI[ui presentation] --> D[domain pure models ports use cases]
+  UI --> C[core application orchestration]
+  C --> D
+  B[backend concrete implementations] --> D
+  B --> C
+  B -->|shared outer adapters such as data.log| DATA
+  DATA[data shared Android file DataStore PFD IPC adapters] --> D
+  DATA --> C
+  APPHOST[runhost App framework entry] --> REG[composition root]
+  SHI[shizuku framework entry] --> REG
+  APPHOST --> DATA
+  SHI --> DATA
+  REG --> UI
+  REG --> B
+  REG --> DATA
+~~~
+
+固定边界：
+
+- `domain/**` 继续持有纯 model、port 与当前 use case；它不得依赖 Android、Compose、AIDL、data、backend implementation 或 composition。本轮不做无行为收益的“把全部 UseCase 改放 application”大搬家。
+- `core/**` 只持有 platform-neutral application orchestration、Flow、LogHub、pure root-script/runhost contract；不得 import `android.*`、AIDL Parcelable、`data/**`、Compose 或 `BackendRegistry`。
+- `data/**` 持有跨 backend 复用的 Android/DataStore/file/PFD/Binder client/wire codec 等 outer adapter；它可以依赖 domain/core，但不得成为 backend membership authority。backend-private JNA binding 留在对应 concrete backend，只有出现多个 backend/application caller 的真实共享边界才提升到 `data`。
+- `backend/**` 只持有 backend API 与 concrete Diagnose/Custom implementation；通用 RunHost、日志 transport 与 Android Service 不再放入 backend。concrete backend 可以消费具名且跨 backend 复用的 outer adapter，例如 `data.log.FdLogConnector`；不得依赖 RunHost framework entry、AIDL host implementation、membership 或 UI。
+- `composition/**` 仍是唯一跨层装配与 backend membership owner。
+- `runhost/AppRunHostService` 与 `shizuku/GhostlockUserService` 是 Android/Shizuku framework entrypoint；它们可以在 framework 构造边界调用 `BackendRegistry.runtime(key)`，但不得拥有第二份 membership/UI catalog。
+- `ui/**` 只持有 presentation；按 feature 共置 Screen/ViewModel/UiState 可以消除 UI 内部环，不把所有 UI 文件改名为 `presentation`。
+- 根 package 只保留 Android framework entry（`GhostLockApp`）；`AppContainer` 归 composition owner，`AppViewModelFactory` 归 UI composition owner，页面不再各自向上 cast Application 取得 container。
+
+明确拒绝的过度设计：
+
+- 不新增 Gradle module、DI framework、第二 registry、兼容 alias、旧 package facade、动态 class lookup 或 schema/codegen；
+- 不移动 `app/src/main/aidl/com/ghostlock/app/run/**`，因为它已经是中立 same-APK wire namespace；
+- 不批量删除所有 `RunHost` 前缀。`RunHostRequest/Snapshot/Code/State/Client` 与实际跨进程合同一致，继续保留；只改失真实现名；
+- 不在 package move 同批重写 state machine/lifecycle；App/Shizuku 去重作为下一单变量批次；
+- 不移动或修改 `LegacyProfileConverter.kt`、`ValueModel.kt`、native backend source、Payload/Finish data class 与 JNA ABI。
+
+### 19.4 P-RUN-X-001/批次02：RunHost owner/package 收口（本次唯一细化批）
+
+本批只改变 owner/package、共享 codec 的文件归属和失真名称；AIDL、状态转换、方法顺序、错误码、超时、日志顺序、workspace/root-script 行为逐项保持。App/Shizuku 两份 host orchestration 暂不去重，避免把机械归位与生命周期重写混为一个变量。
+
+| current | target / action | 本批边界 |
+|---|---|---|
+| `backend/transport/RunHostProtocol.kt` | `core/runhost/RunHostProtocol.kt` | 类型名、整数与状态机不变；同时承接 App/Shizuku/FD producer 共用的单行 ASCII/SGR 校验和 source-sequence 预留，避免通用 FD adapter 反向依赖 client-private cursor |
+| `backend/transport/RunHostRequest.kt` | `core/runhost/RunHostRequest.kt` | normalized model、validator、fingerprint 保持 |
+| `backend/transport/RunHostSnapshot.kt` | pure model/invariant → `core/runhost/RunHostSnapshot.kt`；AIDL conversion → `data/runhost/wire/RunHostSnapshotWireCodec.kt` | RunReport 投影与合法组合不变 |
+| `backend/transport/AppRunHostClient.kt` | `data/runhost/client/AppRunHostClient.kt` | 名称保留 |
+| `backend/transport/ShizukuRunHostClient.kt` | `data/runhost/client/ShizukuRunHostClient.kt` | 名称、Shizuku lifecycle 与 service tag 不变 |
+| `backend/transport/RunHostLogConnector.kt` | `data/runhost/client/RunHostLogConnector.kt` | connector drain/incomplete 合同不变 |
+| `backend/transport/RunHostLogCursor.kt` | `data/runhost/client/RunHostLogCursor.kt` | 只保留 callback identity、parcel、连续序列与terminal-prefix检查；共用 message/sequence producer grammar 上移 `core/runhost`，规则本身不变 |
+| `backend/transport/RunHostSnapshotPoller.kt` | `data/runhost/client/RunHostSnapshotPoller.kt` | completion deadline 不变 |
+| `backend/transport/RunHostSnapshotReply.kt` | client outcome → `data/runhost/client/RunHostClientOutcome.kt`；reply decode → `data/runhost/wire/RunHostSnapshotWireCodec.kt` | 只拆 owner，不增 wrapper |
+| `backend/transport/RunHostParcelBudget.kt` | `data/runhost/wire/RunHostParcelBudget.kt` | package 是唯一 wire owner；不把 request/snapshot/budget 强塞进一个 god codec |
+| `backend/transport/RunHostProductPipeline.kt` | `data/runhost/host/ProductRunPreparer.kt`，类改 `ProductRunPreparer` | staging/render/plan 次序不变；删除含糊 pipeline 名 |
+| `backend/transport/RunHostExecutionDomainVerifier.kt` | `data/runhost/host/ExecutionDomainVerifier.kt` | package 已表达 RunHost，去掉冗余前缀；role 数值/判断不变 |
+| `backend/transport/RunHostService.kt` | framework class → `runhost/AppRunHostService.kt`，类改 `AppRunHostService`；request decode/PFD ownership → `data/runhost/wire/RunHostRequestWireCodec.kt`；snapshot encode → snapshot codec | manifest 与 App client 同步；framework entrypoint 与 Shizuku 名称明确区分 |
+| `backend/transport/FdLogConnector.kt` | `data/log/FdLogConnector.kt` | 通用 FD source，不再冒充 backend/RunHost transport |
+| `backend/transport/BackendProcessCarrier.kt` + test | DELETE | production caller=0；未来真实 carrier 出现实际 consumer 后重建 |
+| `backend/launcher/BackendRunGate.kt` | `core/run/RunAdmissionPolicy.kt` | application/session admission，不下沉 domain；`RunPageContext` 改为中立 `RunAdmissionContext`，现有英文 reason 文案与规则本批不变 |
+| `data/backend/BackendRunSessionAdapter.kt` | `data/run/AndroidRunSessionAdapter.kt` | 只改 owner/name与 import；职责拆分留给后续批次 |
+
+必须同批迁移的直接 caller/fixture：
+
+- `AppContainer.kt`、`AndroidManifest.xml`、`GhostlockUserService.kt`；
+- `data/run/AndroidRunWorkspace.kt`、`RootArtifactStagingAdapter.kt`；
+- `backend/backends/diagnose/jna/DiagnoseNativeBinding.kt`；
+- `app/src/test/kotlin/**/backend/transport`、`app/src/androidTest/kotlin/**/backend/transport`、`DiagnoseJnaSmokeTest.kt` 中对应 package/import；
+- `app/src/test/kotlin/com/ghostlock/app/core/run/LogConnectorTest.kt`、`app/src/androidTest/kotlin/com/ghostlock/app/data/run/RootArtifactStagingAdapterTest.kt` 与 `data/backend/BackendRunSessionAdapterTest.kt`；
+- `tools/kotlin_architecture_d0.py` 与 `kotlin-file-actions-v1.tsv`；`component-api-v1.tsv`与其 exact-count test 在inventory证明数值不变后保持冻结；
+- `backend/README.md` 只保留 backend 职责，新增 `runhost/README.md` 承接 current host/IPC 说明；
+- `introduction.md`、`full-process-uml.md`、本计划与 `backend-root-execution-runhost-wire.md` 的 current path 指针；
+- `docs/analysis/kotlin-clean-architecture-d0.md` 只在文件头标为历史分析并指向本节，不重写旧正文。
+
+本批逐文件 MOVE/ADD/DELETE/MODIFY/FREEZE 的唯一权威是 `backend-root-execution-unification-ledger.tsv` 中 `P-RUN-X-001/批次02` 行；本节表格解释职责，不替代 ledger，也不允许实施时临时扩大 caller/test 闭包。
+
+本批完成时：
+
+- `app/src/main/kotlin/com/ghostlock/app/backend/transport/` 与 `backend/launcher/` 必须不存在；
+- production/test/androidTest 中 `com.ghostlock.app.backend.transport` import/package 命中必须为 0；
+- `data.run -> backend.transport` 与 concrete backend → RunHost AIDL/host implementation 反向边为 0；
+- AIDL 文件集合、字段顺序、transaction ID、wire integer、state transition 与公开运行行为逐项不变；
+- 不保留 deprecated typealias、转发类或旧 class 名兼容层。
+
+#### 19.4.1 本批验证
+
+1. 扩展现有 `kotlin_architecture_d0.py`，直接拒绝旧 package、`core/runhost -> data/android/AIDL`、`data.run -> backend` 和新旧双 owner；guard 须使用真实 target path，不以旧 fixture 白名单放行。其它 `core/run`/`core/rootscript` 已知 Android/data 债务由 `P-RUN-CORE-001/批次02` 承接，不在本机械归位批次伪造全局 PASS。
+2. 执行 architecture inventory/verify，记录 literal。guard 的非法样例只复用已有测试设施；仅在发现判据可能 vacuous 时把定点证伪作为 debug 手段，不再作为通用准出门槛。
+3. 执行 `:app:verifyDebugUnitTestXml`、`:app:verifyReleaseUnitTestXml` 与 `:app:compileDebugAndroidTestKotlin`，全量 XML 四桶为 0 failure/error/skipped；不预写改变后的 test 数。
+4. 执行 `./gradlew nativeTestHost --console=plain` 与 `./gradlew nativeBuildAndroid --console=plain`。
+5. AVD 只跑 App/Shizuku RunHost smoke，证明 manifest class、Shizuku service class、same AIDL 和 LogConnector 路径仍可达；本批不宣称 lifecycle 专项、真实设备、root 或攻击 backend 成功。
+6. 同步 current UML；历史 §11.7 等只保留沿革，不批量改写。
+
+#### 19.4.2 实时 checkbox
+
+- [x] KT-D0：扫描全部 production Kotlin package/import，确认 `backend/transport` 混合六类职责、三组 package 环和 caller-zero 候选。
+- [x] KT-D1：查 `64a56cd6`、`f878ba08` 与已归档 D7，确认本节是 current active plan amendment，不恢复旧 `BackendSpec`/KSU 方案。
+- [x] KT-D2：design-critic 首轮提出 KT-CA-01..08，定点复审确认全部 CLOSED；74 行 exact ledger 路径唯一、直接 caller 闭包完整，总判 PASS、阻断=0、重要=0。
+- [x] KT-D3：critic 阻断全部关闭后，用户明确批准 `P-RUN-X-001/批次02`；批准不扩展到§19.5后续批。
+- [x] KT-I1：按上表原子移动 production/test/caller，删除 caller-zero carrier，同批更新 guard、fixture、README 与 current UML；74行exact ledger闭包失败数为0，旧package/类名与双owner清零。
+- [x] KT-V1：architecture=`PASS/RUNHOST_OWNER_BOUNDARY=0/FILE_ACTION_ROWS=562`；debug/release unit各`128`且failure/error/skipped全为0；androidTest compile、native host=`31/31`、debug/release双variant build全绿，AIDL diff为0。
+- [x] KT-V2：6.6 AVD `emulator-5554` 上 App/Shizuku exact smoke 各`OK (1 test)`；结果只证明 manifest/package/class/AIDL/LogConnector 接线没有回归，不证明lifecycle全矩阵、真实设备、carrier、root或产品成功。
+
+### 19.5 后续需求：只登记边界，不自动实施
+
+下列工作都由本轮全树扫描发现，但依照滚动细化规则不在批次02预写逐文件 ledger，也不以需求登记替代后续批准：
+
+#### P-RUN-CORE-001/批次02：core/data 依赖方向修复
+
+- `RunInputFreezer`、`FrozenRunInputLease` 的 Android/PFD/File 实现移入 `data/run`；`core/run -> data.run` 归零。
+- root-script pure plan/text/result decode 留 core，Android `Os`、same-opened-file identity、publish/preview workspace 移入 data；`BackendFlowInput.complete()` 不再直接打开具体 File/codec。
+- `LogHub`/`KotlinLogConnector` 归入明确的 core log owner；`FlowRequest.kt` 在 caller 仍为 0 时删除。
+- 把 `AndroidRunSessionAdapter` 中 admission 之后的 application run orchestration 与 Android share/host client/request mapping 分开；outer adapter 只实现平台 I/O，core coordinator 只认识 port/model。
+- 把 `ProductRunPreparer` 中 pure product plan 映射与 Android workspace/staging/root-script publication 分开；不得把整个 coordinator 留在 data 后宣称 Clean Architecture 完成。
+- 本批触及 root-script/handoff physical path，须另行细化并按实际行为影响恢复对应 AVD/设备判据，不由批次02提前放行。
+
+#### P-RUN-X-001/批次03：App/Shizuku Host 去重
+
+- 在 `P-RUN-CORE-001/批次02` 建立合法 core/data port 边界后，再抽取一个 core/application shared host controller；`AppRunHostService` 与 `GhostlockUserService` 只保留 framework bind/destroy/context 差异。
+- 不增加第二 state machine、queue、timeout、registry 或 generic host framework；两个 entrypoint 继续复用同一 AIDL。
+- 只有前两批门禁关闭后，才按最终文件路径细化 prepare/start/cancel/close/snapshot/log owner 与故障矩阵；禁止先造临时 data-layer controller 再二次搬迁。
+
+#### P-BACKEND-CORE-001/批次02：backend package 纯化
+
+- `backend/backends/diagnose` 与 `backend/backends/lua` 分别收敛为表达产品 owner 的 Diagnose/Custom package；不以实现技术 `lua` 代替 Custom 身份。
+- `backend/declarations` 改为明确 API owner；`FlowLuaRequest.kt` 在 caller 仍为 0 时删除。
+- 不接回 43499/43284/98260，不实现 BD-I3，不改变 JNA/Flow 行为。
+
+<a id="p-ui-core-001"></a>
+
+#### P-UI-CORE-001/批次01：UI feature/package 收口
+
+- 删除经最终复扫仍无包外 caller 的 `ui/component/profile`、`rebootlistpopup`、`miuix/effect`；这项新用户要求取代旧 D7 “所有 component 文件一律保留”的历史 fixture 结论。
+- `ui/screen/module` 归为 Backend/Payload/Finish feature；Screen、ViewModel、UiState 按 feature 共置或以中立 model 单向连接，消除 `ui.screen <-> ui.viewmodel`。
+- `BackendStatusTone` 移入中立 status-card/UI model owner，消除 component 对 backend UI 的反向依赖；UI kit 可以依赖 component，component 不反向依赖 kit/backend。
+- `GhostLockApp` 只保留 Android Application entry；`AppContainer` 归 `composition`，`AppViewModelFactory` 归 UI composition/presentation owner。Home、Run、Backend、Payload、Finish、Settings、ColorPalette 页面不再各自 `LocalContext -> GhostLockApp.container`，而由 Activity/上层 composition 注入 factory/catalog/action。
+- 最终结构门显式要求 root/composition↔UI service-locator 环为 0；不新增 DI framework、全局 singleton 或第二 container。
+- Material/Miuix 外观、字符串、多语言、语义 icon 与页面路由保持；该批需要单独 UI fixture/目视门，不夹入 RunHost 搬迁。
+
+### 19.6 新执行顺序
+
+本轮用户纠正后的顺序为：
+
+1. `P-RUN-X-001/批次02` RunHost owner/package 收口；
+2. `P-RUN-CORE-001/批次02` core/data、run coordinator 与 root-script I/O 边界；
+3. `P-RUN-X-001/批次03` shared host controller 去重；
+4. `P-BACKEND-CORE-001/批次02` backend package 纯化；
+5. `P-UI-CORE-001/批次01` UI feature/dead package 收口；
+6. 以最终路径重新细化 `P-DIAG-NATIVE-001/批次02`；
+7. RunHost lifecycle/cancel/host-death exact AVD、DataStore Android runtime欠账、automatic-export真实设备/最终验收按原判据继续。
+
+前序普通/AVD证据继续作为历史回归基线，但 package move 后必须在最终树重跑对应 current gate；未重跑项保持 `NOT_RUN`，不因历史 PASS 自动继承。真实攻击 backend 继续断开。

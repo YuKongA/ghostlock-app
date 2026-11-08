@@ -1,5 +1,7 @@
 package com.ghostlock.app.ui.screen.module.payload
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -33,18 +35,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.HelpOutline
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.AdminPanelSettings
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DragHandle
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Extension
-import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
@@ -114,9 +104,9 @@ private fun payloadTitle(kind: PayloadKind): String = stringResource(
 
 /** 载荷类型对应的图标。 */
 private fun payloadIcon(kind: PayloadKind) = when (kind) {
-    PayloadKind.RootManager -> Icons.Filled.AdminPanelSettings
-    PayloadKind.Command -> Icons.Filled.Terminal
-    PayloadKind.Lkm -> Icons.Filled.Extension
+    PayloadKind.RootManager -> ProjectIcons.Filled.AdminPanelSettings.material
+    PayloadKind.Command -> ProjectIcons.Filled.Terminal.material
+    PayloadKind.Lkm -> ProjectIcons.Filled.Extension.material
 }
 
 /* ---------------- entry card ---------------- */
@@ -154,7 +144,7 @@ fun PayloadCardMaterial(state: PayloadUiState, onOpen: () -> Unit) {
             item {
                 SegmentedListItem(
                     onClick = onOpen,
-                    leadingContent = { Icon(Icons.Filled.CheckCircle, contentDescription = null) },
+                    leadingContent = { Icon(ProjectIcons.Filled.CheckCircle.material, contentDescription = null) },
                     headlineContent = { Text(stringResource(R.string.payload_title)) },
                     supportingContent = { Text(payloadSummary(state)) },
                 )
@@ -173,7 +163,7 @@ fun PayloadCardMiuix(state: PayloadUiState, onOpen: () -> Unit) {
             onClick = onOpen,
             startAction = {
                 Icon(
-                    imageVector = Icons.Filled.CheckCircle,
+                    imageVector = ProjectIcons.Filled.CheckCircle.material,
                     contentDescription = null,
                     tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground,
                 )
@@ -227,11 +217,11 @@ private fun PayloadPageMiuix(
             topBar = {
                 MiuixTopAppBar(
                     title = stringResource(R.string.payload_title),
-                    navigationIcon = { IconButton(onClick = actions.onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground) } },
+                    navigationIcon = { IconButton(onClick = actions.onBack) { Icon(ProjectIcons.AutoMirrored.Filled.ArrowBack.material, null, tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground) } },
                     actions = {
                         IconButton(onClick = actions.onToggleEditMode) {
                             Icon(
-                                imageVector = if (editMode) Icons.Filled.Check else Icons.Filled.Edit,
+                                imageVector = if (editMode) ProjectIcons.Filled.Check.material else ProjectIcons.Filled.Edit.material,
                                 contentDescription = stringResource(if (editMode) R.string.payload_edit_done else R.string.payload_edit),
                                 tint = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onBackground,
                             )
@@ -289,7 +279,7 @@ private fun PayloadPageMiuix(
                         if (editMode) {
                             actions.onSetAddDialogVisible(true)
                         } else {
-                            showPreviewSaveResult(context, actions.onSavePreview())
+                            actions.onSavePreview { result -> showPreviewSaveResult(context, result) }
                         }
                     },
                 ) {
@@ -325,11 +315,11 @@ private fun PayloadPageMaterial(
             topBar = {
                 LargeFlexibleTopAppBar(
                     title = { Text(stringResource(R.string.payload_title)) },
-                    navigationIcon = { IconButton(onClick = actions.onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } },
+                    navigationIcon = { IconButton(onClick = actions.onBack) { Icon(ProjectIcons.AutoMirrored.Filled.ArrowBack.material, null) } },
                     actions = {
                         IconButton(onClick = actions.onToggleEditMode) {
                             Icon(
-                                imageVector = if (editMode) Icons.Filled.Check else Icons.Filled.Edit,
+                                imageVector = if (editMode) ProjectIcons.Filled.Check.material else ProjectIcons.Filled.Edit.material,
                                 contentDescription = stringResource(if (editMode) R.string.payload_edit_done else R.string.payload_edit),
                             )
                         }
@@ -387,7 +377,7 @@ private fun PayloadPageMaterial(
                         if (editMode) {
                             actions.onSetAddDialogVisible(true)
                         } else {
-                            showPreviewSaveResult(context, actions.onSavePreview())
+                            actions.onSavePreview { result -> showPreviewSaveResult(context, result) }
                         }
                     },
                 ) {
@@ -669,7 +659,7 @@ private fun PayloadRadio(miuix: Boolean, selected: Boolean, enabled: Boolean = t
 @Composable
 private fun PayloadArrow(miuix: Boolean) {
     Icon(
-        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+        imageVector = ProjectIcons.AutoMirrored.Filled.KeyboardArrowRight.material,
         contentDescription = null,
         tint = if (miuix) {
             top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary
@@ -789,7 +779,7 @@ private fun PayloadEditList(
                 ) {
                     IconButton(onClick = { onDelete(slot.id) }) {
                         Icon(
-                            imageVector = Icons.Filled.Delete,
+                            imageVector = ProjectIcons.Filled.Delete.material,
                             contentDescription = stringResource(R.string.payload_delete),
                             tint = if (miuix) {
                                 top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.error
@@ -864,7 +854,7 @@ private fun PayloadDragHandle(
     onCancel: () -> Unit,
 ) {
     Icon(
-        imageVector = Icons.Filled.DragHandle,
+        imageVector = ProjectIcons.Filled.DragHandle.material,
         contentDescription = stringResource(R.string.payload_sort_handle),
         tint = tint,
         modifier = Modifier
@@ -970,7 +960,7 @@ private fun ManagerIcon(miuix: Boolean, spec: PayloadRootManagerOption) {
     } else {
         Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.HelpOutline,
+                imageVector = ProjectIcons.AutoMirrored.Filled.HelpOutline.material,
                 contentDescription = null,
                 modifier = Modifier.size(20.dp),
                 tint = if (miuix) {

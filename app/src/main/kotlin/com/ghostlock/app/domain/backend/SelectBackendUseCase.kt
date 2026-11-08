@@ -8,5 +8,5 @@ class SelectBackendUseCase(
      * @param key Stable backend identity from the catalog.
      * @return True when selection and persistence succeeded.
      */
-    operator fun invoke(key: String): Boolean = port.select(key)
+    suspend operator fun invoke(key: String): Boolean = port.select(key)
 }

@@ -1,5 +1,7 @@
 package com.ghostlock.app.ui.component.material
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -18,10 +20,6 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExpandedFullScreenContainedSearchBar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -160,17 +158,17 @@ fun SearchAppBar(
                                 contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             ),
                         ) {
-                            Icon(Icons.AutoMirrored.Rounded.ArrowBack, null)
+                            Icon(ProjectIcons.AutoMirrored.Rounded.ArrowBack.material, null)
                         }
                     } else {
-                        Icon(Icons.Filled.Search, null)
+                        Icon(ProjectIcons.Filled.Search.material, null)
                     }
                 },
                 trailingIcon = {
                     if (isSearchExpanded && currentQuery.isNotEmpty()) {
                         IconButton(
                             onClick = { clearSearchText() },
-                            content = { Icon(Icons.Filled.Close, null) }
+                            content = { Icon(ProjectIcons.Filled.Close.material, null) }
                         )
                     }
                 },

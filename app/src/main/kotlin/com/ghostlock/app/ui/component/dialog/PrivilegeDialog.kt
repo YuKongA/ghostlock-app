@@ -1,11 +1,11 @@
 package com.ghostlock.app.ui.component.dialog
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -254,7 +254,7 @@ private fun PrivilegeOverviewBody(
                         onClick = { onSelect(row.label) },
                         endActions = {
                             if (selected) {
-                                Icon(Icons.Filled.Check, contentDescription = null)
+                                Icon(ProjectIcons.Filled.Check.material, contentDescription = null)
                             }
                         },
                     )
@@ -279,7 +279,7 @@ private fun PrivilegeOverviewBody(
                             Text(privilegeRowStateText(row) + " · " + privilegeRowDesc(row))
                         },
                         trailingContent = if (selected) {
-                            { Icon(Icons.Filled.Check, contentDescription = null) }
+                            { Icon(ProjectIcons.Filled.Check.material, contentDescription = null) }
                         } else {
                             null
                         },

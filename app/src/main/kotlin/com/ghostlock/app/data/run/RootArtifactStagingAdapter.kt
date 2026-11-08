@@ -3,9 +3,9 @@ package com.ghostlock.app.data.run
 import android.os.ParcelFileDescriptor
 import android.system.Os
 import android.system.OsConstants
-import com.ghostlock.app.backend.transport.RunHostArtifactRequest
-import com.ghostlock.app.backend.transport.RunHostArtifactKind
-import com.ghostlock.app.backend.transport.RunHostIdentity
+import com.ghostlock.app.core.runhost.RunHostArtifactRequest
+import com.ghostlock.app.core.runhost.RunHostArtifactKind
+import com.ghostlock.app.core.runhost.RunHostIdentity
 import com.ghostlock.app.core.flow.PublishedFlowArtifact
 import com.ghostlock.app.core.rootscript.PublishedArtifactIdentity
 import com.ghostlock.app.core.rootscript.ROOT_SCRIPT_HANDOFF_FILE_NAME

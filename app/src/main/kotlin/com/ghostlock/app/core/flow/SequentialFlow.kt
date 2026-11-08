@@ -22,7 +22,8 @@ import kotlin.random.Random
  * One-shot sequential Flow template without reflection or backend class identity.
  *
  * Subclasses declare backend-owned primitive/dispatch steps, cleanup, terminal hint, and optional diagnostic
- * outcome. Payload and Finish are intentionally absent because they execute inside the published root script.
+ * outcome. Step notices enter the RunHost-owned Kotlin connector through [BackendFlowInput.logs]; this template
+ * never owns source termination. Payload and Finish are absent because they execute inside the published root script.
  */
 abstract class SequentialFlow : Flow {
     private val lock = Any()

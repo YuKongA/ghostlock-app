@@ -2,6 +2,7 @@ package com.ghostlock.app.domain.privilege
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -37,7 +38,7 @@ class PrivilegeStateTest {
 
     /** Use cases preserve the injected port's state identity, refresh command, and exact result. */
     @Test
-    fun useCasesDelegateToSingleInjectedPort() {
+    fun useCasesDelegateToSingleInjectedPort() = runTest {
         val port = FakePrivilegePort()
         assertSame(port.state, ObservePrivilegeUseCase(port)())
 
@@ -82,7 +83,7 @@ class PrivilegeStateTest {
             refreshCount += 1
         }
 
-        override fun select(kind: AttackExecutorKind): ExecutorSelectionResult {
+        override suspend fun select(kind: AttackExecutorKind): ExecutorSelectionResult {
             lastSelection = kind
             return selectionResult
         }

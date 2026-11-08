@@ -1,6 +1,7 @@
 package com.ghostlock.app.domain.run
 
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.Deferred
 
 /** Domain boundary for observing and controlling the application-scoped backend run session. */
 interface RunSessionPort {
@@ -15,7 +16,7 @@ interface RunSessionPort {
      *
      * @return True only when the application-scoped coordinator accepted a new run.
      */
-    fun start(command: RunCommand): Boolean
+    fun start(command: RunCommand): Deferred<Boolean>
 
     /**
      * Requests explicit cancellation through the current launcher path.

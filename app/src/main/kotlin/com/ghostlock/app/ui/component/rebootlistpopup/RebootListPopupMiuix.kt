@@ -1,5 +1,7 @@
 package com.ghostlock.app.ui.component.rebootlistpopup
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
@@ -12,8 +14,6 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.ListPopupColumn
 import top.yukonga.miuix.kmp.basic.PopupPositionProvider
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Close2
 import top.yukonga.miuix.kmp.overlay.OverlayListPopup
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 
@@ -31,7 +31,7 @@ fun RebootListPopupMiuix(
         holdDownState = showTopPopup.value
     ) {
         Icon(
-            imageVector = MiuixIcons.Close2,
+            imageVector = ProjectIcons.Filled.Close2.miuix,
             contentDescription = stringResource(id = R.string.reboot),
             tint = colorScheme.onBackground
         )

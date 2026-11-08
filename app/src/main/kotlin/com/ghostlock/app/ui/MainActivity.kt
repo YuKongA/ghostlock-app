@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
@@ -104,6 +105,7 @@ import top.yukonga.miuix.kmp.utils.PagerGestureNestedScrollConnection
 import top.yukonga.miuix.kmp.utils.PagerInterceptionMode
 import top.yukonga.miuix.kmp.utils.PagerNavigationSpringSpec
 import top.yukonga.miuix.kmp.utils.pagerGestureOverride
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -120,10 +122,11 @@ class MainActivity : ComponentActivity() {
         /* 图标动画已移除（2026-10-19）：只等首帧内容，不再固定停留 500ms。 */
         splashScreen.setKeepOnScreenCondition { !contentReady }
 
-        /* task-27：启动恢复上次选择的后端与其配置（必须在 setContent 前，保证首帧读到正确选择）。 */
-        (application as GhostLockApp).container.restoreBackendSession()
-
-        setContent {
+        lifecycleScope.launch {
+            try {
+                (application as GhostLockApp).container.initialize()
+                if (isFinishing) return@launch
+                setContent {
             val viewModel = mainActivityViewModel
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
             val selectedMainPage by viewModel.selectedMainPage.collectAsStateWithLifecycle()
@@ -203,6 +206,12 @@ class MainActivity : ComponentActivity() {
                     }
                     SideEffect { contentReady = true }
                 }
+            }
+                }
+            } catch (problem: Throwable) {
+                android.util.Log.e("GhostLockStartup", "application initialization failed", problem)
+                contentReady = true
+                finish()
             }
         }
     }

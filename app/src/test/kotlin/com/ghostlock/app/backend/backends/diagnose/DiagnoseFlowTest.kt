@@ -6,9 +6,12 @@ import com.ghostlock.app.core.flow.FlowReportContext
 import com.ghostlock.app.core.flow.FlowTerminalClaim
 import com.ghostlock.app.core.rootscript.PublishedArtifactIdentity
 import com.ghostlock.app.core.rootscript.RootScriptArtifact
+import com.ghostlock.app.core.run.KotlinLogConnector
 import com.ghostlock.app.domain.run.DiagnosticOutcome
 import com.ghostlock.app.domain.run.ExitKind
 import com.ghostlock.app.domain.run.LogDraft
+import com.ghostlock.app.domain.run.LogConnectorEnd
+import com.ghostlock.app.domain.run.LogEmitter
 import com.ghostlock.app.domain.run.LogLevel
 import com.ghostlock.app.domain.run.LogOrigin
 import com.ghostlock.app.domain.run.ProfileSnapshot
@@ -19,6 +22,8 @@ import com.ghostlock.app.domain.run.RunTerminal
 import com.ghostlock.app.domain.run.StageState
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -32,8 +37,12 @@ class DiagnoseFlowTest {
     fun nativeChainCompletesBothFacts() = runBlocking {
         val records = mutableListOf<LogDraft>()
         val closed = AtomicBoolean(false)
-        val report = flow(successBinding(closed)).run(input(records = records))
+        val source = KotlinLogConnector()
+        val collection = async(start = CoroutineStart.UNDISPATCHED) { source.collect(records::add) }
+        val report = flow(successBinding(closed)).run(input(logs = source))
+        source.finishInput()
 
+        assertEquals(LogConnectorEnd.Drained, collection.await())
         assertEquals(StageState.SUCCESS, report.backendPrimitive.state)
         assertEquals(StageState.SUCCESS, report.rootScriptDispatch.state)
         assertEquals(ExitKind.PROCESS_EXIT, report.rootScriptDispatch.exitKind)
@@ -175,7 +184,7 @@ class DiagnoseFlowTest {
 
     /** @return One complete diagnostic Flow input with a cancellation-backed terminal claim. */
     private fun input(
-        records: MutableList<LogDraft> = mutableListOf(),
+        logs: LogEmitter = LogEmitter { },
         cancellation: AtomicBoolean = AtomicBoolean(false),
     ): BackendFlowInput {
         val identity = PublishedArtifactIdentity(
@@ -198,7 +207,7 @@ class DiagnoseFlowTest {
                 retainedArtifacts = emptyList(),
             ),
             profile = ProfileSnapshot("profile", ProfileSnapshot.CURRENT_SCHEMA_VERSION, "0".repeat(64)),
-            logs = { record -> records += record },
+            logs = logs,
             cancellation = RunCancellationView { cancellation.get() },
             reportContext = FlowReportContext(RunCapability.DIAGNOSTIC_ONLY, null),
             terminalClaim = FlowTerminalClaim { cancellation.get() },

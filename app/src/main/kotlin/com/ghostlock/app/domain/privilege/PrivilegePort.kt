@@ -16,5 +16,5 @@ interface PrivilegePort {
      * @param kind Requested executor family.
      * @return Explicit selection/request/unavailable outcome; no implicit fallback is persisted.
      */
-    fun select(kind: AttackExecutorKind): ExecutorSelectionResult
+    suspend fun select(kind: AttackExecutorKind): ExecutorSelectionResult
 }

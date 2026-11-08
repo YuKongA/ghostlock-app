@@ -1,5 +1,7 @@
 package com.ghostlock.app.ui.component.bottombar
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -9,9 +11,6 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.MenuOpen
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -81,7 +80,7 @@ fun NavigationRailMaterial(
                 },
             ) {
                 Icon(
-                    if (railExpanded) Icons.AutoMirrored.Filled.MenuOpen else Icons.Filled.Menu,
+                    if (railExpanded) ProjectIcons.AutoMirrored.Filled.MenuOpen.material else ProjectIcons.Filled.Menu.material,
                     contentDescription = stringResource(
                         if (railExpanded) R.string.nav_rail_collapse else R.string.nav_rail_expand
                     )

@@ -19,8 +19,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Restricted Lua operation-composition Flow.
  *
- * This class consumes only a pre-parsed [LuaFlowInput] and exact [LuaOperationCatalog]. It exposes no Java
- * reflection, constructors, raw addresses, native symbols, JNA types, or arbitrary JVM object conversion.
+ * This class consumes only a pre-parsed [LuaFlowInput] and exact [LuaOperationCatalog]. It writes notices through
+ * the RunHost-owned Kotlin connector exposed as [BackendFlowInput.logs], but never closes that source. It exposes
+ * no Java reflection, constructors, raw addresses, native symbols, JNA types, or arbitrary JVM object conversion.
  */
 internal class FlowLuaImpl(
     private val luaInput: LuaFlowInput,

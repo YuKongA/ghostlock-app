@@ -2,12 +2,15 @@ package com.ghostlock.app.core.run
 
 import com.ghostlock.app.domain.run.*
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -55,9 +58,11 @@ class LogHubSinkTest {
     fun committedRowsAndInfoReportShareOneGllog2Order() = runBlocking {
         val factory = RecordingFactory()
         val hub = LogHub(LogDocumentFormatter())
-        assertTrue(hub.start(context(), request(), factory.create()) { emit ->
-            emit(LogRecord(LogOrigin.Native, LogLevel.Info, "native-one"))
-            emit(LogRecord(LogOrigin.Shell, LogLevel.Warn, "shell-two"))
+        assertTrue(hub.start(context(), request(), factory.create()) { attach ->
+            emitSource(attach) { source ->
+                source.emit(LogDraft(LogOrigin.Native, LogLevel.Info, "native-one"))
+                source.emit(LogDraft(LogOrigin.Shell, LogLevel.Warn, "shell-two"))
+            }
             RunExecutionResult.Completed(diagnosticReport())
         })
         val file = withTimeout(10_000L) { factory.file().finished.await() }
@@ -74,11 +79,83 @@ class LogHubSinkTest {
     }
 
     @Test
+    fun concurrentSourcesKeepOwnFifoAndCommitOnlyByRawAcceptance() = runBlocking {
+        val factory = RecordingFactory()
+        val hub = LogHub(LogDocumentFormatter())
+        assertTrue(hub.start(context(), request(), factory.create()) { attach ->
+            coroutineScope {
+                val first = KotlinLogConnector()
+                val second = KotlinLogConnector()
+                val firstCollection = async { attach(first) }
+                val secondCollection = async { attach(second) }
+
+                first.emit(LogDraft(LogOrigin.Kotlin, LogLevel.Info, "first-a", 400L))
+                waitFor { hub.state.value.entries.size >= 2 }
+                second.emit(LogDraft(LogOrigin.Native, LogLevel.Info, "second-a", 100L))
+                waitFor { hub.state.value.entries.size >= 3 }
+                first.emit(LogDraft(LogOrigin.Kotlin, LogLevel.Info, "first-b", 300L))
+                waitFor { hub.state.value.entries.size >= 4 }
+                second.emit(LogDraft(LogOrigin.Native, LogLevel.Info, "second-b", 0L))
+                waitFor { hub.state.value.entries.size >= 5 }
+
+                first.finishInput()
+                second.finishInput()
+                assertEquals(LogConnectorEnd.Drained, firstCollection.await())
+                assertEquals(LogConnectorEnd.Drained, secondCollection.await())
+            }
+            RunExecutionResult.Completed(diagnosticReport())
+        })
+
+        withTimeout(10_000L) { factory.file().finished.await() }
+        waitFor { hub.state.value.entries.size == 14 }
+        val sourceRows = hub.state.value.entries.filter { row -> row.message.contains("-a") || row.message.contains("-b") }
+        assertEquals(listOf("first-a", "second-a", "first-b", "second-b"), sourceRows.map(LogRecord::message))
+        assertEquals(listOf(2L, 3L, 4L, 5L), sourceRows.map(LogRecord::commitId))
+        assertEquals(listOf(400L, 100L, 300L, 0L), sourceRows.map(LogRecord::sourceElapsedMs))
+    }
+
+    @Test
+    fun incompleteSourceWarnsThenOtherSourceAndTypedReportStillComplete() = runBlocking {
+        val factory = RecordingFactory()
+        val hub = LogHub(LogDocumentFormatter())
+        val incompleteClosed = AtomicBoolean(false)
+        assertTrue(hub.start(context(), request(), factory.create()) { attach ->
+            val incomplete = object : LogConnector {
+                override suspend fun collect(emit: suspend (LogDraft) -> Unit): LogConnectorEnd {
+                    emit(LogDraft(LogOrigin.Native, LogLevel.Info, "accepted-prefix"))
+                    return LogConnectorEnd.Incomplete("synthetic-source-failure")
+                }
+
+                override fun close() {
+                    incompleteClosed.set(true)
+                }
+            }
+            assertTrue(attach(incomplete) is LogConnectorEnd.Incomplete)
+            emitSource(attach) { source ->
+                source.emit(LogDraft(LogOrigin.Shell, LogLevel.Info, "healthy-source"))
+            }
+            RunExecutionResult.Completed(diagnosticReport())
+        })
+
+        withTimeout(10_000L) { factory.file().finished.await() }
+        waitFor { hub.state.value.entries.size == 13 }
+        assertTrue(incompleteClosed.get())
+        assertEquals(1, hub.state.value.entries.count { row -> row.message == "accepted-prefix" })
+        assertEquals(1, hub.state.value.entries.count { row -> row.message == "healthy-source" })
+        assertEquals(1, hub.state.value.entries.count { row ->
+            row.level == LogLevel.Warn && row.message == "log source incomplete: synthetic-source-failure"
+        })
+        assertEquals(RunTerminal.DIAGNOSTIC_COMPLETE, hub.state.value.report?.terminal)
+    }
+
+    @Test
     fun warnThresholdFiltersAllNineReportInfoRowsWithoutChangingTypedReport() = runBlocking {
         val factory = RecordingFactory()
         val hub = LogHub(LogDocumentFormatter())
-        assertTrue(hub.start(context(LogLevel.Warn), request(), factory.create()) { emit ->
-            emit(LogRecord(LogOrigin.Native, LogLevel.Warn, "warn-only"))
+        assertTrue(hub.start(context(LogLevel.Warn), request(), factory.create()) { attach ->
+            emitSource(attach) { source ->
+                source.emit(LogDraft(LogOrigin.Native, LogLevel.Warn, "warn-only"))
+            }
             RunExecutionResult.Completed(diagnosticReport())
         })
         val prefix = withTimeout(10_000L) { factory.file().finished.await() }
@@ -96,8 +173,10 @@ class LogHubSinkTest {
         val factory = RecordingFactory(blockMedia = true)
         val hub = LogHub(LogDocumentFormatter())
         val message = "x".repeat(640)
-        assertTrue(hub.start(context(), request(enabled = true), factory.create()) { emit ->
-            repeat(16_384) { emit(LogRecord(LogOrigin.Native, LogLevel.Info, message)) }
+        assertTrue(hub.start(context(), request(enabled = true), factory.create()) { attach ->
+            emitSource(attach) { source ->
+                repeat(16_384) { source.emit(LogDraft(LogOrigin.Native, LogLevel.Info, message)) }
+            }
             RunExecutionResult.Completed(diagnosticReport())
         })
         val prefix = withTimeout(60_000L) { factory.file().finished.await() }
@@ -115,11 +194,13 @@ class LogHubSinkTest {
         val hub = LogHub(LogDocumentFormatter())
         val firstEmitted = CompletableDeferred<Unit>()
         val resume = CompletableDeferred<Unit>()
-        assertTrue(hub.start(context(), request(), factory.create()) { emit ->
-            emit(LogRecord(LogOrigin.Native, LogLevel.Info, "before-clear"))
-            firstEmitted.complete(Unit)
-            resume.await()
-            emit(LogRecord(LogOrigin.Native, LogLevel.Info, "after-clear"))
+        assertTrue(hub.start(context(), request(), factory.create()) { attach ->
+            emitSource(attach) { source ->
+                source.emit(LogDraft(LogOrigin.Native, LogLevel.Info, "before-clear"))
+                firstEmitted.complete(Unit)
+                resume.await()
+                source.emit(LogDraft(LogOrigin.Native, LogLevel.Info, "after-clear"))
+            }
             RunExecutionResult.Completed(diagnosticReport())
         })
         firstEmitted.await()
@@ -161,6 +242,18 @@ class LogHubSinkTest {
 
     private suspend fun waitFor(timeoutMs: Long = 10_000L, predicate: () -> Boolean) {
         withTimeout(timeoutMs) { while (!predicate()) delay(5L) }
+    }
+
+    /** Attaches one Kotlin source, stops its write side, and waits for complete prefix drain. */
+    private suspend fun emitSource(
+        attach: suspend (LogConnector) -> LogConnectorEnd,
+        emit: suspend (KotlinLogConnector) -> Unit,
+    ) = coroutineScope {
+        val source = KotlinLogConnector()
+        val collection = async { attach(source) }
+        emit(source)
+        source.finishInput()
+        assertEquals(LogConnectorEnd.Drained, collection.await())
     }
 
     private fun context(minimum: LogLevel = LogLevel.Info) = RunSessionState(

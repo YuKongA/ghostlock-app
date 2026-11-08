@@ -53,7 +53,7 @@
 - **构建逻辑一律 Gradle KTS**；`.sh` 仅限设备端与运维；不得依赖 `shasum`/`sha256sum`/`mkdir -p`/`mv`/`cp`/`find`/bash（用 JVM/Gradle API）；工具链由 AGP `ndkDirectory` 解析；**跨端列表不得手抄**（由 native 导出 manifest）。
 - **产物在仓库内真实 `build/`，禁止任何链接**；出问题 `./gradlew clean`；疑似旧树产物 `realpath` 核实后清理，不得并存两棵树。
 - **版本号统一为 3**；唯一迁移点 `LegacyProfileConverter.kt`（v1/v2→3，其余拒绝）；extractor 只认/只产最新版。**静态策略进文档，运行时密钥/SPI/端口绝不进文档**（走会话帧，用后清零）。
-- 配置权威＝GLK profile（JSON 源 + JCS wire + **人工维护的 schema**）；执行层不得读配置类环境变量（只允许 `GHOSTLOCK_HOME`/`TMPDIR`/`GHOSTLOCK_KSU_LOG`）；新状态扩展 profile。
+- **配置权威按 backend 是否依赖系统内核偏移划分（2026-11-08 用户裁定）**：只有需要系统内核偏移信息的 backend，其配置才以 GLK profile（JSON 源 + JCS wire + **人工维护的 schema**）为权威；不需要系统内核偏移的 backend（包括 43284、Diagnose）以及其它应用设置不进入 GLK profile，各自由具名 typed data class 或专项文件作为唯一权威。执行层不得读配置类环境变量（只允许 `GHOSTLOCK_HOME`/`TMPDIR`/`GHOSTLOCK_KSU_LOG`）；新增内核偏移型 backend 状态时扩展其 GLK profile，其它状态扩展所属具名权威，禁止镜像双写。
 
 ## 5. 核心攻击代码审查（仅触及时执行）
 

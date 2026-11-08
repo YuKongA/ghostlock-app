@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.CreationExtras
-import com.ghostlock.app.domain.backend.GetBackendCatalogUseCase
 import com.ghostlock.app.domain.backend.SelectBackendUseCase
 import com.ghostlock.app.domain.device.ReadDeviceStatusUseCase
 import com.ghostlock.app.domain.finish.ReadFinishSettingsUseCase
@@ -31,6 +30,7 @@ import com.ghostlock.app.ui.viewmodel.MainActivityViewModel
 import com.ghostlock.app.ui.viewmodel.PathViewModel
 import com.ghostlock.app.ui.viewmodel.SettingsViewModel
 import com.ghostlock.app.ui.viewmodel.RunViewModel
+import com.ghostlock.app.ui.backend.BackendUiCatalog
 
 /**
  * Explicit composition factory for application-shell view models.
@@ -49,7 +49,7 @@ class AppViewModelFactory(
     private val selectLogExportDirectory: SelectLogExportDirectoryUseCase,
     private val setNavigationRailExpanded: SetNavigationRailExpandedUseCase,
     private val readDeviceStatus: ReadDeviceStatusUseCase,
-    private val getBackendCatalog: GetBackendCatalogUseCase,
+    private val backendUiCatalog: BackendUiCatalog,
     private val selectBackend: SelectBackendUseCase,
     private val checkAppUpdate: CheckAppUpdateUseCase,
     private val observePrivilege: ObservePrivilegeUseCase,
@@ -85,7 +85,7 @@ class AppViewModelFactory(
         if (modelClass == HomeViewModel::class.java) {
             return HomeViewModel(
                 readDeviceStatus = readDeviceStatus,
-                getBackendCatalog = getBackendCatalog,
+                backendUiCatalog = backendUiCatalog,
                 observeUiPreferences = observeUiPreferences,
                 checkAppUpdate = checkAppUpdate,
                 observePrivilege = observePrivilege,
@@ -108,7 +108,7 @@ class AppViewModelFactory(
         }
         if (modelClass == PathViewModel::class.java) {
             return PathViewModel(
-                getBackendCatalog = getBackendCatalog,
+                backendUiCatalog = backendUiCatalog,
                 selectBackend = selectBackend,
             ) as T
         }

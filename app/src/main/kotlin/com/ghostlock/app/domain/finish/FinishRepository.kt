@@ -1,14 +1,12 @@
 package com.ghostlock.app.domain.finish
 
-/** Persistence boundary for the canonical version-three Finish document. */
-interface FinishRepository {
-    /** @return Current Finish definition, or an empty definition when no document exists. */
-    fun read(): FinishDefinition
+import kotlinx.coroutines.Deferred
 
-    /**
-     * Atomically publishes a canonical version-three Finish document.
-     *
-     * @param definition Complete definition to persist.
-     */
-    fun save(definition: FinishDefinition)
+/** Persistence boundary for the complete independent Finish aggregate. */
+interface FinishRepository {
+    /** Submits one transform against the actor-current Finish definition. */
+    fun submit(transform: (FinishDefinition) -> FinishDefinition): Deferred<FinishDefinition>
+
+    /** @return Exact immutable Finish definition at the current actor cutoff. */
+    fun snapshot(): Deferred<FinishDefinition>
 }

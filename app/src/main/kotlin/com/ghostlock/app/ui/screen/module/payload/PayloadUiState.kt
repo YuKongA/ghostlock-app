@@ -29,5 +29,5 @@ data class PayloadActions(
     val onAddPayload: (PayloadKind) -> Unit,
     val onSetRootManager: (String) -> Unit,
     val onSetSafeMode: (Boolean) -> Unit,
-    val onSavePreview: () -> Result<String>,
+    val onSavePreview: ((Result<String>) -> Unit) -> Unit,
 )

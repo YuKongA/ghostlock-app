@@ -4,33 +4,34 @@ import android.content.Context
 import android.os.SystemClock
 import android.system.Os
 import androidx.annotation.Keep
-import com.ghostlock.app.backend.declarations.BackendPlugin
-import com.ghostlock.app.backend.registry.BackendRegistry
-import com.ghostlock.app.backend.transport.RunHostCode
-import com.ghostlock.app.backend.transport.RunHostIdentity
-import com.ghostlock.app.backend.transport.RunHostExecutionDomainVerifier
-import com.ghostlock.app.backend.transport.RunHostRequestModel
-import com.ghostlock.app.backend.transport.RunHostRequestValidation
-import com.ghostlock.app.backend.transport.RunHostRequestValidator
-import com.ghostlock.app.backend.transport.RunHostProductPipeline
-import com.ghostlock.app.backend.transport.PreparedProductRun
-import com.ghostlock.app.backend.transport.RunHostSnapshotModel
-import com.ghostlock.app.backend.transport.RunHostState
-import com.ghostlock.app.backend.transport.RunHostStateMachine
-import com.ghostlock.app.backend.transport.RunHostRole
-import com.ghostlock.app.backend.transport.duplicateDescriptors
-import com.ghostlock.app.backend.transport.isValidRunHostLogDraft
-import com.ghostlock.app.backend.transport.parcelDataSize
-import com.ghostlock.app.backend.transport.reserveRunHostLogSequence
-import com.ghostlock.app.backend.transport.semanticFingerprint
-import com.ghostlock.app.backend.transport.toBoundedWire
-import com.ghostlock.app.backend.transport.toModel
-import com.ghostlock.app.backend.transport.requiresWorkspaceRetention
+import com.ghostlock.app.domain.backend.BackendDescriptor
+import com.ghostlock.app.composition.backend.BackendRegistry
+import com.ghostlock.app.core.runhost.RunHostCode
+import com.ghostlock.app.core.runhost.RunHostIdentity
+import com.ghostlock.app.data.runhost.host.ExecutionDomainVerifier
+import com.ghostlock.app.core.runhost.RunHostRequestModel
+import com.ghostlock.app.core.runhost.RunHostRequestValidation
+import com.ghostlock.app.core.runhost.RunHostRequestValidator
+import com.ghostlock.app.data.runhost.host.ProductRunPreparer
+import com.ghostlock.app.data.runhost.host.PreparedProductRun
+import com.ghostlock.app.core.runhost.RunHostSnapshotModel
+import com.ghostlock.app.core.runhost.RunHostState
+import com.ghostlock.app.core.runhost.RunHostStateMachine
+import com.ghostlock.app.core.runhost.isValidRunHostLogDraft
+import com.ghostlock.app.core.runhost.reserveRunHostLogSequence
+import com.ghostlock.app.data.runhost.host.RunHostRole
+import com.ghostlock.app.data.runhost.wire.duplicateDescriptors
+import com.ghostlock.app.data.runhost.wire.parcelDataSize
+import com.ghostlock.app.core.runhost.semanticFingerprint
+import com.ghostlock.app.data.runhost.wire.toBoundedWire
+import com.ghostlock.app.data.runhost.wire.toModel
+import com.ghostlock.app.data.runhost.host.requiresWorkspaceRetention
 import com.ghostlock.app.core.flow.BackendFlowInput
 import com.ghostlock.app.core.flow.Flow
 import com.ghostlock.app.core.flow.FlowReportContext
 import com.ghostlock.app.core.flow.FlowTerminalClaim
 import com.ghostlock.app.core.flow.completeFailure
+import com.ghostlock.app.core.run.KotlinLogConnector
 import com.ghostlock.app.data.run.AndroidRunWorkspace
 import com.ghostlock.app.data.run.RootArtifactStagingAdapter
 import com.ghostlock.app.domain.backend.AbortPolicy
@@ -56,6 +57,8 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 /**
@@ -72,7 +75,7 @@ class GhostlockUserService : IRunHost.Stub {
     private val lifecycle = RunHostStateMachine()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val staging = RootArtifactStagingAdapter()
-    private val productPipeline = RunHostProductPipeline(staging)
+    private val productPipeline = ProductRunPreparer(staging)
     private val cancellation = AtomicBoolean(false)
     private val logSequence = AtomicLong(0L)
     private val droppedLogs = AtomicLong(0L)
@@ -131,7 +134,7 @@ class GhostlockUserService : IRunHost.Stub {
         val identity = identityOrNull(runId, generation) ?: return RunHostCode.INVALID_REQUEST.wireValue
         val before = lifecycle.state()
         val current = synchronized(lock) { prepared }
-        val safe = current?.plugin?.spec?.abortPolicy == AbortPolicy.SAFE_DURING_RUN
+        val safe = current?.descriptor?.abortPolicy == AbortPolicy.SAFE_DURING_RUN
         val code = lifecycle.cancel(identity, safe)
         if (code == RunHostCode.OK) {
             cancellation.set(true)
@@ -181,7 +184,7 @@ class GhostlockUserService : IRunHost.Stub {
         val parcelBytes = runCatching { wire.parcelDataSize() }.getOrElse {
             return RunHostCode.INVALID_REQUEST
         }
-        if (parcelBytes > com.ghostlock.app.backend.transport.RunHostProtocol.MAX_REQUEST_PARCEL_BYTES) {
+        if (parcelBytes > com.ghostlock.app.core.runhost.RunHostProtocol.MAX_REQUEST_PARCEL_BYTES) {
             return RunHostCode.LIMIT_EXCEEDED
         }
         val model = runCatching { wire.toModel() }.getOrElse { return RunHostCode.INVALID_REQUEST }
@@ -193,13 +196,13 @@ class GhostlockUserService : IRunHost.Stub {
         val fingerprint = model.semanticFingerprint()
         val preflight = lifecycle.preparePreflight(identity, fingerprint)
         if (preflight != RunHostCode.OK) return preflight
-        val plugin = BackendRegistry.plugin(model.backendKey) ?: return RunHostCode.UNKNOWN_BACKEND
-        when (val shape = RunHostRequestValidator.validateCapability(model, plugin.spec.runCapability)) {
+        val runtimeEntry = BackendRegistry.runtime(model.backendKey) ?: return RunHostCode.UNKNOWN_BACKEND
+        when (val shape = RunHostRequestValidator.validateCapability(model, runtimeEntry.descriptor.runCapability)) {
             RunHostRequestValidation.Valid -> Unit
             is RunHostRequestValidation.Invalid -> return shape.code
         }
-        if (!RunHostExecutionDomainVerifier.currentProcessMatches(
-                expected = plugin.spec.executionDomain,
+        if (!ExecutionDomainVerifier.currentProcessMatches(
+                expected = runtimeEntry.descriptor.executionDomain,
                 role = RunHostRole.SHIZUKU_SHELL,
                 applicationUid = context?.applicationInfo?.uid ?: -1,
             )
@@ -207,7 +210,7 @@ class GhostlockUserService : IRunHost.Stub {
             return RunHostCode.EXECUTION_DOMAIN_MISMATCH
         }
         val hostContext = context ?: return RunHostCode.NOT_READY
-        if (plugin.availability() is BackendAvailability.NotReady) return RunHostCode.NOT_READY
+        if (runtimeEntry.availability() is BackendAvailability.NotReady) return RunHostCode.NOT_READY
         val ownedDescriptors = runCatching { wire.duplicateDescriptors(model) }
             .getOrElse { return RunHostCode.ARTIFACT_INVALID }
         var workspace: AndroidRunWorkspace? = null
@@ -215,11 +218,11 @@ class GhostlockUserService : IRunHost.Stub {
             val createdWorkspace = AndroidRunWorkspace.createShizukuShell(
                 packageName = hostContext.packageName,
                 identity = identity,
-                backendKey = plugin.spec.key,
+                backendKey = runtimeEntry.descriptor.key,
             )
             workspace = createdWorkspace
             val staged = staging.stage(createdWorkspace, ownedDescriptors)
-            val product = when (plugin.spec.runCapability) {
+            val product = when (runtimeEntry.descriptor.runCapability) {
                 RunCapability.DIAGNOSTIC_ONLY -> null
                 RunCapability.PRODUCT_ROOT -> productPipeline.prepare(
                     workspace = createdWorkspace,
@@ -246,8 +249,8 @@ class GhostlockUserService : IRunHost.Stub {
             )
             val candidate = PreparedRun(
                 identity = identity,
-                plugin = plugin,
-                flow = plugin.createFlow(),
+                descriptor = runtimeEntry.descriptor,
+                flow = runtimeEntry.createFlow(),
                 workspace = createdWorkspace,
                 rootScript = rootArtifact,
                 profile = profile,
@@ -277,27 +280,39 @@ class GhostlockUserService : IRunHost.Stub {
 
     /** Runs one Flow and publishes its immutable terminal snapshot. */
     private suspend fun runPrepared(current: PreparedRun) {
-        val input = BackendFlowInput(
-            runId = current.identity.runId,
-            generation = current.identity.generation,
-            rootScript = current.rootScript,
-            profile = current.profile,
-            logs = { draft -> publishLog(current.identity, draft) },
-            cancellation = RunCancellationView { cancellation.get() },
-            reportContext = FlowReportContext(
-                runCapability = current.plugin.spec.runCapability,
-                productPlan = current.product?.plan,
-            ),
-            terminalClaim = FlowTerminalClaim { lifecycle.claimTerminal(current.identity) },
-            artifacts = current.artifacts,
-            persistentStateDirectory = current.persistentStateDirectory,
-        )
-        val report = runCatching {
-            Os.setenv("GHOSTLOCK_HOME", current.workspace.root.absolutePath, true)
-            current.flow.run(input)
-        }.getOrElse {
-            runCatching { input.completeFailure() }.getOrNull() ?: return
-        }
+        val report = coroutineScope {
+            val source = KotlinLogConnector()
+            val collector = async {
+                source.collect { draft -> publishLog(current.identity, draft) }
+            }
+            val input = BackendFlowInput(
+                runId = current.identity.runId,
+                generation = current.identity.generation,
+                rootScript = current.rootScript,
+                profile = current.profile,
+                logs = source,
+                cancellation = RunCancellationView { cancellation.get() },
+                reportContext = FlowReportContext(
+                    runCapability = current.descriptor.runCapability,
+                    productPlan = current.product?.plan,
+                ),
+                terminalClaim = FlowTerminalClaim { lifecycle.claimTerminal(current.identity) },
+                artifacts = current.artifacts,
+                persistentStateDirectory = current.persistentStateDirectory,
+            )
+            val resolved = runCatching {
+                Os.setenv("GHOSTLOCK_HOME", current.workspace.root.absolutePath, true)
+                current.flow.run(input)
+            }.getOrElse {
+                runCatching { input.completeFailure() }.getOrNull()
+            }
+            source.finishInput()
+            if (collector.await() is com.ghostlock.app.domain.run.LogConnectorEnd.Incomplete) {
+                droppedLogs.incrementAndGet()
+            }
+            source.close()
+            resolved
+        } ?: return
         val terminalSnapshot = RunHostSnapshotModel(
             identity = current.identity,
             state = RunHostState.TERMINAL,
@@ -340,7 +355,7 @@ class GhostlockUserService : IRunHost.Stub {
             parcel.message = draft.message
         }
         if (runCatching { record.parcelDataSize() }.getOrDefault(Int.MAX_VALUE) >
-            com.ghostlock.app.backend.transport.RunHostProtocol.MAX_LOG_PARCEL_BYTES
+            com.ghostlock.app.core.runhost.RunHostProtocol.MAX_LOG_PARCEL_BYTES
         ) {
             droppedLogs.incrementAndGet()
             return
@@ -369,8 +384,8 @@ class GhostlockUserService : IRunHost.Stub {
         identity = current.identity,
         state = RunHostState.PREPARED,
         lastCode = RunHostCode.OK,
-        runCapability = current.plugin.spec.runCapability,
-        diagnosticOutcome = if (current.plugin.spec.runCapability == RunCapability.DIAGNOSTIC_ONLY) {
+        runCapability = current.descriptor.runCapability,
+        diagnosticOutcome = if (current.descriptor.runCapability == RunCapability.DIAGNOSTIC_ONLY) {
             DiagnosticOutcome.NOT_RUN
         } else {
             DiagnosticOutcome.NOT_APPLICABLE
@@ -412,7 +427,7 @@ class GhostlockUserService : IRunHost.Stub {
         current: PreparedRun?,
         before: RunHostState,
     ): RunHostSnapshotModel {
-        val capability = current?.plugin?.spec?.runCapability ?: RunCapability.UNRESOLVED
+        val capability = current?.descriptor?.runCapability ?: RunCapability.UNRESOLVED
         val outcome = when (capability) {
             RunCapability.UNRESOLVED -> DiagnosticOutcome.NOT_RUN
             RunCapability.PRODUCT_ROOT -> DiagnosticOutcome.NOT_APPLICABLE
@@ -460,7 +475,7 @@ class GhostlockUserService : IRunHost.Stub {
     /** Fully owned prepared run. */
     private data class PreparedRun(
         val identity: RunHostIdentity,
-        val plugin: BackendPlugin,
+        val descriptor: BackendDescriptor,
         val flow: Flow,
         val workspace: AndroidRunWorkspace,
         val rootScript: com.ghostlock.app.core.rootscript.RootScriptArtifact,

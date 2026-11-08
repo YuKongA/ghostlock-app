@@ -177,8 +177,8 @@ assets HOCON（index.conf + <uname-r>.conf + execution-*.conf + 公共节）
    → native 只读 POD 快照（不持有 profile 表/默认值）
 ```
 
-- **profile 是唯一配置权威**。执行层只允许读进程/路径类环境变量（`GHOSTLOCK_HOME`、`TMPDIR`、
-  `GHOSTLOCK_KSU_LOG`）；需要新状态就扩展 profile，绝不新增配置类环境变量。
+- **只有需要系统内核偏移信息的 backend 才以 GLK profile 为配置权威**。其 profile 按上图解析、冻结并传给执行层；新增该类 backend 状态时扩展其 profile。
+- 不需要系统内核偏移的 backend（包括 43284、Diagnose）及其它应用设置各自由具名 typed data class 或专项文件作为唯一权威，不得为了统一格式强塞进 GLK profile。所有执行层仍只允许读进程/路径类环境变量（`GHOSTLOCK_HOME`、`TMPDIR`、`GHOSTLOCK_KSU_LOG`），不得用配置类环境变量或镜像双写建立第二权威。
 - `uname -r` 精确匹配；route 由 profile 显式声明，**不得**从 kernel 版本/设备名推断。
 - 导入与内置的差异必须可追踪（字段级比较后再提供覆盖），profile 的 release 名与文件名逐字一致。
 

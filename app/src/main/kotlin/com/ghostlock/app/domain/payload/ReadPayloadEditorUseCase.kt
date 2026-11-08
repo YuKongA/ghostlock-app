@@ -4,14 +4,20 @@ package com.ghostlock.app.domain.payload
 class ReadPayloadEditorUseCase(
     private val port: PayloadEditorPort,
 ) {
+    /** @return Deterministic missing-store editor plus current non-persisted manager facts. */
+    fun defaultState(): PayloadEditorState = PayloadDefinition().toEditorState()
+
     /** @return Complete editor projection for a fresh navigation entry. */
-    operator fun invoke(): PayloadEditorState {
-        val definition = port.read()
-        return PayloadEditorState(
-            rootManager = definition.rootManager,
-            safeMode = definition.safeMode,
-            payloads = definition.items,
-            rootManagers = port.rootManagerOptions(),
-        )
+    suspend operator fun invoke(): PayloadEditorState {
+        val definition = port.snapshot().await()
+        return definition.toEditorState()
     }
+
+    /** @return Editor projection with live manager facts attached. */
+    private fun PayloadDefinition.toEditorState(): PayloadEditorState = PayloadEditorState(
+        rootManager = rootManager,
+        safeMode = safeMode,
+        payloads = items,
+        rootManagers = port.rootManagerOptions(),
+    )
 }

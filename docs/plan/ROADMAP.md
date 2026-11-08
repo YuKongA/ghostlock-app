@@ -10,16 +10,22 @@
 flowchart LR
   R0["E-DOC-X-001/批次01 authority 收口<br/>完成"] --> R1["P-BACKEND-X-001/批次01 disabled closure<br/>完成"]
   R1 --> R2["P-RUN-IO-001/批次01 source + host/AVD matrix<br/>PASS / device NOT_RUN"]
-  R2 --> R3["P-RUN-X-001/批次01 source + compile/unit/正常transport<br/>PASS / lifecycle专项待补"]
+  R2 --> R3["P-RUN-X-001/批次01 source + 正常transport<br/>PASS / lifecycle专项待补"]
   R3 --> R4["P-RUN-CORE-001/批次01 source<br/>完成"]
-  R4 --> R4B["P-LOG-IO-001/批次02 automatic export sink<br/>source complete"]
-  R4B --> R4C["P-LOG-X-001/批次01 single log hub<br/>后继批次证据已关闭旧AVD欠账"]
+  R4 --> R4B["P-LOG-IO-001/批次02 export sink<br/>source + AVD PASS"]
+  R4B --> R4C["P-LOG-X-001/批次01-02 single hub + dual stream<br/>PASS"]
   R4C --> R5["P-BACKEND-X-001/批次02 real backends<br/>DISCONNECTED"]
-  R5 --> R6["P-DIAG-NATIVE-001/批次01 DIAGNOSE<br/>完成"]
-  R6 --> R4D["P-LOG-X-001/批次02 dual stream + sink backlog<br/>revised build/AVD gate PASS"]
-  R4D --> HND["P-RUN-HANDOFF-001/批次01 common handoff<br/>HND-I1/V1 COMPLETE"]
-  HND --> E["release前偿还 RunHost lifecycle专项、真实设备与最终验收欠账"]
-  R5 -. 新批准L计划 .-> F["future backend<br/>not scheduled"]
+  R5 --> R6["P-DIAG-NATIVE-001/批次01 + HANDOFF<br/>完成"]
+  R6 --> ICON["P-UI-ICON-001/批次01 project Icons<br/>developer accepted"]
+  ICON --> BD["P-BACKEND-CORE-001/批次01 Definition/Descriptor/UI<br/>complete"]
+  BD --> LC["P-LOG-X-001/批次03 LogConnector/order<br/>complete"]
+  LC --> DS["P-SETTINGS-IO-001/批次01 typed DataStore<br/>source + ordinary gates PASS / Android runtime pending"]
+  DS --> KT["P-RUN-X-001/批次02 Kotlin owner/package<br/>complete"]
+  KT --> CLEAN["core/data → Host去重 → backend → UI/root composition<br/>rolling detail / not authorized"]
+  CLEAN --> AS["P-DIAG-NATIVE-001/批次02 producer churn<br/>rebase after package cleanup"]
+  AS --> E["最终树：RunHost lifecycle exact AVD<br/>automatic export真实设备/最终验收"]
+  ICON -. later requirement .-> ICON2["P-UI-ICON-002 full upstream catalog<br/>design pending / not in 001"]
+  R5 -. 新批准L计划 .-> F["future real backend<br/>not scheduled"]
 ~~~
 
 ## 状态
@@ -37,15 +43,22 @@ flowchart LR
 | [P-BACKEND-X-001/批次02](backend-root-execution-unification-plan.md#p-backend-x-001-batch-02) | **DISCONNECTED / CLOSED** | S2/S3取消；registry与APK native graph均无真实攻击backend；S1 neutral source无真实caller | 无；重新接线必须由新的L级计划明确取代断开裁定 |
 | [P-DIAG-NATIVE-001/批次01](backend-root-execution-unification-plan.md#p-diag-native-001-batch-01) | **COMPLETE** | JNA 5.19.1、release-visible DIAGNOSE、真实Diagnose DSO/C ABI、constructor binding、SequentialFlow、Native/Shell日志与LogHub source已落地；dependency/host ABI/双variant artifact/debug+release 102 unit/focused architecture已PASS；6.6/4 KiB与6.6/16 KiB AVD debug exact class均为`OK (3 tests)`/`SKIPPED=0`，两个page size的App/Shizuku minified-release production UI均全链路PASS | 无；Diagnose仍为`DIAGNOSTIC_ONLY` |
 | [P-RUN-HANDOFF-001/批次01](backend-root-execution-unification-plan.md#p-run-handoff-001) | **COMPLETE** | 固定位置common `run_handoff()`、accepted-start home binding、单次不带version/size/reserved与旧兼容分支的`gl_diagnose_run`、Flow multi-fact与current UML已落地；host contracts `3/3`、聚焦unit `19/19`、debug/release unit各`111/111`、native host `31/0`、architecture、双variant build/JNA distribution均PASS；4 KiB/16 KiB App/direct-JNA/Shizuku各`OK (3 tests)` | 无；只证明diagnostic handoff infrastructure，不证明真攻击或root产品成功 |
+| [P-UI-ICON-001/批次01](backend-root-execution-unification-plan.md#p-ui-icon-001-batch-01) | **DEVELOPER ACCEPTED** | 88个current pair、30个caller/175条import收口；architecture、unit、androidTest compile、双variant assemble与host native通过；开发者目视两皮肤无显示错误并关闭IC-V1 | 无图标批工作；不必要的JNA distribution task已由后续开发者裁定删除 |
+| [P-UI-ICON-002](backend-root-execution-unification-plan.md#p-ui-icon-002) | **REQUIREMENT RECORDED / DESIGN PENDING** | 覆盖Material 1.7.8与Miuix 0.9.4每一个导出icon，不只current usage | 单独冻结生成、style/weight、配对与成本合同；不夹入001 |
+| [P-BACKEND-CORE-001/批次01](backend-root-execution-unification-plan.md#p-backend-core-001-batch-01) | **COMPLETE** | 75行source/caller/用户纠正闭包已落地；outer BackendDefinition/唯一registry、BackendDescriptor、runtime/UI投影与具名UI完成，旧catalog/carrier/generic DSL清零；architecture、unit、host native、6.6 AVD UI通过；删除JNA distribution task后clean与`nativeBuildAndroid`通过 | 无；BD-I3继续等待真实配置consumer |
+| [P-LOG-X-001/批次03](backend-root-execution-unification-plan.md#p-log-x-001-batch-03) | **COMPLETE** | LogConnector统一source、Drained/Incomplete、stop-write→drain→close、动态attach/detach、source FIFO、raw acceptance全局commit与unlimited累计流均已落地；debug/release各120项unit、architecture、host 31项、双variant build、>10 MiB MediaStore/两皮肤UI 7项及App/Shizuku exact connector路径通过 | 无；不外推为P-DIAG-NATIVE-001压力编排、真攻击backend或root成功 |
+| [P-SETTINGS-IO-001/批次01](backend-root-execution-unification-plan.md#p-settings-io-001) | **SOURCE + ORDINARY GATES PASS / ANDROID RUNTIME PENDING** | 五个完整Kotlin data class typed DataStore、无迁移、主进程owner、幂等首帧、accepted transaction、Payload-only preview exact handle与run cutoff已落地；debug/release JVM unit各130项、architecture、host native 31项和双variant build通过 | 在获准AVD执行Android instrumentation exact class后关闭DS-V1；不拿真实设备替代 |
+| [P-RUN-X-001/批次02](backend-root-execution-unification-plan.md#p-run-x-001-batch-02) | **COMPLETE** | RunHost contract/client/wire/host/framework owner、Android session adapter与admission policy已归位；旧package/类名与caller-zero carrier清零。architecture、debug/release各128项unit、androidTest compile、native 31/31、双variant build、AIDL zero-diff及6.6 AVD App/Shizuku exact smoke通过 | 不外推为lifecycle全矩阵、真实设备、carrier、root或产品成功；后续批仍需独立细化/审核/批准 |
+| [P-DIAG-NATIVE-001/批次02](backend-root-execution-unification-plan.md#p-diag-native-001-batch-02) | **PRODUCER CORE RETAINED / SNAPSHOT SLICE REOPENED** | opaque native group、partial-start owner、A→B churn、>10 MiB与drain后handoff候选保留；旧通用GLK/JCS配置与51行scope不再授权，当前未预建无consumer的Diagnose store | P-DIAG同批设计Diagnose具名typed DataStore、per-run snapshot、跨进程承载与exact ledger，重新复审并获用户批准；production保持NOT_RUN |
 | [P-BACKEND-NATIVE-001/批次01](backend-root-execution-unification-plan.md#p-backend-native-001-batch-01) / [P-BACKEND-NATIVE-002/批次01](backend-root-execution-unification-plan.md#p-backend-native-002-batch-01) | not scheduled | 43284-Glued与98260仍source-only冻结，未接registry/APK graph | 用户重新批准具名真实backend后另立L级计划 |
 
 ## 当前阻断与边界
 
-- 当前production-root backend catalog为0；`DIAGNOSE`在debug/release均为`DIAGNOSTIC_ONLY`，只报告diagnostic outcome且产品成功恒为false。
-- P-LOG-X-001/批次01的旧current-tree AVD欠账已由批次02 LS-V3与Handoff HND-V1后继证据关闭；这不关闭automatic export真实设备门或最终产品验收。
-- P-LOG-X-001/批次02 v3 source、日志专用命名与UI/file/MediaStore统一sink列表已完成；旧累计256/512限制已从current source移除，debug/release 104项unit与4 KiB AVD 10 MiB MediaStore/App/Shizuku门已PASS；用户删除不必要的native artifact verifier后，修订的双variant构建/JNA distribution普通门PASS。
-- P-RUN-HANDOFF-001/批次01的source、host/unit/architecture、双variant build及4 KiB/16 KiB exact AVD门均已完成；结果只关闭common handoff/Diagnose纵向，不替代真实backend目标设备攻击门。
-- P-RUN-X-001/批次01的正常App/Shizuku transport/runtime已有current证据；生命周期、取消与host-death三个专属exact AVD判据仍为`NOT_RUN`。
-- AVD 只证明 transport、binding 与 ordinary staging，不替代目标设备攻击门。
-- 43499-Glued、43284-Glued 与 98260 的攻击算法、offset、waiter/race、self-reentry、restore 与 park 继续冻结。
-- P-BACKEND-X-001/批次02旧production授权已被后续断开裁定取代；不存在下一carrier批，也不存在selectable、Ready或supported真实backend。
+- 当前production-root backend catalog为0；`DIAGNOSE`在debug/release均为 `DIAGNOSTIC_ONLY`，产品成功恒为false。
+- 当前顺序为已关闭Icons/Backend/Log → P-SETTINGS source与普通门完成 → P-RUN-X-001/批次02 RunHost owner/package → core/data与run coordinator拆分 → Host去重 → backend/UI/root composition收口 → 重新冻结Diagnose typed store/snapshot/producer scope → lifecycle exact AVD → automatic-export真实设备/最终验收。DataStore Android runtime、Icons 002与真实carrier门继续保留原触发，不因结构计划改写为PASS。
+- 旧semantic menu graph、67-row scope、固定4×8192/第二同步symbol、37-row scope及对应critic PASS只保留历史，不再授权实施。
+- 真实carrier设备门（三.2）从当前候选批排除并保持 `NOT_RUN`；触发器是用户重新批准具名carrier且新的L级计划接回registry/APK graph。
+- P-LOG-X-001/批次01-02的单Hub、双流、unlimited sink queue、>10 MiB与current AVD证据继续有效；批次03只改source connector和排序边界。
+- P-RUN-HANDOFF-001/批次01的source、host/unit/architecture、双variant build及4 KiB/16 KiB exact AVD门均已完成；结果只证明diagnostic handoff infrastructure。
+- P-RUN-X-001/批次01正常App/Shizuku transport/runtime已有current证据；lifecycle、cancel与host-death三个专属exact AVD判据仍为 `NOT_RUN`。
+- AVD只证明transport、binding与ordinary staging，不替代目标设备攻击门；43499-Glued、43284-Glued与98260的攻击算法、offset、waiter/race、self-reentry、restore与park继续冻结。

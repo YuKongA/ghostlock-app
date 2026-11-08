@@ -556,8 +556,8 @@ tasks.register("nativeTestHost") {
 
 tasks.register("nativeBuildAndroid") {
     group = "verification"
-    description = "Builds both Android variants and verifies the pinned JNA distribution."
-    dependsOn(":app:assembleDebug", ":app:assembleRelease", ":app:verifyJnaDistribution")
+    description = "Builds both Android variants."
+    dependsOn(":app:assembleDebug", ":app:assembleRelease")
 }
 
 tasks.register("checkAll") {

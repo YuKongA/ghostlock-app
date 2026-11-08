@@ -1,5 +1,7 @@
 package com.ghostlock.app.ui.screen.module.finish
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -7,10 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.Text
@@ -82,7 +80,7 @@ private fun FinishSettingsPageMiuix(
                 navigationIcon = {
                     androidx.compose.material3.IconButton(onClick = actions.onBack) {
                         Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
+                            ProjectIcons.AutoMirrored.Filled.ArrowBack.material,
                             contentDescription = stringResource(R.string.action_back),
                             tint = MiuixTheme.colorScheme.onBackground,
                         )
@@ -106,7 +104,7 @@ private fun FinishSettingsPageMiuix(
                     checked = state.restoreSelinux,
                     onCheckedChange = actions.onSetRestoreSelinux,
                     startAction = {
-                        Icon(Icons.Filled.Security, null, tint = MiuixTheme.colorScheme.onBackground)
+                        Icon(ProjectIcons.Filled.Security.material, null, tint = MiuixTheme.colorScheme.onBackground)
                     },
                 )
                 SwitchPreference(
@@ -115,7 +113,7 @@ private fun FinishSettingsPageMiuix(
                     checked = state.softRebootAfterFinish,
                     onCheckedChange = actions.onSetSoftRebootAfterFinish,
                     startAction = {
-                        Icon(Icons.Filled.RestartAlt, null, tint = MiuixTheme.colorScheme.onBackground)
+                        Icon(ProjectIcons.Filled.RestartAlt.material, null, tint = MiuixTheme.colorScheme.onBackground)
                     },
                 )
             }
@@ -140,7 +138,7 @@ private fun FinishSettingsPageMaterial(
                 navigationIcon = {
                     androidx.compose.material3.IconButton(onClick = actions.onBack) {
                         Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
+                            ProjectIcons.AutoMirrored.Filled.ArrowBack.material,
                             contentDescription = stringResource(R.string.action_back),
                         )
                     }
@@ -159,7 +157,7 @@ private fun FinishSettingsPageMaterial(
                 SegmentedColumn(Modifier.fillMaxWidth()) {
                     item {
                         SegmentedSwitchItem(
-                            icon = Icons.Filled.Security,
+                            icon = ProjectIcons.Filled.Security.material,
                             title = stringResource(R.string.finish_restore_selinux),
                             summary = stringResource(R.string.finish_restore_selinux_summary),
                             checked = state.restoreSelinux,
@@ -168,7 +166,7 @@ private fun FinishSettingsPageMaterial(
                     }
                     item {
                         SegmentedSwitchItem(
-                            icon = Icons.Filled.RestartAlt,
+                            icon = ProjectIcons.Filled.RestartAlt.material,
                             title = stringResource(R.string.finish_soft_reboot),
                             summary = stringResource(R.string.finish_soft_reboot_summary),
                             checked = state.softRebootAfterFinish,
@@ -199,7 +197,7 @@ fun FinishSettingsCardMaterial(state: FinishSettingsUiState, onOpen: () -> Unit)
                     onClick = onOpen,
                     headlineContent = { Text(stringResource(R.string.finish_settings_title)) },
                     supportingContent = { Text(summary) },
-                    leadingContent = { Icon(Icons.Filled.RestartAlt, null) },
+                    leadingContent = { Icon(ProjectIcons.Filled.RestartAlt.material, null) },
                 )
             }
         }
@@ -225,7 +223,7 @@ fun FinishSettingsCardMiuix(state: FinishSettingsUiState, onOpen: () -> Unit) {
             onClick = onOpen,
             startAction = {
                 Icon(
-                    Icons.Filled.RestartAlt,
+                    ProjectIcons.Filled.RestartAlt.material,
                     contentDescription = null,
                     tint = MiuixTheme.colorScheme.onBackground,
                 )

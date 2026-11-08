@@ -1,5 +1,7 @@
 package com.ghostlock.app.ui.screen.settings
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -11,20 +13,6 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AdminPanelSettings
-import androidx.compose.material.icons.automirrored.filled.Article
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.DisplaySettings
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.SaveAlt
-import androidx.compose.material.icons.filled.SystemUpdateAlt
-import androidx.compose.material.icons.rounded.BugReport
-import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.Palette
-import androidx.compose.material.icons.rounded.RestartAlt
-import androidx.compose.material.icons.rounded.Security
-import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -80,7 +68,7 @@ fun SettingPagerMiuix(uiState: SettingsUiState, actions: SettingsScreenActions, 
                 item {
                     Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
                         SwitchPreference(
-                            startAction = { MiuixLeading(Icons.Filled.SystemUpdateAlt) },
+                            startAction = { MiuixLeading(ProjectIcons.Filled.SystemUpdateAlt.material) },
                             title = stringResource(R.string.settings_check_update),
                             summary = stringResource(R.string.settings_check_update_summary),
                             checked = uiState.checkUpdate,
@@ -91,7 +79,7 @@ fun SettingPagerMiuix(uiState: SettingsUiState, actions: SettingsScreenActions, 
                 item {
                     Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
                         OverlayDropdownPreference(
-                            startAction = { MiuixLeading(Icons.Filled.DisplaySettings) },
+                            startAction = { MiuixLeading(ProjectIcons.Filled.DisplaySettings.material) },
                             title = stringResource(R.string.settings_ui_mode),
                             summary = stringResource(R.string.settings_ui_mode_summary),
                             items = UiMode.entries.map { it.name },
@@ -99,7 +87,7 @@ fun SettingPagerMiuix(uiState: SettingsUiState, actions: SettingsScreenActions, 
                             onSelectedIndexChange = actions.onSetUiModeIndex,
                         )
                         ArrowPreference(
-                            startAction = { MiuixLeading(Icons.Rounded.Palette) },
+                            startAction = { MiuixLeading(ProjectIcons.Rounded.Palette.material) },
                             title = stringResource(R.string.settings_theme),
                             summary = stringResource(R.string.settings_theme_summary),
                             onClick = actions.onOpenTheme,
@@ -112,7 +100,7 @@ fun SettingPagerMiuix(uiState: SettingsUiState, actions: SettingsScreenActions, 
                     Card(modifier = Modifier.padding(top = 12.dp, bottom = 12.dp).fillMaxWidth()) {
                         ArrowPreference(
                             title = stringResource(R.string.send_log),
-                            startAction = { MiuixLeading(Icons.Rounded.BugReport) },
+                            startAction = { MiuixLeading(ProjectIcons.Rounded.BugReport.material) },
                             onClick = { showSendLog = true },
                         )
                         SendLogDialog(
@@ -123,7 +111,7 @@ fun SettingPagerMiuix(uiState: SettingsUiState, actions: SettingsScreenActions, 
                         )
                         ArrowPreference(
                             title = stringResource(R.string.about),
-                            startAction = { MiuixLeading(Icons.Rounded.Info) },
+                            startAction = { MiuixLeading(ProjectIcons.Rounded.Info.material) },
                             onClick = actions.onOpenAbout,
                         )
                     }
@@ -138,23 +126,26 @@ fun SettingPagerMiuix(uiState: SettingsUiState, actions: SettingsScreenActions, 
 fun LogPreferencesCardMiuix(uiState: SettingsUiState, actions: SettingsScreenActions) {
     val context = LocalContext.current
     val fontPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { actions.onSelectTerminalFont(it.toString()) }
+        uri?.let { selected -> actions.onSelectTerminalFont(selected.toString()) { } }
     }
     val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        val accepted = uri?.let { actions.onSelectLogExportDirectory(it.toString()) } == true
-        if (!accepted && uri != null) {
-            android.widget.Toast.makeText(
-                context,
-                R.string.settings_log_export_location_invalid,
-                android.widget.Toast.LENGTH_SHORT,
-            ).show()
+        uri?.let { selected ->
+            actions.onSelectLogExportDirectory(selected.toString()) { accepted ->
+                if (!accepted) {
+                    android.widget.Toast.makeText(
+                        context,
+                        R.string.settings_log_export_location_invalid,
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            }
         }
     }
     val fontSummary = uiState.terminalFontName
         ?: stringResource(R.string.settings_log_font_default)
     Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
         OverlayDropdownPreference(
-            startAction = { MiuixLeading(Icons.AutoMirrored.Filled.Article) },
+            startAction = { MiuixLeading(ProjectIcons.AutoMirrored.Filled.Article.material) },
             title = stringResource(R.string.settings_log_level),
             summary = stringResource(R.string.settings_log_level_summary),
             items = uiState.logLevelOptions,
@@ -162,27 +153,27 @@ fun LogPreferencesCardMiuix(uiState: SettingsUiState, actions: SettingsScreenAct
             onSelectedIndexChange = actions.onSetLogLevelIndex,
         )
         ArrowPreference(
-            startAction = { MiuixLeading(Icons.Filled.Description) },
+            startAction = { MiuixLeading(ProjectIcons.Filled.Description.material) },
             title = stringResource(R.string.settings_log_font),
             summary = fontSummary,
             onClick = { fontPicker.launch(arrayOf("font/ttf", "font/otf", "application/octet-stream")) },
         )
         SwitchPreference(
-            startAction = { MiuixLeading(Icons.Rounded.Info) },
+            startAction = { MiuixLeading(ProjectIcons.Rounded.Info.material) },
             title = stringResource(R.string.settings_log_timestamp),
             summary = stringResource(R.string.settings_log_timestamp_summary),
             checked = uiState.showLogTimestamp,
             onCheckedChange = actions.onSetShowLogTimestamp,
         )
         SwitchPreference(
-            startAction = { MiuixLeading(Icons.Filled.SaveAlt) },
+            startAction = { MiuixLeading(ProjectIcons.Filled.SaveAlt.material) },
             title = stringResource(R.string.settings_log_auto_export),
             summary = stringResource(R.string.settings_log_auto_export_summary),
             checked = uiState.autoExportLogs,
             onCheckedChange = actions.onSetAutoExportLogs,
         )
         ArrowPreference(
-            startAction = { MiuixLeading(Icons.Filled.Folder) },
+            startAction = { MiuixLeading(ProjectIcons.Filled.Folder.material) },
             title = stringResource(R.string.settings_log_export_location),
             summary = uiState.logExportLocation,
             onClick = { exportPicker.launch(null) },
@@ -194,21 +185,21 @@ fun LogPreferencesCardMiuix(uiState: SettingsUiState, actions: SettingsScreenAct
 fun RunPreferencesCardMiuix(uiState: SettingsUiState, actions: SettingsScreenActions) {
     Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
         SwitchPreference(
-            startAction = { MiuixLeading(Icons.Rounded.Security) },
+            startAction = { MiuixLeading(ProjectIcons.Rounded.Security.material) },
             title = stringResource(R.string.settings_attack_warn),
             summary = stringResource(R.string.settings_attack_warn_summary),
             checked = uiState.warnOnRerun,
             onCheckedChange = actions.onSetWarnOnRerun,
         )
         SwitchPreference(
-            startAction = { MiuixLeading(Icons.Rounded.SystemUpdate) },
+            startAction = { MiuixLeading(ProjectIcons.Rounded.SystemUpdate.material) },
             title = stringResource(R.string.settings_boot_attack),
             summary = stringResource(R.string.settings_boot_attack_summary),
             checked = uiState.autoAttackOnBoot,
             onCheckedChange = actions.onSetAutoAttackOnBoot,
         )
         OverlayDropdownPreference(
-            startAction = { MiuixLeading(Icons.Rounded.RestartAlt) },
+            startAction = { MiuixLeading(ProjectIcons.Rounded.RestartAlt.material) },
             title = stringResource(R.string.settings_boot_retry),
             summary = stringResource(R.string.settings_boot_retry_summary),
             items = (0..10).map { it.toString() },

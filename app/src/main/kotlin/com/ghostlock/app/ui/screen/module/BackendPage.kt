@@ -1,5 +1,7 @@
 package com.ghostlock.app.ui.screen.module
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -14,8 +16,6 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
@@ -40,7 +40,7 @@ import com.ghostlock.app.ui.component.material.SegmentedColumn
 import com.ghostlock.app.ui.component.material.SegmentedDropdownItem
 import com.ghostlock.app.ui.component.material.TonalCard
 import com.ghostlock.app.ui.component.material.expressiveTopAppBarColors
-import com.ghostlock.app.ui.backend.BackendConfigRenderer
+import com.ghostlock.app.ui.backend.BackendUiCatalog
 import com.ghostlock.app.ui.viewmodel.PathViewModel
 import com.ghostlock.app.ui.viewmodel.PayloadViewModel
 import com.ghostlock.app.ui.viewmodel.FinishSettingsViewModel
@@ -97,7 +97,7 @@ fun BackendPager(
             actions = actions,
             payloadState = payloadState,
             finishSettingsState = finishSettingsState,
-            configRenderer = app.container.backendConfigRenderer,
+            backendUiCatalog = app.container.backendUiCatalog,
             bottomInnerPadding = bottomInnerPadding,
         )
         UiMode.Miuix -> BackendPageMiuix(
@@ -105,7 +105,7 @@ fun BackendPager(
             actions = actions,
             payloadState = payloadState,
             finishSettingsState = finishSettingsState,
-            configRenderer = app.container.backendConfigRenderer,
+            backendUiCatalog = app.container.backendUiCatalog,
             bottomInnerPadding = bottomInnerPadding,
         )
     }
@@ -116,7 +116,7 @@ fun BackendPager(
  *
  *  配置项来自 backends/ 下每个 backend 自己的 .kt 文件；本页只做渲染。
  *
- *  2026-10-26（task-21）：路径页只负责配置；运行入口移到运行页，由 `BackendRunGate`
+ *  2026-10-26（task-21）：路径页只负责配置；运行入口移到运行页，由 `RunAdmissionPolicy`
  *  统一决定 allow/deny（本页不再有 CVE-43499 运行卡）。
  */
 @Composable
@@ -125,7 +125,7 @@ fun BackendPageMaterial(
     actions: BackendPageActions,
     payloadState: PayloadUiState,
     finishSettingsState: FinishSettingsUiState,
-    configRenderer: BackendConfigRenderer,
+    backendUiCatalog: BackendUiCatalog,
     bottomInnerPadding: Dp,
 ) {
     val selected = state.selectedIndex
@@ -156,7 +156,8 @@ fun BackendPageMaterial(
             SegmentedColumn(modifier = Modifier.fillMaxWidth()) {
                 item {
                     SegmentedDropdownItem(
-                        icon = Icons.Filled.Memory,
+                        icon = state.options.getOrNull(selected)?.icon?.material
+                            ?: ProjectIcons.Filled.Memory.material,
                         title = stringResource(R.string.backend_label),
                         summary = titles.getOrElse(selected) { "" },
                         items = titles,
@@ -171,8 +172,9 @@ fun BackendPageMaterial(
             PayloadCardMaterial(payloadState, actions.onOpenPayload)
             FinishSettingsCardMaterial(finishSettingsState, actions.onOpenFinishSettings)
             TonalCard {
-                /* 唯一渲染路径：backend 自己的 ConfigCard（默认卡内部读 rows）。 */
-                configRenderer.render(state.selectedKey)
+                backendUiCatalog.entry(state.selectedKey)?.let { entry ->
+                    entry.ui.Content(backendUiCatalog.availabilityFor(entry.descriptor.key))
+                }
             }
         }
     }
@@ -184,7 +186,7 @@ fun BackendPageMiuix(
     actions: BackendPageActions,
     payloadState: PayloadUiState,
     finishSettingsState: FinishSettingsUiState,
-    configRenderer: BackendConfigRenderer,
+    backendUiCatalog: BackendUiCatalog,
     bottomInnerPadding: Dp,
 ) {
     val selected = state.selectedIndex
@@ -225,7 +227,8 @@ fun BackendPageMiuix(
                 OverlayDropdownPreference(
                     startAction = {
                         androidx.compose.material3.Icon(
-                            imageVector = Icons.Filled.Memory,
+                            imageVector = state.options.getOrNull(selected)?.icon?.miuix
+                                ?: ProjectIcons.Filled.Memory.miuix,
                             contentDescription = null,
                             tint = MiuixTheme.colorScheme.onBackground,
                         )
@@ -238,8 +241,9 @@ fun BackendPageMiuix(
             PayloadCardMiuix(payloadState, actions.onOpenPayload)
             FinishSettingsCardMiuix(finishSettingsState, actions.onOpenFinishSettings)
             Card(modifier = Modifier.fillMaxWidth()) {
-                /* 唯一渲染路径：backend 自己的 ConfigCard（默认卡内部读 rows）。 */
-                configRenderer.render(state.selectedKey)
+                backendUiCatalog.entry(state.selectedKey)?.let { entry ->
+                    entry.ui.Content(backendUiCatalog.availabilityFor(entry.descriptor.key))
+                }
             }
 
         }

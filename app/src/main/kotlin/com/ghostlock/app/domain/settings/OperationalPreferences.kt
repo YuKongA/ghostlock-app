@@ -1,10 +1,13 @@
 package com.ghostlock.app.domain.settings
 
+import kotlinx.serialization.Serializable
+
 /**
  * Storage-neutral log severity exposed to the settings and run domains.
  *
  * @property token Stable lowercase token rendered by both UI skins.
  */
+@Serializable
 enum class TerminalLogLevel(val token: String) {
     Verbose("verbose"),
     Debug("debug"),
@@ -26,6 +29,7 @@ enum class TerminalLogLevel(val token: String) {
  * @property bootRetryCount Bounded boot retry count in the range 0..10.
  * @note This value contains no Android, Compose, backend, or logging implementation type.
  */
+@Serializable
 data class OperationalPreferences(
     val logLevel: TerminalLogLevel = TerminalLogLevel.Info,
     val terminalFontPath: String? = null,

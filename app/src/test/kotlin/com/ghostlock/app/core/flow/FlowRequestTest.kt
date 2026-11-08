@@ -2,6 +2,8 @@ package com.ghostlock.app.core.flow
 
 import com.ghostlock.app.core.rootscript.PublishedArtifactIdentity
 import com.ghostlock.app.core.rootscript.RootScriptArtifact
+import com.ghostlock.app.core.run.KotlinLogConnector
+import com.ghostlock.app.domain.run.LogConnectorEnd
 import com.ghostlock.app.domain.run.ProfileSnapshot
 import com.ghostlock.app.domain.run.RunCancellationView
 import com.ghostlock.app.domain.run.RunCapability
@@ -10,6 +12,8 @@ import com.ghostlock.app.domain.run.LogEmitter
 import com.ghostlock.app.domain.run.StageResult
 import com.ghostlock.app.domain.run.StageState
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -28,7 +32,9 @@ class FlowRequestTest {
     @Test
     fun sequentialFlowIsOneShotAndReturnsFacts() = runBlocking {
         val records = mutableListOf<LogDraft>()
-        val input = input(records)
+        val source = KotlinLogConnector()
+        val collection = async(start = CoroutineStart.UNDISPATCHED) { source.collect(records::add) }
+        val input = input(logs = source)
         val flow = object : SequentialFlow() {
             override fun steps(input: BackendFlowInput): List<FlowStep> = listOf(
                 FlowStep(
@@ -43,7 +49,9 @@ class FlowRequestTest {
             )
         }
         val report = flow.run(input)
+        source.finishInput()
         assertEquals(StageState.SUCCESS, report.backendPrimitive.state)
+        assertEquals(LogConnectorEnd.Drained, collection.await())
         assertTrue(records.isNotEmpty())
         assertTrue(runCatching { flow.run(input) }.isFailure)
     }
@@ -163,7 +171,7 @@ class FlowRequestTest {
 
     /** @return One diagnostic Flow input whose terminal claim succeeds exactly once. */
     private fun input(
-        records: MutableList<LogDraft> = mutableListOf(),
+        logs: LogEmitter = LogEmitter { },
         cancellation: AtomicBoolean = AtomicBoolean(false),
     ): BackendFlowInput {
         val identity = PublishedArtifactIdentity(
@@ -186,7 +194,7 @@ class FlowRequestTest {
                 retainedArtifacts = emptyList(),
             ),
             profile = ProfileSnapshot("profile", ProfileSnapshot.CURRENT_SCHEMA_VERSION, "0".repeat(64)),
-            logs = LogEmitter { record -> records += record },
+            logs = logs,
             cancellation = RunCancellationView { cancellation.get() },
             reportContext = FlowReportContext(RunCapability.DIAGNOSTIC_ONLY, null),
             terminalClaim = FlowTerminalClaim { false },

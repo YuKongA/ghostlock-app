@@ -1,12 +1,12 @@
 package com.ghostlock.app.data.privilege
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import com.ghostlock.app.domain.privilege.AttackExecutorKind
 import com.ghostlock.app.domain.privilege.ExecutorSelectionResult
 import com.ghostlock.app.domain.privilege.PrivilegePort
 import com.ghostlock.app.domain.privilege.PrivilegeState
+import com.ghostlock.app.domain.settings.AppSelectionPort
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,13 +20,10 @@ import rikka.shizuku.Shizuku
  */
 class AndroidPrivilegeAdapter(
     context: Context,
+    private val selectionPort: AppSelectionPort,
 ) : PrivilegePort {
     private val applicationContext = context.applicationContext
-    private val preferences = applicationContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
     private val mutableState = MutableStateFlow(readState())
-    private val preferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == null || key == KEY_EXECUTOR_MODE) refresh()
-    }
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener(::refresh)
     private val binderDeadListener = Shizuku.OnBinderDeadListener(::refresh)
     private val permissionListener = Shizuku.OnRequestPermissionResultListener { _, _ -> refresh() }
@@ -34,7 +31,6 @@ class AndroidPrivilegeAdapter(
     override val state: StateFlow<PrivilegeState> = mutableState.asStateFlow()
 
     init {
-        preferences.registerOnSharedPreferenceChangeListener(preferenceListener)
         runCatching { Shizuku.addBinderReceivedListenerSticky(binderReceivedListener) }
         runCatching { Shizuku.addBinderDeadListener(binderDeadListener) }
         runCatching { Shizuku.addRequestPermissionResultListener(permissionListener) }
@@ -51,18 +47,24 @@ class AndroidPrivilegeAdapter(
      * @param kind Requested executor family.
      * @return Selection result preserving the historical two-tap permission flow.
      */
-    override fun select(kind: AttackExecutorKind): ExecutorSelectionResult = when (kind) {
+    override suspend fun select(kind: AttackExecutorKind): ExecutorSelectionResult = when (kind) {
         AttackExecutorKind.APP -> {
-            persist(AttackExecutorKind.APP)
-            ExecutorSelectionResult.SELECTED
+            if (persist(AttackExecutorKind.APP)) {
+                ExecutorSelectionResult.SELECTED
+            } else {
+                ExecutorSelectionResult.PERSISTENCE_FAILED
+            }
         }
 
         AttackExecutorKind.SHIZUKU -> {
             val current = readState()
             when {
                 current.shizukuGranted -> {
-                    persist(AttackExecutorKind.SHIZUKU)
-                    ExecutorSelectionResult.SELECTED
+                    if (persist(AttackExecutorKind.SHIZUKU)) {
+                        ExecutorSelectionResult.SELECTED
+                    } else {
+                        ExecutorSelectionResult.PERSISTENCE_FAILED
+                    }
                 }
 
                 !current.shizukuAvailable || runCatching { Shizuku.isPreV11() }.getOrDefault(true) ->
@@ -85,11 +87,7 @@ class AndroidPrivilegeAdapter(
             Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
         }.getOrDefault(false)
         return PrivilegeState(
-            selectedExecutor = if (preferences.getString(KEY_EXECUTOR_MODE, VALUE_APP) == VALUE_SHIZUKU) {
-                AttackExecutorKind.SHIZUKU
-            } else {
-                AttackExecutorKind.APP
-            },
+            selectedExecutor = selectionPort.selection.value.selectedExecutor,
             appUid = applicationContext.applicationInfo.uid,
             shizukuAvailable = available,
             shizukuGranted = granted,
@@ -97,21 +95,12 @@ class AndroidPrivilegeAdapter(
     }
 
     /** Persists one stable string and publishes the resulting snapshot immediately. */
-    private fun persist(kind: AttackExecutorKind) {
-        preferences.edit()
-            .putString(
-                KEY_EXECUTOR_MODE,
-                if (kind == AttackExecutorKind.SHIZUKU) VALUE_SHIZUKU else VALUE_APP,
-            )
-            .apply()
+    private suspend fun persist(kind: AttackExecutorKind): Boolean = runCatching {
+        selectionPort.submit { current -> current.copy(selectedExecutor = kind) }.await()
         refresh()
-    }
+    }.isSuccess
 
     private companion object {
-        const val PREFERENCES_NAME = "ghostlock.privilege"
-        const val KEY_EXECUTOR_MODE = "executor_mode"
-        const val VALUE_APP = "app"
-        const val VALUE_SHIZUKU = "shizuku"
         const val REQUEST_CODE = 0
     }
 }

@@ -1,5 +1,7 @@
 package com.ghostlock.app.ui.screen.colorpalette
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import android.annotation.SuppressLint
 import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
@@ -41,20 +43,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.MenuOpen
-import androidx.compose.material.icons.filled.Brightness1
-import androidx.compose.material.icons.filled.Brightness3
-import androidx.compose.material.icons.filled.Brightness4
-import androidx.compose.material.icons.filled.Brightness7
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.rounded.AspectRatio
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.DesignServices
-import androidx.compose.material.icons.rounded.Pin
-import androidx.compose.material.icons.rounded.Style
-import androidx.compose.material.icons.rounded.Swipe
-import androidx.compose.material.icons.rounded.ViewCarousel
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
@@ -221,11 +209,11 @@ fun ColorPaletteScreenMaterial(
                                 ) {
                                     Icon(
                                         imageVector = when (modes.first()) {
-                                            ColorMode.SYSTEM -> Icons.Filled.Brightness4
-                                            ColorMode.LIGHT -> Icons.Filled.Brightness7
-                                            ColorMode.DARK -> Icons.Filled.Brightness3
-                                            ColorMode.DARK_AMOLED -> Icons.Filled.Brightness1
-                                            else -> Icons.Filled.Brightness4
+                                            ColorMode.SYSTEM -> ProjectIcons.Filled.Brightness4.material
+                                            ColorMode.LIGHT -> ProjectIcons.Filled.Brightness7.material
+                                            ColorMode.DARK -> ProjectIcons.Filled.Brightness3.material
+                                            ColorMode.DARK_AMOLED -> ProjectIcons.Filled.Brightness1.material
+                                            else -> ProjectIcons.Filled.Brightness4.material
                                         },
                                         contentDescription = label
                                     )
@@ -243,7 +231,7 @@ fun ColorPaletteScreenMaterial(
                         {
                             val styles = PaletteStyle.entries
                             SegmentedDropdownItem(
-                                icon = Icons.Rounded.Style,
+                                icon = ProjectIcons.Rounded.Style.material,
                                 title = stringResource(R.string.settings_color_style),
                                 items = styles.map { it.name },
                                 selectedIndex = styles.indexOf(colorStyle),
@@ -255,7 +243,7 @@ fun ColorPaletteScreenMaterial(
                         {
                             val specs = ColorSpec.SpecVersion.entries
                             SegmentedDropdownItem(
-                                icon = Icons.Rounded.DesignServices,
+                                icon = ProjectIcons.Rounded.DesignServices.material,
                                 title = stringResource(R.string.settings_color_spec),
                                 items = specs.map { it.name },
                                 selectedIndex = specs.indexOf(colorSpec).coerceAtLeast(0),
@@ -274,7 +262,7 @@ fun ColorPaletteScreenMaterial(
                     content = listOf(
                         {
                             SegmentedSwitchItem(
-                                icon = Icons.Rounded.Pin,
+                                icon = ProjectIcons.Rounded.Pin.material,
                                 title = stringResource(id = R.string.settings_navigation_badge),
                                 summary = stringResource(id = R.string.settings_navigation_badge_summary),
                                 checked = uiState.enableNavigationBadge,
@@ -292,7 +280,7 @@ fun ColorPaletteScreenMaterial(
                         content = listOf(
                             {
                                 SegmentedSwitchItem(
-                                    icon = Icons.AutoMirrored.Rounded.MenuOpen,
+                                    icon = ProjectIcons.AutoMirrored.Rounded.MenuOpen.material,
                                     title = stringResource(id = R.string.settings_enable_predictive_back),
                                     summary = stringResource(id = R.string.settings_enable_predictive_back_summary),
                                     checked = uiState.enablePredictiveBack,
@@ -310,7 +298,7 @@ fun ColorPaletteScreenMaterial(
                     content = listOf(
                         {
                             SegmentedSwitchItem(
-                                icon = Icons.Rounded.Swipe,
+                                icon = ProjectIcons.Rounded.Swipe.material,
                                 title = stringResource(id = R.string.settings_enable_swipe_dismiss),
                                 summary = stringResource(id = R.string.settings_enable_swipe_dismiss_summary),
                                 checked = uiState.enableSwipeDismiss,
@@ -319,7 +307,7 @@ fun ColorPaletteScreenMaterial(
                         },
                         {
                             SegmentedDropdownItem(
-                                icon = Icons.Rounded.ViewCarousel,
+                                icon = ProjectIcons.Rounded.ViewCarousel.material,
                                 title = stringResource(id = R.string.settings_pager_gesture_mode),
                                 items = listOf(
                                     stringResource(id = R.string.settings_pager_gesture_native),
@@ -350,7 +338,7 @@ fun ColorPaletteScreenMaterial(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                Icons.Rounded.AspectRatio,
+                                ProjectIcons.Rounded.AspectRatio.material,
                                 contentDescription = stringResource(id = R.string.settings_page_scale),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -490,7 +478,7 @@ private fun ThemePreviewCard(
                             verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Icon(Icons.Filled.Home, null, tint = colorScheme.primary)
+                            Icon(ProjectIcons.Filled.Home.material, null, tint = colorScheme.primary)
                         }
                     }
                     Column(modifier = Modifier.weight(1f)) { content() }
@@ -512,7 +500,7 @@ private fun ThemePreviewCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(Icons.Filled.Home, null, tint = colorScheme.primary)
+                                Icon(ProjectIcons.Filled.Home.material, null, tint = colorScheme.primary)
                             }
                         }
                     }
@@ -592,7 +580,7 @@ private fun ColorButtonMaterial(
                                 .background(colorScheme.primary, CircleShape)
                         ) {
                             Icon(
-                                imageVector = Icons.Rounded.Check,
+                                imageVector = ProjectIcons.Rounded.Check.material,
                                 contentDescription = null,
                                 tint = colorScheme.onPrimary,
                                 modifier = Modifier

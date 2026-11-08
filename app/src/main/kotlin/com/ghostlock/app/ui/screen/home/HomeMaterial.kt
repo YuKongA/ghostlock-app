@@ -1,5 +1,7 @@
 package com.ghostlock.app.ui.screen.home
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -23,20 +25,6 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.filled.DeveloperBoard
-import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.Fingerprint
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Smartphone
-import androidx.compose.material.icons.filled.SupervisorAccount
-import androidx.compose.material.icons.filled.Tag
-import androidx.compose.material.icons.filled.VolunteerActivism
-import androidx.compose.material.icons.rounded.Block
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -219,9 +207,9 @@ private fun SupportLinks(
                 headlineContent = { Text(stringResource(R.string.home_learn_ghostlock)) },
                 supportingContent = { Text(stringResource(R.string.home_click_to_learn_ghostlock)) },
                 leadingContent = {
-                    Icon(Icons.AutoMirrored.Filled.MenuBook, stringResource(R.string.home_learn_ghostlock))
+                    Icon(ProjectIcons.AutoMirrored.Filled.MenuBook.material, stringResource(R.string.home_learn_ghostlock))
                 },
-                trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) },
+                trailingContent = { Icon(ProjectIcons.AutoMirrored.Filled.KeyboardArrowRight.material, null) },
             )
         }
     }
@@ -274,21 +262,21 @@ private fun InfoCard(
         SegmentedColumn(modifier = Modifier.fillMaxWidth()) {
             item {
                 InfoCardItem(
-                    icon = Icons.Filled.Tag,
+                    icon = ProjectIcons.Filled.Tag.material,
                     label = stringResource(R.string.home_manager_version),
                     content = systemInfo.appVersion,
                 )
             }
             item {
                 InfoCardItem(
-                    icon = Icons.Filled.DeveloperBoard,
+                    icon = ProjectIcons.Filled.DeveloperBoard.material,
                     label = stringResource(R.string.home_kernel),
                     content = systemInfo.kernelVersion,
                 )
             }
             item {
                 InfoCardItem(
-                    icon = Icons.Filled.Smartphone,
+                    icon = ProjectIcons.Filled.Smartphone.material,
                     label = stringResource(R.string.home_device_model),
                     content = systemInfo.deviceModel,
                 )
@@ -297,7 +285,7 @@ private fun InfoCard(
         SegmentedColumn(modifier = Modifier.fillMaxWidth()) {
             item {
                 InfoCardItem(
-                    icon = Icons.Filled.Security,
+                    icon = ProjectIcons.Filled.Security.material,
                     label = stringResource(R.string.home_selinux_status),
                     content = selinuxDisplay,
                 )
@@ -306,10 +294,10 @@ private fun InfoCard(
                 /* 权限状态改成可点行：右侧箭头进子菜单（2026-10-18 用户裁定）。 */
                 SegmentedListItem(
                     onClick = onOpenPrivilege,
-                    leadingContent = { Icon(Icons.Filled.SupervisorAccount, contentDescription = null) },
+                    leadingContent = { Icon(ProjectIcons.Filled.SupervisorAccount.material, contentDescription = null) },
                     headlineContent = { Text(stringResource(R.string.home_privilege_status)) },
                     supportingContent = { Text(privilegeStatus) },
-                    trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                    trailingContent = { Icon(ProjectIcons.AutoMirrored.Filled.KeyboardArrowRight.material, contentDescription = null) },
                 )
             }
         }

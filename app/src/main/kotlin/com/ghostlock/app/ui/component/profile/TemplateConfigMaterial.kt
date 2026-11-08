@@ -1,9 +1,8 @@
 package com.ghostlock.app.ui.component.profile
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ReadMore
-import androidx.compose.material.icons.filled.Create
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -60,7 +59,7 @@ fun TemplateConfigMaterial(
                     trailingContent = {
                         if (noTemplates) {
                             IconButton(onClick = onManageTemplate) {
-                                Icon(Icons.Filled.Create, contentDescription = null)
+                                Icon(ProjectIcons.Filled.Create.material, contentDescription = null)
                             }
                         }
                     },
@@ -75,7 +74,7 @@ fun TemplateConfigMaterial(
                 SegmentedListItem(
                     headlineContent = { Text(stringResource(R.string.app_profile_template_view)) },
                     trailingContent = {
-                        Icon(Icons.AutoMirrored.Filled.ReadMore, contentDescription = null)
+                        Icon(ProjectIcons.AutoMirrored.Filled.ReadMore.material, contentDescription = null)
                     },
                     onClick = { onViewTemplate(template) }
                 )

@@ -1,9 +1,7 @@
 package com.ghostlock.app.domain.run
 
 import com.ghostlock.app.domain.finish.FinishDefinition
-import com.ghostlock.app.domain.finish.FinishRepository
 import com.ghostlock.app.domain.payload.PayloadDefinition
-import com.ghostlock.app.domain.payload.PayloadRepository
 
 /** Boundary that publishes a preview through the production renderer in a preview-only workspace. */
 interface RootScriptPreviewPort {
@@ -15,15 +13,16 @@ interface RootScriptPreviewPort {
     fun preview(payload: PayloadDefinition, finish: FinishDefinition): String
 }
 
-/** Reads both independent authorities and requests an isolated root-script preview. */
+/** Publishes a Payload-only preview from the exact transaction result supplied by presentation. */
 class PreviewRootScriptUseCase(
-    private val payloadRepository: PayloadRepository,
-    private val finishRepository: FinishRepository,
     private val previewPort: RootScriptPreviewPort,
 ) {
-    /** @return Absolute preview path; no backend or rooted carrier is invoked. */
-    operator fun invoke(): String = previewPort.preview(
-        payload = payloadRepository.read(),
-        finish = finishRepository.read(),
+    /**
+     * @param payload Exact immutable Payload returned by the preview-save transaction.
+     * @return Absolute preview path; no Finish store, backend or rooted carrier is invoked.
+     */
+    operator fun invoke(payload: PayloadDefinition): String = previewPort.preview(
+        payload = payload,
+        finish = FinishDefinition(),
     )
 }

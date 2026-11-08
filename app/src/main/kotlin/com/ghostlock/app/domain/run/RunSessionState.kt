@@ -61,7 +61,11 @@ class LogRowsSnapshot private constructor(
     }
 }
 
-/** Pure projection of the selected backend and its application-scoped execution session. */
+/**
+ * Pure projection of the selected backend and its application-scoped execution session.
+ *
+ * [entries] contains LogHub-committed order only. Optional source clocks are metadata and never reorder this view.
+ */
 data class RunSessionState(
     val backendKey: String? = null,
     val backendLabel: String = "-",

@@ -1,5 +1,7 @@
 package com.ghostlock.app.domain.settings
 
+import kotlinx.coroutines.Deferred
+
 /**
  * Persists the application-shell navigation-rail state without exposing its storage adapter.
  *
@@ -15,7 +17,7 @@ class SetNavigationRailExpandedUseCase(
      * @param expanded True when the next wide-screen shell should start expanded.
      * @note Persistence completion is adapter-defined; the domain stream publishes the committed snapshot.
      */
-    operator fun invoke(expanded: Boolean) {
-        port.save(port.preferences.value.copy(navigationRailExpanded = expanded))
+    operator fun invoke(expanded: Boolean): Deferred<UiPreferences> = port.submit { current ->
+        current.copy(navigationRailExpanded = expanded)
     }
 }

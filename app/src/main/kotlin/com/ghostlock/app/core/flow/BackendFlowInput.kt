@@ -52,8 +52,8 @@ fun interface FlowTerminalClaim {
  * @property generation Positive run generation.
  * @property rootScript Host-local published script/result contract.
  * @property profile Frozen canonical profile identity.
- * @property logs Typed log producer boundary.
- * @property cancellation Read-only cancellation view governed by BackendSpec abort policy.
+ * @property logs RunHost-owned Kotlin connector write side; Flow never closes or drains it.
+ * @property cancellation Read-only cancellation view governed by BackendDescriptor abort policy.
  * @property reportContext Immutable inputs required to compose the final typed report.
  * @property terminalClaim Sole neutral RunHost lifecycle linearization port.
  * @property artifacts Host-published staged artifacts keyed by exact logical identity.

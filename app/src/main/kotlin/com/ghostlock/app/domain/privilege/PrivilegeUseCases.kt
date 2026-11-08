@@ -26,5 +26,5 @@ class SelectPrivilegeExecutorUseCase(
      * @param kind Requested executor family.
      * @return Exact adapter outcome used by presentation to keep or change the dialog page.
      */
-    operator fun invoke(kind: AttackExecutorKind): ExecutorSelectionResult = port.select(kind)
+    suspend operator fun invoke(kind: AttackExecutorKind): ExecutorSelectionResult = port.select(kind)
 }

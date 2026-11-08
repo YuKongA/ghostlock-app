@@ -15,7 +15,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** Both production renderers virtualize full history and show report summaries as ordinary Info rows. */
+/** Both renderers preserve committed order despite source-clock reversal and show summaries as ordinary Info rows. */
 @RunWith(AndroidJUnit4::class)
 class RunPageLogStreamTest {
     @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
@@ -45,9 +45,19 @@ class RunPageLogStreamTest {
     /** Builds enough earlier rows to require a virtualized tail jump without hiding the final Info row. */
     private fun state(): RunUiState {
         val rows = (1L..5_000L).map { id ->
-            LogRecord(LogOrigin.Native, LogLevel.Debug, "debug-$id", commitId = id)
+            LogRecord(
+                LogOrigin.Native,
+                LogLevel.Debug,
+                "debug-$id",
+                commitId = id,
+                sourceElapsedMs = 5_001L - id,
+            )
         } + LogRecord(
-            LogOrigin.Kotlin, LogLevel.Info, "Product success: \u001B[32mYES\u001B[0m", commitId = 5_001L,
+            LogOrigin.Kotlin,
+            LogLevel.Info,
+            "Product success: \u001B[32mYES\u001B[0m",
+            commitId = 5_001L,
+            sourceElapsedMs = 0L,
         )
         return RunUiState(
             backendKey = "DIAGNOSE", backendLabel = "Diagnose", startAllowed = false,

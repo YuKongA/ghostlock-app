@@ -1,5 +1,7 @@
 package com.ghostlock.app.ui.component.statuscard
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -12,12 +14,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.CheckCircleOutline
-import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -107,7 +103,7 @@ internal fun BackendStatusCardMaterial(model: BackendStatusCardModel) {
     } else {
         MaterialTheme.colorScheme.error
     }
-    val statusIcon = if (ready) Icons.Rounded.CheckCircle else Icons.Rounded.Warning
+    val statusIcon = if (ready) ProjectIcons.Rounded.CheckCircle.material else ProjectIcons.Rounded.Warning.material
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -171,7 +167,7 @@ internal fun BackendStatusCardMaterial(model: BackendStatusCardModel) {
                     fontWeight = FontWeight.Medium,
                 )
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    imageVector = ProjectIcons.AutoMirrored.Filled.KeyboardArrowRight.material,
                     contentDescription = null,
                     modifier = Modifier.size(18.dp),
                 )
@@ -253,9 +249,9 @@ internal fun BackendStatusCardMiuix(model: BackendStatusCardModel) {
         else -> Color(0xFFBA1A1A)
     }
     val statusIcon = if (ready) {
-        Icons.Rounded.CheckCircleOutline
+        ProjectIcons.Rounded.CheckCircleOutline.material
     } else {
-        Icons.Rounded.ErrorOutline
+        ProjectIcons.Rounded.ErrorOutline.material
     }
     val statusText = model.statusText
     MiuixCard(
@@ -326,7 +322,7 @@ internal fun BackendStatusCardMiuix(model: BackendStatusCardModel) {
                         fontWeight = FontWeight.Medium,
                     )
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        imageVector = ProjectIcons.AutoMirrored.Filled.KeyboardArrowRight.material,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
                         tint = contentColor,

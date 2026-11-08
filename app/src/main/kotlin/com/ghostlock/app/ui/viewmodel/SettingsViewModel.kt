@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /**
  * Owns editable application-shell settings through storage-neutral domain use cases.
@@ -56,32 +57,34 @@ class SettingsViewModel(
      * @param mode Persisted `material` or `miuix` token.
      */
     fun setUiMode(mode: String) {
-        val current = preferences.value
-        val colorMode = ColorMode.fromValue(current.themeMode)
-        val nextThemeMode = when (current.uiMode) {
-            "material" -> if (mode == "miuix") {
-                val baseMode = if (colorMode == ColorMode.DARK_AMOLED) 2 else current.themeMode
-                when {
-                    current.miuixMonet && !colorMode.isMonet -> ColorMode.fromValue(baseMode).toMonetMode()
-                    !current.miuixMonet && colorMode.isMonet -> ColorMode.fromValue(baseMode).toNonMonetMode()
-                    else -> baseMode
-                }
-            } else current.themeMode
+        saveUiPreferences { current ->
+            val colorMode = ColorMode.fromValue(current.themeMode)
+            val nextThemeMode = when (current.uiMode) {
+                "material" -> if (mode == "miuix") {
+                    val baseMode = if (colorMode == ColorMode.DARK_AMOLED) 2 else current.themeMode
+                    when {
+                        current.miuixMonet && !colorMode.isMonet -> ColorMode.fromValue(baseMode).toMonetMode()
+                        !current.miuixMonet && colorMode.isMonet -> ColorMode.fromValue(baseMode).toNonMonetMode()
+                        else -> baseMode
+                    }
+                } else current.themeMode
 
-            "miuix" -> if (mode == "material" && colorMode.isMonet) {
-                colorMode.toNonMonetMode()
-            } else current.themeMode
+                "miuix" -> if (mode == "material" && colorMode.isMonet) {
+                    colorMode.toNonMonetMode()
+                } else current.themeMode
 
-            else -> current.themeMode
+                else -> current.themeMode
+            }
+            current.copy(uiMode = mode, themeMode = nextThemeMode)
         }
-        saveUiPreferences(current.copy(uiMode = mode, themeMode = nextThemeMode))
     }
 
     /** Persists the base theme-mode ordinal. */
     fun setThemeMode(mode: Int) {
-        val current = preferences.value
-        val effective = if (current.uiMode == "miuix" && current.miuixMonet) mode + 3 else mode
-        saveUiPreferences(current.copy(themeMode = effective))
+        saveUiPreferences { current ->
+            val effective = if (current.uiMode == "miuix" && current.miuixMonet) mode + 3 else mode
+            current.copy(themeMode = effective)
+        }
     }
 
     /** Persists an already-normalized color mode. */
@@ -89,14 +92,15 @@ class SettingsViewModel(
 
     /** Enables or disables the Miuix Monet family while preserving the base light/dark choice. */
     fun setMiuixMonet(enabled: Boolean) {
-        val current = preferences.value
-        val colorMode = ColorMode.fromValue(current.themeMode)
-        val nextThemeMode = when {
-            enabled && !colorMode.isMonet -> colorMode.toMonetMode()
-            !enabled && colorMode.isMonet -> colorMode.toNonMonetMode()
-            else -> current.themeMode
+        saveUiPreferences { current ->
+            val colorMode = ColorMode.fromValue(current.themeMode)
+            val nextThemeMode = when {
+                enabled && !colorMode.isMonet -> colorMode.toMonetMode()
+                !enabled && colorMode.isMonet -> colorMode.toNonMonetMode()
+                else -> current.themeMode
+            }
+            current.copy(miuixMonet = enabled, themeMode = nextThemeMode)
         }
-        saveUiPreferences(current.copy(miuixMonet = enabled, themeMode = nextThemeMode))
     }
 
     /** Persists the selected key color. */
@@ -146,8 +150,9 @@ class SettingsViewModel(
      *
      * @param uri Serialized Android document URI.
      */
-    fun selectTerminalFont(uri: String) {
-        importTerminalFont(uri)
+    fun selectTerminalFont(uri: String, onResult: (Boolean) -> Unit) {
+        val result = importTerminalFont(uri)
+        viewModelScope.launch { onResult(runCatching { result.await() }.getOrDefault(false)) }
     }
 
     /** Persists terminal timestamp visibility. */
@@ -166,7 +171,10 @@ class SettingsViewModel(
      * @param uri Serialized Android tree URI.
      * @return True when the adapter normalized and persisted the tree.
      */
-    fun selectLogExportDirectory(uri: String): Boolean = selectLogExportDirectoryUseCase(uri)
+    fun selectLogExportDirectory(uri: String, onResult: (Boolean) -> Unit) {
+        val result = selectLogExportDirectoryUseCase(uri)
+        viewModelScope.launch { onResult(runCatching { result.await() }.getOrDefault(false)) }
+    }
 
     /** Persists the rerun confirmation preference consumed by the run domain adapter. */
     fun setWarnOnRerun(enabled: Boolean) = updateOperational {
@@ -185,14 +193,14 @@ class SettingsViewModel(
 
     /** Applies one atomic copy operation to the current domain snapshot. */
     private fun update(transform: UiPreferences.() -> UiPreferences) {
-        saveUiPreferences(preferences.value.transform())
+        saveUiPreferences { current -> current.transform() }
     }
 
     /** Applies one atomic copy operation to the current operational domain snapshot. */
     private fun updateOperational(
         transform: OperationalPreferences.() -> OperationalPreferences,
     ) {
-        saveOperationalPreferences(operationalPreferences.value.transform())
+        saveOperationalPreferences { current -> current.transform() }
     }
 
     /** Maps the domain snapshot into the renderer contract without storage access. */

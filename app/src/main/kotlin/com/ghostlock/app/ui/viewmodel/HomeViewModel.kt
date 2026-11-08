@@ -2,7 +2,6 @@ package com.ghostlock.app.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.ghostlock.app.domain.backend.GetBackendCatalogUseCase
 import com.ghostlock.app.domain.device.ReadDeviceStatusUseCase
 import com.ghostlock.app.domain.settings.ObserveUiPreferencesUseCase
 import com.ghostlock.app.domain.privilege.AttackExecutorKind
@@ -17,6 +16,7 @@ import com.ghostlock.app.ui.screen.home.HomeUiState
 import com.ghostlock.app.ui.screen.home.PrivilegeUiState
 import com.ghostlock.app.ui.screen.home.SelectedBackendUiState
 import com.ghostlock.app.ui.screen.home.SystemInfo
+import com.ghostlock.app.ui.backend.BackendUiCatalog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,7 +30,7 @@ import kotlinx.coroutines.withContext
  * Builds renderer-neutral home state from injected device/settings facts and the backend registry.
  *
  * @param readDeviceStatus Device-status use case owned by AppContainer.
- * @param getBackendCatalog Backend-catalog use case owned by AppContainer.
+ * @param backendUiCatalog UI-owned projection of the sole backend definition snapshot.
  * @param observeUiPreferences Application-shell preference use case owned by AppContainer.
  * @param checkAppUpdate Application update use case owned by AppContainer.
  * @param observePrivilege Live executor and Shizuku facts owned by the application data adapter.
@@ -42,7 +42,7 @@ import kotlinx.coroutines.withContext
  */
 class HomeViewModel(
     private val readDeviceStatus: ReadDeviceStatusUseCase,
-    private val getBackendCatalog: GetBackendCatalogUseCase,
+    private val backendUiCatalog: BackendUiCatalog,
     observeUiPreferences: ObserveUiPreferencesUseCase,
     private val checkAppUpdate: CheckAppUpdateUseCase,
     observePrivilege: ObservePrivilegeUseCase,
@@ -87,8 +87,14 @@ class HomeViewModel(
      * @param kind Requested executor family.
      * @return Exact outcome used to keep the overview or show the Shizuku help page.
      */
-    fun selectExecutor(kind: AttackExecutorKind): ExecutorSelectionResult =
-        selectPrivilegeExecutor(kind)
+    fun selectExecutor(
+        kind: AttackExecutorKind,
+        onResult: (ExecutorSelectionResult) -> Unit,
+    ) {
+        viewModelScope.launch {
+            onResult(selectPrivilegeExecutor(kind))
+        }
+    }
 
     /** @return One current state snapshot without Android or legacy manager presentation globals. */
     private fun buildState(): HomeUiState {
@@ -113,21 +119,21 @@ class HomeViewModel(
 
     /** @return Current selected-backend readiness projected without waiting for device I/O. */
     private fun selectedBackendState(): SelectedBackendUiState {
-        val catalog = getBackendCatalog()
-        val selectedBackend = catalog.selectedBackend() ?: return SelectedBackendUiState(
+        val selectedBackend = backendUiCatalog.selectedEntry() ?: return SelectedBackendUiState(
             cveLabel = "",
             statusText = "No backend is available.",
             isReady = false,
         )
-        val availability = catalog.availabilityFor(selectedBackend.key)
-        val ready = selectedBackend.selectable && availability.isReady
+        val descriptor = selectedBackend.descriptor
+        val availability = backendUiCatalog.availabilityFor(descriptor.key)
+        val ready = descriptor.selectable && availability.isReady
         val status = when {
             ready -> "Ready"
             availability.reasons.isNotEmpty() -> availability.reasons.first().message
             else -> "The selected backend is disabled."
         }
         return SelectedBackendUiState(
-            cveLabel = selectedBackend.presentation.categoryLabel,
+            cveLabel = backendUiCatalog.categoryLabel(selectedBackend),
             statusText = status,
             isReady = ready,
         )

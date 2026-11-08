@@ -1,5 +1,7 @@
 package com.ghostlock.app.ui.screen.settings
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -13,20 +15,6 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Article
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.DisplaySettings
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material.icons.filled.SaveAlt
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.SystemUpdate
-import androidx.compose.material.icons.filled.SystemUpdateAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.Text
@@ -77,7 +65,7 @@ fun SettingPagerMaterial(uiState: SettingsUiState, actions: SettingsScreenAction
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
                 content = listOf({
                     SegmentedSwitchItem(
-                        icon = Icons.Filled.SystemUpdateAlt,
+                        icon = ProjectIcons.Filled.SystemUpdateAlt.material,
                         title = stringResource(R.string.settings_check_update),
                         summary = stringResource(R.string.settings_check_update_summary),
                         checked = uiState.checkUpdate,
@@ -91,7 +79,7 @@ fun SettingPagerMaterial(uiState: SettingsUiState, actions: SettingsScreenAction
                 content = listOf(
                     {
                         SegmentedDropdownItem(
-                            icon = Icons.Filled.DisplaySettings,
+                            icon = ProjectIcons.Filled.DisplaySettings.material,
                             title = stringResource(R.string.settings_ui_mode),
                             summary = stringResource(R.string.settings_ui_mode_summary),
                             items = UiMode.entries.map { it.name },
@@ -104,8 +92,8 @@ fun SettingPagerMaterial(uiState: SettingsUiState, actions: SettingsScreenAction
                             onClick = actions.onOpenTheme,
                             headlineContent = { Text(stringResource(R.string.settings_theme)) },
                             supportingContent = { Text(stringResource(R.string.settings_theme_summary)) },
-                            leadingContent = { Icon(Icons.Filled.Palette, null) },
-                            trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) },
+                            leadingContent = { Icon(ProjectIcons.Filled.Palette.material, null) },
+                            trailingContent = { Icon(ProjectIcons.AutoMirrored.Filled.KeyboardArrowRight.material, null) },
                         )
                     },
                 ),
@@ -121,14 +109,14 @@ fun SettingPagerMaterial(uiState: SettingsUiState, actions: SettingsScreenAction
                         SegmentedListItem(
                             onClick = { showSendLog = true },
                             headlineContent = { Text(stringResource(R.string.send_log)) },
-                            leadingContent = { Icon(Icons.Filled.BugReport, null) },
+                            leadingContent = { Icon(ProjectIcons.Filled.BugReport.material, null) },
                         )
                     },
                     {
                         SegmentedListItem(
                             onClick = actions.onOpenAbout,
                             headlineContent = { Text(stringResource(R.string.about)) },
-                            leadingContent = { Icon(Icons.Filled.Info, null) },
+                            leadingContent = { Icon(ProjectIcons.Filled.Info.material, null) },
                         )
                     },
                 ),
@@ -161,16 +149,19 @@ private fun TopBar(scrollBehavior: TopAppBarScrollBehavior?) {
 fun LogPreferencesCard(uiState: SettingsUiState, actions: SettingsScreenActions) {
     val context = LocalContext.current
     val fontPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { actions.onSelectTerminalFont(it.toString()) }
+        uri?.let { selected -> actions.onSelectTerminalFont(selected.toString()) { } }
     }
     val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        val accepted = uri?.let { actions.onSelectLogExportDirectory(it.toString()) } == true
-        if (!accepted && uri != null) {
-            android.widget.Toast.makeText(
-                context,
-                R.string.settings_log_export_location_invalid,
-                android.widget.Toast.LENGTH_SHORT,
-            ).show()
+        uri?.let { selected ->
+            actions.onSelectLogExportDirectory(selected.toString()) { accepted ->
+                if (!accepted) {
+                    android.widget.Toast.makeText(
+                        context,
+                        R.string.settings_log_export_location_invalid,
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            }
         }
     }
     val fontSummary = uiState.terminalFontName
@@ -180,7 +171,7 @@ fun LogPreferencesCard(uiState: SettingsUiState, actions: SettingsScreenActions)
         content = listOf(
             {
                 SegmentedDropdownItem(
-                    icon = Icons.AutoMirrored.Filled.Article,
+                    icon = ProjectIcons.AutoMirrored.Filled.Article.material,
                     title = stringResource(R.string.settings_log_level),
                     summary = stringResource(R.string.settings_log_level_summary),
                     items = uiState.logLevelOptions,
@@ -193,13 +184,13 @@ fun LogPreferencesCard(uiState: SettingsUiState, actions: SettingsScreenActions)
                     onClick = { fontPicker.launch(arrayOf("font/ttf", "font/otf", "application/octet-stream")) },
                     headlineContent = { Text(stringResource(R.string.settings_log_font)) },
                     supportingContent = { Text(fontSummary) },
-                    leadingContent = { Icon(Icons.Filled.Description, null) },
-                    trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) },
+                    leadingContent = { Icon(ProjectIcons.Filled.Description.material, null) },
+                    trailingContent = { Icon(ProjectIcons.AutoMirrored.Filled.KeyboardArrowRight.material, null) },
                 )
             },
             {
                 SegmentedSwitchItem(
-                    icon = Icons.Filled.Info,
+                    icon = ProjectIcons.Filled.Info.material,
                     title = stringResource(R.string.settings_log_timestamp),
                     summary = stringResource(R.string.settings_log_timestamp_summary),
                     checked = uiState.showLogTimestamp,
@@ -208,7 +199,7 @@ fun LogPreferencesCard(uiState: SettingsUiState, actions: SettingsScreenActions)
             },
             {
                 SegmentedSwitchItem(
-                    icon = Icons.Filled.SaveAlt,
+                    icon = ProjectIcons.Filled.SaveAlt.material,
                     title = stringResource(R.string.settings_log_auto_export),
                     summary = stringResource(R.string.settings_log_auto_export_summary),
                     checked = uiState.autoExportLogs,
@@ -220,8 +211,8 @@ fun LogPreferencesCard(uiState: SettingsUiState, actions: SettingsScreenActions)
                     onClick = { exportPicker.launch(null) },
                     headlineContent = { Text(stringResource(R.string.settings_log_export_location)) },
                     supportingContent = { Text(uiState.logExportLocation) },
-                    leadingContent = { Icon(Icons.Filled.Folder, null) },
-                    trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) },
+                    leadingContent = { Icon(ProjectIcons.Filled.Folder.material, null) },
+                    trailingContent = { Icon(ProjectIcons.AutoMirrored.Filled.KeyboardArrowRight.material, null) },
                 )
             },
         ),
@@ -236,7 +227,7 @@ fun RunPreferencesCard(uiState: SettingsUiState, actions: SettingsScreenActions)
         content = listOf(
             {
                 SegmentedSwitchItem(
-                    icon = Icons.Filled.Security,
+                    icon = ProjectIcons.Filled.Security.material,
                     title = stringResource(R.string.settings_attack_warn),
                     summary = stringResource(R.string.settings_attack_warn_summary),
                     checked = uiState.warnOnRerun,
@@ -245,7 +236,7 @@ fun RunPreferencesCard(uiState: SettingsUiState, actions: SettingsScreenActions)
             },
             {
                 SegmentedSwitchItem(
-                    icon = Icons.Filled.SystemUpdate,
+                    icon = ProjectIcons.Filled.SystemUpdate.material,
                     title = stringResource(R.string.settings_boot_attack),
                     summary = stringResource(R.string.settings_boot_attack_summary),
                     checked = uiState.autoAttackOnBoot,
@@ -254,7 +245,7 @@ fun RunPreferencesCard(uiState: SettingsUiState, actions: SettingsScreenActions)
             },
             {
                 SegmentedDropdownItem(
-                    icon = Icons.Filled.RestartAlt,
+                    icon = ProjectIcons.Filled.RestartAlt.material,
                     title = stringResource(R.string.settings_boot_retry),
                     summary = stringResource(R.string.settings_boot_retry_summary),
                     items = retryItems,

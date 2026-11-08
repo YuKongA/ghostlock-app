@@ -4,9 +4,9 @@ import android.os.ParcelFileDescriptor
 import android.system.Os
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.ghostlock.app.backend.transport.RunHostArtifactKind
-import com.ghostlock.app.backend.transport.RunHostArtifactRequest
-import com.ghostlock.app.backend.transport.RunHostIdentity
+import com.ghostlock.app.core.runhost.RunHostArtifactKind
+import com.ghostlock.app.core.runhost.RunHostArtifactRequest
+import com.ghostlock.app.core.runhost.RunHostIdentity
 import com.ghostlock.app.core.rootscript.PublishedArtifactIdentity
 import com.ghostlock.app.core.rootscript.ROOT_SCRIPT_HANDOFF_FILE_NAME
 import com.ghostlock.app.core.rootscript.ROOT_SCRIPT_HANDOFF_MARKER

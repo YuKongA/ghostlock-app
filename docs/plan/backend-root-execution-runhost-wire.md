@@ -7,6 +7,8 @@
 > 状态：**已随 [九项语义决策（原 D1–D9）](backend-root-execution-unification-plan.md#p-run-x-001-decisions) 获批；2026-11-04 用户单独批准进入 [P-RUN-X-001/批次01：execution spine（原 R3）](backend-root-execution-unification-plan.md#p-run-x-001-batch-01)，本附件是 production typed wire/state implementation authority**。
 >
 > 本附件只冻结 App/Shizuku RunHost 的跨进程字段、范围、方法、状态、并发和稳定错误码；产品目标、owner、批次与成功语义以主计划为准。出现冲突时主计划优先，本附件不得扩展 scope。
+>
+> 2026-11-08 的 `P-RUN-X-001/批次02` 只重新归属 Kotlin owner：纯合同在 `core/runhost`，client/codec/host adapter 在 `data/runhost`，App framework entry 为 `runhost/AppRunHostService`。本页 AIDL method/field/integer、状态与错误优先级未变。
 
 ## 1. 不变量
 
@@ -24,7 +26,7 @@
 |---|---|---|
 | `runId` | exactly 32 lowercase hex：`^[0-9a-f]{32}$` | application `RunInputFreezer`；每次 run 新随机值，不复用 |
 | `generation` | signed 64-bit `1..Long.MAX_VALUE` | application `LogHub`；同一 process 单调递增，溢出即拒绝新 run |
-| `backendKey` | `^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$`，且必须 exact 命中 immutable registry | `BackendSpec.key` |
+| `backendKey` | `^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$`，且必须 exact 命中 immutable registry | `BackendDescriptor.key` |
 | `logicalId` / item id | `^[a-z][a-z0-9._-]{0,63}$`，同一 request 内全局唯一 | freezer；renderer 不重命名 |
 | SHA-256 | exactly 64 lowercase hex | application 对输入 artifact 计算一次；RunHost staging 后对 staged fd 重算 |
 
@@ -44,7 +46,7 @@
 | snapshot Parcel | 256 KiB | 丢弃 oversized candidate，发布 bounded minimal snapshot：`lastCode=23`、未完成 result=`UNKNOWN/reason=13`、`terminal=5`；不得把 code/reason 名写进 terminal |
 | root result file | 256 KiB | parser 返回 `MALFORMED_RESULT/UNKNOWN`；不作部分解析 |
 
-所有 `0`、`-1`、上限、上限+1、空值、重复 ID、非法 UTF-8/非 ASCII log 都进入 [P-RUN-X-001/批次01：execution spine](backend-root-execution-unification-plan.md#p-run-x-001-batch-01) / [P-LOG-X-001/批次01：单一日志中枢](backend-root-execution-unification-plan.md#p-log-x-001-batch-01) 极端值矩阵。
+所有 `0`、`-1`、上限、上限+1、空值、重复 ID、非法 UTF-8/非 ASCII log 都进入 [P-RUN-X-001/批次01：execution spine](backend-root-execution-unification-plan.md#p-run-x-001-batch-01) / [P-LOG-X-001/批次03：LogConnector与顺序](backend-root-execution-unification-plan.md#p-log-x-001-batch-03) 极端值矩阵。
 
 ## 3. Wire DTO
 
@@ -60,9 +62,9 @@
 | `finishItems` | `List<FinishItemParcel>` | 有序、ID 唯一、§2 count |
 | `artifacts` | `List<RunInputArtifactParcel>` | logical ID 全局唯一；PFD read-only；禁止目录、socket、pipe、symlink |
 
-request 不携带 schema/digest handshake，也不携带 `executorKind`。`BackendSpec.ExecutionDomain` 是期望域唯一 authority；RunHost 以自己的 process role/uid/SELinux domain 机械核对，任何不一致固定返回 `EXECUTION_DOMAIN_MISMATCH`。同 APK AIDL 与 generated Parcelable 是 wire authority。profile 内容仍遵守 GLK v3 JSON/JCS/schema authority，RunHost 不接受 legacy profile。
+request 不携带 schema/digest handshake，也不携带 `executorKind`。`BackendDescriptor.executionDomain` 是期望域唯一 authority；RunHost 以自己的 process role/uid/SELinux domain 机械核对，任何不一致固定返回 `EXECUTION_DOMAIN_MISMATCH`。同 APK AIDL 与 generated Parcelable 是 wire authority。profile 内容仍遵守 GLK v3 JSON/JCS/schema authority，RunHost 不接受 legacy profile。
 
-request 也不携带可由 caller 伪造的 run capability。RunHost 在 exact registry lookup 后只从 immutable `BackendSpec.runCapability` 取得 §6.6 的 `RunCapability`，并按下表验证 request shape：
+request 也不携带可由 caller 伪造的 run capability。RunHost 在 exact registry lookup 后只从 immutable `BackendDescriptor.runCapability` 取得 §6.6 的 `RunCapability`，并按下表验证 request shape：
 
 | `RunCapability` | Payload | Finish | 结果 |
 |---|---|---|---|
@@ -134,7 +136,7 @@ COMMAND 正文若超过单 arg 上限，必须作为 USER_SCRIPT artifact；不�
 | `runId` / `generation` | identity | 必须与请求一致 |
 | `state` | `Int` | §5 `RunHostState` |
 | `lastCode` | `Int` | 最近一次稳定 host code；不替代 report |
-| `runCapability` | `Int` | §6.6；只从命中的 immutable `BackendSpec` 投影，不回读 request |
+| `runCapability` | `Int` | §6.6；只从命中的 immutable `BackendDescriptor` 投影，不回读 request |
 | `diagnosticOutcome` | `Int` | §6.6；产品 run 固定 `NOT_APPLICABLE` |
 | `backendPrimitive` | typed stage parcel | raw-root/primitive fact |
 | `scriptDispatch` | typed stage parcel | same-artifact dispatch fact |
@@ -145,7 +147,7 @@ COMMAND 正文若超过单 arg 上限，必须作为 USER_SCRIPT artifact；不�
 | `logSequence` | `Long` | host 最后为 callback delivery attempt 保留的 sequence；从 1 单调递增，至 `Long.MAX_VALUE`；无累计条数上限 |
 | `droppedLogs` | `Long` | host 侧 validation、单条/Parcel限制、sequence耗尽或callback delivery日志丢弃数；不参与产品结果 |
 
-snapshot 禁止携带 raw log、任意 evidence map、native pointer、fd 或自由 path。日志只经 callback 进入 `LogHub` 单一中枢，再经raw/processed双流与单dispatcher非阻塞分发到UI、private-file及可选MediaStore独立sink。
+snapshot 禁止携带 raw log、任意 evidence map、native pointer、fd 或自由 path。callback由应用侧`RunHostLogConnector`适配为`LogDraft`并动态attach到唯一`LogHub`；LogHub再经raw/processed双流与单dispatcher非阻塞分发到UI、private-file及可选MediaStore独立sink。
 
 ### 3.6 `RunHostSnapshotReply`
 
@@ -181,13 +183,13 @@ snapshot 中 Payload/Finish result list 的顺序必须与 frozen request 完全
 | 字段 | 类型 | 约束 |
 |---|---|---|
 | `runId` / `generation` | identity | 与 host identity exact 相同 |
-| `sequence` | `Long` | 正 `Long`，单 generation 严格递增；只拒绝重复/倒序，不成为跨来源全局顺序 |
+| `sequence` | `Long` | 正 `Long`，从1开始逐条连续；gap、重复、倒序均使应用侧connector返回Incomplete，不成为跨来源全局顺序 |
 | `elapsedRealtimeMs` | `Long` | `0..Long.MAX_VALUE`，仅保留 source-side 诊断时间；不参与全局排序或 success |
 | `origin` | `Int` | `1=KOTLIN`、`2=NATIVE`、`3=SHELL`；unknown 值丢弃 |
 | `level` | `Int` | `1=VERBOSE`、`2=DEBUG`、`3=INFO`、`4=WARN`、`5=ERROR`；unknown 值丢弃 |
 | `message` | `String` | 最多 8 KiB；单行 printable ASCII，另允许下述 foreground/reset SGR 子集；不参与控制流 |
 
-SGR grammar 固定为 `ESC '[' parameter (';' parameter){0,3} 'm'`：每个 parameter 为 1–3 位十进制，且只能是 `0`、`30..37`、`39`、`90..97`；整个序列最多 16 bytes。禁止 NUL、CR/LF、TAB、光标/擦除/链接/粗体等其它控制序列。整个 log Parcel 不得超过 12 KiB；host 侧验证、预算、parcel 或 callback delivery 失败会丢弃该 record 并计入 host-owned `droppedLogs`。client 对 identity、sequence、enum、message 或 parcel 的独立复验失败只在本地忽略，不反向改写 immutable host snapshot。immutable terminal snapshot 仍是 authority，不能用 log 补造 terminal。
+SGR grammar 固定为 `ESC '[' parameter (';' parameter){0,3} 'm'`：每个 parameter 为 1–3 位十进制，且只能是 `0`、`30..37`、`39`、`90..97`；整个序列最多 16 bytes。禁止 NUL、CR/LF、TAB、光标/擦除/链接/粗体等其它控制序列。整个 log Parcel 不得超过 12 KiB；host 侧验证、预算、parcel 或 callback delivery 失败会丢弃该 record 并计入 host-owned `droppedLogs`。client 对 identity、sequence、enum、message 或 parcel 的独立复验失败会保留此前合法prefix，并把该`RunHostLogConnector`终结为`Incomplete`；它不反向改写 immutable host snapshot。应用client在唯一completion deadline内同时等待typed terminal snapshot、callback terminal marker和connector end；snapshot先到不允许提前关闭transport。immutable terminal snapshot仍是产品authority，不能用log补造terminal。
 
 ## 4. AIDL 方法与 transaction 语义
 
@@ -212,7 +214,7 @@ oneway interface IRunHostCallback {
 
 - 除 callback 外全部 synchronous；返回发生在 host mutex 内状态转移完成后，是该调用的 linearization point。
 - `RunHostSnapshotReply` 固定为 `code:Int + nullable snapshot`；仅 `code=OK` 时 snapshot 非空，其它 code 时必须 null。transport exception 不伪装成 reply code。
-- `onLog/onTerminal` oneway，经单一 serial callback queue 发送；同 generation 的 source sequence 单调。跨 App/Shizuku/Flow 来源的唯一全局顺序是 `LogHub` lock 内接受并追加到 canonical list 的顺序。
+- `onLog/onTerminal` oneway，经单一 serial callback queue 发送；同generation的sequence只是RunHost source内部的连续交付证明。应用侧connector等待terminal marker并检查final sequence/dropped count；跨App/Shizuku/Kotlin/FD source的唯一全局顺序是draft被LogHub raw ingress接受的顺序，source time不触发回溯重排。
 - host 的 terminal **publication** 由 compare-and-set 恰好一次写入 durable immutable snapshot；`onTerminal` 对某 callback 的 delivery 是 at-most-once，Binder death/未注册 callback 时可以 0 次。新 callback 不重放 terminal，client 用 `getSnapshot` 读取 authority。
 - `destroy()` 明确保留 Shizuku UserService framework 固定 transaction id `16777114`；service 端也按 §5 状态表拒绝/忽略提前 transaction，不能只依赖业务 client 自律。业务 client 只有 `requestClose=OK/ALREADY_APPLIED` 且 host 已进入 DESTROYED 后才调用 framework destroy。
 - App client 对应动作是 unbind/stop service；两端仍走相同 `requestClose` 判据。
@@ -235,7 +237,7 @@ oneway interface IRunHostCallback {
 3. 已是 DESTROYED → `BAD_STATE`，唯 `requestClose` 返回 `ALREADY_APPLIED`；framework `destroy()` 见状态表。
 4. identity 已建立时：`generation < current` → `STALE_GENERATION`；`generation > current` → `BUSY`；generation 相同但 runId 不同 → `RUN_MISMATCH`；相同 identity 的 successful-prepare 语义指纹不同 → `RUN_MISMATCH`。
 5. identity 未建立时，除 `setCallback`/`prepare` 外的方法 → `BAD_STATE`；然后检查方法×状态合法性。
-6. `prepare` 依次检查 backend key → `UNKNOWN_BACKEND`；命中后按 `BackendSpec.runCapability` 检查 §3.1 request shape，不匹配 → `INVALID_REQUEST`；`BackendSpec.ExecutionDomain` 与实际 host role/uid/domain不一致 → `EXECUTION_DOMAIN_MISMATCH`；readiness 拒绝 → `NOT_READY`。
+6. `prepare` 依次检查 backend key → `UNKNOWN_BACKEND`；命中后按 `BackendDescriptor.runCapability` 检查 §3.1 request shape，不匹配 → `INVALID_REQUEST`；`BackendDescriptor.executionDomain` 与实际 host role/uid/domain不一致 → `EXECUTION_DOMAIN_MISMATCH`；readiness 拒绝 → `NOT_READY`。
 7. PFD/type/size/digest/object identity/staging policy 失败 → `ARTIFACT_INVALID`。
 8. workspace/render/publish/result I/O 失败 → `IO_FAILURE`；未分类 invariant → `INTERNAL_CONTRACT_FAILURE`。
 
@@ -264,9 +266,9 @@ RUNNING --requestClose--> UNSAFE_TO_DESTROY（状态不变）
 
 RUNNING 的安全取消分成两个不可倒置的线性点：cancel 先在 state-machine mutex 内赢得 cancellation reservation 并返回 OK，但对外 snapshot 仍保持 RUNNING；Flow 停止访问并完成 cleanup 后，worker 才发布唯一 TERMINAL(CANCELLED)。reservation 与 worker publication 之间的 requestClose 固定返回 UNSAFE_TO_DESTROY，因此 workspace、waiter、process、mapping 与 staged artifact 不会在最后访问者停止前被回收。若 worker terminal 先赢，后到 cancel 返回 ALREADY_APPLIED，不能把已完成结果改写成取消。
 
-其它 identity/content 的精确 code 只由 §5.1 决定，不在状态表写“或”。实现以单一 host mutex/serial dispatcher保护状态与 identity；Flow 只通过中立的 `FlowTerminalClaim` 调用一个 `claimTerminal` compare-and-set，并在同一线性点取得 cancellation reservation 后组合 `RunReport`。并发 start/cancel、cancel/terminal、requestClose/terminal 由该 linearization point决定唯一结果；晚到者不产生第二 terminal。RunHost service 调 Flow；Flow 不依赖或反向调用 `RunHostService` / `GhostlockUserService`。
+其它 identity/content 的精确 code 只由 §5.1 决定，不在状态表写“或”。实现以单一 host mutex/serial dispatcher保护状态与 identity；Flow 只通过中立的 `FlowTerminalClaim` 调用一个 `claimTerminal` compare-and-set，并在同一线性点取得 cancellation reservation 后组合 `RunReport`。并发 start/cancel、cancel/terminal、requestClose/terminal 由该 linearization point决定唯一结果；晚到者不产生第二 terminal。RunHost service 调 Flow；Flow 不依赖或反向调用 `AppRunHostService` / `GhostlockUserService`。
 
-callback Binder death：清 callback 引用；NEW/PREPARED 不自动 start，RUNNING 不自动 cancel/kill，worker继续到 terminal并持久化 snapshot；client UI标 UNKNOWN且不得重试相同 run。host Binder death：client发布 synthetic `HOST_DIED/UNKNOWN`，关闭自己持有的 PFD/callback；不自动重启。terminal publication exactly once 与 callback delivery zero-or-one 是两个独立判据。
+callback Binder death：清 callback 引用；NEW/PREPARED 不自动 start，RUNNING 不自动 cancel/kill，worker继续到 terminal并持久化 snapshot；client侧`RunHostLogConnector`drain已接收prefix后返回`Incomplete`，UI标 UNKNOWN且不得重试相同 run。host Binder death：client发布 synthetic `HOST_DIED/UNKNOWN`，终结connector为`Incomplete`并关闭自己持有的 PFD/callback；不自动重启。terminal publication exactly once 与 callback delivery zero-or-one 是两个独立判据。
 
 ## 6. 稳定数值合同
 
@@ -290,7 +292,7 @@ callback Binder death：清 callback 引用；NEW/PREPARED 不自动 start，RUN
 | 21 | `UNSAFE_TO_DESTROY` | RUNNING，host/process 不得销毁 |
 | 22 | `HOST_DIED` | client-side synthetic code；从不由 host 返回 |
 | 23 | `INTERNAL_CONTRACT_FAILURE` | invariant/snapshot budget/unknown internal value |
-| 24 | `EXECUTION_DOMAIN_MISMATCH` | BackendSpec 期望域与实际 host role/uid/domain 不一致 |
+| 24 | `EXECUTION_DOMAIN_MISMATCH` | BackendDescriptor 期望域与实际 host role/uid/domain 不一致 |
 
 unknown code 一律映射 `INTERNAL_CONTRACT_FAILURE/UNKNOWN`，不得当作 OK。AIDL exception/transport error不复用业务 code。
 
@@ -362,7 +364,7 @@ value 12 与 unknown reason 都在 decode/construct 边界改成 13，所属 sta
 
 ### 6.6 `RunCapability`、`DiagnosticOutcome` 与 `RunTerminal`
 
-`RunCapability` 是 `BackendSpec` 的互斥稳定值，不是 caller request 参数：
+`RunCapability` 是 `BackendDescriptor` 的互斥稳定值，不是 caller request 参数：
 
 | value | capability |
 |---:|---|
@@ -380,7 +382,7 @@ value 12 与 unknown reason 都在 decode/construct 边界改成 13，所属 sta
 | 3 | `FAIL` |
 | 4 | `UNKNOWN` |
 
-successful prepare 原子把 `UNRESOLVED` 改为命中 `BackendSpec` 的 `PRODUCT_ROOT` 或 `DIAGNOSTIC_ONLY`。从该 resolve point 起，`PRODUCT_ROOT` 的 `diagnosticOutcome` 必须为 `NOT_APPLICABLE`；`DIAGNOSTIC_ONLY` 初始为 `NOT_RUN`，fixture 完整执行并得到确定判断时只能为 `PASS` 或 `FAIL`，host death、malformed fact 或执行证据不完整时为 `UNKNOWN`。安全取消发生在 fixture 开始前时保留 `NOT_RUN`，开始后取消则为 `UNKNOWN`。
+successful prepare 原子把 `UNRESOLVED` 改为命中 `BackendDescriptor` 的 `PRODUCT_ROOT` 或 `DIAGNOSTIC_ONLY`。从该 resolve point 起，`PRODUCT_ROOT` 的 `diagnosticOutcome` 必须为 `NOT_APPLICABLE`；`DIAGNOSTIC_ONLY` 初始为 `NOT_RUN`，fixture 完整执行并得到确定判断时只能为 `PASS` 或 `FAIL`，host death、malformed fact 或执行证据不完整时为 `UNKNOWN`。安全取消发生在 fixture 开始前时保留 `NOT_RUN`，开始后取消则为 `UNKNOWN`。
 
 | value | terminal |
 |---:|---|
@@ -532,4 +534,4 @@ client 收到 callback 前设备重启时，下次启动只可从 identity 匹�
 6. callbacks：event enum/field conjunction、sequence 16,384条及Long耗尽、8 KiB/8 KiB+1、12 KiB Parcel、Binder death、late callback、no replay、unknown enum只降级不升级。
 7. lifecycle：App unbind、Shizuku callback death、对 transaction 16777114 的 premature direct call、RUNNING unsafe close、requestClose 后 destroy、host crash；提前 destroy 必须观测为 no-op且 worker/resource未被清理。
 8. result protocol：§6.7 每个合法/非法 state×reason×exit conjunction、每个 stable integer（含 ResultReason 12 必须拒绝并映射 13/UNKNOWN）、顺序/重复/缺失/unknown key、256 KiB边界、partial/complete、handoff=0/1、reboot pre/post-fsync；Payload required `UNKNOWN+FAILED`、`FAILED+CANCELLED` 必须 malformed，另测单一 trigger、all-success、optional failed/unknown、合法/非法 skip；Finish empty、`FAILED+CANCELLED`、`CANCELLED+SKIPPED`、alwaysRun skip 与普通 NOT_RUN；六层 terminal 合成表逐行与组合穷举。
-9. capability/cross-process：同一 request 在 App RunHost 与 Shizuku RunHost 得到同一 validation/result code；BackendSpec domain 与实际 pid/uid/SELinux不一致固定为 code 24。PRODUCT_ROOT+SUCCESS 是产品 success 唯一正例；`DIAGNOSTIC_ONLY+PASS+DIAGNOSTIC_COMPLETE`、diagnostic FAIL/UNKNOWN、capability/outcome/terminal 非法组合都必须证明不能升级产品 success。
+9. capability/cross-process：同一 request 在 App RunHost 与 Shizuku RunHost 得到同一 validation/result code；BackendDescriptor domain 与实际 pid/uid/SELinux不一致固定为 code 24。PRODUCT_ROOT+SUCCESS 是产品 success 唯一正例；`DIAGNOSTIC_ONLY+PASS+DIAGNOSTIC_COMPLETE`、diagnostic FAIL/UNKNOWN、capability/outcome/terminal 非法组合都必须证明不能升级产品 success。

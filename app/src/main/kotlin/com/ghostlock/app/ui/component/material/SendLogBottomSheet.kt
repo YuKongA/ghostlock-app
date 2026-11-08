@@ -1,5 +1,7 @@
 package com.ghostlock.app.ui.component.material
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
@@ -14,9 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -121,7 +120,7 @@ fun SendLogBottomSheet(
                             exportBugreportLauncher.launch("${exportFilePrefix}_${current}.tar.gz")
                         }) {
                         Icon(
-                            Icons.Filled.Save,
+                            ProjectIcons.Filled.Save.material,
                             contentDescription = stringResource(id = R.string.save_log),
                             modifier = Modifier.align(Alignment.CenterHorizontally)
                         )
@@ -166,7 +165,7 @@ fun SendLogBottomSheet(
                             }
                         }) {
                         Icon(
-                            Icons.Filled.Share,
+                            ProjectIcons.Filled.Share.material,
                             contentDescription = stringResource(id = R.string.send_log),
                             modifier = Modifier.align(Alignment.CenterHorizontally)
                         )

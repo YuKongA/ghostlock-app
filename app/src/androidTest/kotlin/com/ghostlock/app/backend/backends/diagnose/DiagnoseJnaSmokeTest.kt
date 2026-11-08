@@ -7,17 +7,17 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ghostlock.app.backend.backends.diagnose.jna.DiagnoseJnaLibrary
 import com.ghostlock.app.backend.backends.diagnose.jna.DiagnoseNativeBinding
-import com.ghostlock.app.backend.registry.BackendRegistry
-import com.ghostlock.app.backend.transport.AppRunHostClient
-import com.ghostlock.app.backend.transport.RunHostIdentity
-import com.ghostlock.app.backend.transport.RunHostClientOutcome
-import com.ghostlock.app.backend.transport.RunHostTestFixture
-import com.ghostlock.app.backend.transport.ShizukuRunHostClient
+import com.ghostlock.app.composition.backend.BackendRegistry
+import com.ghostlock.app.data.runhost.client.AppRunHostClient
+import com.ghostlock.app.core.runhost.RunHostIdentity
+import com.ghostlock.app.data.runhost.client.RunHostLogConnector
+import com.ghostlock.app.data.runhost.client.RunHostClientOutcome
+import com.ghostlock.app.data.runhost.RunHostTestFixture
+import com.ghostlock.app.data.runhost.client.ShizukuRunHostClient
 import com.ghostlock.app.core.run.LogHub
 import com.ghostlock.app.core.run.RunInputFreezer
-import com.ghostlock.app.data.backend.BackendRunSessionAdapter
+import com.ghostlock.app.data.run.AndroidRunSessionAdapter
 import com.ghostlock.app.data.run.AndroidRunWorkspace
-import com.ghostlock.app.data.run.PackagedBackendArtifactResolver
 import com.ghostlock.app.data.run.RootManagerArtifactResolver
 import com.ghostlock.app.data.run.RootArtifactStagingAdapter
 import com.ghostlock.app.domain.finish.FinishDefinition
@@ -32,6 +32,7 @@ import com.ghostlock.app.domain.privilege.PrivilegeState
 import com.ghostlock.app.domain.run.DiagnosticOutcome
 import com.ghostlock.app.domain.run.RunCommand
 import com.ghostlock.app.domain.run.LogDocumentFormatter
+import com.ghostlock.app.domain.run.LogConnectorEnd
 import com.ghostlock.app.domain.run.LogDraft
 import com.ghostlock.app.domain.run.LogOrigin
 import com.ghostlock.app.domain.run.RunSessionPhase
@@ -41,7 +42,7 @@ import com.ghostlock.app.domain.run.StageState
 import com.ghostlock.app.domain.settings.ObserveOperationalPreferencesUseCase
 import com.ghostlock.app.domain.settings.OperationalPreferences
 import com.ghostlock.app.domain.settings.OperationalPreferencesPort
-import com.ghostlock.app.run.RunHostLogRecord
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
@@ -63,7 +64,7 @@ import rikka.shizuku.Shizuku
 class DiagnoseJnaSmokeTest {
     /** Five signed representatives preserve every raw nonce bit through the release-coupled direct mapping. */
     @Test
-    fun directJnaNonceAndHandoffRoundTrip() {
+    fun directJnaNonceAndHandoffRoundTrip() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val identity = RunHostIdentity(UUID.randomUUID().toString().replace("-", ""), 1L)
         val workspace = AndroidRunWorkspace.createApp(context, identity, BACKEND_KEY)
@@ -102,27 +103,29 @@ class DiagnoseJnaSmokeTest {
         }
     }
 
-    /** App flowhost routes the real Diagnose run through BackendRunSessionAdapter and the sole LogHub. */
+    /** App flowhost routes the real Diagnose run through AndroidRunSessionAdapter and the sole LogHub. */
     @Test
     fun appFlowHostRoundTrip() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val logHub = LogHub(LogDocumentFormatter())
-        val adapter = BackendRunSessionAdapter(
+        val adapter = AndroidRunSessionAdapter(
             context = context,
-            registryEntries = BackendRegistry.specs,
+            registryEntries = BackendRegistry.descriptors,
             availability = BackendRegistry::availability,
+            backendLabel = { key -> if (key == BACKEND_KEY) "Diagnose" else null },
             selectedKey = { BACKEND_KEY },
             logHub = logHub,
             formatter = LogDocumentFormatter(),
             freezer = diagnosticFreezer(context),
             appClient = AppRunHostClient(context),
             shizukuClient = null,
-            observeOperationalPreferences = diagnosticPreferences(),
+            operationalPreferencesPort = diagnosticPreferences(),
+            applicationScope = this,
             observePrivilege = appPrivilege(Process.myUid()),
         )
 
         adapter.refresh()
-        assertTrue(adapter.start(RunCommand(BACKEND_KEY)))
+        assertTrue(adapter.start(RunCommand(BACKEND_KEY)).await())
         val terminal = withTimeout(WAIT_TIMEOUT_MS) {
             logHub.state.first { state -> state.phase == RunSessionPhase.Done }
         }
@@ -136,11 +139,16 @@ class DiagnoseJnaSmokeTest {
     /** Shizuku UserService loads both DSOs and executes the same chain in uid 2000 shell domain. */
     @Test
     fun shizukuRoundTrip() = runBlocking {
-        assumeTrue(awaitShizukuReady())
+        assumeTrue(shizukuReadinessDescription(), awaitShizukuReady())
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         RunHostTestFixture.create(context).use { fixture ->
-            val logs = mutableListOf<RunHostLogRecord>()
-            val outcome = ShizukuRunHostClient(context).run(fixture.request) { record -> logs += record }
+            val logs = mutableListOf<LogDraft>()
+            val connector = RunHostLogConnector(
+                RunHostIdentity(fixture.request.runId, fixture.request.generation),
+            )
+            val collection = async { connector.collect { record -> logs += record } }
+            val outcome = ShizukuRunHostClient(context).run(fixture.request, connector)
+            assertEquals(LogConnectorEnd.Drained, collection.await())
             assertDiagnoseTerminal(outcome, logs)
         }
     }
@@ -160,10 +168,16 @@ class DiagnoseJnaSmokeTest {
         true
     } ?: false
 
+    /** Returns exact post-wait Shizuku facts when this environment skips the shell-domain gate. */
+    private fun shizukuReadinessDescription(): String = runCatching {
+        "ping=${Shizuku.pingBinder()};permission=${Shizuku.checkSelfPermission()};" +
+            "uid=${Shizuku.getUid()};domain=${Shizuku.getSELinuxContext()}"
+    }.getOrElse { problem -> "query=${problem::class.java.simpleName}" }
+
     /** Checks the exact typed report and one record from each actual source adapter. */
     private fun assertDiagnoseTerminal(
         outcome: RunHostClientOutcome,
-        logs: List<RunHostLogRecord>,
+        logs: List<LogDraft>,
     ) {
         assertTrue(outcome is RunHostClientOutcome.Terminal)
         val report = (outcome as RunHostClientOutcome.Terminal).snapshot.toRunReport()
@@ -174,15 +188,15 @@ class DiagnoseJnaSmokeTest {
         assertEquals(RunTerminal.DIAGNOSTIC_COMPLETE, report.terminal)
         assertFalse(report.isProductSuccess)
         assertEquals(1, logs.count { record ->
-            record.origin == LogOrigin.Native.wireValue &&
+            record.origin == LogOrigin.Native &&
                 record.message == "diagnose:native:roundtrip-ok"
         })
         assertEquals(1, logs.count { record ->
-            record.origin == LogOrigin.Shell.wireValue &&
+            record.origin == LogOrigin.Shell &&
                 record.message == "diagnose:shell:handoff-ok"
         })
         assertTrue(logs.any { record ->
-            record.origin == LogOrigin.Kotlin.wireValue && record.message == "diagnose:start"
+            record.origin == LogOrigin.Kotlin && record.message == "diagnose:start"
         })
     }
 
@@ -210,14 +224,19 @@ class DiagnoseJnaSmokeTest {
     private fun diagnosticFreezer(context: android.content.Context): RunInputFreezer = RunInputFreezer(
         context = context,
         payloadRepository = object : PayloadRepository {
-            override fun read(): PayloadDefinition = error("Diagnose read Payload")
-            override fun save(definition: PayloadDefinition) = Unit
+            override fun submit(
+                transform: (PayloadDefinition) -> PayloadDefinition,
+            ): kotlinx.coroutines.Deferred<PayloadDefinition> = error("Diagnose submit Payload")
+            override fun snapshot(): kotlinx.coroutines.Deferred<PayloadDefinition> =
+                error("Diagnose snapshot Payload")
         },
         finishRepository = object : FinishRepository {
-            override fun read(): FinishDefinition = error("Diagnose read Finish")
-            override fun save(definition: FinishDefinition) = Unit
+            override fun submit(
+                transform: (FinishDefinition) -> FinishDefinition,
+            ): kotlinx.coroutines.Deferred<FinishDefinition> = error("Diagnose submit Finish")
+            override fun snapshot(): kotlinx.coroutines.Deferred<FinishDefinition> =
+                error("Diagnose snapshot Finish")
         },
-        packagedCarrierResolver = PackagedBackendArtifactResolver(context) { null },
         rootManagerResolver = RootManagerArtifactResolver(context),
     )
 
@@ -235,7 +254,7 @@ class DiagnoseJnaSmokeTest {
 
             override fun refresh() = Unit
 
-            override fun select(kind: AttackExecutorKind): ExecutorSelectionResult =
+            override suspend fun select(kind: AttackExecutorKind): ExecutorSelectionResult =
                 if (kind == AttackExecutorKind.APP) {
                     ExecutorSelectionResult.SELECTED
                 } else {
@@ -245,22 +264,31 @@ class DiagnoseJnaSmokeTest {
     )
 
     /** Disables export so the gate observes LogHub ordering without creating a MediaStore row. */
-    private fun diagnosticPreferences(): ObserveOperationalPreferencesUseCase =
-        ObserveOperationalPreferencesUseCase(
-            object : OperationalPreferencesPort {
-                override val preferences = MutableStateFlow(
-                    OperationalPreferences(autoExportLogs = false, warnOnRerun = false),
-                )
+    private fun diagnosticPreferences(): OperationalPreferencesPort =
+        object : OperationalPreferencesPort {
+            override val preferences = MutableStateFlow(
+                OperationalPreferences(autoExportLogs = false, warnOnRerun = false),
+            )
 
-                override fun save(value: OperationalPreferences) {
-                    preferences.value = value
-                }
+            override fun submit(
+                transform: (OperationalPreferences) -> OperationalPreferences,
+            ): kotlinx.coroutines.Deferred<OperationalPreferences> {
+                val value = transform(preferences.value)
+                preferences.value = value
+                return kotlinx.coroutines.CompletableDeferred(value)
+            }
 
-                override fun importTerminalFont(uri: String): Boolean = false
+            override suspend fun awaitInitial(): OperationalPreferences = preferences.value
 
-                override fun selectLogExportDirectory(uri: String): Boolean = false
-            },
-        )
+            override fun snapshot(): kotlinx.coroutines.Deferred<OperationalPreferences> =
+                kotlinx.coroutines.CompletableDeferred(preferences.value)
+
+            override fun importTerminalFont(uri: String): kotlinx.coroutines.Deferred<Boolean> =
+                kotlinx.coroutines.CompletableDeferred(false)
+
+            override fun selectLogExportDirectory(uri: String): kotlinx.coroutines.Deferred<Boolean> =
+                kotlinx.coroutines.CompletableDeferred(false)
+        }
 
     private companion object {
         const val BACKEND_KEY: String = "DIAGNOSE"

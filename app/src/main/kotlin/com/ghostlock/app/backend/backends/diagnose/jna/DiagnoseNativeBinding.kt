@@ -1,15 +1,19 @@
 package com.ghostlock.app.backend.backends.diagnose.jna
 
 import android.os.ParcelFileDescriptor
+import com.ghostlock.app.data.log.FdLogConnector
+import com.ghostlock.app.domain.run.LogConnectorEnd
 import com.ghostlock.app.domain.run.LogDraft
 import com.ghostlock.app.domain.run.LogEmitter
 import com.ghostlock.app.domain.run.LogLevel
 import com.ghostlock.app.domain.run.LogOrigin
 import com.sun.jna.Native
-import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 /**
  * Concrete owner of the Diagnose JNA mapping and each synchronous native chain's two pipe pairs.
@@ -67,15 +71,23 @@ internal class DiagnoseNativeBinding private constructor(
      * @throws IllegalStateException When closed or another invocation still owns the binding.
      * @throws java.io.IOException When pipe creation, JNA plumbing, or drain fails.
      */
-    fun runChain(logs: LogEmitter, nonce: Long): ChainResult {
+    suspend fun runChain(logs: LogEmitter, nonce: Long): ChainResult = coroutineScope {
         check(!closed.get()) { "diagnose native binding is closed" }
-        chainOverride?.let { chain -> return chain(logs, nonce) }
+        chainOverride?.let { chain -> return@coroutineScope chain(logs, nonce) }
         val request = DiagnoseJnaLibrary.Request.ByReference()
         val result = DiagnoseJnaLibrary.Result.ByReference()
 
         val resources = ChainResources.create()
         check(activeCall.compareAndSet(null, resources)) { "diagnose native call is already active" }
         try {
+            val nativeConnector = resources.native.connector(LogOrigin.Native)
+            val shellConnector = resources.shell.connector(LogOrigin.Shell)
+            val nativeCollector = async(Dispatchers.IO) {
+                collectPhase(nativeConnector, logs, LogOrigin.Native, NATIVE_BODY)
+            }
+            val shellCollector = async(Dispatchers.IO) {
+                collectPhase(shellConnector, logs, LogOrigin.Shell, SHELL_BODY)
+            }
             request.nonce = nonce
             request.nativeLogFd = resources.native.writeFd()
             request.shellLogFd = resources.shell.writeFd()
@@ -90,13 +102,9 @@ internal class DiagnoseNativeBinding private constructor(
                 .gl_diagnose_run(request, result)
             result.read()
             resources.closeWriteEnds()
-            val nativeBytes = resources.native.drainReadEnd()
-            val shellBytes = resources.shell.drainReadEnd()
-            val nativeLogValid = decodeRecord(nativeBytes, NATIVE_RECORD)
-            val shellLogValid = decodeRecord(shellBytes, SHELL_RECORD)
-            if (nativeLogValid) emit(logs, LogOrigin.Native, NATIVE_BODY)
-            if (shellLogValid) emit(logs, LogOrigin.Shell, SHELL_BODY)
-            return ChainResult(
+            val nativeLogValid = nativeCollector.await()
+            val shellLogValid = shellCollector.await()
+            return@coroutineScope ChainResult(
                 status = status,
                 uid = result.uid,
                 pid = result.pid,
@@ -118,23 +126,21 @@ internal class DiagnoseNativeBinding private constructor(
         closeOverride?.invoke()
     }
 
-    /** Decodes exactly one bounded phase record while discarding its source elapsed value. */
-    private fun decodeRecord(bytes: ByteArray?, pattern: Regex): Boolean {
-        if (bytes == null || bytes.isEmpty() || bytes.size > MAX_STREAM_BYTES) return false
-        if (bytes.last() != '\n'.code.toByte()) return false
-        if (bytes.dropLast(1).any { byte ->
-                byte == '\n'.code.toByte() || (byte.toInt() and 0xff) !in ASCII_PRINTABLE
-            }
-        ) {
-            return false
+    /** Drains one FD connector and validates the exact single Diagnose phase record independently of delivery. */
+    private suspend fun collectPhase(
+        connector: FdLogConnector,
+        logs: LogEmitter,
+        origin: LogOrigin,
+        body: String,
+    ): Boolean {
+        var count = 0
+        var exact = true
+        val end = connector.collect { draft ->
+            count += 1
+            if (draft.origin != origin || draft.level != LogLevel.Info || draft.message != body) exact = false
+            runCatching { logs.emit(draft) }
         }
-        val match = pattern.matchEntire(bytes.toString(Charsets.US_ASCII)) ?: return false
-        return match.groupValues[1].toLongOrNull() != null
-    }
-
-    /** Delivers one validated phase record without changing chain facts on sink failure. */
-    private fun emit(logs: LogEmitter, origin: LogOrigin, body: String) {
-        runCatching { logs.emit(LogDraft(origin, LogLevel.Info, body)) }
+        return end == LogConnectorEnd.Drained && exact && count == 1
     }
 
     /** Owns the two independent short pipes for one synchronous chain. */
@@ -165,6 +171,17 @@ internal class DiagnoseNativeBinding private constructor(
         private var readEnd: ParcelFileDescriptor?,
         private var writeEnd: ParcelFileDescriptor?,
     ) : Closeable {
+        private var reader: FdLogConnector? = null
+
+        /** Transfers the read endpoint into one connector retained for abort-time close. */
+        @Synchronized
+        fun connector(origin: LogOrigin): FdLogConnector {
+            check(reader == null) { "diagnose log connector already created" }
+            val descriptor = checkNotNull(readEnd) { "diagnose native read end is closed" }
+            readEnd = null
+            return FdLogConnector(descriptor, origin).also { connector -> reader = connector }
+        }
+
         /** @return Borrowed raw write descriptor valid only until [closeWriteEnd]. */
         @Synchronized
         fun writeFd(): Int = checkNotNull(writeEnd) { "diagnose native write end is closed" }.fd
@@ -176,35 +193,15 @@ internal class DiagnoseNativeBinding private constructor(
             writeEnd = null
         }
 
-        /** Drains through EOF while retaining at most 769 bytes. */
-        fun drainReadEnd(): ByteArray? {
-            val descriptor = synchronized(this) {
-                checkNotNull(readEnd) { "diagnose native read end is closed" }.also { readEnd = null }
-            }
-            return ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { input ->
-                val captured = ByteArrayOutputStream(MAX_CAPTURE_BYTES)
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                var total = 0L
-                while (true) {
-                    val count = input.read(buffer)
-                    if (count < 0) break
-                    if (captured.size() < MAX_CAPTURE_BYTES) {
-                        val retained = minOf(count, MAX_CAPTURE_BYTES - captured.size())
-                        captured.write(buffer, 0, retained)
-                    }
-                    total += count.toLong()
-                }
-                if (total <= MAX_STREAM_BYTES.toLong()) captured.toByteArray() else null
-            }
-        }
-
         /** Closes only endpoints still owned by this call wrapper. */
         @Synchronized
         override fun close() {
             runCatching { writeEnd?.close() }
             runCatching { readEnd?.close() }
+            runCatching { reader?.close() }
             writeEnd = null
             readEnd = null
+            reader = null
         }
 
         companion object {
@@ -231,13 +228,7 @@ internal class DiagnoseNativeBinding private constructor(
         const val HANDOFF_WAIT: Int = -9
         const val HANDOFF_CHILD_SIGNALED: Int = -10
         const val HANDOFF_INTERNAL: Int = -11
-        const val MAX_STREAM_BYTES: Int = 768
-        const val MAX_CAPTURE_BYTES: Int = MAX_STREAM_BYTES + 1
         const val NATIVE_BODY: String = "diagnose:native:roundtrip-ok"
         const val SHELL_BODY: String = "diagnose:shell:handoff-ok"
-
-        private val ASCII_PRINTABLE: IntRange = 0x20..0x7e
-        private val NATIVE_RECORD = Regex("\\[I/([0-9]+)ms] diagnose:native:roundtrip-ok\\n")
-        private val SHELL_RECORD = Regex("\\[I/([0-9]+)ms] diagnose:shell:handoff-ok\\n")
     }
 }

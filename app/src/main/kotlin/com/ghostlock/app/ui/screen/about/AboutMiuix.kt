@@ -1,5 +1,7 @@
 package com.ghostlock.app.ui.screen.about
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -17,8 +19,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon as MaterialIcon
 import androidx.compose.material3.IconButton as MaterialIconButton
 import androidx.compose.material3.MaterialTheme
@@ -52,7 +52,7 @@ fun AboutScreenMiuix(state: AboutUiState, actions: AboutActions) {
                 navigationIcon = {
                     MaterialIconButton(onClick = actions.onBack) {
                         MaterialIcon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            imageVector = ProjectIcons.AutoMirrored.Filled.ArrowBack.material,
                             contentDescription = stringResource(R.string.action_back),
                             tint = MiuixTheme.colorScheme.onBackground,
                         )

@@ -1,5 +1,7 @@
 package com.ghostlock.app.ui.component.miuix
 
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -71,9 +73,6 @@ import com.ghostlock.app.ui.component.SearchStatus
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.basic.Search
-import top.yukonga.miuix.kmp.icon.basic.SearchCleanup
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 
 /** Like `padding(top = …)` but reads [top] in the layout phase, so a frame-rate value relayouts instead of recomposing. */
@@ -277,7 +276,7 @@ fun SearchBar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = MiuixIcons.Basic.Search,
+                    imageVector = ProjectIcons.Basic.Search.miuix,
                     contentDescription = "search",
                     modifier = Modifier
                         .size(44.dp)
@@ -293,7 +292,7 @@ fun SearchBar(
                     exit = fadeOut() + scaleOut(),
                 ) {
                     Icon(
-                        imageVector = MiuixIcons.Basic.SearchCleanup,
+                        imageVector = ProjectIcons.Basic.SearchCleanup.miuix,
                         tint = colorScheme.onSurface,
                         contentDescription = "Clean",
                         modifier = Modifier
@@ -330,7 +329,7 @@ fun SearchBarFake(
         label = label,
         leadingIcon = {
             Icon(
-                imageVector = MiuixIcons.Basic.Search,
+                imageVector = ProjectIcons.Basic.Search.miuix,
                 contentDescription = "Clean",
                 modifier = Modifier
                     .size(44.dp)

@@ -3,11 +3,14 @@ package com.ghostlock.app.core.run
 import com.ghostlock.app.domain.run.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CompletableJob
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,7 +19,9 @@ import kotlinx.coroutines.launch
 
 /**
  * Application-lifetime single-writer log hub: raw FIFO, one commit/format processor, processed FIFO, and one dispatcher.
- * The dispatcher only enqueues the same immutable event into independent unbounded sink queues; no sink I/O blocks it.
+ * Each accepted run owns a separate connector scope; this class sees only [LogConnector] and [LogDraft], never a
+ * source transport. The dispatcher enqueues one immutable event into independent unbounded sink queues, so no sink
+ * I/O blocks connector collection or another sink.
  */
 class LogHub(
     private val formatter: LogDocumentFormatter,
@@ -66,7 +71,7 @@ class LogHub(
         context: RunSessionState,
         sinkRequest: LogSinkRequest,
         storageSinks: List<LogSinkBinding>,
-        execute: suspend ((LogRecord) -> Unit) -> RunExecutionResult,
+        execute: suspend (suspend (LogConnector) -> LogConnectorEnd) -> RunExecutionResult,
     ): Boolean {
         lateinit var launched: Job
         val suppliedSinks = storageSinks.toList()
@@ -104,14 +109,16 @@ class LogHub(
                 entries = LogRowsSnapshot.fromRecords(emptyList(), token, 0L),
             )
             enqueue(RawEvent.Start(run))
-            enqueue(RawEvent.Record(token, LogRecord(LogOrigin.Kotlin, LogLevel.Info, "backend run: ${context.backendLabel}")))
+            enqueue(RawEvent.Record(token, LogDraft(LogOrigin.Kotlin, LogLevel.Info, "backend run: ${context.backendLabel}")))
             launched = scope.launch(start = CoroutineStart.LAZY) {
                 try {
-                    val result = execute { record -> appendRecord(token, record) }
+                    val result = execute { connector -> attachConnector(token, connector) }
+                    awaitConnectors(token)
                     complete(token, result)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (problem: Throwable) {
+                    abortConnectors(token)
                     complete(token, RunExecutionResult.TransportFailure(
                         "log-hub:exception:${problem::class.java.simpleName}",
                     ))
@@ -148,7 +155,7 @@ class LogHub(
             val job = activeJob ?: return@synchronized false
             if (!job.isActive || current.phase != RunSessionPhase.Running) return@synchronized false
             if (!current.abortable) {
-                enqueue(RawEvent.Record(run.token, LogRecord(LogOrigin.Kotlin, LogLevel.Warn, disabledMessage)))
+                enqueue(RawEvent.Record(run.token, LogDraft(LogOrigin.Kotlin, LogLevel.Warn, disabledMessage)))
                 false
             } else {
                 abortRequested = true
@@ -194,12 +201,79 @@ class LogHub(
         }
     }
 
-    /** Accepts one source record only while the matching run remains active. */
-    private fun appendRecord(token: Long, record: LogRecord) {
+    /** Accepts one raw source draft only while the matching run remains active. */
+    private fun appendDraft(token: Long, draft: LogDraft) {
         synchronized(lock) {
             val run = latestRun ?: return
             if (run.token != token || run.terminalEnqueued || mutableState.value.phase !in ACTIVE_PHASES) return
-            enqueue(RawEvent.Record(token, record))
+            enqueue(RawEvent.Record(token, draft))
+        }
+    }
+
+    /** Starts one hub-owned connector collector and suspends until its accepted prefix has drained. */
+    private suspend fun attachConnector(token: Long, connector: LogConnector): LogConnectorEnd {
+        lateinit var attached: ActiveConnector
+        synchronized(lock) {
+            val run = latestRun
+            check(run != null && run.token == token && run.acceptingConnectors && !run.terminalEnqueued) {
+                "log connector attached outside the active run"
+            }
+            val job = run.connectorScope.async(start = CoroutineStart.LAZY) {
+                val end = try {
+                    connector.collect { draft -> appendDraft(token, draft) }
+                } catch (problem: Throwable) {
+                    LogConnectorEnd.Incomplete("connector-" + problem::class.java.simpleName)
+                } finally {
+                    runCatching { connector.close() }
+                }
+                if (end is LogConnectorEnd.Incomplete) {
+                    appendDraft(
+                        token,
+                        LogDraft(
+                            LogOrigin.Kotlin,
+                            LogLevel.Warn,
+                            "log source incomplete: " + sanitizeConnectorReason(end.reason),
+                        ),
+                    )
+                }
+                synchronized(lock) {
+                    latestRun?.takeIf { active -> active.token == token }?.connectors?.remove(attached)
+                }
+                end
+            }
+            attached = ActiveConnector(connector, job)
+            run.connectors += attached
+        }
+        attached.job.start()
+        return attached.job.await()
+    }
+
+    /** Freezes dynamic attachment and waits for every connector job before report rows and End. */
+    private suspend fun awaitConnectors(token: Long) {
+        val connectors = synchronized(lock) {
+            val run = latestRun?.takeIf { active -> active.token == token } ?: return
+            run.acceptingConnectors = false
+            run.connectors.toList()
+        }
+        connectors.forEach { attached -> attached.job.await() }
+        synchronized(lock) {
+            latestRun?.takeIf { active -> active.token == token }?.connectorRoot?.complete()
+        }
+    }
+
+    /** Aborts active readers only when the owning run itself is cancelled or fails unexpectedly. */
+    private fun abortConnectors(token: Long) {
+        val connectors = synchronized(lock) {
+            val run = latestRun?.takeIf { active -> active.token == token } ?: return
+            run.acceptingConnectors = false
+            run.connectors.toList()
+        }
+        connectors.forEach { attached ->
+            runCatching { attached.connector.close() }
+        }
+        synchronized(lock) {
+            latestRun?.takeIf { active -> active.token == token }
+                ?.connectorRoot?.cancel(CancellationException("log run aborted"))
         }
     }
 
@@ -210,9 +284,9 @@ class LogHub(
             if (run.token != token || run.terminalEnqueued || abortRequested) return
             val report = (result as? RunExecutionResult.Completed)?.report
             val candidates = when (result) {
-                is RunExecutionResult.Blocked -> result.reasons.map { LogRecord(LogOrigin.Kotlin, LogLevel.Warn, it) }
-                is RunExecutionResult.Refused -> result.reasons.map { LogRecord(LogOrigin.Kotlin, LogLevel.Warn, it) }
-                is RunExecutionResult.TransportFailure -> listOf(LogRecord(LogOrigin.Kotlin, LogLevel.Error, result.reason))
+                is RunExecutionResult.Blocked -> result.reasons.map { LogDraft(LogOrigin.Kotlin, LogLevel.Warn, it) }
+                is RunExecutionResult.Refused -> result.reasons.map { LogDraft(LogOrigin.Kotlin, LogLevel.Warn, it) }
+                is RunExecutionResult.TransportFailure -> listOf(LogDraft(LogOrigin.Kotlin, LogLevel.Error, result.reason))
                 is RunExecutionResult.Completed -> reportRecords(result.report)
             }
             candidates.forEach { enqueue(RawEvent.Record(token, it)) }
@@ -229,6 +303,11 @@ class LogHub(
 
     /** Guarantees End for cancellation or an unexpected Flow exit. */
     private fun completeAbort(token: Long) {
+        val needsAbort = synchronized(lock) {
+            latestRun?.takeIf { run -> run.token == token }?.terminalEnqueued == false
+        }
+        if (!needsAbort) return
+        abortConnectors(token)
         synchronized(lock) {
             val run = latestRun ?: return
             if (run.token != token || run.terminalEnqueued) return
@@ -244,7 +323,7 @@ class LogHub(
             val run = latestRun ?: return
             if (run.token != token || run.warningPublished || run.terminalEnqueued) return
             run.warningPublished = true
-            enqueue(RawEvent.Record(token, LogRecord(
+            enqueue(RawEvent.Record(token, LogDraft(
                 LogOrigin.Kotlin, LogLevel.Warn, "log sink: ${failure.kind}: ${failure.detail}",
             )))
         }
@@ -267,11 +346,15 @@ class LogHub(
                     }
                     is RawEvent.Record -> {
                         val run = current ?: continue
-                        if (run.token != event.token || event.record.level.wireValue < run.minimumLevel.wireValue) continue
+                        if (run.token != event.token || event.draft.level.wireValue < run.minimumLevel.wireValue) continue
                         check(nextCommitId < Long.MAX_VALUE) { "log commit id exhausted" }
-                        val committed = event.record.copy(
+                        val committed = LogRecord(
+                            origin = event.draft.origin,
+                            level = event.draft.level,
+                            message = event.draft.message,
                             commitId = ++nextCommitId,
                             elapsedMs = elapsedSince(run.startedAt),
+                            sourceElapsedMs = event.draft.sourceElapsedMs,
                         )
                         val row = formatter.formatRecord(committed, run.request.formatConfig)
                         processed.trySend(ProcessedEvent.ToSink(run.token, LogSinkEvent.Entry(committed, row))).getOrThrow()
@@ -391,7 +474,7 @@ class LogHub(
         (System.nanoTime() / 1_000_000L - startedAt).coerceAtLeast(0L)
 
     /** Nine ordinary Info log records; the frozen global threshold filters them like every other source. */
-    private fun reportRecords(report: RunReport): List<LogRecord> = listOf(
+    private fun reportRecords(report: RunReport): List<LogDraft> = listOf(
         reportRecord("Capability", report.runCapability.name),
         reportRecord("Diagnostic", report.diagnosticOutcome.name,
             stateColor(report.diagnosticOutcome == DiagnosticOutcome.PASS, report.diagnosticOutcome == DiagnosticOutcome.FAIL)),
@@ -410,7 +493,7 @@ class LogHub(
     )
 
     /** Converts one typed stage into a single ordinary Info summary. */
-    private fun stageRecord(name: String, stage: StageResult, count: Int? = null): LogRecord {
+    private fun stageRecord(name: String, stage: StageResult, count: Int? = null): LogDraft {
         val exit = if (stage.exitKind == ExitKind.NONE) "" else "/${stage.exitKind.name}=${stage.exitValue}"
         val items = count?.let { " ($it)" }.orEmpty()
         return reportRecord(name, "${stage.state.name}/${stage.reason.name}$exit$items",
@@ -419,9 +502,13 @@ class LogHub(
     }
 
     /** Creates one Kotlin/Info record with an optional approved foreground override. */
-    private fun reportRecord(name: String, value: String, color: String? = null): LogRecord =
-        LogRecord(LogOrigin.Kotlin, LogLevel.Info,
+    private fun reportRecord(name: String, value: String, color: String? = null): LogDraft =
+        LogDraft(LogOrigin.Kotlin, LogLevel.Info,
             "$name: " + if (color == null) value else color + value + ANSI_RESET)
+
+    /** Restricts connector diagnostics to one bounded printable ASCII line. */
+    private fun sanitizeConnectorReason(reason: String): String =
+        reason.filter { character -> character.code in 0x20..0x7e }.take(MAX_CONNECTOR_REASON_CHARACTERS)
 
     /** @return Approved semantic foreground override, or null for ordinary Info white. */
     private fun stateColor(success: Boolean, failure: Boolean, warning: Boolean = false): String? = when {
@@ -438,16 +525,20 @@ class LogHub(
         val minimumLevel: LogLevel,
         val request: LogSinkRequest,
         val sinks: List<LogSinkBinding>,
+        val connectorRoot: CompletableJob = SupervisorJob(),
+        val connectors: MutableList<ActiveConnector> = mutableListOf(),
+        var acceptingConnectors: Boolean = true,
         var terminalEnqueued: Boolean = false,
         var warningPublished: Boolean = false,
     ) {
+        val connectorScope: CoroutineScope = CoroutineScope(connectorRoot + Dispatchers.IO)
         val fileSink: LogFileSink = sinks.single { it.role == LogSinkRole.PRIVATE_FILE }.sink as LogFileSink
     }
 
     /** Raw operations share one FIFO with records, clear, barrier, and terminal. */
     private sealed interface RawEvent {
         data class Start(val run: ActiveRun) : RawEvent
-        data class Record(val token: Long, val record: LogRecord) : RawEvent
+        data class Record(val token: Long, val draft: LogDraft) : RawEvent
         data class UiClear(val token: Long) : RawEvent
         data class FileBarrier(val token: Long, val completion: CompletableDeferred<LogFilePrefix>) : RawEvent
         data class End(val token: Long, val phase: RunSessionPhase) : RawEvent
@@ -464,6 +555,12 @@ class LogHub(
         data class Barrier(val completion: CompletableDeferred<LogFilePrefix>) : FileWait
         data class Terminal(val sink: LogFileSink) : FileWait
     }
+
+    /** One run-owned connector and the hub-owned collector draining it. */
+    private data class ActiveConnector(
+        val connector: LogConnector,
+        val job: Deferred<LogConnectorEnd>,
+    )
 
     /** UI sink owns one append-only array, publishes only fixed-prefix snapshots, and does no file I/O. */
     private class UiSink(
@@ -540,6 +637,7 @@ class LogHub(
         private const val ANSI_RED = "\u001B[31m"
         private const val ANSI_GREEN = "\u001B[32m"
         private const val ANSI_YELLOW = "\u001B[33m"
+        private const val MAX_CONNECTOR_REASON_CHARACTERS: Int = 512
         private val ACTIVE_PHASES = setOf(RunSessionPhase.Running, RunSessionPhase.Aborting)
     }
 }

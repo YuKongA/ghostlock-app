@@ -1,6 +1,9 @@
 package com.ghostlock.app.domain.privilege
 
+import kotlinx.serialization.Serializable
+
 /** Process family selected for one backend execution. */
+@Serializable
 enum class AttackExecutorKind {
     APP,
     SHIZUKU,
@@ -51,4 +54,7 @@ enum class ExecutorSelectionResult {
 
     /** Shizuku is absent, stopped, or too old for the permission API. */
     UNAVAILABLE,
+
+    /** Durable executor selection failed and presentation must not navigate as if it succeeded. */
+    PERSISTENCE_FAILED,
 }

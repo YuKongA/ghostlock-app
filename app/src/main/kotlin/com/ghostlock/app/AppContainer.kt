@@ -1,28 +1,26 @@
 package com.ghostlock.app
 
+import android.app.Application
 import android.content.Context
 import androidx.lifecycle.ViewModelProvider
-import com.ghostlock.app.backend.registry.BackendRegistry
-import com.ghostlock.app.backend.transport.AppRunHostClient
-import com.ghostlock.app.backend.transport.ShizukuRunHostClient
+import com.ghostlock.app.data.runhost.client.AppRunHostClient
+import com.ghostlock.app.data.runhost.client.ShizukuRunHostClient
+import com.ghostlock.app.composition.backend.BackendRegistry
 import com.ghostlock.app.core.run.LogHub
 import com.ghostlock.app.core.run.RunInputFreezer
-import com.ghostlock.app.data.backend.BackendCatalogAdapter
-import com.ghostlock.app.data.backend.BackendRunSessionAdapter
+import com.ghostlock.app.data.run.AndroidRunSessionAdapter
 import com.ghostlock.app.data.backend.BackendSelectionAdapter
 import com.ghostlock.app.data.backend.BackendSessionStore
-import com.ghostlock.app.data.backend.AndroidBackendConfigurationAdapter
 import com.ghostlock.app.data.device.AndroidDeviceStatusAdapter
 import com.ghostlock.app.data.diagnostics.AndroidDiagnosticReportBuilder
-import com.ghostlock.app.data.finish.FinishDocumentRepository
-import com.ghostlock.app.data.payload.PayloadDocumentRepository
+import com.ghostlock.app.data.finish.DataStoreFinishRepository
+import com.ghostlock.app.data.payload.DataStorePayloadRepository
 import com.ghostlock.app.data.privilege.AndroidPrivilegeAdapter
-import com.ghostlock.app.data.run.PackagedBackendArtifactResolver
 import com.ghostlock.app.data.run.RootManagerArtifactResolver
-import com.ghostlock.app.data.settings.SharedPreferencesUiPreferencesRepository
-import com.ghostlock.app.data.settings.SharedPreferencesOperationalPreferencesAdapter
+import com.ghostlock.app.data.settings.DataStoreAppSelectionRepository
+import com.ghostlock.app.data.settings.DataStoreOperationalPreferencesRepository
+import com.ghostlock.app.data.settings.DataStoreUiPreferencesRepository
 import com.ghostlock.app.data.update.DisabledAppUpdateAdapter
-import com.ghostlock.app.domain.backend.GetBackendCatalogUseCase
 import com.ghostlock.app.domain.backend.SelectBackendUseCase
 import com.ghostlock.app.domain.run.RunBackendUseCase
 import com.ghostlock.app.domain.device.ReadDeviceStatusUseCase
@@ -46,8 +44,12 @@ import com.ghostlock.app.domain.settings.SaveOperationalPreferencesUseCase
 import com.ghostlock.app.domain.settings.SelectLogExportDirectoryUseCase
 import com.ghostlock.app.domain.settings.SetNavigationRailExpandedUseCase
 import com.ghostlock.app.domain.update.CheckAppUpdateUseCase
-import com.ghostlock.app.ui.backend.BackendConfigRenderer
-import com.ghostlock.app.ui.backend.RegisteredBackendConfigRenderer
+import com.ghostlock.app.ui.backend.BackendUiCatalog
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 
 /**
  * Application-scoped composition root for Clean Architecture adapters and use cases.
@@ -55,17 +57,37 @@ import com.ghostlock.app.ui.backend.RegisteredBackendConfigRenderer
  * @param context Application context used to construct Android data adapters once.
  * @property viewModelFactory Factory that injects the settings and device-domain use cases.
  * @note Physical adapter lifetime equals the application process; presentation never constructs it directly.
+ * The sole LogHub is source-neutral: run adapters attach already-instantiated connectors rather than factories.
  */
 class AppContainer(context: Context) {
     private val applicationContext = context.applicationContext
-    private val backendRegistryEntries = BackendRegistry.specs.toList()
-    private val backendSessionStore = BackendSessionStore()
-    private val backendConfigurationAdapter = AndroidBackendConfigurationAdapter(
-        registryEntries = backendRegistryEntries,
-        availability = BackendRegistry::availability,
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    init {
+        check(Application.getProcessName() == applicationContext.packageName) {
+            "AppContainer is restricted to the main application process"
+        }
+    }
+    private val backendDescriptors = BackendRegistry.descriptors.toList()
+    private val appSelectionRepository = DataStoreAppSelectionRepository.create(
+        applicationContext,
+        applicationScope,
     )
-    private val uiPreferencesRepository = SharedPreferencesUiPreferencesRepository(context)
-    private val operationalPreferencesAdapter = SharedPreferencesOperationalPreferencesAdapter(context)
+    private val backendSessionStore = BackendSessionStore(appSelectionRepository)
+    /** Sole UI-owned projection of the immutable built-in definition snapshot. */
+    val backendUiCatalog = BackendUiCatalog(
+        entries = BackendRegistry.uiEntries,
+        selectedKey = { backendSessionStore.selectedKey },
+        availability = BackendRegistry::availability,
+        text = applicationContext::getString,
+    )
+    private val uiPreferencesRepository = DataStoreUiPreferencesRepository.create(
+        applicationContext,
+        applicationScope,
+    )
+    private val operationalPreferencesAdapter = DataStoreOperationalPreferencesRepository.create(
+        applicationContext,
+        applicationScope,
+    )
     private val observeUiPreferences = ObserveUiPreferencesUseCase(uiPreferencesRepository)
     private val observeOperationalPreferences = ObserveOperationalPreferencesUseCase(
         operationalPreferencesAdapter,
@@ -79,49 +101,43 @@ class AppContainer(context: Context) {
         operationalPreferencesAdapter,
     )
     private val setNavigationRailExpanded = SetNavigationRailExpandedUseCase(uiPreferencesRepository)
-    private val privilegeAdapter = AndroidPrivilegeAdapter(context)
+    private val privilegeAdapter = AndroidPrivilegeAdapter(applicationContext, appSelectionRepository)
     private val observePrivilege = ObservePrivilegeUseCase(privilegeAdapter)
     private val refreshPrivilege = RefreshPrivilegeUseCase(privilegeAdapter)
     private val selectPrivilegeExecutor = SelectPrivilegeExecutorUseCase(privilegeAdapter)
     private val deviceStatusAdapter = AndroidDeviceStatusAdapter()
     private val readDeviceStatus = ReadDeviceStatusUseCase(deviceStatusAdapter)
     private val checkAppUpdate = CheckAppUpdateUseCase(DisabledAppUpdateAdapter())
-    private val backendCatalogAdapter = BackendCatalogAdapter(
-        registryEntries = backendRegistryEntries,
-        selectedKey = { backendSessionStore.selectedKey },
-        availability = BackendRegistry::availability,
-    )
-    private val getBackendCatalog = GetBackendCatalogUseCase(backendCatalogAdapter)
     private val selectBackend = SelectBackendUseCase(
-        BackendSelectionAdapter(backendRegistryEntries, backendSessionStore),
+        BackendSelectionAdapter(backendDescriptors, backendSessionStore),
     )
-    private val payloadRepository = PayloadDocumentRepository(context)
-    private val finishRepository = FinishDocumentRepository(context)
-    private val packagedBackendArtifactResolver = PackagedBackendArtifactResolver(context) { backendKey ->
-        BackendRegistry.plugin(backendKey)?.carrierArtifact
-    }
+    private val payloadRepository = DataStorePayloadRepository.create(applicationContext, applicationScope)
+    private val finishRepository = DataStoreFinishRepository.create(applicationContext, applicationScope)
     private val rootManagerArtifactResolver = RootManagerArtifactResolver(context)
     private val runInputFreezer = RunInputFreezer(
         context = context,
         payloadRepository = payloadRepository,
         finishRepository = finishRepository,
-        packagedCarrierResolver = packagedBackendArtifactResolver,
         rootManagerResolver = rootManagerArtifactResolver,
     )
     private val logDocumentFormatter = LogDocumentFormatter()
     private val logHub = LogHub(logDocumentFormatter)
     private val runBackend = RunBackendUseCase(
-        BackendRunSessionAdapter(
+        AndroidRunSessionAdapter(
             context = context,
-            registryEntries = backendRegistryEntries,
+            registryEntries = backendDescriptors,
             availability = BackendRegistry::availability,
+            backendLabel = { key ->
+                backendUiCatalog.entry(key)?.let(backendUiCatalog::displayName)
+            },
             selectedKey = { backendSessionStore.selectedKey },
             logHub = logHub,
             formatter = logDocumentFormatter,
             freezer = runInputFreezer,
             appClient = AppRunHostClient(context),
             shizukuClient = ShizukuRunHostClient(context),
-            observeOperationalPreferences = observeOperationalPreferences,
+            operationalPreferencesPort = operationalPreferencesAdapter,
+            applicationScope = applicationScope,
             observePrivilege = observePrivilege,
         ),
     )
@@ -136,8 +152,6 @@ class AppContainer(context: Context) {
     private val readPayloadEditor = ReadPayloadEditorUseCase(payloadRepository)
     private val savePayloadEditor = SavePayloadEditorUseCase(payloadRepository)
     private val previewRootScript = PreviewRootScriptUseCase(
-        payloadRepository = payloadRepository,
-        finishRepository = finishRepository,
         previewPort = PreviewRootScriptPublisher(
             previewRoot = java.io.File(applicationContext.filesDir, "root-script-preview"),
             renderer = RootScriptRenderer(),
@@ -147,15 +161,16 @@ class AppContainer(context: Context) {
     /** Application diagnostic report command used by presentation save/share actions. */
     val createDiagnosticReport = CreateDiagnosticReportUseCase(diagnosticReportAdapter)
 
-    /** Restores the captured backend selection and configuration before the first composition. */
-    fun restoreBackendSession() {
-        backendSessionStore.restore(backendRegistryEntries)
-        backendRegistryEntries.forEach { spec -> backendConfigurationAdapter.refresh(spec.key) }
+    private val initialization = applicationScope.async(start = CoroutineStart.LAZY) {
+        uiPreferencesRepository.awaitInitial()
+        operationalPreferencesAdapter.awaitInitial()
+        appSelectionRepository.awaitInitial()
+        backendSessionStore.restore(backendDescriptors)
+        privilegeAdapter.refresh()
     }
 
-    /** Presentation-owned configuration renderer over the same captured registry membership. */
-    val backendConfigRenderer: BackendConfigRenderer =
-        RegisteredBackendConfigRenderer(backendConfigurationAdapter)
+    /** Waits the sole application-scoped initialization task without duplicating it across Activities. */
+    suspend fun initialize() = initialization.await()
 
     val viewModelFactory: ViewModelProvider.Factory = AppViewModelFactory(
         observeUiPreferences = observeUiPreferences,
@@ -166,7 +181,7 @@ class AppContainer(context: Context) {
         selectLogExportDirectory = selectLogExportDirectory,
         setNavigationRailExpanded = setNavigationRailExpanded,
         readDeviceStatus = readDeviceStatus,
-        getBackendCatalog = getBackendCatalog,
+        backendUiCatalog = backendUiCatalog,
         selectBackend = selectBackend,
         checkAppUpdate = checkAppUpdate,
         observePrivilege = observePrivilege,

@@ -1,6 +1,7 @@
 package com.ghostlock.app.domain.run
 
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.Deferred
 
 /**
  * Single domain entry point for observing and controlling backend execution.
@@ -17,7 +18,7 @@ class RunBackendUseCase(
     fun refresh() = port.refresh()
 
     /** @return True when a new backend run was accepted. */
-    fun start(command: RunCommand): Boolean = port.start(command)
+    fun start(command: RunCommand): Deferred<Boolean> = port.start(command)
 
     /** @return True when explicit cancellation was accepted. */
     fun abort(): Boolean = port.abort()

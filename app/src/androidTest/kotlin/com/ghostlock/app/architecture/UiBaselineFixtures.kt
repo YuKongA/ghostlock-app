@@ -18,10 +18,12 @@ import com.ghostlock.app.R
 import com.ghostlock.app.ui.LocalMainPagerState
 import com.ghostlock.app.ui.LocalUiMode
 import com.ghostlock.app.ui.UiMode
-import com.ghostlock.app.ui.backend.RegisteredBackendConfigRenderer
+import com.ghostlock.app.composition.backend.BackendRegistry
+import com.ghostlock.app.ui.backend.BackendUiCatalog
 import com.ghostlock.app.ui.component.bottombar.rememberMainPagerState
 import com.ghostlock.app.ui.component.dialog.ContentDialogMaterial
 import com.ghostlock.app.ui.component.dialog.ContentDialogMiuix
+import com.ghostlock.app.ui.icon.Icons as ProjectIcons
 import com.ghostlock.app.ui.kit.LocalUiKit
 import com.ghostlock.app.ui.kit.MaterialKit
 import com.ghostlock.app.ui.kit.MiuixKit
@@ -70,15 +72,7 @@ import com.ghostlock.app.ui.theme.LocalEnableFloatingBottomBarBlur
 import com.ghostlock.app.domain.update.AppUpdateInfo
 import com.ghostlock.app.domain.privilege.AttackExecutorKind
 import com.ghostlock.app.domain.payload.PayloadEditorState
-import com.ghostlock.app.domain.backend.BackendConfigMutationResult
-import com.ghostlock.app.domain.backend.BackendChoiceKind
-import com.ghostlock.app.domain.backend.BackendChoiceOption
-import com.ghostlock.app.domain.backend.BackendConfigIcon
-import com.ghostlock.app.domain.backend.BackendConfigValue
-import com.ghostlock.app.domain.backend.BackendConfiguration
-import com.ghostlock.app.domain.backend.BackendConfigurationPort
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import androidx.test.platform.app.InstrumentationRegistry
 import com.materialkolor.PaletteStyle
 import com.materialkolor.dynamiccolor.ColorSpec
 
@@ -187,6 +181,7 @@ internal object UiBaselineFixtures {
         val pagerState = rememberPagerState(initialPage = 0, pageCount = { 4 })
         val mainPagerState = rememberMainPagerState(pagerState = pagerState, animatePageChanges = false)
         val kit = if (fixture.mode == UiMode.Material) MaterialKit else MiuixKit
+        val resolvedFixtureIcon = ProjectIcons.Filled.Security.resolve(fixture.mode)
         val settings = AppSettings(
             colorMode = fixture.theme,
             keyColor = 0,
@@ -204,7 +199,7 @@ internal object UiBaselineFixtures {
             LocalUiKit provides kit,
         ) {
             GhostLockAppTheme(appSettings = settings, uiMode = fixture.mode) {
-                key(fixture.memberId) {
+                key(fixture.memberId, resolvedFixtureIcon) {
                     Box(Modifier.fillMaxSize().testTag(ROOT_TAG)) {
                         RenderSurface(fixture)
                     }
@@ -310,7 +305,7 @@ internal object UiBaselineFixtures {
                     actions = backendActions(),
                     payloadState = payloadState(),
                     finishSettingsState = FinishSettingsUiState(),
-                    configRenderer = backendConfigRenderer,
+                    backendUiCatalog = backendUiCatalog,
                     bottomInnerPadding = 0.dp,
                 )
             } else {
@@ -319,7 +314,7 @@ internal object UiBaselineFixtures {
                     actions = backendActions(),
                     payloadState = payloadState(),
                     finishSettingsState = FinishSettingsUiState(),
-                    configRenderer = backendConfigRenderer,
+                    backendUiCatalog = backendUiCatalog,
                     bottomInnerPadding = 0.dp,
                 )
             }
@@ -347,10 +342,8 @@ internal object UiBaselineFixtures {
 
             "finish" -> PayloadPage(bottomInnerPadding = 0.dp, onBack = {})
             "finish_settings" -> FinishSettingsPage(bottomInnerPadding = 0.dp, onBack = {})
-            "config_43499" -> CardFrame { backendConfigRenderer.render(NEUTRAL_PROFILE_KEY) }
-            "config_43284" -> CardFrame { backendConfigRenderer.render(NEUTRAL_TOGGLE_KEY) }
-            "config_debug" -> CardFrame { backendConfigRenderer.render(DIAGNOSE_KEY) }
-            "config_custom" -> CardFrame { backendConfigRenderer.render(CUSTOM_KEY) }
+            "config_43499", "config_debug" -> CardFrame { RenderBackendUi(DIAGNOSE_KEY) }
+            "config_43284", "config_custom" -> CardFrame { RenderBackendUi(CUSTOM_KEY) }
             "confirm_dialog" -> ConfirmDialog(miuix)
             "component_gallery" -> ComponentGallery()
             else -> throw IllegalArgumentException("unclassified D0 surface: ${fixture.surface}")
@@ -393,69 +386,23 @@ internal object UiBaselineFixtures {
     /** @return Inert About-page callbacks for the baseline renderer. */
     private fun aboutActions(): AboutActions = AboutActions(onBack = {}, onOpenUrl = {})
 
-    private val backendConfigRenderer = RegisteredBackendConfigRenderer(
-        object : BackendConfigurationPort {
-            override val states: StateFlow<Map<String, BackendConfiguration>> = MutableStateFlow(
-                mapOf(
-                    NEUTRAL_PROFILE_KEY to BackendConfiguration.ChoiceDocument(
-                        key = NEUTRAL_PROFILE_KEY,
-                        field = "profile_reference",
-                        title = "Profile",
-                        summary = "Required",
-                        options = listOf(BackendChoiceOption(null, "None", BackendChoiceKind.NONE)),
-                        selectedIndex = 0,
-                        importTitle = "Import",
-                        importSummary = "Select a profile document",
-                        mimeTypes = listOf("text/plain"),
-                        errorText = "Invalid profile",
-                        invalid = false,
-                    ),
-                    NEUTRAL_TOGGLE_KEY to BackendConfiguration.Toggle(
-                        key = NEUTRAL_TOGGLE_KEY,
-                        field = "kernel_access_after_relay",
-                        title = "Kernel access",
-                        enabled = false,
-                        enabledSummary = "On",
-                        disabledSummary = "Off",
-                        icon = BackendConfigIcon.SECURITY,
-                    ),
-                    DIAGNOSE_KEY to BackendConfiguration.Static(
-                        key = DIAGNOSE_KEY,
-                        values = listOf(BackendConfigValue("ID", "Debug Probe")),
-                    ),
-                    CUSTOM_KEY to BackendConfiguration.Document(
-                        key = CUSTOM_KEY,
-                        field = "script_uri",
-                        importTitle = "Import Lua script",
-                        documentSummary = "No script selected",
-                        mimeTypes = listOf("text/x-lua", "text/plain"),
-                        facts = listOf(BackendConfigValue("Runtime", "Disabled")),
-                        details = null,
-                    ),
-                ),
-            )
+    private val backendUiCatalog: BackendUiCatalog by lazy {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        BackendUiCatalog(
+            entries = BackendRegistry.uiEntries,
+            selectedKey = { DIAGNOSE_KEY },
+            availability = BackendRegistry::availability,
+            text = context::getString,
+        )
+    }
 
-            override fun refresh(key: String) = Unit
-
-            override fun setBoolean(
-                key: String,
-                field: String,
-                value: Boolean,
-            ): BackendConfigMutationResult = BackendConfigMutationResult.APPLIED
-
-            override fun selectValue(
-                key: String,
-                field: String,
-                value: String?,
-            ): BackendConfigMutationResult = BackendConfigMutationResult.APPLIED
-
-            override fun importDocument(
-                key: String,
-                field: String,
-                uri: String,
-            ): BackendConfigMutationResult = BackendConfigMutationResult.APPLIED
-        },
-    )
+    /** Renders one current named backend UI without reviving the removed generic schema renderer. */
+    @Composable
+    private fun RenderBackendUi(key: String) {
+        backendUiCatalog.entry(key)?.let { entry ->
+            entry.ui.Content(backendUiCatalog.availabilityFor(entry.descriptor.key))
+        }
+    }
 
     /** @return Deterministic blocked-idle state rendered without obtaining a real session adapter. */
     private fun runIdleState(): RunUiState = RunUiState(
@@ -479,8 +426,8 @@ internal object UiBaselineFixtures {
     /** @return Stable selector state for both production path-page skins. */
     private fun backendState(): BackendPageUiState = BackendPageUiState(
         options = listOf(
-            BackendOptionUiState(DIAGNOSE_KEY, "Diagnose", true),
-            BackendOptionUiState(CUSTOM_KEY, "Lua operation flow", false),
+            BackendOptionUiState(DIAGNOSE_KEY, "Diagnose", true, ProjectIcons.Filled.BugReport),
+            BackendOptionUiState(CUSTOM_KEY, "Lua operation flow", false, ProjectIcons.Filled.Extension),
         ),
         selectedKey = DIAGNOSE_KEY,
     )
@@ -540,10 +487,10 @@ internal object UiBaselineFixtures {
         onSetUiModeIndex = {},
         onOpenAbout = {},
         onSetLogLevelIndex = {},
-        onSelectTerminalFont = {},
+        onSelectTerminalFont = { _, callback -> callback(false) },
         onSetShowLogTimestamp = {},
         onSetAutoExportLogs = {},
-        onSelectLogExportDirectory = { true },
+        onSelectLogExportDirectory = { _, callback -> callback(true) },
         onSetWarnOnRerun = {},
         onSetAutoAttackOnBoot = {},
         onSetBootRetryCount = {},
@@ -657,8 +604,6 @@ internal object UiBaselineFixtures {
         }
     }
 
-    private const val NEUTRAL_PROFILE_KEY: String = "NEUTRAL-PROFILE"
-    private const val NEUTRAL_TOGGLE_KEY: String = "NEUTRAL-TOGGLE"
     private const val DIAGNOSE_KEY: String = "DIAGNOSE"
     private const val CUSTOM_KEY: String = "CUSTOM"
 }

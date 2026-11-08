@@ -116,13 +116,17 @@ fun HomePager(
                 } else {
                     AttackExecutorKind.APP
                 }
-                when (viewModel.selectExecutor(kind)) {
-                    ExecutorSelectionResult.SELECTED,
-                    ExecutorSelectionResult.PERMISSION_REQUESTED,
-                    -> privilegePage = PrivilegeDialogPage.OVERVIEW
+                viewModel.selectExecutor(kind) { result ->
+                    when (result) {
+                        ExecutorSelectionResult.SELECTED,
+                        ExecutorSelectionResult.PERMISSION_REQUESTED,
+                        -> privilegePage = PrivilegeDialogPage.OVERVIEW
 
-                    ExecutorSelectionResult.UNAVAILABLE ->
-                        privilegePage = PrivilegeDialogPage.SHIZUKU_MISSING
+                        ExecutorSelectionResult.UNAVAILABLE ->
+                            privilegePage = PrivilegeDialogPage.SHIZUKU_MISSING
+
+                        ExecutorSelectionResult.PERSISTENCE_FAILED -> Unit
+                    }
                 }
             },
             onBack = { privilegePage = PrivilegeDialogPage.OVERVIEW },

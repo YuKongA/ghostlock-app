@@ -1,6 +1,7 @@
 package com.ghostlock.app.domain.settings
 
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.Deferred
 
 /**
  * Domain boundary for run/log interaction preferences and Android-owned picker effects.
@@ -10,12 +11,16 @@ import kotlinx.coroutines.flow.StateFlow
 interface OperationalPreferencesPort {
     val preferences: StateFlow<OperationalPreferences>
 
-    /**
-     * Persists a complete operational preference snapshot.
-     *
-     * @param value Storage-neutral state produced by a domain command.
-     */
-    fun save(value: OperationalPreferences)
+    /** Submits one actor-current transform and returns its exact committed aggregate. */
+    fun submit(
+        transform: (OperationalPreferences) -> OperationalPreferences,
+    ): Deferred<OperationalPreferences>
+
+    /** Seeds [preferences] from the real store before UI and Run consumers are constructed. */
+    suspend fun awaitInitial(): OperationalPreferences
+
+    /** @return Exact immutable operational aggregate at one run cutoff. */
+    fun snapshot(): Deferred<OperationalPreferences>
 
     /**
      * Copies a selected font into application-private storage.
@@ -23,7 +28,7 @@ interface OperationalPreferencesPort {
      * @param uri Android URI serialized at the presentation edge.
      * @return True when the adapter copied and selected a readable font.
      */
-    fun importTerminalFont(uri: String): Boolean
+    fun importTerminalFont(uri: String): Deferred<Boolean>
 
     /**
      * Selects a Downloads-compatible log export directory.
@@ -31,5 +36,5 @@ interface OperationalPreferencesPort {
      * @param uri Android tree URI serialized at the presentation edge.
      * @return True when the tree can be represented by the Downloads export contract.
      */
-    fun selectLogExportDirectory(uri: String): Boolean
+    fun selectLogExportDirectory(uri: String): Deferred<Boolean>
 }

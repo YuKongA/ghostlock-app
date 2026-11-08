@@ -5,5 +5,5 @@ class ReadFinishSettingsUseCase(
     private val port: FinishSettingsPort,
 ) {
     /** @return Current built-in Finish option projection. */
-    operator fun invoke(): FinishSettings = FinishSettings.from(port.read())
+    suspend operator fun invoke(): FinishSettings = FinishSettings.from(port.snapshot().await())
 }

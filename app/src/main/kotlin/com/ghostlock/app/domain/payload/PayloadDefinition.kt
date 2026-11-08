@@ -1,43 +1,22 @@
 package com.ghostlock.app.domain.payload
 
 import java.util.UUID
+import kotlinx.serialization.Serializable
 
-/** Stable Payload kinds persisted by the version-three Payload document. */
-enum class PayloadKind(val documentId: String) {
-    RootManager("root_manager"),
-    Command("command"),
-    Lkm("lkm"),
-    ;
-
-    companion object {
-        /**
-         * Resolves a document identifier without accepting aliases or legacy spellings.
-         *
-         * @param documentId Canonical version-three identifier.
-         * @return Matching kind, or null when the document is unsupported.
-         */
-        fun fromDocumentId(documentId: String): PayloadKind? =
-            entries.firstOrNull { it.documentId == documentId }
-    }
+/** Stable Payload kinds persisted as part of the complete typed aggregate. */
+@Serializable
+enum class PayloadKind {
+    RootManager,
+    Command,
+    Lkm,
 }
 
 /** Stable success evidence required by one Payload item. */
-enum class PayloadAcceptance(val documentId: String) {
-    ExitZero("exit_zero"),
-    DaemonAck("daemon_ack"),
-    ModulePresent("module_present"),
-    ;
-
-    companion object {
-        /**
-         * Resolves an exact version-three acceptance identifier.
-         *
-         * @param documentId Canonical identifier.
-         * @return Matching acceptance, or null for unsupported input.
-         */
-        fun fromDocumentId(documentId: String): PayloadAcceptance? =
-            entries.firstOrNull { it.documentId == documentId }
-    }
+@Serializable
+enum class PayloadAcceptance {
+    ExitZero,
+    DaemonAck,
+    ModulePresent,
 }
 
 /**
@@ -54,6 +33,7 @@ enum class PayloadAcceptance(val documentId: String) {
  * @property lkmUri Source document URI for an LKM.
  * @property lkmParams Whitespace-delimited module arguments.
  */
+@Serializable
 data class PayloadSlot(
     val id: String,
     val kind: PayloadKind,
@@ -88,6 +68,7 @@ fun PayloadKind.defaultAcceptance(): PayloadAcceptance = when (this) {
  * @property safeMode Whether a compatible manager receives its safe-mode argument.
  * @property items Ordered item definitions; disabled rows remain editable but are not frozen into a run.
  */
+@Serializable
 data class PayloadDefinition(
     val rootManager: String = "KernelSU",
     val safeMode: Boolean = false,

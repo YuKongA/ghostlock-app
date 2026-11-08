@@ -23,22 +23,28 @@ GhostLock 的产品成功不是 raw uid 0，而是 concrete backend 到达自己
 
 | 层 | 当前 owner 与职责 | 禁止反向依赖 |
 | --- | --- | --- |
-| domain/backend | neutral BackendSpec、presentation、configuration schema、parameter requirements、availability facts | Android、Compose、concrete backend、persistence |
+| domain/backend | neutral BackendDescriptor：stable key、selection、abort、execution-domain、capability；availability facts | Android、Compose、resource ID、Flow factory、配置 schema、concrete backend、persistence |
 | domain/run | FrozenRunInput、RunCapability、六层 RunReport、terminal 与 product-success projector | host implementation、日志推断 |
-| domain/payload 与 domain/finish | 两份独立 version-3 document、校验和用户语义 | backend root primitive |
-| data | Android persistence、profile/config projection、workspace、PFD staging、diagnostic report | concrete backend membership |
-| backend/declarations | internal BackendPlugin：spec、resource-free readiness、fresh one-shot Flow factory | UI、profile、AIDL 暴露 |
-| backend/registry | immutable same-APK membership 与 exact key lookup | runtime register、digest、reflection |
-| backend/transport | typed RunHost clients、host state machine、event/snapshot validation、process carrier | Bundle 与动态 method lookup |
-| core/run | 一次冻结输入与 application-lifetime LogHub | renderer/ViewModel lifetime ownership |
+| domain/payload 与 domain/finish | 两份独立完整 data class、校验和用户语义 | backend root primitive、Android storage |
+| data | 五个 main-process typed DataStore、selection/session adapter、Android run adapter、RunHost client/wire/host adapter、workspace、PFD staging、FD log connector与diagnostic report；旧 profile 迁移缝仅保留 `LegacyProfileConverter` 与 `ValueModel` | concrete backend membership、UI catalog、通用 HOCON/profile/route pipeline |
+| backend/declarations 与 backend/backends | internal BackendRuntime/BackendRuntimeEntry、resource-free readiness、fresh one-shot Flow factory | UI、membership list、AIDL 暴露 |
+| composition/backend | 每backend一个 BackendDefinition；唯一 immutable BackendRegistry 与 runtime/UI projection | mutable run state、第二份 key/membership 表 |
+| core/runhost | platform-neutral RunHost protocol、request/snapshot model与one-shot state machine | Android、AIDL Parcelable、data、backend implementation、Compose |
+| core/run | 一次冻结输入、RunAdmissionPolicy 与 application-lifetime LogHub | renderer/ViewModel lifetime ownership |
 | core/flow | Flow.run 接受 BackendFlowInput 并返回 BackendRunFacts | product script generator |
-| UI | immutable UI state 与 action contract | data/backend/core implementation import |
+| runhost 与 shizuku | `AppRunHostService` 与 `GhostlockUserService` 两个 framework entry；共用同一 AIDL 和 data/core owner | 第二份 membership、UI catalog、backend-private contract |
+| UI/backend | BackendUi、BackendUiEntry、唯一 BackendUiCatalog、具名Android页面、多语言资源与项目图标 | data/backend/core implementation import、membership authority |
+| UI其它层 | immutable UI state 与 action contract | data/backend/core implementation import |
 
-BackendSpec 不持有 Flow、Context、资源、动态 readiness cache 或 persistence callback。BackendPlugin 仅在 backend 内部可见；每次 accepted run 必须创建新的 Flow。
+`BackendDescriptor` 不持有 Flow、Context、资源、配置 schema、动态 readiness cache 或 persistence callback。只有 outer `BackendDefinition` 同时引用 descriptor、backend runtime 与 Android UI；每次 accepted run 必须由 `BackendRuntime` 创建新的 Flow。只有依赖系统内核偏移信息的backend参数由各自GLK profile v3表达；43284、Diagnose等非内核偏移型backend设置由各自具名typed authority表达，两类authority均禁止镜像双写。通用schema/renderer与Custom Lua→Compose映射均不存在。
+
+当前 `data/` 只放置有现役 caller 的 Android adapter/repository，以及唯一旧 profile 迁移入口所需的 `LegacyProfileConverter`/`ValueModel`。从旧 43499 exec-glue 搬入、但只在自身内部互相引用的 HOCON loader、generic profile model/resolver/exporter、wire/route model、component placeholder 与 Lua document repository 已删除；内置 kernel profile 资产、extractor、冻结的 native backend source 和历史图不因本次 data 分层清理而改变。
 
 ## 二、Payload、Finish 与单一 root script
 
-Payload 与 Finish 分别由自己的 repository 保存 version-3 typed document。RunInputFreezer 在一次 run 开始前同时冻结 backend key、profile-v3 snapshot、Payload 与 Finish，之后设置变化不影响 in-flight run。
+Payload 与 Finish 分别由自己的 repository 将完整 data class 直接写入 typed DataStore；内部没有 version wrapper、JCS 或 legacy codec。UI、Operational 与 AppSelection 使用另外三个独立 store。所有 store 只在 application 主进程构造，`:flowhost` 与 Shizuku host 只接收已经冻结的请求。
+
+DataStore actor 是每个 aggregate 的唯一写顺序 owner。设置事件提交 actor-current transform；Payload preview 直接使用其完整保存事务返回的精确对象，并显式传入空 Finish。Run action 在回调边界向 Operational、Payload 与 Finish actor 各排入 cutoff snapshot，再只冻结这些 handle 返回的不可变对象；cutoff 后的编辑进入下一次 run。初始化先读取 UI、Operational、AppSelection，恢复 backend/executor 选择，再允许 `MainActivity.setContent`，因此首帧不使用临时默认主题。
 
 RootScriptRenderer 是唯一整脚本 writer。发布过程固定为 host workspace 内写入、关闭、权限收口、同一 opened object 身份确认，再向 Flow 提供 published identity。backend 不生成 KernelSU、Payload 或 Finish 产品脚本，只负责 root primitive、exact artifact dispatch 与 attack-private cleanup facts。
 
@@ -49,11 +55,11 @@ RootScriptRenderer 是唯一整脚本 writer。发布过程固定为 host worksp
 合同定义：[P-RUN-IPC-001：RunHost wire 与状态机](../plan/backend-root-execution-runhost-wire.md#p-run-ipc-001)；下列为本页原快照说明，不复制合同 authority。
 
 1. UI 只提交 selected stable backend key。
-2. BackendRunSessionAdapter 重新解析 captured registry 与动态 availability。
+2. AndroidRunSessionAdapter 从 captured descriptor projection 解析 key，并通过 runtime projection读取动态 availability；显示名称只来自BackendUiCatalog。
 3. RunInputFreezer 一次冻结所有输入并创建 application-owned read-only source artifact。
 4. AppRunHostClient 或 ShizukuRunHostClient 发送相同 typed request 与只读 PFD；request 不携带 capability。
 5. RunHost 校验实际 Parcel 大小、结构、run identity、generation、semantic fingerprint、execution UID 与 SELinux domain。
-6. RunHost 从 exact plugin 投影 capability，dup PFD，stage 到 host-owned workspace，并创建 fresh Flow。
+6. `AppRunHostService` 或 `GhostlockUserService` 从 exact `BackendRuntimeEntry` 的 descriptor 投影 capability，dup PFD，stage 到 host-owned workspace，并由runtime创建fresh Flow。框架直接构造的两个host只允许调用outer registry的`runtime(key)`投影，不读取UI、definition或membership list。
 7. Flow 返回 backend primitive、dispatch、cleanup 与 diagnostic facts；PRODUCT_ROOT carrier 还必须让公共脚本产生 Payload/Finish item facts。
 8. host 发布 immutable terminal snapshot；callback 只作低延迟通知，client 同时轮询 getSnapshot 读取 durable authority。
 9. client 先请求 requestClose；host 接受并进入 DESTROYED 后，App 才 unbind，Shizuku 才 remove UserService。
@@ -85,7 +91,7 @@ DIAGNOSE的Flow在RunHost prepare阶段构造backend-private binding，binding�
 
 ## 五、日志与诊断
 
-日志是 diagnostic sink，不是成功 authority。2026-11-05 用户纠正 automatic export 的删除处置，随后批准R4B简化重写；current source保留historical flag/destination/picker与双皮肤controls，旧根级caller-zero object继续ABSENT。`domain/run`提供neutral `LogSinkFactory`、`LogSink`和唯一`GLLOG2`逐行formatter；current `LogHub`以raw与processed两个`Channel.UNLIMITED`、单processor及单dispatcher提交与分发，UI、private-file、可选MediaStore各有独立unlimited积压。`data/run`的文件与MediaStore worker各自独占stream，不逐行flush；App/Shizuku仍不各建exporter。
+日志是 diagnostic sink，不是成功 authority。`domain/run`提供最小`LogConnector.collect(LogDraft)`、`Drained/Incomplete`、neutral `LogSink`与唯一`GLLOG2`逐行formatter。Kotlin producer、Native/Shell FD、App/Shizuku callback分别在core或transport边界适配，唯一application `LogHub`不认识PFD、AIDL、JNA或shell grammar；它为每次run建立独立connector scope，动态attach后先drain再close。current `LogHub`以raw与processed两个`Channel.UNLIMITED`、单processor及单dispatcher提交与分发，UI、private-file、可选MediaStore各有独立unlimited积压；source FIFO不重排，跨source唯一顺序是raw ingress接受顺序，source clock与transport sequence都不是全局排序键。`data/run`的文件与MediaStore worker各自独占stream，不逐行flush；App/Shizuku仍不各建exporter。
 
 用户主动触发的 diagnostic report 仍由 AndroidDiagnosticReportBuilder 生成，并包含 typed run report。manual share、diagnostic log与automatic export复用同一逐行formatter及私有文件的已flush精确前缀；三者与 root-script result、产品成功判据彼此独立，export failure 不改变 RunReport 或 terminal。
 
@@ -99,6 +105,7 @@ tools/kotlin_architecture_d0.py 维护以下 source 规则：
 - 旧 IFlowHost 与 IGhostlock UserService AIDL transaction 禁止；
 - frozen candidate 之外的 manual JNI object marshalling 禁止；
 - `RunCoordinator`、旧debugprobe key/type、公共`Flow.initialize`、第二日志hub、任意JNA path/reload、backend内`ProcessBuilder`与项目JNI export禁止；`Native.load`只允许出现在Diagnose binding的constant-name无参构造路径；
+- 日志guard禁止第二个`LogConnector`合同、source-specific LogHub API、`(LogRecord)->Unit` direct ingress、累计有界Channel与按source clock排序；
 - P-RUN-X-001/批次01/P-RUN-CORE-001/批次01 删除路径必须在 file-action manifest 中保持 ABSENT。
 
 current architecture fixture已登记LogHub move、retired debugprobe与Diagnose/JNA current rows；门禁结果只按下一节的literal认定。

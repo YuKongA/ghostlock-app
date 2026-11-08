@@ -8,5 +8,5 @@ interface BackendSelectionPort {
      * @param key Stable backend identity from the current catalog.
      * @return True only when the selectable backend became the current selection.
      */
-    fun select(key: String): Boolean
+    suspend fun select(key: String): Boolean
 }

@@ -1,30 +1,20 @@
 package com.ghostlock.app.domain.finish
 
-/** Stable Finish item kinds supported by the root-script protocol. */
-enum class FinishKind(val documentId: String) {
-    Command("command"),
-    Script("script"),
-    Reboot("reboot"),
-    ;
+import kotlinx.serialization.Serializable
 
-    companion object {
-        /** @return Exact matching kind, or null for unsupported document input. */
-        fun fromDocumentId(documentId: String): FinishKind? =
-            entries.firstOrNull { it.documentId == documentId }
-    }
+/** Stable Finish item kinds supported by the root-script protocol. */
+@Serializable
+enum class FinishKind {
+    Command,
+    Script,
+    Reboot,
 }
 
 /** Stable impact of one Finish failure on the product terminal. */
-enum class FinishSeverity(val documentId: String) {
-    Normal("normal"),
-    SafetyCritical("safety_critical"),
-    ;
-
-    companion object {
-        /** @return Exact matching severity, or null for unsupported document input. */
-        fun fromDocumentId(documentId: String): FinishSeverity? =
-            entries.firstOrNull { it.documentId == documentId }
-    }
+@Serializable
+enum class FinishSeverity {
+    Normal,
+    SafetyCritical,
 }
 
 /**
@@ -37,6 +27,7 @@ enum class FinishSeverity(val documentId: String) {
  * @property artifactUri Source URI for script actions; null for command and reboot.
  * @property args Direct argv tokens or script positional arguments.
  */
+@Serializable
 data class FinishItemDefinition(
     val id: String,
     val kind: FinishKind,
@@ -51,6 +42,7 @@ data class FinishItemDefinition(
  *
  * @property items Ordered best-effort actions executed after Payload.
  */
+@Serializable
 data class FinishDefinition(
     val items: List<FinishItemDefinition> = emptyList(),
 )
