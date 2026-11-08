@@ -28,7 +28,7 @@ give you a root shell (`adb root` on a userdebug/eng build, or an equivalent
 root). No manager app is needed.
 
 Do **not** use a kernel with KernelSU patches or a loaded KernelSU module.
-This includes BakaSU/ReSukiSU and KowSU variants. These changes can interfere
+This includes BakaSU/ReSukiSU, SukiSU Ultra, and KowSU variants. These changes can interfere
 with the exploit. The script checks root access only, so confirm the kernel
 yourself before running.
 
