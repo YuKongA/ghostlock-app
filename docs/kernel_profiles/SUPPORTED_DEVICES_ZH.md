@@ -46,6 +46,7 @@ W3 seccomp bypass，即使并非必需，也能节省时间。
 | `6.1.138-android14-11-g965475777129-mi`                | REDMI K80                                                        |
 | `6.1.138-android14-11-g2ecae636cf9b-ab14676408`        | Lenovo Yoga Tab Plus (TB520FU)                                   |
 | `6.1.138-android14-11-g51f8c580613d-ab13911623`        | Redmi Note 14 Pro 5G / POCO X7                                   |
+| `6.1.138-android14-11-g7b9e94e37cfa-mi`                | Xiaomi Pad 7 Pro                                                 |
 | `6.1.145-android14-11-g09f1c0074ad7-ab14226177`        | Infinix Note 50s 5G, Infinix GT 30 (X6876)                       |
 | `6.1.145-android14-11-g11c274d0441f-ab14259673`        | RedMagic 9(S) Pro (REDMAGICOS11.0.5MR1_GB)                       |
 | `6.1.145-android14-11-g74d1702dab4d-ab14669069`        | vivo T4, IQOO 12                                                 |
