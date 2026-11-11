@@ -64,11 +64,13 @@ internal object LegacyProfileConverter {
     }
 
     private object SelectRouteCodec : LegacyRouteCodec {
-        override fun fillBranch(entry: ValueMap, branch: ValueMap) =
+        override fun fillBranch(entry: ValueMap, branch: ValueMap) {
             moveKey(entry, branch, "pselect_waiter_shift", "waiter_shift")
+        }
 
-        override fun fillFallback(entry: ValueMap, branch: ValueMap) =
+        override fun fillFallback(entry: ValueMap, branch: ValueMap) {
             moveKey(entry, branch, "pselect_waiter_shift", "waiter_shift")
+        }
     }
 
     private val RouteCodecs: Map<String, LegacyRouteCodec> = mapOf(
@@ -103,11 +105,12 @@ internal object LegacyProfileConverter {
         moveSymbolGroups(entry)
         moveKernelsnitch(entry)
         if (legacy && entry.containsKey("release")) {
-            /* remote/main-era reports carried no kernel_major (they are 6.x
-             * only); when a full legacy document does not state one, default to
-             * 6. A bundled/edited HOCON profile states its own value and wins,
-             * and a sparse override without a release is never seeded. */
-            if (!entry.containsKey("kernel_major")) entry["kernel_major"] = 6L
+            /* Older reports are 6.x and carry no kernel_major. An existing
+             * value wins, and a sparse override without a release is never
+             * seeded. */
+            if (!entry.containsKey("kernel_major")) {
+                entry["kernel_major"] = 6L
+            }
         }
         moveRouteLayout(entry)
         moveFallback(entry)
@@ -166,7 +169,9 @@ internal object LegacyProfileConverter {
         moveKey(structFields, snitch, "kernelsnitch_collisions", "collisions")
         moveKey(structFields, snitch, "mm_struct_sz", "mm_struct_sz")
         if (snitch.isEmpty()) entry.remove("kernelsnitch")
-        if (structFields.isEmpty()) entry.remove("struct_fields")
+        /* Extractor reports also carry BTF-only fields here. A leftover group
+         * would fail the top-level key check. */
+        entry.remove("struct_fields")
     }
 
     private fun moveGroup(

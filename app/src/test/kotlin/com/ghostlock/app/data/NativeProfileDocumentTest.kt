@@ -153,6 +153,19 @@ class NativeProfileDocumentTest {
     }
 
     @Test
+    fun `select_stack carries the flat-waiter flag on the wire`() {
+        val bytes = doc(
+            "select_stack",
+            mapOf("pselect_waiter_shift" to -2L, "compact_waiter" to 1L),
+        ).toBinary()
+        val entries = entriesOf(bytes, "route.select_stack").toMap()
+        assertEquals(-2L, entries["waiter_shift"])
+        assertEquals(1L, entries["compact_waiter"])
+        val decoded = NativeProfileDocument.fromBinary(bytes)!!
+        assertEquals(1u.toUByte(), (decoded.routeConfig as SelectConfig).compactWaiter)
+    }
+
+    @Test
     fun `unsigned values round trip exactly without clamping`() {
         val bytes = doc(
             "tcp_zerocopy",

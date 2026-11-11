@@ -175,6 +175,30 @@ class LegacyProfileConverterTest {
         assertTrue(entry.containsKey("route"))
         assertTrue(entry["route"].asValueMap()!!["select_stack"].asValueMap()!!.containsKey("waiter_shift"))
     }
+
+    @Test
+    fun `extra struct fields are dropped after the schema keys move`() {
+        val entry = valueMapOf(
+            "release" to "6.6.92-android15-8",
+            "pselect_waiter_shift" to -2,
+            "cred" to valueMapOf("copy_size" to 168, "caps_count" to 3),
+            "struct_fields" to valueMapOf(
+                "task_prio" to 132,
+                "struct_mm_struct" to 992,
+                "waiter_task" to 48,
+            ),
+            "symbols" to valueMapOf("off_init_task" to 41467584L),
+        )
+
+        LegacyProfileConverter.convertValue(entry)
+
+        assertFalse(entry.containsKey("struct_fields"))
+        assertEquals(132, entry["task_struct"].asValueMap()!!["prio"])
+        assertEquals(41467584L, entry["offset"].asValueMap()!!["init_task"])
+        assertEquals(168, entry["cred"].asValueMap()!!["copy_size"])
+        assertEquals(3, entry["cred"].asValueMap()!!["caps_count"])
+    }
+
 }
 
 class SparseOverrideConversionTest {
