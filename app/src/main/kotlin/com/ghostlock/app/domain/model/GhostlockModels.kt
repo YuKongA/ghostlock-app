@@ -20,6 +20,7 @@ data class KernelSnapshot(
     /** User-selected Shizuku path for kernels that do not require it. */
     val shizukuEnabled: Boolean = false,
     val shizukuStatus: ShizukuStatus,
+    val autoRootOnBoot: Boolean = false,
 )
 
 enum class ShizukuStatus { NOT_REQUIRED, NOT_RUNNING, PERMISSION_REQUIRED, READY }

@@ -20,6 +20,9 @@ interface GhostlockRepository {
     /** Skip the pre-attack KernelSU check and run the exploit as a test. */
     fun setForceAttackTest(enabled: Boolean)
 
+    /** Returns whether the requested value was saved. */
+    fun setAutoRootOnBoot(enabled: Boolean): Boolean
+
     fun setShizukuEnabled(enabled: Boolean)
 
     /** User-chosen manager package, or null for auto-detect. */

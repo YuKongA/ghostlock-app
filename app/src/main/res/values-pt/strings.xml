@@ -266,4 +266,8 @@ Substituí-los pelos novos valores?"</string>
 <string name="w3_shizuku_hint_enable">Habilitar</string>
 <string name="w3_shizuku_hint_message">A última execução falhou no estágio de desvio do seccomp W3. A execução via Shizuku (shell uid, sem seccomp) ignora isso.</string>
 <string name="w3_shizuku_hint_title">Habilitar Shizuku?</string>
+    <string name="auto_root_on_boot">Root automático após reiniciar</string>
+    <string name="auto_root_on_boot_summary">Tenta obter root uma vez após o primeiro desbloqueio. Uma tentativa interrompida desativa a função na próxima inicialização.</string>
+    <string name="auto_root_on_boot_save_failed">Não foi possível salvar a configuração de root automático</string>
+    <string name="auto_root_on_boot_running">Obtendo root automaticamente</string>
 </resources>
