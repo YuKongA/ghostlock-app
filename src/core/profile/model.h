@@ -118,6 +118,35 @@ namespace ghostlock::profile {
         std::optional<uint8_t> compact_waiter;
         std::optional<uint32_t> kernelsnitch_collisions;
         std::optional<uint32_t> mm_struct_sz;
+
+        /* ---- [本地改动] CFI 阶段（fops 劫持 -> 常驻内核读写） ---- */
+        std::optional<uint64_t> ashmemMiscOff;
+        std::optional<uint64_t> ashmemMiscFopsOff;
+        std::optional<uint64_t> ashmemFopsOff;
+        std::optional<uint64_t> ashmemIoctlOff;
+        std::optional<uint64_t> ashmemCompatIoctlOff;
+        std::optional<uint64_t> ashmemMmapOff;
+        std::optional<uint64_t> ashmemOpenOff;
+        std::optional<uint64_t> ashmemReleaseOff;
+        std::optional<uint64_t> ashmemShowFdinfoOff;
+        std::optional<uint64_t> configfsReadIterOff;
+        std::optional<uint64_t> configfsBinWriteIterOff;
+        std::optional<uint64_t> configfsBinReadIterOff;
+        std::optional<uint64_t> copySpliceReadOff;
+        std::optional<uint64_t> noopLlseekOff;
+        std::optional<uint64_t> anonPipeBufOpsOff;
+        std::optional<uint64_t> kmallocCachesOff;
+        /* ---- [本地改动] 反 vr.ko ---- */
+        std::optional<uint64_t> vrTagAOff;
+        std::optional<uint64_t> vrTagBOff;
+        std::optional<uint64_t> vrSyscallTpFlag;
+        std::optional<uint64_t> sysExitTpOff;
+        std::optional<uint64_t> rvhCommitCredsTpOff;
+        std::optional<uint64_t> tracepointProbestubOff;
+        std::optional<uint64_t> tracepointFuncsOff;
+        std::optional<uint64_t> tracepointFuncStride;
+        std::optional<uint64_t> vrCommitToSysexitDelta;
+        std::optional<uint64_t> vrKernelImageMax;
     };
 
     struct RouteGeometry {
