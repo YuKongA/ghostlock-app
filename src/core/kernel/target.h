@@ -28,7 +28,7 @@ namespace ghostlock::kernel {
     inline constexpr std::uintptr_t VMEMMAP_START = target::address::kVmemmapStart;
 
     /* Device/profile defaults. */
-    inline constexpr unsigned long long P0_KERNEL_PHYS_LOAD = 0xa8000000ULL;
+    inline constexpr unsigned long long P0_KERNEL_PHYS_LOAD = 0x40000000ULL;
     inline constexpr unsigned long long QC_GKI_6_12_PHYS_LOAD = 0xc7800000ULL;
     inline constexpr unsigned long long XRING_KERNEL_PHYS_LOAD = 0x80200000ULL;
 

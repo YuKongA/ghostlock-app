@@ -30,7 +30,7 @@ static_assert(ghostlock::kernel::TCP_CRED_COPY_OFF == 0x6800);
 /* Compatibility vectors for target.h values deliberately left profile-owned.
  * They prove CPP01 did not silently reinterpret device/kernel data as C++
  * compile-time authority. */
-static_assert(ghostlock::kernel::P0_KERNEL_PHYS_LOAD == 0xa8000000ULL);
+static_assert(ghostlock::kernel::P0_KERNEL_PHYS_LOAD == 0x40000000ULL);
 static_assert(ghostlock::kernel::QC_GKI_6_12_PHYS_LOAD == 0xc7800000ULL);
 static_assert(ghostlock::kernel::XRING_KERNEL_PHYS_LOAD == 0x80200000ULL);
 static_assert(ghostlock::kernel::INIT_TASK_OFF == 0x0211e280ULL);
