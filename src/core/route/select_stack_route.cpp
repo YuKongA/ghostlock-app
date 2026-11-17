@@ -1,4 +1,5 @@
 #include "route/select_stack_route.h"
+#include "support/decls.hpp"
 
 #include <unistd.h>
 
@@ -398,6 +399,7 @@ namespace ghostlock::route::select_stack {
                 (unsigned long long) route::fdset_get_word(exception_set.raw(), 1),
                 (unsigned long long) route::fdset_get_word(exception_set.raw(), 2),
                 (unsigned long long) route::fdset_get_word(exception_set.raw(), 3));
+        support::log_sync();
 
         /* The route may replace low fds, including stdout and stderr. */
         route::open_selected_fds(input_set.raw(), output_set.raw(), exception_set.raw(),
@@ -450,6 +452,7 @@ namespace ghostlock::route::select_stack {
             pr_info("pselect pre-select attempt=%d/%d compact=%d +%.0fms\n",
                     attempt, attempts, layout.compact_waiter.value_or(0),
                     route::fops_elapsed_ms(&route_t0));
+            support::log_sync();
             errno = 0;
             if (layout.compact_waiter.value_or(0)) {
                 uint32_t timeout_us = profile.select_timeout_us();
