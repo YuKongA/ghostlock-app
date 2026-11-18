@@ -25,6 +25,7 @@ import com.ghostlock.app.shizuku.ShizukuExploitRunner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
@@ -37,7 +38,12 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 /** Android implementation of the domain repository. All platform I/O lives here. */
-class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
+internal class AndroidGhostlockRepository(
+    context: Context,
+    private val bootRootSettings: BootRootSettings,
+    private val exploitRunLock: Mutex,
+    private val silentManagerLaunch: Boolean,
+) : GhostlockRepository {
     private companion object {
         const val OffsetsFileName = "offsets.conf"
         const val LegacyOffsetsFileName = "offsets.json"
@@ -166,6 +172,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             selectedCpuPair = selectedCpuPair,
             safeModeEnabled = safeModeEnabled,
             forceAttackTest = forceAttackTest,
+            autoRootOnBoot = bootRootSettings.isEnabled(),
             recommendShizuku = recommendShizuku,
             shizukuEnabled = shizukuActive,
             shizukuStatus = if (shizukuActive) shizukuRunner.status()
@@ -189,6 +196,9 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         forceAttackTest = enabled
         preferences.edit { putBoolean(PrefForceAttackTest, enabled) }
     }
+
+    override fun setAutoRootOnBoot(enabled: Boolean): Boolean =
+        bootRootSettings.setEnabled(enabled)
 
     override fun setShizukuEnabled(enabled: Boolean) {
         shizukuEnabled = enabled
@@ -448,7 +458,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
                     resetRunState()
                     shizukuRunner.run(
                         pair, safeModeEnabled, forceAttackTest, profileBlob, debugDir,
-                        selectedManagerPackage(), archivedLog,
+                        selectedManagerPackage(), silentManagerLaunch, archivedLog,
                     ) { step, status ->
                         if (status == "disabled") clearRunState() else applyRunStatus(step, status)
                     }
@@ -523,6 +533,22 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         onLog: (String) -> Unit,
         run: suspend ((String) -> Unit, String?, (String, ByteArray) -> Boolean) -> Int,
     ): Int {
+        if (!exploitRunLock.tryLock()) {
+            onLog("<k> another GhostLock run is active")
+            return 1
+        }
+        return try {
+            recordDebugAttackLog(entry, onLog, run)
+        } finally {
+            exploitRunLock.unlock()
+        }
+    }
+
+    private suspend fun recordDebugAttackLog(
+        entry: String,
+        onLog: (String) -> Unit,
+        run: suspend ((String) -> Unit, String?, (String, ByteArray) -> Boolean) -> Int,
+    ): Int {
         val settings = debugSettings()
         if (!settings.exportEnabled) return run(onLog, null) { _, _ -> false }
         val archive = DebugAttackLog.open(appContext, entry, settings.exportLocation)
@@ -593,7 +619,12 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         return try {
             val binary = File(appContext.applicationInfo.nativeLibraryDir, binaryName)
             require(binary.isFile) { "missing native binary: ${binary.absolutePath}" }
-            val ksud = resolveKsudPath(onLog)
+            val managerKsud = resolveKsudPath(onLog)
+            val ksud = if (silentManagerLaunch && managerKsud != null) {
+                SilentKernelSuLauncher.prepare(workDir, managerKsud)
+            } else {
+                managerKsud
+            }
             if (ksud != null) onLog("<k> ksud ready: ${ksud.absolutePath}") else onLog("<k> warning: ksud not found")
             // U01-S14: a per-run KernelSU log path so a previous run's markers
             // can never satisfy the handoff probe; passed to the native process.

@@ -831,6 +831,17 @@ class GhostlockViewModel(
         mutableState.update { it.copy(forceAttackTestEnabled = enabled) }
     }
 
+    fun toggleAutoRootOnBoot(enabled: Boolean) {
+        viewModelScope.launch {
+            val saved = withContext(Dispatchers.IO) { repository.setAutoRootOnBoot(enabled) }
+            if (saved) {
+                mutableState.update { it.copy(autoRootOnBoot = enabled) }
+            } else {
+                send(GhostlockEffect.Toast(R.string.auto_root_on_boot_save_failed))
+            }
+        }
+    }
+
     fun toggleShizuku(enabled: Boolean) {
         repository.setShizukuEnabled(enabled)
         mutableState.update { it.copy(shizukuEnabled = enabled) }
@@ -1084,6 +1095,7 @@ class GhostlockViewModel(
                 cpuPairIndex = snapshot.selectedCpuPair,
                 safeModeEnabled = snapshot.safeModeEnabled,
                 forceAttackTestEnabled = snapshot.forceAttackTest,
+                autoRootOnBoot = snapshot.autoRootOnBoot,
                 shizukuEnabled = snapshot.shizukuEnabled,
                 shizukuStatus = snapshot.shizukuStatus,
                 profileInvalidPaths = loaded?.invalidPaths ?: emptySet(),

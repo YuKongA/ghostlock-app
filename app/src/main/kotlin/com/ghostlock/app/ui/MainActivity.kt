@@ -186,6 +186,9 @@ private fun GhostlockRoute(
             override fun onForceAttackTestChanged(enabled: Boolean) =
                 viewModel.toggleForceAttackTest(enabled)
 
+            override fun onAutoRootOnBootChanged(enabled: Boolean) =
+                viewModel.toggleAutoRootOnBoot(enabled)
+
             override fun onShizukuChanged(enabled: Boolean) = viewModel.toggleShizuku(enabled)
             override fun onOpenManagerPicker() = viewModel.onOpenManagerPicker()
             override fun onCloseManagerPicker() = viewModel.onCloseManagerPicker()

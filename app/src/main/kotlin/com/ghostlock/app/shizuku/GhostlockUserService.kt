@@ -5,6 +5,7 @@ import android.os.Process
 import androidx.annotation.Keep
 import com.ghostlock.app.data.ManagerScanner
 import com.ghostlock.app.data.NativeProfileDocument
+import com.ghostlock.app.data.SilentKernelSuLauncher
 import java.io.File
 import java.io.RandomAccessFile
 import java.util.concurrent.atomic.AtomicBoolean
@@ -38,6 +39,39 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
         profileBlob: ByteArray,
         debugDir: String?,
         managerPackage: String?,
+        callback: IGhostlockCallback,
+        statusCallback: IGhostlockStatusCallback,
+    ) {
+        runWithManager(
+            primaryCpu, consumerCpu, safeMode, forceAttack, profileBlob, debugDir,
+            managerPackage, false, callback, statusCallback,
+        )
+    }
+
+    override fun runBootExploitAsManager(
+        primaryCpu: Int,
+        consumerCpu: Int,
+        safeMode: Boolean,
+        forceAttack: Boolean,
+        profileBlob: ByteArray,
+        debugDir: String?,
+        managerPackage: String?,
+        callback: IGhostlockCallback,
+        statusCallback: IGhostlockStatusCallback,
+    ) = runWithManager(
+        primaryCpu, consumerCpu, safeMode, forceAttack, profileBlob, debugDir,
+        managerPackage, true, callback, statusCallback,
+    )
+
+    private fun runWithManager(
+        primaryCpu: Int,
+        consumerCpu: Int,
+        safeMode: Boolean,
+        forceAttack: Boolean,
+        profileBlob: ByteArray,
+        debugDir: String?,
+        managerPackage: String?,
+        silentManagerLaunch: Boolean,
         callback: IGhostlockCallback,
         statusCallback: IGhostlockStatusCallback,
     ) {
@@ -75,7 +109,7 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                 // Same resolution as the direct path: chosen manager first,
                 // then the built-ins. Native gets the path via GHOSTLOCK_KSUD.
                 val pm = context.packageManager
-                val ksudPath = ManagerScanner.resolvePackages(managerPackage)
+                val managerKsud = ManagerScanner.resolvePackages(managerPackage)
                     .asSequence()
                     .map { pkg ->
                         runCatching {
@@ -83,6 +117,11 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                         }.getOrNull()?.takeIf { it.isFile }
                     }
                     .firstOrNull { it != null }
+                val ksudPath = if (silentManagerLaunch && managerKsud != null) {
+                    SilentKernelSuLauncher.prepare(workDir, managerKsud)
+                } else {
+                    managerKsud
+                }
                 ksudPath?.let { callback.onLog("<s> ksud resolved: ${it.absolutePath}") }
                 val nativeLog = File(workDir, ".ghostlock_native.log")
                 // U01-S14: per-run KernelSU log so a previous run's markers can
