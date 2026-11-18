@@ -71,7 +71,7 @@ android {
         versionName = appVersionName
     }
     androidResources {
-        localeFilters += listOf("en", "zh", "pt")
+        localeFilters += listOf("en", "zh", "pt", "es")
     }
     testOptions {
         unitTests.isIncludeAndroidResources = true
