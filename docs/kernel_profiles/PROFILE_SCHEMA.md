@@ -194,6 +194,8 @@ addresses into runtime addresses.
 | Field | Meaning |
 |---|---|
 | `route.select_stack.waiter_shift` | Relative shift of the select-route waiter on the stack (0 is valid); under a fallback declaration this is `fallback.route.select_stack.waiter_shift` |
+| `route.select_stack.compact_waiter` | Optional compact-waiter flag. A profile that states `waiter_prio_off = 64` uses the flat layout and must set it to 1; a split profile may omit it or keep it for the compact split layout |
+| `waiter_prio_off` | Byte offset of `rt_mutex_waiter.prio` in the compact layout. `64` (0x40) selects the flat waiter and requires `route.select_stack.compact_waiter = 1`; `68` (0x44) or an absent field keeps the split layout, where native reads 0x44 |
 | `route.tcp_zerocopy.compact_waiter` | Compact-waiter layout flag for the tcp route; the multicast branch needs it too (`route.multicast_waiter.compact_waiter`) |
 
 ### 4.5 multicast_waiter route fields (`route.multicast_waiter`)

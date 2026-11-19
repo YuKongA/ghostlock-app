@@ -72,6 +72,10 @@ namespace ghostlock::kernel {
 
     inline constexpr int32_t PSELECT_WAITER_WORD_SHIFT = -2;
 
+    /* Compact waiter `prio` offset. The 6.1+ split puts it at 0x44, after
+     * `wake_state`; a flat 5.10 waiter puts it at 0x40. The profile overrides it. */
+    inline constexpr int32_t FAKE_WAITER_PRIO_OFF_SPLIT = 0x44;
+
     /* Fake waiter and task layouts. */
     inline constexpr int32_t FAKE_WAITER_TREE_PRIO_OFF = 0x18;
     inline constexpr int32_t FAKE_WAITER_TREE_DEADLINE_OFF = 0x20;

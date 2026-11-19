@@ -76,6 +76,21 @@ int32_t main(void) {
         return 1;
     }
 
+    /* The compact waiter prio offset: an omitted field keeps the 6.1+ split
+     * word, and a stated 0x40 is what a flat 5.10 waiter carries. */
+    decoded.misc.waiter_prio_off = 0x40;
+    ghostlock::profile::TargetProfile flat =
+            ghostlock::profile::TargetProfile::from(&decoded);
+    decoded.misc.waiter_prio_off.reset();
+    ghostlock::profile::TargetProfile split =
+            ghostlock::profile::TargetProfile::from(&decoded);
+    if (flat.waiter_prio_offset(0x44) != 0x40 ||
+        split.waiter_prio_offset(0x44) != 0x44 ||
+        unloaded.waiter_prio_offset(0x44) != 0x44) {
+        fputs("target profile waiter prio offset test failed\n", stderr);
+        return 1;
+    }
+
     puts("target profile snapshot/accessor test passed");
     return 0;
 }

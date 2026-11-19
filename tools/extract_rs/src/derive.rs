@@ -18,6 +18,12 @@ pub const OBJDUMP_CAP: usize = 0x2000;
 
 pub type RelSymbols = BTreeMap<String, BTreeSet<u64>>;
 
+/// Mnemonics whose first operand is read rather than written.
+const READ_ONLY_FIRST_OPERAND: &[&str] = &[
+    "cmp", "cmn", "tst", "ccmp", "ccmn", "cbz", "cbnz", "tbz", "tbnz", "str",
+    "strb", "strh", "stp", "stnp", "stur", "sturb", "sturh",
+];
+
 /// Rebase kallsyms onto _text and return a sorted list of all offsets.
 pub fn relative_symbols(
     symbols: &BTreeMap<String, BTreeSet<u64>>,
@@ -46,6 +52,122 @@ pub fn unique_offset(symbols: &RelSymbols, name: &str) -> Result<u64> {
 
 pub fn unique_offset_optional(symbols: &RelSymbols, name: &str) -> Option<u64> {
     unique_offset(symbols, name).ok()
+}
+
+/// SLUB stride of the mm_struct slab: `mm_cache_init` passes a size to
+/// `kmem_cache_create_usercopy` under `SLAB_HWCACHE_ALIGN`, so the stride is
+/// `ALIGN(size, 64)`. The BTF `sizeof` is not a substitute from 5.15 on,
+/// where the argument adds `cpumask_size()`.
+pub fn derive_mm_stride(
+    kernel: &[u8],
+    symbols: &RelSymbols,
+    sorted_offsets: &[u64],
+) -> Option<u32> {
+    let lines = match disassemble_symbol(
+        kernel,
+        symbols,
+        sorted_offsets,
+        "mm_cache_init",
+        OBJDUMP_CAP,
+    ) {
+        Ok(lines) => lines,
+        Err(err) => {
+            eprintln!("warning: mm_cache_init not disassembled ({err}); no stride measured");
+            return None;
+        }
+    };
+    let Some(allocation) = unique_offset_optional(symbols, "kmem_cache_create_usercopy") else {
+        eprintln!(
+            "warning: kmem_cache_create_usercopy is not in kallsyms; no stride measured"
+        );
+        return None;
+    };
+    let Some(size) = mm_cache_size_arg(&lines, allocation) else {
+        eprintln!(
+            "warning: mm_cache_init has no literal kmem_cache_create_usercopy size; \
+             no stride measured"
+        );
+        return None;
+    };
+    let stride = size.checked_add(63).map(|value| value & !63)?;
+    eprintln!("info: mm_struct cache size=0x{size:x} from mm_cache_init, stride=0x{stride:x}");
+    Some(stride)
+}
+
+/// The size argument `mm_cache_init` passes to `kmem_cache_create_usercopy`:
+/// the last `mov`/`movz`/`movk`/`add` that writes the `w1`/`x1` alias before
+/// the call to `allocation`. Any other write to the alias, or an intervening
+/// call, clears the value.
+pub fn mm_cache_size_arg(lines: &[String], allocation: u64) -> Option<u32> {
+    let mov = Regex::new(r"(?i)\bmov\s+[wx]1,\s*#0x([0-9a-f]+)").unwrap();
+    let movz = Regex::new(r"(?i)\bmovz\s+[wx]1,\s*#0x([0-9a-f]+)(?:,\s*lsl\s*#(\d+))?").unwrap();
+    let movk = Regex::new(r"(?i)\bmovk\s+[wx]1,\s*#0x([0-9a-f]+)(?:,\s*lsl\s*#(\d+))?").unwrap();
+    let add = Regex::new(
+        r"(?i)\badd\s+[wx]1,\s*[wx]1,\s*#0x([0-9a-f]+)(?:,\s*lsl\s*#(\d+))?",
+    )
+    .unwrap();
+    let first_operand =
+        Regex::new(r"(?i)(?:^|:\s*)([a-z][a-z0-9.]*)\s+[wx]1\s*,").unwrap();
+    let ldp_second =
+        Regex::new(r"(?i)(?:^|:\s*)(?:ldp|ldnp|ldpsw)\s+[wx]\d+,\s*[wx]1\s*,").unwrap();
+    let call_any = Regex::new(r"(?i)\b(?:bl\s+0x[0-9a-f]+|blr\s+[wx]\d+)").unwrap();
+    let call = Regex::new(&format!(r"(?i)\bbl\s+0x{allocation:x}\b")).unwrap();
+    for (i, line) in lines.iter().enumerate() {
+        if !call.is_match(line) {
+            continue;
+        }
+        let mut size: Option<u32> = None;
+        let mut unresolved = false;
+        for candidate in &lines[i.saturating_sub(12)..i] {
+            if let Some(caps) = mov.captures(candidate) {
+                size = u32::from_str_radix(&caps[1], 16).ok();
+                unresolved = size.is_none();
+            } else if let Some(caps) = movz.captures(candidate) {
+                size = u32::from_str_radix(&caps[1], 16)
+                    .ok()
+                    .and_then(|imm| imm.checked_shl(shift_of(&caps)));
+                unresolved = size.is_none();
+            } else if let Some(caps) = movk.captures(candidate) {
+                let shift = shift_of(&caps);
+                size = u32::from_str_radix(&caps[1], 16)
+                    .ok()
+                    .zip(size)
+                    .and_then(|(imm, current)| {
+                        let lane = 0xffffu32.checked_shl(shift)?;
+                        Some((current & !lane) | ((imm & 0xffff) << shift))
+                    });
+                unresolved = size.is_none();
+            } else if let Some(caps) = add.captures(candidate) {
+                let shift = shift_of(&caps);
+                size = u32::from_str_radix(&caps[1], 16)
+                    .ok()
+                    .and_then(|imm| imm.checked_shl(shift))
+                    .and_then(|delta| size.and_then(|value| value.checked_add(delta)));
+                unresolved = size.is_none();
+            } else if let Some(caps) = first_operand.captures(candidate) {
+                if !READ_ONLY_FIRST_OPERAND.contains(&caps[1].to_ascii_lowercase().as_str()) {
+                    size = None;
+                    unresolved = true;
+                }
+            } else if ldp_second.is_match(candidate) || call_any.is_match(candidate) {
+                size = None;
+                unresolved = true;
+            }
+        }
+        if unresolved {
+            return None;
+        }
+        if size.is_some() {
+            return size;
+        }
+    }
+    None
+}
+
+fn shift_of(caps: &regex::Captures) -> u32 {
+    caps.get(2)
+        .and_then(|m| m.as_str().parse::<u32>().ok())
+        .unwrap_or(0)
 }
 
 fn disassemble_symbol(
@@ -234,10 +356,153 @@ pub fn multicast_waiter_off(
 #[cfg(test)]
 mod tests {
     use super::{
-        multicast_geometry_5x, multicast_geometry_btf_only, remove_waiter_uses_current,
-        select_cred_caps, select_cred_refs,
+        mm_cache_size_arg, multicast_geometry_5x, multicast_geometry_btf_only,
+        remove_waiter_uses_current, select_cred_caps, select_cred_refs,
+        waiter_locals_from_init_call,
     };
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, BTreeSet};
+
+    #[test]
+    fn mm_cache_size_comes_from_the_argument_fed_to_the_call() {
+        let lines = vec![
+            "0000: stp x29, x30, [sp, #-0x20]!".to_string(),
+            "0004: mov w1, #0x3c0".to_string(),
+            "0008: mov x0, x20".to_string(),
+            "000c: bl 0x1234".to_string(),
+        ];
+        assert_eq!(mm_cache_size_arg(&lines, 0x1234), Some(0x3c0));
+    }
+
+    #[test]
+    fn mm_cache_size_assembles_a_movz_movk_pair() {
+        let lines = vec![
+            "0000: movz w1, #0x500".to_string(),
+            "0004: movk w1, #0x1, lsl #16".to_string(),
+            "0008: bl 0x1234".to_string(),
+        ];
+        assert_eq!(mm_cache_size_arg(&lines, 0x1234), Some(0x10000 | 0x500));
+    }
+
+    #[test]
+    fn mm_cache_size_tracks_an_adjustment_after_the_move() {
+        let lines = vec![
+            "0000: mov w1, #0x3c0".to_string(),
+            "0004: add w1, w1, #0x8".to_string(),
+            "0008: bl 0x1234".to_string(),
+        ];
+        assert_eq!(mm_cache_size_arg(&lines, 0x1234), Some(0x3c8));
+    }
+
+    #[test]
+    fn mm_cache_size_accepts_an_x1_adjustment() {
+        let lines = vec![
+            "0000: mov w1, #0x3c0".to_string(),
+            "0004: add x1, x1, #0x8".to_string(),
+            "0008: bl 0x1234".to_string(),
+        ];
+        assert_eq!(mm_cache_size_arg(&lines, 0x1234), Some(0x3c8));
+    }
+
+    #[test]
+    fn mm_cache_size_uses_the_last_write() {
+        let lines = vec![
+            "0000: mov w1, #0x3c0".to_string(),
+            "0004: mov w1, #0x400".to_string(),
+            "0008: bl 0x1234".to_string(),
+        ];
+        assert_eq!(mm_cache_size_arg(&lines, 0x1234), Some(0x400));
+    }
+
+    #[test]
+    fn mm_cache_size_replaces_the_movk_lane() {
+        let lines = vec![
+            "0000: mov w1, #0x3c0".to_string(),
+            "0004: movk w1, #0x400".to_string(),
+            "0008: bl 0x1234".to_string(),
+        ];
+        assert_eq!(mm_cache_size_arg(&lines, 0x1234), Some(0x400));
+    }
+
+    #[test]
+    fn mm_cache_size_ignores_an_unrelated_call() {
+        let lines = vec![
+            "0000: mov w1, #0x400".to_string(),
+            "0004: bl 0x1111".to_string(),
+            "0008: mov w1, #0x3c0".to_string(),
+            "000c: bl 0x1234".to_string(),
+        ];
+        assert_eq!(mm_cache_size_arg(&lines, 0x1234), Some(0x3c0));
+    }
+
+    #[test]
+    fn mm_cache_size_refuses_an_unresolved_write() {
+        let lines = vec![
+            "0000: mov w1, #0x3c0".to_string(),
+            "0004: ldr w1, [sp, #0x8]".to_string(),
+            "0008: bl 0x1234".to_string(),
+        ];
+        assert_eq!(mm_cache_size_arg(&lines, 0x1234), None);
+    }
+
+    #[test]
+    fn mm_cache_size_refuses_an_x1_write() {
+        let lines = vec![
+            "0000: mov w1, #0x3c0".to_string(),
+            "0004: ldr x1, [sp, #0x8]".to_string(),
+            "0008: bl 0x1234".to_string(),
+        ];
+        assert_eq!(mm_cache_size_arg(&lines, 0x1234), None);
+    }
+
+    #[test]
+    fn mm_cache_size_refuses_an_ldp_second_destination() {
+        let lines = vec![
+            "0000: mov w1, #0x3c0".to_string(),
+            "0004: ldp x0, x1, [sp, #0x10]".to_string(),
+            "0008: bl 0x1234".to_string(),
+        ];
+        assert_eq!(mm_cache_size_arg(&lines, 0x1234), None);
+    }
+
+    #[test]
+    fn mm_cache_size_refuses_an_ldpsw_second_destination() {
+        let lines = vec![
+            "0000: mov w1, #0x3c0".to_string(),
+            "0004: ldpsw x2, x1, [sp, #0x10]".to_string(),
+            "0008: bl 0x1234".to_string(),
+        ];
+        assert_eq!(mm_cache_size_arg(&lines, 0x1234), None);
+    }
+
+    #[test]
+    fn mm_cache_size_refuses_an_intervening_call() {
+        let lines = vec![
+            "0000: mov w1, #0x3c0".to_string(),
+            "0004: bl 0x1111".to_string(),
+            "0008: bl 0x1234".to_string(),
+        ];
+        assert_eq!(mm_cache_size_arg(&lines, 0x1234), None);
+    }
+
+    #[test]
+    fn mm_cache_size_refuses_an_ldrb_write() {
+        let lines = vec![
+            "0000: mov w1, #0x3c0".to_string(),
+            "0004: ldrb w1, [x0]".to_string(),
+            "0008: bl 0x1234".to_string(),
+        ];
+        assert_eq!(mm_cache_size_arg(&lines, 0x1234), None);
+    }
+
+    #[test]
+    fn mm_cache_size_refuses_a_csel_write() {
+        let lines = vec![
+            "0000: mov w1, #0x3c0".to_string(),
+            "0004: csel w1, w2, w3, eq".to_string(),
+            "0008: bl 0x1234".to_string(),
+        ];
+        assert_eq!(mm_cache_size_arg(&lines, 0x1234), None);
+    }
 
     #[test]
     fn cred_caps_selects_the_contiguous_non_zero_run() {
@@ -276,6 +541,37 @@ mod tests {
                 (0x80, 0xffffffc00ab23a80),
                 (0x90, 0xffffffc00ab23ff0),
                 (0x98, 0xffffffc00ab23b28),
+            ]
+        );
+    }
+
+    #[test]
+    fn cred_without_btf_reads_the_five_ten_layout() {
+        let mut bytes = vec![0u8; super::CRED_5X_SIZE as usize];
+        for offset in [48u32, 56, 64] {
+            bytes[offset as usize..offset as usize + 8]
+                .copy_from_slice(&0x1ffffffffffu64.to_le_bytes());
+        }
+        for (offset, value) in [
+            (0x80u32, 0xffffffc00a79f660u64),
+            (0x88, 0xffffffc00a79f6f8),
+            (0x90, 0xffffffc00a7a0b88),
+        ] {
+            bytes[offset as usize..offset as usize + 8]
+                .copy_from_slice(&value.to_le_bytes());
+        }
+
+        let cred = super::derive_cred_5x_without_btf(&bytes, 0, super::CRED_5X_SIZE)
+            .expect("cred layout is complete");
+        assert_eq!(cred.caps_offset, 48);
+        assert_eq!(cred.caps_count, 3);
+        assert_eq!(cred.caps_value, 0x1ffffffffff);
+        assert_eq!(
+            cred.refs,
+            vec![
+                (0x80, 0xffffffc00a79f660),
+                (0x88, 0xffffffc00a79f6f8),
+                (0x90, 0xffffffc00a7a0b88),
             ]
         );
     }
@@ -364,6 +660,117 @@ mod tests {
         // PD2361 5.15.178 (static candidate = 0x50).
         assert_eq!(off(0x370, 0x18, 0x330, 0x28), 0x50);
     }
+
+    #[test]
+    fn partial_waiter_fields_fall_back_to_zero() {
+        assert_eq!(super::waiter_layout_fields(Some(0x28), None), (0, 0));
+        assert_eq!(super::waiter_layout_fields(None, Some(0x60)), (0, 0));
+        assert_eq!(super::waiter_layout_fields(None, None), (0, 0));
+        assert_eq!(
+            super::waiter_layout_fields(Some(0x28), Some(0x60)),
+            (0x28, 0x60)
+        );
+    }
+
+    fn init_symbols(addr: u64) -> super::RelSymbols {
+        let mut symbols = super::RelSymbols::new();
+        symbols.insert("rt_mutex_init_waiter".to_string(), BTreeSet::from([addr]));
+        symbols
+    }
+
+    #[test]
+    fn waiter_seed_accepts_a_direct_sp_offset() {
+        let lines = vec![
+            "0000: add x0, sp, #0x80".to_string(),
+            "0004: bl 0x1234".to_string(),
+        ];
+        assert_eq!(
+            waiter_locals_from_init_call(&lines, &init_symbols(0x1234)),
+            BTreeSet::from([0x80])
+        );
+    }
+
+    #[test]
+    fn waiter_seed_rejects_an_overwritten_x0() {
+        let lines = vec![
+            "0000: sub sp, sp, #0x100".to_string(),
+            "0004: add x19, sp, #0x80".to_string(),
+            "0008: add x0, sp, #0x20".to_string(),
+            "000c: str xzr, [sp, #0x20]".to_string(),
+            "0010: mov x0, x19".to_string(),
+            "0014: bl 0x1234".to_string(),
+        ];
+        assert!(waiter_locals_from_init_call(&lines, &init_symbols(0x1234)).is_empty());
+    }
+
+    #[test]
+    fn waiter_seed_rejects_an_intervening_call() {
+        let lines = vec![
+            "0000: add x0, sp, #0x80".to_string(),
+            "0004: bl 0x1111".to_string(),
+            "0008: bl 0x1234".to_string(),
+        ];
+        assert!(waiter_locals_from_init_call(&lines, &init_symbols(0x1234)).is_empty());
+    }
+
+    #[test]
+    fn waiter_seed_rejects_an_ldpsw_x0_destination() {
+        let lines = vec![
+            "0000: add x0, sp, #0x80".to_string(),
+            "0004: ldpsw x2, x0, [sp, #0x10]".to_string(),
+            "0008: bl 0x1234".to_string(),
+        ];
+        assert!(waiter_locals_from_init_call(&lines, &init_symbols(0x1234)).is_empty());
+    }
+}
+
+/// Waiter sp locals from the `add x0, sp, #imm` that is the last write to `x0`
+/// before `bl rt_mutex_init_waiter`. An inlined init has no symbol, so the
+/// caller falls back to the zero sweep.
+fn waiter_locals_from_init_call(lines: &[String], symbols: &RelSymbols) -> BTreeSet<u64> {
+    let mut locals = BTreeSet::new();
+    let Some(init_addr) = unique_offset_optional(symbols, "rt_mutex_init_waiter") else {
+        return locals;
+    };
+    let call_re = Regex::new(&format!(r"(?i)\bbl\s+0x{init_addr:x}\b")).unwrap();
+    let add_re = Regex::new(r"(?i)\badd\s+x0,\s*sp,\s*#0x([0-9a-f]+)\b").unwrap();
+    let first_operand =
+        Regex::new(r"(?i)(?:^|:\s*)([a-z][a-z0-9.]*)\s+[wx]0\s*,").unwrap();
+    let ldp_second =
+        Regex::new(r"(?i)(?:^|:\s*)(?:ldp|ldnp|ldpsw)\s+[wx]\d+,\s*[wx]0\s*,").unwrap();
+    let call_any = Regex::new(r"(?i)\b(?:bl\s+0x[0-9a-f]+|blr\s+[wx]\d+)").unwrap();
+    for (i, line) in lines.iter().enumerate() {
+        if !call_re.is_match(line) {
+            continue;
+        }
+        for back in (i.saturating_sub(12)..i).rev() {
+            let candidate = &lines[back];
+            if let Some(caps) = add_re.captures(candidate) {
+                if let Ok(value) = u64::from_str_radix(&caps[1], 16) {
+                    locals.insert(value);
+                }
+                break;
+            }
+            if call_any.is_match(candidate) || ldp_second.is_match(candidate) {
+                break;
+            }
+            if let Some(caps) = first_operand.captures(candidate) {
+                if !READ_ONLY_FIRST_OPERAND.contains(&caps[1].to_ascii_lowercase().as_str()) {
+                    break;
+                }
+            }
+        }
+    }
+    locals
+}
+
+/// A partial BTF can expose one waiter field. A flat 5.10 waiter has no
+/// `wake_state`, so an incomplete pair takes the no-BTF init-call seed.
+fn waiter_layout_fields(pi_tree: Option<u32>, wake_state: Option<u32>) -> (u64, u64) {
+    match (pi_tree, wake_state) {
+        (Some(pi_tree), Some(wake_state)) => (pi_tree as u64, wake_state as u64),
+        _ => (0, 0),
+    }
 }
 
 pub struct PselectLayout {
@@ -381,7 +788,7 @@ pub fn derive_pselect_layout(
     kernel: &[u8],
     symbols: &RelSymbols,
     sorted_offsets: &[u64],
-    btf: &Btf,
+    btf: Option<&Btf>,
     route_nfds: u64,
 ) -> Result<PselectLayout> {
     let mut names: Vec<(&str, &str)> = vec![
@@ -471,20 +878,30 @@ pub fn derive_pselect_layout(
     }
 
     // 6.6 names the rb_nodes tree/pi_tree; 6.1 calls them
-    // tree_entry/pi_tree_entry (same offsets in the struct).
+    // tree_entry/pi_tree_entry (same offsets in the struct). Without BTF the
+    // waiter is seeded from the rt_mutex_init_waiter call instead.
     let pi_tree = btf
-        .field("rt_mutex_waiter", "pi_tree")
-        .or_else(|| btf.field("rt_mutex_waiter", "pi_tree_entry"));
-    let wake_state = btf.field("rt_mutex_waiter", "wake_state");
-    if pi_tree.is_none() || wake_state.is_none() {
-        return Err(ExtractError::new(
-            "BTF rt_mutex_waiter.pi_tree/wake_state missing",
-        ));
+        .and_then(|btf| btf.field("rt_mutex_waiter", "pi_tree"))
+        .or_else(|| btf.and_then(|btf| btf.field("rt_mutex_waiter", "pi_tree_entry")));
+    let wake_state = btf.and_then(|btf| btf.field("rt_mutex_waiter", "wake_state"));
+    let (pi_tree, wake_state) = waiter_layout_fields(pi_tree, wake_state);
+    if pi_tree == 0 && wake_state == 0 {
+        eprintln!(
+            "info: rt_mutex_waiter pi_tree/wake_state missing or incomplete; seeding the \
+             waiter local from the rt_mutex_init_waiter argument and the zero store"
+        );
     }
-    let pi_tree = pi_tree.unwrap() as u64;
-    let wake_state = wake_state.unwrap() as u64;
 
     let mut waiter_candidates: Vec<(String, u64)> = Vec::new();
+    // A waiter local sourced from the rt_mutex_init_waiter argument is already
+    // validated by that call, so it bypasses the self-store filter below.
+    let mut from_init_call: BTreeSet<u64> = BTreeSet::new();
+    if pi_tree == 0 && wake_state == 0 {
+        from_init_call = waiter_locals_from_init_call(&dis["futex_wait"], symbols);
+        for local in &from_init_call {
+            waiter_candidates.push(("x0".to_string(), *local));
+        }
+    }
     for (reg, imm) in add_sp_immediates(&dis["futex_wait"]) {
         if pi_tree != 0 {
             let re =
@@ -503,6 +920,31 @@ pub fn derive_pselect_layout(
     // Several registers may materialize the same sp local; dedupe by offset.
     let mut seen = BTreeSet::new();
     waiter_candidates.retain(|(_, imm)| seen.insert(*imm));
+    if waiter_candidates.len() != 1 {
+        // Other locals take a +pi_tree sized add too, so keep only candidates
+        // that self-store their base, and store a wake_state when there is one.
+        let lines = &dis["futex_wait"];
+        waiter_candidates.retain(|(reg, imm)| {
+            if from_init_call.contains(imm) {
+                return true;
+            }
+            let self_store = lines.iter().any(|line| {
+                Regex::new(&format!(r"(?i)\bstr\s+{reg},\s*\[sp,\s*#0x{imm:x}\]"))
+                    .unwrap()
+                    .is_match(line)
+            });
+            let wake_store = wake_state != 0
+                && lines.iter().any(|line| {
+                    Regex::new(&format!(
+                        r"(?i)\bstr\s+w\d+,\s*\[sp,\s*#0x{:x}\]",
+                        imm + wake_state
+                    ))
+                    .unwrap()
+                    .is_match(line)
+                });
+            self_store || wake_store
+        });
+    }
     if waiter_candidates.len() != 1 {
         return Err(ExtractError::new(format!(
             "futex waiter stack local not unique: {waiter_candidates:?}"
@@ -963,6 +1405,60 @@ pub fn derive_cred_5x(btf: &Btf, kernel: &[u8], init_cred_off: u64) -> Result<Cr
             "init_cred has {} reference pointers; the template holds 4",
             refs.len()
         )));
+    }
+
+    Ok(Cred5x {
+        caps_offset,
+        caps_count,
+        caps_value,
+        refs,
+    })
+}
+
+/// `sizeof(struct cred)` on the android12-5.10 arm64 layout.
+pub const CRED_5X_SIZE: u32 = 168;
+const CRED_5X_CAPS_START: u32 = 40;
+const CRED_5X_CAPS_END: u32 = 72;
+const CRED_5X_REF_OFFSETS: [u32; 3] = [0x80, 0x88, 0x90];
+
+/// Derives the [`derive_cred_5x`] template from the image's `init_cred` and the
+/// android12-5.10 `cred` layout. `size` is the `init_groups - init_cred` gap,
+/// or [`CRED_5X_SIZE`].
+pub fn derive_cred_5x_without_btf(
+    kernel: &[u8],
+    init_cred_off: u64,
+    size: u32,
+) -> Result<Cred5x> {
+    let start = init_cred_off as usize;
+    let end = start
+        .checked_add(size as usize)
+        .ok_or_else(|| ExtractError::new("init_cred offset overflows"))?;
+    let bytes = kernel
+        .get(start..end)
+        .ok_or_else(|| ExtractError::new("init_cred is outside the kernel image"))?;
+    let read = |offset: u32| -> Option<u64> {
+        let offset = offset as usize;
+        if offset + 8 > bytes.len() {
+            return None;
+        }
+        Some(u64::from_le_bytes(
+            bytes[offset..offset + 8].try_into().ok()?,
+        ))
+    };
+
+    let (caps_offset, caps_count, caps_value) =
+        select_cred_caps(read, CRED_5X_CAPS_START, CRED_5X_CAPS_END)
+            .ok_or_else(|| ExtractError::new("no non-zero capability run in init_cred"))?;
+
+    let slots: Vec<(u32, u64)> = CRED_5X_REF_OFFSETS
+        .iter()
+        .filter_map(|offset| read(*offset).map(|value| (*offset, value)))
+        .collect();
+    let refs = select_cred_refs(&slots);
+    if refs.is_empty() {
+        return Err(ExtractError::new(
+            "no reference pointers found in init_cred",
+        ));
     }
 
     Ok(Cred5x {

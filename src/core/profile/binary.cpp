@@ -115,6 +115,7 @@ namespace ghostlock::binary_profile {
             OPT("compact_waiter", misc.compact_waiter),
             OPT("kernelsnitch_collisions", misc.kernelsnitch_collisions),
             OPT("mm_struct_sz", misc.mm_struct_sz),
+            OPT("waiter_prio_off", misc.waiter_prio_off),
         };
 
         constexpr Field kExecCpus[] = {

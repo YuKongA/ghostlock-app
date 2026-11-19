@@ -3,6 +3,7 @@ package com.ghostlock.app.data
 import android.app.Application
 import androidx.core.content.edit
 import com.ghostlock.app.domain.model.CpuPair
+import com.ghostlock.app.domain.model.ProfileFieldNode
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -150,6 +151,38 @@ class BuiltinProfilesTest {
             root.deleteRecursively()
         }
     }
+
+    @Test
+    fun `poco profile states the flat waiter and measured stride`() = runBlocking {
+        val root = Files.createTempDirectory("poco-510").toFile()
+        try {
+            val controller = AndroidProfileConfigController(
+                context = context,
+                filesDir = root,
+                userProfiles = UserProfileStore(
+                    directory = root.resolve("user_profiles"),
+                    assetLoader = AssetConfigLoader(context),
+                ),
+                preferences = context.getSharedPreferences("poco-510", 0)
+                    .also { it.edit().clear().commit() },
+            )
+            val release = "5.10.198-android12-9-00085-g226a9632f13d-ab11136126"
+            assertNotNull(
+                "index.conf lists the Poco profile",
+                builtinEntries().firstOrNull { it.release == release },
+            )
+            val leaves = leafNodes(controller.load(release, pair).roots)
+                .associateBy { it.path }
+            assertEquals(1L, leaves["route.select_stack.compact_waiter"]?.value)
+            assertEquals(64L, leaves["waiter_prio_off"]?.value)
+            assertEquals(960L, leaves["kernelsnitch.mm_struct_sz"]?.value)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    private fun leafNodes(nodes: List<ProfileFieldNode>): List<ProfileFieldNode> =
+        nodes.flatMap { node -> if (node.isGroup) leafNodes(node.children) else listOf(node) }
 
     @Test
     fun `legacy shared defaults stay in sync with the bundled 6x templates`() {
