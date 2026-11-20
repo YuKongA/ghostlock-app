@@ -599,6 +599,18 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             // can never satisfy the handoff probe; passed to the native process.
             val ksuLog = File(workDir, ksuLogName(System.currentTimeMillis()))
             val nativeLog = File(workDir, NativeLogFileName)
+            if (nativeLog.isFile && nativeLog.length() > 0) {
+                val prevBytes = nativeLog.readBytes()
+                if (prevBytes.any { it != 0.toByte() }) {
+                    val prevText = String(prevBytes, StandardCharsets.UTF_8).trimEnd('\u0000')
+                    if (prevText.isNotBlank()) {
+                        onLog("<k> --- recovered native log from previous panic ---")
+                        prevText.lineSequence().forEach { onLog(it) }
+                        onLog("<k> --- end recovered log ---")
+                        writeSidecar("recovered-native.log", prevBytes)
+                    }
+                }
+            }
             nativeLog.writeText("")
             val release = System.getProperty("os.version", "").orEmpty()
             val config = profileController.load(release, pair)

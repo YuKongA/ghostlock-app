@@ -275,6 +275,7 @@ namespace ghostlock::route::tcp_zerocopy {
                 (session::g_exploit_session.heap.current.fake_w0), (session::g_exploit_session.heap.current.fake_task),
                 waiter_task,
                 attempts, arm_seq, post_hold);
+        support::log_sync();
 
         punch_go.store(1);
         /* custom-write mode: fire the PI walk immediately */
