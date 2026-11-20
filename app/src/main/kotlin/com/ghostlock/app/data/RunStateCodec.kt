@@ -10,7 +10,17 @@ import com.ghostlock.app.data.RunStateCodec.Steps
  */
 object RunStateCodec {
     /** Every step the native backend reports, in execution order. */
-    val Steps = listOf("w1a", "w1b", "w2a", "w2b", "w3a", "w3b", "w3c")
+    val Steps = listOf(
+        "w1a", "w1b", "w2a", "w2b", "w3a", "w3b", "w3c",
+        // CFI stage (fops hijack -> resident kernel read/write). The numbers
+        // mirror the upstream payload's `cfi_last_step`; keeping them in this
+        // list is what makes a panic mid-stage leave an in_progress marker on
+        // disk for the next launch to read.
+        "cfi1", "cfi2", "cfi3", "cfi4", "cfi5", "cfi",
+        // Step 3A: global vr.ko sys_exit probe neutralisation, needs the CFI
+        // channel's resident read as well as its write.
+        "vr1",
+    )
 
     const val NotStarted = "not_start"
     const val InProgress = "in_progress"
