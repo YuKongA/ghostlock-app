@@ -62,13 +62,18 @@ object ProfileExporter {
             require(actualRelease == release) { "index/file release mismatch for $file" }
             val route = routeNameOf(parsed, routes)
             val fallbackTo = fallbackOf(parsed)
+            /* No session pair exists at export time, so the merge must not pin
+             * one: leaving `selected_cpus` unset keeps the profile's own
+             * `recommended_cpus` in the binary. Otherwise every prebuilt export
+             * would ship 0/1 and `--load-prebuilt-profile` would ignore the
+             * profile's intended cluster. */
             val merged = ProfileMerger.resolveMerged(
                 deviceRelease = actualRelease,
                 builtin = parsed,
                 imported = null,
                 overrides = null,
                 tuningExecution = tuningExecution,
-                pair = CpuPairView(0, 1),
+                pair = null,
                 routePresets = routePresets,
             )
             val errors = ProfileResolver.validateMerged(merged, route, fallbackTo)
