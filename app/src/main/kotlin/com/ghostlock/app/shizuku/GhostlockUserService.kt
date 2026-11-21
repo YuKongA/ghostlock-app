@@ -79,8 +79,8 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                     .asSequence()
                     .map { pkg ->
                         runCatching {
-                            File(pm.getApplicationInfo(pkg, 0).nativeLibraryDir, "libksud.so")
-                        }.getOrNull()?.takeIf { it.isFile }
+                            ManagerScanner.findKsud(pkg, pm.getApplicationInfo(pkg, 0).nativeLibraryDir)
+                        }.getOrNull()
                     }
                     .firstOrNull { it != null }
                 ksudPath?.let { callback.onLog("<s> ksud resolved: ${it.absolutePath}") }

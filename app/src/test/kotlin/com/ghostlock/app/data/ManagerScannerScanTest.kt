@@ -17,7 +17,7 @@ import org.robolectric.annotation.Config
 import java.io.File
 
 /** Covers the platform-facing scan(): package enumeration, self/system
- * filtering, and libksud.so detection through a real PackageManager. */
+ * filtering, and ksud detection through a real PackageManager. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class ManagerScannerScanTest {
@@ -47,6 +47,21 @@ class ManagerScannerScanTest {
         )
     }
 
+    private fun installNovaWithRenamedKsud(pkg: String): File {
+        val dir = File(app.cacheDir, "libs-${pkg}-${System.nanoTime()}").apply { mkdirs() }
+        File(dir, "liblaapkjdiji.so").writeText("stub userspace/ksud/src marker")
+        shadowOf(pm).installPackage(
+            PackageInfo().apply {
+                packageName = pkg
+                applicationInfo = ApplicationInfo().apply {
+                    packageName = pkg
+                    nativeLibraryDir = dir.absolutePath
+                }
+            },
+        )
+        return dir
+    }
+
     @Test
     fun `scan keeps user apps and drops self and system apps`() {
         install("me.weishu.kernelsu", system = false, ksud = true)
@@ -62,6 +77,35 @@ class ManagerScannerScanTest {
         assertTrue(result[0].hasKsud)
         assertTrue(result[0].builtin)
         assertFalse(result[1].hasKsud)
+    }
+
+    @Test
+    fun `scan detects Nova ksud under a randomized library name`() {
+        val dir = installNovaWithRenamedKsud("com.sukisu.nova")
+        val result = ManagerScanner.scan(pm, "com.ghostlock.app")
+        assertEquals(1, result.size)
+        assertTrue(result[0].hasKsud)
+        assertTrue(result[0].builtin)
+        assertEquals("liblaapkjdiji.so", ManagerScanner.findKsud("com.sukisu.nova", dir.absolutePath)?.name)
+    }
+
+    @Test
+    fun `scan detects Nova PR ksud under a randomized library name`() {
+        val dir = installNovaWithRenamedKsud("com.sukisu.nova.pr")
+        val result = ManagerScanner.scan(pm, "com.ghostlock.app")
+        assertEquals(1, result.size)
+        assertTrue(result[0].hasKsud)
+        assertTrue(result[0].builtin)
+        assertEquals("liblaapkjdiji.so", ManagerScanner.findKsud("com.sukisu.nova.pr", dir.absolutePath)?.name)
+    }
+
+    @Test
+    fun `findKsud detects marker across streaming buffer boundary`() {
+        val dir = File(app.cacheDir, "libs-chunked-${System.nanoTime()}").apply { mkdirs() }
+        val marker = "userspace/ksud/src".toByteArray()
+        val prefix = ByteArray(64 * 1024 - marker.size + 1) { 65 }
+        File(dir, "libchunked.so").writeBytes(prefix + marker)
+        assertEquals("libchunked.so", ManagerScanner.findKsud("com.sukisu.nova", dir.absolutePath)?.name)
     }
 
     @Test
