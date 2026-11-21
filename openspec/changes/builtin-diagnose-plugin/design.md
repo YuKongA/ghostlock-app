@@ -478,6 +478,8 @@ App域workspace位于app-private目录；Shizuku域沿现有owner使用shell-own
 2026-11-20生产批准及P0 PASS保留；scope仅§19.5.70的148行。最新优先先修构建，源实现暂缓；不接provider/import/Custom/真实backend，不用旧240行。
 
 <!-- source: f882e670:docs/plan/backend-root-execution-unification-plan.md:L4839-L4863 -->
+<a id="b1-validation-matrix"></a>
+
 ###### 19.5.73 验证矩阵
 
 设计审查只判断下列门能否证明本批目标，不把预期写成PASS。获得production批准后才按顺序执行；同一门连续失败两次停止implementation并转debug。所有Gradle writer串行，结果读取fresh structured report；定点用例不能冒充全量：
@@ -494,10 +496,10 @@ App域workspace位于app-private目录；Shizuku域沿现有owner使用shell-own
 | APK boundary | `:app:verifyDebugBuiltinPluginBoundary`与`:app:verifyReleaseBuiltinPluginBoundary` | APK asset/index各恰一个匹配archive；App DEX无`com.ghostlock.plugin.diagnose`／JNA，普通APK `lib/`无`libghostlock_diagnose.so`／`libjnidispatch.so`；plugin DEX无API／Host classes；App classpath无Diagnose project runtime edge | Beads `gl-3ki`（原运行记录保留于gl-dek notes） |
 | assemble／AIDL | `./gradlew :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest --console=plain`并核generated AIDL schema | 两variant和test APK成功；AIDL只新增archive PFD＋semantic content root两个字段且没有ZIP byteCount／byte hash，profile形状与现有business method set都不变 | Beads `gl-3ki`（原运行记录保留于gl-dek notes） |
 | Android bootstrap | 6.6 arm64 AVD fresh install、same-APK restart、模拟higher plugin version upgrade与corrupt/index mismatch negative instrumentation | fresh显式选择DIAGNOSE；restart不重复安装；upgrade object-before-catalog原子；无选择不高亮第一项；FAILED reason在路径页和主页可见且无synthetic membership；run NOT_READY；installed/archive/extracted DCL文件mode符合0400/0500，normal／partial failure cleanup可删除完整0500 tree而retained terminal不改mode | Beads `gl-bvj`（原运行记录保留于gl-dek notes） |
-| App／Shizuku DCL smoke | 同一current-tree app/test APK分别执行pluginized Diagnose App和Shizuku exact class，并采集main及目标RunHost maps | 两域均从catalog asset→PFD→RunHost loader→plugin JNA/DSO，status/uid/pid/nonce/双log/handoff/cleanup与diagnostic PASS保持；两个DSO只映射本run extracted path，main PID从未映射plugin/JNA DSO | Beads `gl-3ki`（原运行记录保留于gl-dek notes） |
-| process death | 普通instrumentation覆盖连续两次App/Shizuku run、prepare archive reject→下一run、teardown timeout→quarantine→迟到death解除；另用专用exact class分别在internal latch的“bind后callback前”和“terminal drain后requestClose前”调用`Process.killProcess(mainPid)`。这两次`am instrument`连接中断是预期trigger，外部shell随后轮询已记录的RunHost PID消失并再启动下一run | normal/reject每次都观察旧binder death、旧PID消失且下一run PID不同；两个client-death trigger不能被误计JUnit PASS，必须各自由后续PID absence＋fresh run共同判定；death timeout产生transport failure＋quarantine而非Completed；无cached old DSO/classloader复用 | Beads `gl-3ki`（原运行记录保留于gl-dek notes） |
-| physical arm64 device | 同一具名ARM64真机、同一current-tree app/test APK分别执行App域和Shizuku域正常Diagnose；各域记录APK SHA-256、plugin semantic content root、manifest逐文件DEX／ELF SHA-256、ABI/page size、PID序列、maps、typed result及destroy后的business binder death／PID absence，不记录或要求整包ZIP SHA-256 | 两域都必须各自证明catalog→PFD→DCL→plugin-owned JNA/private DSO→close/destroy→physical death；两个DSO只来自本run extracted path且下一run PID不同。Shizuku不可用时该域与B1-V3／B1总关闭保持`NOT_RUN`／open，不以App域代替，也不新增callback/watchdog；只证明Diagnose，不证明root product | Beads `gl-3ki`（原运行记录保留于gl-dek notes） |
-| deferred matrix | external import trust、provider/profile独立更新、Custom/raw memory、ARMv7/x86/x86_64、Desktop、43499/43284/98260 | 本批不得执行假fixture并宣称支持；各自在后继真实consumer批补门 | Beads `gl-3ki`（原运行记录保留于gl-dek notes） |
+| App／Shizuku DCL smoke | 同一current-tree app/test APK分别执行pluginized Diagnose App和Shizuku exact class，并采集main及目标RunHost maps | 两域均从catalog asset→PFD→RunHost loader→plugin JNA/DSO，status/uid/pid/nonce/双log/handoff/cleanup与diagnostic PASS保持；两个DSO只映射本run extracted path，main PID从未映射plugin/JNA DSO | Beads `gl-bvj`（原运行记录保留于gl-dek notes） |
+| process death | 普通instrumentation覆盖连续两次App/Shizuku run、prepare archive reject→下一run、teardown timeout→quarantine→迟到death解除；另用专用exact class分别在internal latch的“bind后callback前”和“terminal drain后requestClose前”调用`Process.killProcess(mainPid)`。这两次`am instrument`连接中断是预期trigger，外部shell随后轮询已记录的RunHost PID消失并再启动下一run | normal/reject每次都观察旧binder death、旧PID消失且下一run PID不同；两个client-death trigger不能被误计JUnit PASS，必须各自由后续PID absence＋fresh run共同判定；death timeout产生transport failure＋quarantine而非Completed；无cached old DSO/classloader复用 | Beads `gl-bvj`（原运行记录保留于gl-dek notes） |
+| physical arm64 device | 同一具名ARM64真机、同一current-tree app/test APK分别执行App域和Shizuku域正常Diagnose；各域记录APK SHA-256、plugin semantic content root、manifest逐文件DEX／ELF SHA-256、ABI/page size、PID序列、maps、typed result及destroy后的business binder death／PID absence，不记录或要求整包ZIP SHA-256 | 两域都必须各自证明catalog→PFD→DCL→plugin-owned JNA/private DSO→close/destroy→physical death；两个DSO只来自本run extracted path且下一run PID不同。Shizuku不可用时该域与B1-V3／B1总关闭保持`NOT_RUN`／open，不以App域代替，也不新增callback/watchdog；只证明Diagnose，不证明root product | Beads `gl-xme`（原运行记录保留于gl-dek notes） |
+| deferred matrix | external import trust、provider/profile独立更新、Custom/raw memory、ARMv7/x86/x86_64、Desktop、43499/43284/98260 | 本批不得执行假fixture并宣称支持；各自在后继真实consumer批补门 | Beads 后续任务：`gl-dt8/gl-9lz/gl-tz3/gl-75t/gl-m0f/gl-2u2/gl-2ot`；仅在对应真实consumer批执行，未细化项保持后续范围 |
 
 `:app`本批目标态“零native owner”严格指active build/runtime：没有App-owned C/C++ task/input、JNA/JNI dependency、project DSO或普通APK native entry；root `nativeTestHost`和package leaf CMake仍可存在，不因此把Host重新定义为native owner。当前已断图的43499／43284／98260 source仍物理位于legacy `app/src/main/cpp/backends/`，以及caller-zero AES/HMAC source仍位于legacy common目录；B1不编译它们，也不把大规模物理搬迁偷渡进Diagnose vertical，但这项目录债必须由各真实backend plugin批迁走，故本批不得宣称“repository内所有native source都已离开app目录”。JNA第三方bytecode内部调用`System.loadLibrary`不是Host source调用，但必须只在plugin classloader／nativeSearchPath内成功；缺库、错ABI和APK fallback负例都要失败。
 
@@ -513,7 +515,7 @@ App域workspace位于app-private目录；Shizuku域沿现有owner使用shell-own
 
 <!-- migrated-source: 043fdf6a Beads gl-3ki description -->
 本节是迁入OpenSpec的现行设计/验收正文；Beads只保存执行状态、原批准和实际证据。历史来源仅作追溯。
-NOT_RUN：API/core/package/App unit、architecture、native、ZIP/APK边界和assemble，按原§19.5.73矩阵逐项真实执行；构建不冒充合同验收。
+NOT_RUN：API/core/package/App unit、architecture、native、ZIP/APK边界和assemble，按[本批验证矩阵](#b1-validation-matrix)逐项真实执行；构建不冒充合同验收。
 原始来源（已归档/承接）：docs/archive/20261121-1301-backend-root-execution-unification-plan.md#p-backend-x-002-decision-03-batch-01
 
 <!-- migrated-source: design gl-3ki -->
@@ -525,7 +527,7 @@ NOT_RUN：API/core/package/App unit、architecture、native、ZIP/APK边界和as
 ### 验收定义与原边界：gl-3ki
 
 <!-- migrated-source: acceptance_criteria gl-3ki -->
-NOT_RUN：API/core/package/App unit、architecture、native、ZIP/APK边界和assemble，按原§19.5.73矩阵逐项真实执行；构建不冒充合同验收。
+NOT_RUN：API/core/package/App unit、architecture、native、ZIP/APK边界和assemble，按[本批验证矩阵](#b1-validation-matrix)逐项真实执行；构建不冒充合同验收。
 
 批准/审核/实际结果：Beads `gl-3ki` notes；本段不维护实时勾选或新PASS。
 

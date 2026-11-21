@@ -522,6 +522,8 @@ renderer/freezer 持有 `required/severity/alwaysRun` authority；result file �
 - `DIAGNOSTIC_ONLY`：Payload/Finish 必须为空；确定 `DiagnosticOutcome.PASS` 或 `.FAIL` 都得到 `DIAGNOSTIC_COMPLETE`，产品成功 projector 恒为 false。证据不完整/host death/malformed 得到 `DiagnosticOutcome.UNKNOWN + RunTerminal.UNKNOWN`；安全取消按 §6.6 得到 CANCELLED。
 - `PRODUCT_ROOT`：`diagnosticOutcome` 必须 `NOT_APPLICABLE`，RunHost 从下表由上到下取第一个命中项；日志、stdout、event 不参与。
 
+<a id="product-terminal-precedence"></a>
+
 | 优先级 | 条件 | terminal |
 |---:|---|---|
 | 1 | 有 identity 匹配且 `complete=1` 的 durable script result 写 `handoff=1` | `REBOOT_REQUESTED` |

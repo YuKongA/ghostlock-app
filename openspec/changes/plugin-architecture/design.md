@@ -170,6 +170,9 @@ Custom不再是带一组预声明filtered dependency的普通backend。每次Cus
 - `plugin/api/`保存最小跨classloader binary contracts，`plugin/core/`保存Android/JVM可共享的catalog／Document／resolver／presentation／i18n模型，`plugin/packages/<id>/`保存实际package的Kotlin／Java及C/C++源码；`plugin/native-source/common/`只可作为被具体package编译进去的source authority，不产Host／公共DSO。exact Gradle plugin、source set和task在新的implementation batch再核对，不继承旧240行ledger。
 - `.so`、源码构建`.ko`、DEX和`.glplugin.zip`都是leaf package build output；不得放入production source目录冒充源码。预建KO是带provenance的provider input／artifact，自定义KO是importer输入；Host/App不因打包它们而成为native owner。
 - 一个逻辑package release可发布`android-arm64-v8a`、`armeabi-v7a`、`x86`、`x86_64`或以后desktop等thin archive；设备只安装实际RunHost ABI所需variant。target ISA／KMI属于Document／Artifact事实，不等于Host ABI；纯数据package可为`universal`。
+
+<a id="retained-i18n-goal"></a>
+
 - App终态仍是`:app:shared` KMP Compose UI加`:app:android`／`:app:desktop`平台壳。App base catalog、builtin plugin和imported plugin继续进入唯一`I18nRegistry`与locale/message engine；plugin只携带authenticated declarative presentation和语言data，Host渲染Material／Miuix Compose。既有i18n4k薄门面可作为后继exact batch的复用候选，不因本次runtime重画而另造message engine；旧exact版本／ledger不自动成为实施授权。
 - 当前`docs/development/full-process-uml.md`描述已实现产品链，不为尚未实现的候选改画。决策03先在本节用候选图表达，待implementation切换真实owner时同批更新权威UML。
 

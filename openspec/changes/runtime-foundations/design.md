@@ -191,7 +191,7 @@ prologue / run metadata
 5. `backend_cleanup`：攻击资源是否按 backend 生命周期完成回收/移交；
 6. `run_terminal`：本次运行最终状态及是否需要重启/人工处置。
 
-`backend_primitive=success` 可以成为 backend 可用性证据，但只有 `payload=success` 才能进入产品成功判定。Finish 和 cleanup 是否改变最终等级由 §10 的待裁策略决定。
+`backend_primitive=success` 可以成为 backend 可用性证据，但只有 `payload=success` 才能进入产品成功判定。Finish 严重度按[已裁定的 Finish 合同](#record-gl-7c2)，cleanup 与各层事实的最终等级按 [RunHost 公共合同的产品终态优先级](../../specs/runhost-wire/spec.md#product-terminal-precedence)合成；不是待裁事项。
 
 #### 4. 必须留在具体 backend 的部分
 

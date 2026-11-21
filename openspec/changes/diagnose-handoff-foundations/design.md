@@ -26,7 +26,7 @@
 
 ##### P-DIAG-NATIVE-001/批次01 Diagnose：首个真实 JNA/shared-library 纵向（已完成）
 
-> **当前接口纠正**：本节保留初版沿革；其中 `*_v1`、version、size、reserved、layout/header 运行时检查及 Flow 侧独立 shell step 已由 P-RUN-HANDOFF-001/批次01（Beads [gl-obq](design.md#record-gl-obq)，定位 `p-run-handoff-001`） 明确取代，不得恢复为兼容层或 current gate。当前唯一接口是与 App 同版发布的非版本化 `gl_diagnose_run`。
+> **当前接口纠正**：先读[已裁定基线与门禁边界](#jna-current-boundary)。本节保留初版沿革；其中 `*_v1`、version、size、reserved、layout/header 运行时检查及 Flow 侧独立 shell step 已由 P-RUN-HANDOFF-001/批次01（Beads [gl-obq](design.md#record-gl-obq)，定位 `p-run-handoff-001`） 明确取代，不得恢复为兼容层或 current gate。当前唯一接口是与 App 同版发布的非版本化 `gl_diagnose_run`。
 
 ###### P-DIAG-NATIVE-001/批次01.1 用户裁定、取代关系与边界
 
@@ -204,6 +204,21 @@ AVD只证明Diagnose机制与release包装，不证明任何CVE、root primitive
 
 历史审批/实际证据见 Beads [gl-yhz](design.md#record-gl-yhz) notes（原文保留，不作为实时状态副本）。
 
+
+<a id="jna-current-boundary"></a>
+
+### 已裁定的 JNA 基线与门禁边界（原 §15.4）
+
+下列八项从原主计划 §15.4 的晚期纠正完整迁入；它们限定本节初版 ABI、source ledger 与验证矩阵，不恢复已取消的检查。这里的 same-APK/constant-name 装载描述是 **B1 前基线**；B1 已批准的 package-owned loader、ZIP/APK 验证与双域真机要求按[所属设计与矩阵](../builtin-diagnose-plugin/design.md#b1-validation-matrix)覆盖对应部分，不能用本基线取消 B1 的真实合同门，也不能把尚未完成的 B1 写成已验收。批准与实际运行记录仍在 Beads `gl-yhz/gl-obq/gl-dek`。
+
+1. dependency继续固定为`net.java.dev.jna:jna:5.19.1@aar`，third-party许可assets继续随APK打包；current tree不再注册`verifyJnaDistribution`或为它单独解析AAR/POM，不把inventory checksum当构建门。
+2. current普通门不维护merged native expected-set manifest，也不执行foreign ABI/so、symlink、ELF或导出符号精确检查；历史结果不得写成current verifier PASS。
+3. `libjnidispatch.so`与project DSO在4 KiB/16 KiB AVD上的既有`Native.load`/round-trip证据继续有效，但不等于每次构建重新检查16 KiB alignment。
+4. project JNA mapping继续只调用同版发布的ordinary C symbol；current构建不另设导出集合检查任务。
+5. JNA `@FieldOrder`只描述当前同版发布的最小request/result字段顺序；接口不定义version、size或reserved，不做`Structure.size`、`sizeof/alignof/offsetof`兼容检查，也不保留旧符号/旧结构分支。direct call test只验证null、`HANDOFF_NOT_RUN`执行语义、字段回显、两条日志与handoff结果；function `int32_t` return是唯一call-status authority。
+6. RunHost在prepare执行`plugin.createFlow()`，`DiagnoseFlow`/binding构造器当场constant-name load且只load一次；公共`Flow`不增加initialize，`run()`不重复load。constructor不创建调用期fd/process/thread，call-return后不保留transient pointer/fd；本Diagnose无opaque handle、callback或unload状态机。
+7. 实际Flow execution domain只有App `:flowhost`与Shizuku UserService，两域分别在debug/minified release load/round-trip；不要求UI App process加载DSO。Shizuku同样只用APK constant-name候选，禁止PFD staging/fallback；任一域失败停批回设计，不能以另一域成功代表全部。
+8. P-DIAG-NATIVE-001/批次02的旧“精确两个symbol、单调用reader、禁止handle/start-stop”候选已被动态producer churn需求取代。批次02须在LogConnector批完成后重新冻结最小session/producer lifecycle与exact symbol authority；同版发布无version/size/reserved兼容层、constructor constant-name load及handoff ABI继续保留。新exact设计获critic与用户批准前，current source不变。
 
 <a id="acceptance-gl-yhz"></a>
 
