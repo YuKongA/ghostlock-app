@@ -40,6 +40,7 @@ pub const STRUCT_FIELDS: &[(&str, &[(&str, &str)])] = &[
             ("task_comm", "comm"),
             ("task_tasks", "tasks"),
             ("task_seccomp", "seccomp"),
+            ("task_usage", "usage"),
         ],
     ),
     (
@@ -157,6 +158,7 @@ pub fn resolve_structs(btf: Option<&Btf>) -> ResolvedStructs {
         result.insert("struct_page_type".to_string(), None);
         result.insert("struct_slab_cache".to_string(), None);
         result.insert("struct_mm_struct".to_string(), None);
+        result.insert("struct_thread_info".to_string(), None);
         return result;
     };
     for (struct_name, fields) in STRUCT_FIELDS {
@@ -194,6 +196,7 @@ pub fn resolve_structs(btf: Option<&Btf>) -> ResolvedStructs {
         btf.field("slab", "slab_cache"),
     );
     result.insert("struct_mm_struct".to_string(), btf.size("mm_struct"));
+    result.insert("struct_thread_info".to_string(), btf.size("thread_info"));
     result
 }
 

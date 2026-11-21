@@ -857,7 +857,7 @@ internal class AndroidProfileConfigController(
         private val TaskStructFieldNames = listOf(
             "prio", "normal_prio", "sched_task_group", "pi_lock", "pi_waiters", "pi_top_task",
             "pi_blocked_on", "pid", "tgid", "atomic_flags", "real_cred", "cred", "comm", "tasks",
-            "seccomp",
+            "seccomp", "usage", "thread_info_size",
         )
         private val CredFieldNames = listOf(
             "copy_size", "usage_offset", "usage_value", "caps_offset", "caps_count", "caps_value",

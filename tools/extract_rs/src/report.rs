@@ -90,6 +90,8 @@ const CONF_TASK_FIELDS: &[(&str, &str)] = &[
     ("task_comm", "comm"),
     ("task_tasks", "tasks"),
     ("task_seccomp", "seccomp"),
+    ("task_usage", "usage"),
+    ("struct_thread_info", "thread_info_size"),
 ];
 
 /// Full route field universe per branch (authoritative: Kotlin

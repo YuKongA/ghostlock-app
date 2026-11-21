@@ -443,7 +443,10 @@ namespace ghostlock::support {
                                              ? v->task.pi_blocked_on
                                              : ghostlock::profile::fake_task_pi_blocked_on_off();
 
-            put32(p, fake_task_off + kernel::FAKE_TASK_USAGE_OFF, 0x100);
+            uint32_t ft_usage_off = (v && v->task.usage)
+                                        ? v->task.usage
+                                        : kernel::FAKE_TASK_USAGE_OFF;
+            put32(p, fake_task_off + ft_usage_off, 0x100);
             put32(p, fake_task_off + ft_prio_off, kernel::FAKE_TASK_PRIO);
             put32(p, fake_task_off + ft_nprio_off, kernel::FAKE_TASK_PRIO);
             put32(p, fake_task_off + ft_pi_lock_off, 0);

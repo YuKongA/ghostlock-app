@@ -165,6 +165,8 @@ addresses into runtime addresses.
 | `task_struct.atomic_flags` | `atomic_flags` (used to decide whether state was cleaned up) |
 | `task_struct.real_cred` / `task_struct.cred` | real cred / cred pointers |
 | `task_struct.comm` / `task_struct.tasks` / `task_struct.seccomp` | `comm`, task list, `seccomp` |
+| `task_struct.usage` | Optional `task_struct.usage` (refcount) offset for the fake task; absent/0 falls back to the compiled `FAKE_TASK_USAGE_OFF` (0x40). vivo 5.15 uses 56 |
+| `task_struct.thread_info_size` | Optional `sizeof(thread_info)`; when the aligned VR tag-B offset would extend past it, the tag-B write is skipped (vivo 5.15: 40, tag-B at 0x28 would hit `__state`). Absent/0 keeps the legacy tag-B write |
 
 ### 4.2 Credential template (`cred`)
 

@@ -90,6 +90,13 @@ namespace ghostlock::profile {
         uint32_t pi_lock = 0, pi_waiters = 0, pi_top_task = 0, pi_blocked_on = 0;
         uint32_t pid = 0, tgid = 0, atomic_flags = 0;
         uint32_t real_cred = 0, cred = 0, comm = 0, tasks = 0, seccomp = 0;
+        /* fake_task refcount offset; 0 = absent -> kernel::FAKE_TASK_USAGE_OFF.
+         * vivo 5.15 places task_struct.usage at 56, not the oplus default 64. */
+        uint32_t usage = 0;
+        /* sizeof(thread_info); 0 = absent -> legacy VR tag-B write. When present
+         * and the aligned VR tag-B offset would extend past thread_info, the
+         * backend skips that write (it would hit task_struct.__state). */
+        uint32_t thread_info_size = 0;
     };
 
     struct CredTemplate {
@@ -305,6 +312,10 @@ namespace ghostlock::profile {
 
         [[nodiscard]] uint32_t mm_struct_stride(uint32_t fallback) const noexcept {
             return or_default(loaded_ ? values_.misc.mm_struct_sz.value_or(0) : 0, fallback);
+        }
+
+        [[nodiscard]] uint32_t thread_info_size() const noexcept {
+            return loaded_ ? values_.task.thread_info_size : 0;
         }
 
         [[nodiscard]] uint64_t image(uint64_t offset, uint64_t image_base,

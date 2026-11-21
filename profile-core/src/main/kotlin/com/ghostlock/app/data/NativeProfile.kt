@@ -172,6 +172,8 @@ data class NativeProfileDocument(
         "comm" to taskStruct.comm.toULong(),
         "tasks" to taskStruct.tasks.toULong(),
         "seccomp" to taskStruct.seccomp.toULong(),
+        "usage" to taskStruct.usage.toULong(),
+        "thread_info_size" to taskStruct.threadInfoSize.toULong(),
     )
 
     private fun credEntries(): List<Pair<String, ULong>> = listOf(
@@ -371,6 +373,8 @@ data class NativeProfileDocument(
                     comm = vu("task_struct.comm"),
                     tasks = vu("task_struct.tasks"),
                     seccomp = vu("task_struct.seccomp"),
+                    usage = vu("task_struct.usage"),
+                    threadInfoSize = vu("task_struct.thread_info_size"),
                 ),
                 cred = CredTemplate(
                     copySize = vu("cred.copy_size"),
@@ -486,6 +490,8 @@ data class NativeProfileDocument(
                         "comm" -> task.copy(comm = raw.toUInt())
                         "tasks" -> task.copy(tasks = raw.toUInt())
                         "seccomp" -> task.copy(seccomp = raw.toUInt())
+                        "usage" -> task.copy(usage = raw.toUInt())
+                        "thread_info_size" -> task.copy(threadInfoSize = raw.toUInt())
                         else -> task
                     }
 
@@ -647,6 +653,8 @@ data class TaskStructOffsets(
     val comm: UInt = 0u,
     val tasks: UInt = 0u,
     val seccomp: UInt = 0u,
+    val usage: UInt = 0u,
+    val threadInfoSize: UInt = 0u,
 )
 
 data class CredTemplate(
