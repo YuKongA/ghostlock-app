@@ -6,6 +6,10 @@
 > Root the device first, then follow [MEDIATEK.md](MEDIATEK.md) to obtain the
 > two physical addresses (`kernel_phys_load` / `kernel_phys_offset`).
 
+> Some builds already contain the CVE-2026-43499 fix and cannot be supported at
+> all — the app reports them as **Kernel patched**. See
+> [Patched kernels](PATCHED_KERNELS.md) (Xiaomi 15 on HyperOS 4, for example).
+
 Rows marked **Shizuku recommended** ship a profile with `recommend_shizuku = 1`.
 The app automatically turns on the home-screen **Run via Shizuku** switch for
 them at every start; you can switch it off for the current session, and while it

@@ -9,6 +9,8 @@ data class KernelSnapshot(
     val kernelRelease: String,
     val socName: String = "",
     val kernelSupported: Boolean,
+    /** Non-null when this build already contains the CVE-2026-43499 fix. */
+    val kernelPatchedReason: String? = null,
     val cpuPairs: List<CpuPair>,
     val cpuPairLabels: List<String>,
     val selectedCpuPair: Int,

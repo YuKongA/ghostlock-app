@@ -107,6 +107,8 @@ data class GhostlockUiState(
     val kernelRelease: String = "",
     val socName: String = "",
     val kernelSupported: Boolean = false,
+    /** Non-null when the running kernel already carries the CVE-2026-43499 fix. */
+    val kernelPatchedReason: String? = null,
     val shizukuEnabled: Boolean = false,
     val shizukuStatus: ShizukuStatus = ShizukuStatus.NOT_REQUIRED,
     val running: Boolean = false,
@@ -830,6 +832,7 @@ private fun ControlPanel(
     Column(modifier = modifier) {
         ActivationStatusCard(
             supported = state.kernelSupported,
+            patchedReason = state.kernelPatchedReason,
             profileAvailable = state.executionHasProfile,
             profileValid = state.profileInvalidPaths.isEmpty(),
             shizukuEnabled = state.shizukuEnabled,
@@ -913,6 +916,7 @@ private fun ControlPanel(
 @Composable
 private fun ActivationStatusCard(
     supported: Boolean,
+    patchedReason: String?,
     profileAvailable: Boolean,
     profileValid: Boolean,
     shizukuEnabled: Boolean,
@@ -925,6 +929,12 @@ private fun ActivationStatusCard(
     val ready = supported && profileAvailable && profileValid && accessReady
     val missing = !supported || !profileAvailable
     val (backgroundColor, title, icon) = when {
+        patchedReason != null -> Triple(
+            MiuixTheme.colorScheme.tertiaryContainer,
+            R.string.kernel_patched,
+            Icons.Rounded.ErrorOutline,
+        )
+
         ready -> Triple(
             when {
                 MiuixTheme.isDynamicColor -> MiuixTheme.colorScheme.secondaryContainer
@@ -954,6 +964,7 @@ private fun ActivationStatusCard(
     val summary = when {
         ready && shizukuEnabled -> R.string.kernel_profile_ready_shizuku
         ready -> R.string.kernel_profile_ready
+        patchedReason != null -> R.string.kernel_patched_summary
         !supported -> R.string.kernel_unsupported_summary
         !profileAvailable -> R.string.kernel_profile_required_summary
         !profileValid -> R.string.kernel_profile_invalid_summary

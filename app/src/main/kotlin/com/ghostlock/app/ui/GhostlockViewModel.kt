@@ -1080,6 +1080,7 @@ class GhostlockViewModel(
                 kernelRelease = snapshot.kernelRelease,
                 socName = snapshot.socName,
                 kernelSupported = snapshot.kernelSupported,
+                kernelPatchedReason = snapshot.kernelPatchedReason,
                 cpuPairLabels = snapshot.cpuPairLabels,
                 cpuPairIndex = snapshot.selectedCpuPair,
                 safeModeEnabled = snapshot.safeModeEnabled,

@@ -161,6 +161,7 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
             kernelRelease = release,
             socName = resolveSocName(),
             kernelSupported = isKernelSupported(),
+            kernelPatchedReason = builtinProfiles.patched[release],
             cpuPairs = cpuPairs.toList(),
             cpuPairLabels = cpuPairLabels.toList(),
             selectedCpuPair = selectedCpuPair,

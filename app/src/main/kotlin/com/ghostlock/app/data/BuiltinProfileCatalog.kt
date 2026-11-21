@@ -26,6 +26,19 @@ internal class BuiltinProfileCatalog(context: Context) {
         entries.mapTo(linkedSetOf()) { it.release }.filterTo(linkedSetOf()) { !isTemplate(it) }
     }
 
+    /** Releases that already carry the CVE-2026-43499 fix: release -> short why. */
+    val patched: Map<String, String> by lazy {
+        runCatching {
+            val doc = readAsset("$BuiltinDirectory/patched_kernels.conf")
+                ?.let { HoconSupport.parseValue(it).asValueMap() } ?: return@runCatching emptyMap()
+            doc["patched"].asValueList().orEmpty().mapNotNull { raw ->
+                val entry = raw.asValueMap() ?: return@mapNotNull null
+                val release = entry["release"] as? String ?: return@mapNotNull null
+                release to (entry["why"] as? String).orEmpty()
+            }.toMap()
+        }.getOrDefault(emptyMap())
+    }
+
     val recommendShizuku: Set<String> by lazy {
         entries.filter { it.recommendShizuku }.mapTo(linkedSetOf()) { it.release }
     }

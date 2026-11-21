@@ -46,6 +46,12 @@ Field meanings, the required-field matrix, and validation rules are in the
    Run `adb shell uname -r` and keep the complete string. Any character
    difference makes matching fail.
 
+2. **Check the build is not patched.** `ghostlock-extract <boot.img>` exits with
+   code 6 when the image already carries the rtmutex fix
+   (`remove_waiter()` no longer reads `current`). Such a build cannot be
+   supported — list it in [PATCHED_KERNELS.md](PATCHED_KERNELS.md) instead of
+   writing a profile.
+
 2. **Pick a template.**
    Open the document for the kernel family:
    [5.x](templates/kernel-5.x.template.md),
