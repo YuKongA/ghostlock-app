@@ -82,16 +82,56 @@ pub fn ensure_rtmutex_43499_unpatched(
         return Ok(start);
     }
     Err(ExtractError::already_fixed(format!(
-        "remove_waiter()@{start:#x} never reads current (no mrs sp_el0); \
-         rtmutex UAF fix is present"
+        "remove_waiter()@{start:#x} clears waiter->task->pi_blocked_on, not \
+         current->pi_blocked_on; rtmutex UAF fix is present"
     )))
 }
 
-/// True when `remove_waiter()` still operates on `current` (vulnerable):
-/// the fixed variant no longer contains `mrs xN, sp_el0`.
+/// True when `remove_waiter()` still clears `current->pi_blocked_on`
+/// (vulnerable). The fix clears `waiter->task->pi_blocked_on` instead, via a
+/// task register loaded from the waiter; `mrs sp_el0` alone is NOT a reliable
+/// signal because the patched variant still reads `current` for the
+/// preempt_count increment. Detect the zero-store (`str xzr`) whose base is the
+/// `sp_el0` register at a large offset (the `pi_blocked_on` field), which only
+/// the vulnerable form does.
 pub fn remove_waiter_uses_current(dis: &[String]) -> bool {
-    let mrs_current = Regex::new(r"(?i)\bmrs\s+x\d+,\s*s3_0_c4_c1_0\b").unwrap();
-    dis.iter().any(|line| mrs_current.is_match(line))
+    let mrs_current = Regex::new(r"(?i)\bmrs\s+(x\d+),\s*s3_0_c4_c1_0\b").unwrap();
+    let mut current_regs: Vec<String> = Vec::new();
+    for line in dis {
+        if let Some(caps) = mrs_current.captures(line) {
+            current_regs.push(caps[1].to_ascii_lowercase());
+        }
+    }
+    if current_regs.is_empty() {
+        return false;
+    }
+    let clear = Regex::new(
+        r"(?i)\bstr\s+xzr,\s*\[(x\d+)(?:,\s*#(0x[0-9a-f]+|[0-9]+))?\s*\]",
+    )
+    .unwrap();
+    for line in dis {
+        let Some(caps) = clear.captures(line) else { continue };
+        let base = caps[1].to_ascii_lowercase();
+        if !current_regs.contains(&base) {
+            continue;
+        }
+        let off = caps
+            .get(2)
+            .map(|m| {
+                let s = m.as_str();
+                match s.strip_prefix("0x") {
+                    Some(hex) => u64::from_str_radix(hex, 16).unwrap_or(0),
+                    None => s.parse::<u64>().unwrap_or(0),
+                }
+            })
+            .unwrap_or(0);
+        // pi_blocked_on sits far into task_struct; exclude small fields such as
+        // preempt_count (which the patched form still writes via current).
+        if off >= 0x100 {
+            return true;
+        }
+    }
+    false
 }
 
 /// Some Android kernels inline `tcp_zerocopy_receive()` into the TCP option
@@ -331,6 +371,30 @@ mod tests {
             "01068de0: mrs x20, s3_0_c4_c1_0".to_string(),
             "01068e2c: mov x0, x21".to_string(),
             "01068e30: str xzr, [x20, #0x938]".to_string(),
+        ];
+        assert!(remove_waiter_uses_current(&dis));
+    }
+
+    #[test]
+    fn patched_remove_waiter_with_preempt_count_current_read() {
+        // vivo g6a42d5ffa908: still reads current (sp_el0) for preempt_count,
+        // but clears pi_blocked_on via waiter->task (x20), not current (x25).
+        let dis = vec![
+            "1781a34: ldr x20, [x23, #48]".to_string(),
+            "1781a3c: mrs x25, s3_0_c4_c1_0".to_string(),
+            "1781a48: add x22, x20, #0x884".to_string(),
+            "1781a50: str w8, [x25, #16]".to_string(),
+            "1781ac0: str xzr, [x20, #2224]".to_string(),
+        ];
+        assert!(!remove_waiter_uses_current(&dis));
+    }
+
+    #[test]
+    fn vulnerable_remove_waiter_decimal_offset() {
+        // current kernel g7d37760ec777: objdump decimal offset form.
+        let dis = vec![
+            "01068de0: mrs x25, s3_0_c4_c1_0".to_string(),
+            "01068e30: str xzr, [x25, #2224]".to_string(),
         ];
         assert!(remove_waiter_uses_current(&dis));
     }
