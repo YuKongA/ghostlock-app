@@ -1,4 +1,4 @@
-# MASTER-PLAN：GhostLock 主计划（唯一进度入口）
+# MASTER-PLAN：GhostLock 设计与任务入口
 
 > 2026-11-04 用户已批准 Backend root execution D1–D9 与 R0→R1 顺序。当前唯一实施 authority 是 [backend-root-execution-unification-plan.md](backend-root-execution-unification-plan.md)。历史计划已按 [backend-root-execution-plan-disposition.tsv](backend-root-execution-plan-disposition.tsv) 归档，不再从本文件重复其实施指令。
 
@@ -25,9 +25,12 @@
 | P-BACKEND-CORE-001 | BackendDefinition 组合根、BackendDescriptor 与具名BackendUi边界；BD-I3配置实现延后 | [Backend 组合与UI边界合同](backend-root-execution-unification-plan.md#p-backend-core-001) |
 | P-UI-ICON-001 | Material/Miuix 全项目语义图标目录；定义仍在统一计划内 | [统一语义图标目录](backend-root-execution-unification-plan.md#p-ui-icon-001) |
 | P-UI-ICON-002 | Material/Miuix 当前依赖的全量图标目录需求；定义仍在统一计划内 | [全量图标目录需求](backend-root-execution-unification-plan.md#p-ui-icon-002) |
-| P-UI-CORE-001 | UI feature/package、dead component 与单向 presentation owner 收口 | [UI feature/package 收口](backend-root-execution-unification-plan.md#p-ui-core-001) |
+| P-UI-CORE-001 | App内KMP shared Compose UI、App/plugin共用唯一KMP `I18nRegistry`与catalog schema、Compose Multiplatform非文本资源、Android/Desktop平台壳、UI feature/package与单向presentation owner收口；远期目标已记录，exact design待plugin owner稳定后重开 | [App KMP shared UI、i18n与feature/package收口](backend-root-execution-unification-plan.md#p-ui-core-001) |
 | P-BACKEND-X-001 | Backend 成员资格、删除与断开闭包；定义仍在统一计划内 | [Backend 成员资格、删除与断开闭包](backend-root-execution-unification-plan.md#p-backend-x-001) |
+| P-BACKEND-X-002 | 多组件 PluginPackage、共享 API、独立输入 provider（含固定 Maven 版本的外部 Kernel Symbol Extractor consumer）、settings presentation与注册到唯一App/plugin `I18nRegistry`的authenticated bundle、thin variant 与 RunHost 安全装载 | [Backend 插件分发、输入提供与多架构演进](backend-root-execution-unification-plan.md#p-backend-x-002) |
 | P-RUN-CORE-001 | 运行结果、会话终态与内部 core 收口；定义仍在统一计划内 | [运行结果、会话终态与内部 core 收口](backend-root-execution-unification-plan.md#p-run-core-001) |
+| E-DOC-X-002 | 开发环境与 OpenSpec/Beads/CDA 接入 | [接入设计](../../openspec/changes/engineering-workflow/design.md) |
+| E-BUILD-X-001 | 当前构建闭环修复；精确设计与批准沿原聊天 | [构建修复入口](../../openspec/changes/build-closure-repair/design.md) |
 | E-DOC-X-001 | 计划权威、归档与跨文档入口收口；定义仍在统一计划内 | [计划权威、归档与跨文档入口收口](backend-root-execution-unification-plan.md#e-doc-x-001) |
 | P-LOG-IO-001 | 日志自动导出与文件 sink；定义仍在统一计划内 | [日志自动导出与文件 sink](backend-root-execution-unification-plan.md#p-log-io-001) |
 | P-LOG-X-001 | 跨层单一日志中枢及结果归属边界；定义仍在统一计划内 | [跨层单一日志中枢及结果归属边界](backend-root-execution-unification-plan.md#p-log-x-001) |
@@ -47,30 +50,33 @@
 
 - [P-RUN-X-001：产品目标、边界、决策、批次与门禁](backend-root-execution-unification-plan.md#p-run-x-001)
 - [P-RUN-IPC-001：RunHost wire、状态机、GLR1 与产品成功投影](backend-root-execution-runhost-wire.md#p-run-ipc-001)
-- 逐文件 implementation scope：[backend-root-execution-unification-ledger.tsv](backend-root-execution-unification-ledger.tsv)
+- 当前 BXP3-B1 scope：[决策03/批次01 §19.5.70 的148行](backend-root-execution-unification-plan.md#p-backend-x-002-decision-03-batch-01)；旧[TSV](backend-root-execution-unification-ledger.tsv)仅保留既往批次记录，不是当前240行实施入口。
 - 活跃计划 disposition：[backend-root-execution-plan-disposition.tsv](backend-root-execution-plan-disposition.tsv)
 - 历史索引：[INDEX-plans.md](../archive/INDEX-plans.md)
 
-## 当前进度
+<a id="active-task-routing"></a>
 
-- P-UI-ICON-001/批次01（开发者验收完成）：唯一人工项目 `Icons` 目录已落地88个current pair，current 30个direct upstream icon callsite与175条import已收口，目录外architecture命中0；debug/release独立assemble、114项debug unit、androidTest compile与31项host native均通过。2026-11-08开发者目视Material3/Miuix无显示错误并关闭IC-V1；随后裁定`verifyJnaDistribution`为不必要检查并从current task graph删除。P-UI-ICON-002另行登记全量图标目录需求。
-- P-BACKEND-CORE-001/决策01-02+批次01（完成）：outer `BackendDefinition(descriptor, runtime, ui)`、纯 `BackendDescriptor`、唯一registry的runtime/UI投影、具名 `BackendUi` 及Custom占位已落地；旧data/domain catalog链、carrier wrapper与generic schema→Compose配置DSL已清零，BD-I3保持延后。architecture、unit、host native、双variant assemble与6.6 AVD UI通过；删除不必要的JNA distribution task后，clean及只构建debug/release的`nativeBuildAndroid`均通过，BD-I1/I2/V1关闭。
-- P-LOG-X-001/批次03（完成）：46行caller闭包内已落地统一 `LogConnector` source contract及Kotlin、RunHost、FD adapter，LogHub只接draft。每source FIFO、raw acceptance全局commit、transport-private sequence、timestamp仅元数据、动态attach/detach与stop→drain→close顺序均由unit/architecture冻结；debug/release各120项unit、host 31项、双variant build、>10 MiB MediaStore/两皮肤UI 7项及App/Shizuku exact connector路径均通过。Incomplete只保留accepted prefix并追加普通Warn，不改变typed产品结果。
-- P-SETTINGS-IO-001/批次01（source实现完成，Android exact runtime待补）：`UiPreferences`、`OperationalPreferences`、`AppSelection`、`PayloadDefinition`与`FinishDefinition`五个完整Kotlin data class已分别接入typed DataStore；旧SharedPreferences adapter、Payload/Finish v3/JCS内部codec/document authority均已清零。主进程幂等初始化、accepted transaction、Payload-only preview exact handle与run cutoff已接通；debug/release JVM unit各130项、architecture、host native 31项与双variant build通过。当前无获准AVD，Android instrumentation runtime保持`NOT_RUN`，因此DS-I1/I2/V2关闭而DS-V1保持开放。
-- P-DIAG-NATIVE-001/批次02（producer/lifecycle候选保留，snapshot切片重开）：native opaque group、A→B churn、>10 MiB、drain后handoff等v4需求继续保留；旧通用GLK schema/repository/JCS `PROFILE` freeze及51行ledger不再授权实施。P-SETTINGS没有预建无consumer的Diagnose store；P-DIAG未来在真实stress UI/Flow consumer同批拥有Diagnose具名typed DataStore、per-run immutable snapshot、跨进程承载与Flow消费，须重新细化、critic复审并获用户批准，production仍`NOT_RUN`。
-- P-RUN-X-001/批次02（完成）：RunHost纯合同已归`core/runhost`，client/wire/host adapter已归`data/runhost`，通用FD connector已归`data/log`，App framework entry已归`runhost/AppRunHostService`，`AndroidRunSessionAdapter`和`RunAdmissionPolicy`也已归位；旧owner/类名与caller-zero carrier清零。architecture、debug/release各128项unit、androidTest compile、native host 31/31、双variant build、AIDL zero-diff与6.6 AVD App/Shizuku exact smoke均通过。后续core/data、Host去重、backend与UI package收口仍未获实施授权。
-- 当前执行顺序固定为：已完成的Icons/Backend/Log/DataStore普通门 → P-RUN-X-001/批次02 RunHost owner收口 → core/data与run coordinator边界 → shared Host去重 → backend package → P-UI-CORE-001（含root/composition↔UI service-locator收口）→ 重新细化P-DIAG-NATIVE-001/批次02 → lifecycle exact AVD → automatic export真实设备/最终验收。P-SETTINGS Android exact runtime、P-UI-ICON-002与真实carrier门保持原欠账/触发，不冒充完成。
-- E-DOC-X-001/批次01/P-BACKEND-X-001/批次01：已完成 authority 收口与 disabled/original closure 删除，并保留当批通过记录。
-- P-RUN-IO-001/批次01：Payload/Finish/root-script source implementation 已落地；host fault matrix=`31/31`、6.6 AVD ordinary-file staging/identity=`3/3`且均exit 0，真实carrier设备门保持 NOT_RUN。
-- P-RUN-X-001/批次01：current source已由Backend批迁移到 `BackendDescriptor`/`BackendRuntime`/`BackendUi` 分层，typed RunHost、App/Shizuku clients、RunReport 与 UI implementation 已落地；正常transport/runtime继续PASS。lifecycle/cancel专属exact AVD与真实carrier设备门仍为NOT_RUN；本轮host-death connector路径通过不替代其余专属欠账。
-- P-LOG-IO-001/批次02、P-LOG-X-001/批次01-03：全流式raw/processed、统一LogConnector source、UI/private/MediaStore独立unlimited sink queue已经落地，>10 MiB、source顺序与current 6.6 AVD证据已PASS；`RunReport`摘要是普通Info行，typed report仍为产品authority。automatic export真实设备门与最终验收仍为NOT_RUN。
-- P-BACKEND-X-001/批次02：所有真攻击 backend 已从 Kotlin registry、Gradle开关/任务与APK native target graph断开，旧native实现保持source-only且不修改。
-- P-DIAG-NATIVE-001/批次01与P-RUN-HANDOFF-001/批次01：release-visible DIAGNOSE、constructor-loaded JNA、真实DSO、SequentialFlow、native fixed-home handoff、LogHub及4/16 KiB App/direct-JNA/Shizuku短链均已完成；它始终为 `DIAGNOSTIC_ONLY`，不代表root产品成功。
+## 当前任务入口（2026-11-21 切换）
+
+**进度唯一写入 Beads，设计/批准保持原锚点。** `npm run --silent bd -- list` 查看任务；`ready --json` 只表示依赖可用，不代表实施获准。不得继续同步 MASTER、ROADMAP 或旧计划 checkbox。新 clone 先按[环境文档](../development/development-environment.md#planning-tools) bootstrap。
+
+| 主题 | OpenSpec / 原设计入口 | Beads 定位 |
+|---|---|---|
+| 环境与工具接入 | [接入](../../openspec/changes/engineering-workflow/design.md) | `gl-1w2` |
+| 运行/日志未关闭证据与具名技术债 | [runtime-evidence](../../openspec/changes/runtime-evidence/proposal.md) | `gl-uat`、`gl-32v`、`gl-f47`、`gl-68z`、`gl-51h`、`gl-v2i`、`gl-mdl`、`gl-ftu`、`gl-8dj`、`gl-dcu` |
+| P-BACKEND-X-002：按真实 consumer 触发的后续事项 | [plugin-followups](../../openspec/changes/plugin-followups/proposal.md) | `gl-2zi`、`gl-9lz`、`gl-tz3`、`gl-r8h`、`gl-dt8`、`gl-2u2`、`gl-2ot`、`gl-m0f` |
+| P-UI-CORE-001 与 P-UI-ICON-002：各自后续设计 | [ui-followups](../../openspec/changes/ui-followups/proposal.md) | `gl-75t`、`gl-72l` |
+| P-DIAG-NATIVE-001/批次02：真实 consumer 压力设计 | [diagnose-stress-design](../../openspec/changes/diagnose-stress-design/proposal.md) | `gl-cdy` |
+| P-SETTINGS-IO-001/批次01：Android runtime 验证 | [datastore-runtime](../../openspec/changes/datastore-runtime/proposal.md) | `gl-zgp` |
+| P-BACKEND-X-002/决策03/批次01：builtin Diagnose plugin | [builtin-diagnose-plugin](../../openspec/changes/builtin-diagnose-plugin/proposal.md) | `gl-dek`、`gl-3ki`、`gl-bvj`、`gl-xme` |
+| E-BUILD-X-001：当前构建闭环修复 | [build-closure-repair](../../openspec/changes/build-closure-repair/proposal.md) | `gl-4on` |
+
+原语义代号→Beads的具名映射在各 change 的 proposal，仅作入口，不复制状态。旧240行插件scope、51行Diagnose scope、已结束lifecycle批与独立extractor库任务均不作为当前待办重新导入。
 
 ## 固定边界
 
 - `raw uid 0` 只证明 backend primitive，不直接等于产品成功。
-- Flow 保留为 Kotlin/Lua operation orchestration 层。
+- Flow 保留为宿主内部 Kotlin operation orchestration／shared adapter，不进入公开插件 ABI；BXP3-B1的plugin入口只实现`:plugin:api` Java `DiagnosticBackendEntryPoint`，后继真实backend按其entry contract增量加接口，不恢复same-APK `BackendDefinition`权威。
 - Payload 与 Finish 独立于 backend，并由唯一落盘 root script 承载。
 - Finish、Payload 与 backend cleanup 各自保留 owner；不建立通用 executor façade。
 - 产品成功唯一投影为 `RunCapability.PRODUCT_ROOT + RunTerminal.SUCCESS`。

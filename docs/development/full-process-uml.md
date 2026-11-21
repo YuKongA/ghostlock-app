@@ -1,13 +1,157 @@
-# 全流程 UML（**权威**）· 新架构（A0–A6）
+# 当前状态全局 UML（**当前工作树权威视图**）
+
+<a id="global-current-view"></a>
+
+> **时间视点**：当前工作树；只描述源码中已经存在的结构与行为。活跃计划完成后的目标见[活跃计划最终目标全局 UML](active-plan-target-uml.md#global-active-plan-target-view)。两份图回答不同问题，不互相替代。
+>
+> **当前截面（2026-11-21）**：`BXP3-B1` production source 已进入工作树，但完整 V1、AVD 与具名 ARM64 真机门尚未全部关闭；下图因此表示“已存在但仍在验证中的实现”，不表示 BXP3-B1 已完成。当前唯一 backend package 是 APK builtin、ARM64、单 component 的 `DIAGNOSE`；provider、外部导入、Custom、真实攻击 backend、额外 ABI、Desktop 与统一 KMP i18n 尚未实现。
+>
+> **本页优先级**：§0 是当前全局 authority。后续 A0–A6、旧 D7 及历次局部图继续保留沿革和子系统细节；其中旧标题即使含“current authority”，也不得覆盖 §0 的 2026-11-21 当前截面。
 
 <a id="run-current-views"></a>
 
-> **代号与视图入口**：本页混合历次结构，A0–A6 与 §11.10 的旧 D7 属各自历史计划；Mermaid 内 D1/R1 等仅为节点变量。当前视图按[主计划语义映射](../plan/backend-root-execution-unification-plan.md#plan-semantic-identifiers)定位：[P-RUN-IO-001/批次01：脚本](#run-view-r2)、[P-RUN-X-001/批次01：执行主干](#run-view-r3)、[P-LOG-X-001/批次01：日志中枢](#run-view-r4c)、[P-BACKEND-X-001/来源S1：既有 common source](#run-view-r5)。原历史、状态和取代关系不变，来源S1不授权接回 carrier；wire 字段仍见 [P-RUN-IPC-001](../plan/backend-root-execution-runhost-wire.md#p-run-ipc-001)。
+> **代号与旧视图入口**：本页后续内容混合历次结构，A0–A6 与 §11.10 的旧 D7 属各自历史计划；Mermaid 内 D1/R1 等仅为节点变量。旧视图按[主计划语义映射](../plan/backend-root-execution-unification-plan.md#plan-semantic-identifiers)定位：[P-RUN-IO-001/批次01：脚本](#run-view-r2)、[P-RUN-X-001/批次01：执行主干](#run-view-r3)、[P-LOG-X-001/批次01：日志中枢](#run-view-r4c)、[P-BACKEND-X-001/来源S1：既有 common source](#run-view-r5)。原历史、状态和取代关系不变，来源S1不授权接回 carrier；wire 字段仍见 [P-RUN-IPC-001](../plan/backend-root-execution-runhost-wire.md#p-run-ipc-001)。
 
 > 2026-10-23 JNI v4 已获用户“按照计划”批准：§11 取代旧的 route/JNI handle/Flow/Finish 局部图。
 
-> **本文件是唯一权威 UML**（`docs/development/full-process-uml.md`）；旧的旧实现 UML 已归档为 [old-full-process-uml.md](old-full-process-uml.md)（**仅历史对照**，结构与本件不同）。
+> **本文件是当前时间视点的唯一全局权威 UML**；目标时间视点另见[活跃计划最终目标全局 UML](active-plan-target-uml.md#global-active-plan-target-view)。旧实现 UML 已归档为 [old-full-process-uml.md](old-full-process-uml.md)（**仅历史对照**，结构与本件不同）。
 > 依据：`rewrite-plan-v2`（A0–A6）· `lua-surface-design`（暴露面 7 条）· `lua-surface-annex-document/-target/-route-switch` · ADR-0008/0009/0010 · `A6-baseline-approval`。日期 2026-10-08。
+
+## 0. 2026-11-21 当前工作树全局视图
+
+### 0.1 组件与 owner
+
+```mermaid
+flowchart TB
+  subgraph BUILD[Gradle 与 package producer]
+    direction LR
+    API[":plugin:api\nJava diagnostic-v1 ABI"]
+    CORE[":plugin:core\nKMP manifest / index / catalog model"]
+    DIAG[":plugin:packages:diagnose\nKotlin + JNA + private native source"]
+    ZIP["verified builtin\n.glplugin.zip\nARM64 / one BACKEND component"]
+    DIAG --> ZIP
+    API -. compileOnly ABI .-> DIAG
+  end
+
+  subgraph MAIN[Android main process]
+    direction LR
+    ASSET["APK generated asset\nbuiltin index + archive"]
+    SEED["BuiltinPluginSeeder"]
+    STORE["AndroidPluginCatalogStore\nimmutable objects + catalog"]
+    COORD["PluginCatalogCoordinator\nINITIALIZING / READY / FAILED"]
+    PROJ["BackendCatalogProjection\nBackendDescriptor + PluginObjectRef"]
+    UI["BackendPresentationRegistry\nDiagnose Host UI adapter"]
+    SELECT["AppSelection / BackendSessionStore"]
+    SESSION["RunSessionCoordinator\nadmission + cutoff"]
+    FREEZE["AndroidRunInputFreezer\narchive PFD + root inputs"]
+
+    ASSET --> SEED --> STORE --> COORD --> PROJ
+    PROJ --> UI
+    PROJ --> SESSION
+    SELECT --> SESSION
+    SESSION --> FREEZE
+  end
+
+  subgraph HOST["一次性 App 或 Shizuku RunHost process"]
+    direction LR
+    ENDPOINT["Binder endpoint"]
+    CONTROLLER["RunHostController\nlifecycle / terminal / quiescence"]
+    PREP["AndroidRunHostPreparationAdapter\nworkspace + staged Host artifacts"]
+    LOADER["RunHostPluginLoader\ncopy / verify / extract / DCL"]
+    ADAPTER["PluginBackendFlow\nplugin result → Host facts"]
+    ENTRY["DiagnoseEntryPoint"]
+    RUN["DiagnoseRun\nplugin-owned Kotlin orchestration"]
+    BINDING["DiagnoseNativeBinding\nplugin-owned JNA load/call/close"]
+    DSO["private libghostlock_diagnose.so\n+ plugin-private libjnidispatch.so"]
+    LOG["KotlinLogConnector / LogHub wire"]
+    REPORT["typed RunReport / terminal snapshot"]
+
+    ENDPOINT --> CONTROLLER
+    ENDPOINT --> PREP --> LOADER
+    LOADER --> ENTRY --> RUN
+    LOADER --> ADAPTER
+    CONTROLLER --> ADAPTER
+    ADAPTER --> RUN --> BINDING --> DSO
+    ADAPTER --> REPORT
+    CONTROLLER --> LOG
+    CONTROLLER --> REPORT
+  end
+
+  ZIP --> ASSET
+  CORE -. typed metadata and catalog model .-> SEED
+  CORE -. typed manifest verification model .-> LOADER
+  API -. parent-classloader runtime ABI .-> LOADER
+  FREEZE -->|"PFD + semantic content root + typed Host inputs"| ENDPOINT
+  HOST -->|"terminal snapshot / log callback"| MAIN
+```
+
+当前不变量：
+
+- main process 不加载 Diagnose/JNA DSO，也不执行插件代码；它只拥有 catalog、selection、UI projection 与 run cutoff。
+- manifest/catalog 是 backend membership 与精确对象来源；`BackendPresentationRegistry` 不能创造 membership。
+- RunHost 先重验 archive、manifest、API/ABI/domain，再加载 entry；插件 Kotlin 独占 JNA/native load、call、close。
+- 当前 `PluginBackendFlow` 仍是 Host `Flow` 适配器；是否让旧 Host `Flow/SequentialFlow` 退出是尚未批准的设计差异，不在本当前图中预先实施。
+
+### 0.2 catalog 与一次运行状态
+
+```mermaid
+stateDiagram-v2
+  state "main catalog" as Catalog {
+    [*] --> INITIALIZING
+    INITIALIZING --> READY: builtin reconcile + verify + atomic catalog publish
+    INITIALIZING --> FAILED: index / archive / identity / I/O failure
+    READY --> [*]: one terminal generation for this process
+    FAILED --> [*]: bounded reason; selection/run disabled
+  }
+
+  state "one RunHost process" as RunHost {
+    [*] --> NEW
+    NEW --> PREPARED: request + PFD verified and materialized
+    NEW --> REJECTED: prepare fail closed
+    PREPARED --> RUNNING: execute accepted
+    RUNNING --> TERMINAL: plugin facts + cleanup + log drain
+    PREPARED --> TERMINAL: close before start
+    REJECTED --> DESTROYED: plugin-tainted or authorized close
+    TERMINAL --> DESTROYED: execution lease close, workspace cleanup, physical process exit
+    DESTROYED --> [*]
+  }
+```
+
+### 0.3 一次 Diagnose 运行 Sequence
+
+```mermaid
+sequenceDiagram
+  participant UI as Android UI
+  participant Main as RunSessionCoordinator
+  participant Catalog as READY BackendCatalogView
+  participant Freeze as AndroidRunInputFreezer
+  participant Host as App/Shizuku RunHost
+  participant Loader as RunHostPluginLoader
+  participant Adapter as PluginBackendFlow
+  participant Plugin as DiagnoseRun
+  participant Native as DiagnoseNativeBinding/DSO
+
+  UI->>Main: start(selected backend key)
+  Main->>Catalog: resolve same-generation descriptor + PluginObjectRef
+  Catalog-->>Main: DIAGNOSE + exact content root
+  Main->>Freeze: freeze object, preferences, Payload/Finish cutoff
+  Freeze-->>Main: archive PFD + typed request lease
+  Main->>Host: prepare(request, PFD)
+  Host->>Loader: copy, verify, extract, validate domain/API/ABI
+  Loader->>Plugin: construct entry and instantiate one run
+  Loader-->>Host: prepared PluginBackendFlow + execution lease
+  Main->>Host: execute
+  Host->>Adapter: run(Host BackendFlowInput)
+  Adapter->>Plugin: execute(narrow DiagnosticRunContext)
+  Plugin->>Native: runChain / logs / handoff
+  Native-->>Plugin: native and shell facts
+  Plugin-->>Adapter: DiagnosticRunResult
+  Adapter->>Plugin: close through resource owner
+  Adapter-->>Host: BackendRunFacts → RunReport
+  Host-->>Main: terminal snapshot + drained logs
+  Host->>Host: close lease, delete workspace, authorize physical process exit
+  Main-->>UI: terminal state
+```
 
 ## 1. IPO（端到端，数据级）
 
@@ -818,21 +962,21 @@ sequenceDiagram
   C-->>K: copied candidates DTO
   K->>B: preparePlacement(physical request)
   alt current unavailable implementation
-    B-->>K: UNSUPPORTED + handle 0; stop
+    B-->>K: UNSUPPORTED + handle 0, stop
   else future real core
     B-->>K: PlacementHandle + candidate facts
     K->>K: calculate addresses and final page bytes
     K->>B: landPage(placement, bytes, geometry)
     B-->>K: Page token + placementConsumed receipt
     alt placementConsumed = 1
-      K->>K: zero Placement; own Page only when token is nonzero
+      K->>K: zero Placement, own Page only when token is nonzero
     else placementConsumed = 0
       K->>K: retain Placement for close or retry
     end
     K->>B: prepareActor(page, setup, PrimitiveSpec)
     B-->>K: Actor token + pageConsumed receipt
     alt pageConsumed = 1
-      K->>K: zero Page; Actor owns Page only when token is nonzero
+      K->>K: zero Page, Actor owns Page only when token is nonzero
     else pageConsumed = 0
       K->>K: retain Page for close or retry
     end
@@ -1035,7 +1179,7 @@ sequenceDiagram
   participant Z as ShizukuBackendClient / UserService
   participant R as Selected-domain IpSecRuntime (43284 only)
   U->>P: choose 43499-Glued
-  P->>S: select(key); disabled spec rejected
+  P->>S: select(key), disabled spec rejected
   U->>C: select indexed built-in or import .conf
   C->>H: parse, convert, validate
   H-->>C: resolved profile + GLK1 bytes
@@ -1047,26 +1191,26 @@ sequenceDiagram
   alt Shizuku binder reachable and permission granted
     E->>Z: prepare fixed ID + bounded data
     Z->>Z: exclusively stage allowlisted files in shell-owned runDir
-    Z->>Z: optionally seal supplied 43499 root script 0444; retain file identity evidence
+    Z->>Z: optionally seal supplied 43499 root script 0444, retain file identity evidence
     Z-->>E: prepared evidence
     E->>Z: start/poll only after prepare succeeds
-    Z->>Z: 43499 child gets three path envs from shell-owned runDir; 43284 gets none
+    Z->>Z: 43499 child gets three path envs from shell-owned runDir, 43284 gets none
     opt backend is 43284Glued
-      Z->>R: acquire transform/SPI/socket; build fixed argv
+      Z->>R: acquire transform/SPI/socket, build fixed argv
       R-->>Z: live args + resource owner
     end
     Z-->>E: terminal exit/log facts
-    E->>Z: unbind(remove=true); wait for disconnected callback
-    Z-->>E: main-thread callback/cache cleanup drained; next bind may start
+    E->>Z: unbind(remove=true), wait for disconnected callback
+    Z-->>E: main-thread callback/cache cleanup drained, next bind may start
   else Shizuku unavailable or unauthorized
     opt backend is 43284Glued
-      E->>R: acquire transform/SPI/socket; build fixed argv
+      E->>R: acquire transform/SPI/socket, build fixed argv
       R-->>E: live args + resource owner
     end
     E->>E: exclusively stage allowlisted files in App-private runDir
-    E->>E: optionally seal supplied 43499 root script 0444; retain file identity evidence
+    E->>E: optionally seal supplied 43499 root script 0444, retain file identity evidence
     E->>A: ProcessBuilder fixed ELF/argv
-    A->>A: 43499 child gets three path envs from App-private runDir; 43284 gets none
+    A->>A: 43499 child gets three path envs from App-private runDir, 43284 gets none
     A-->>E: terminal exit/log facts
   end
   R->>R: release transform → SPI → encapsulation socket after child terminal
@@ -1334,19 +1478,25 @@ flowchart LR
   FR --> FD["finish.json\nFinishDefinition"]
 
   PUI -->|full-save transaction result| PREVIEW[Payload-only preview]
-  PREVIEW -->|explicit empty Finish| RENDER[RootScriptRenderer]
-  PD -->|actor cutoff handle| FREEZE[RunInputFreezer]
-  FD -->|actor cutoff handle| FREEZE
-  OP["operational-preferences.json\nOperationalPreferences"] -->|actor cutoff handle| FREEZE
-  FREEZE --> RENDER[RootScriptRenderer]
-  RENDER --> TEMP[exclusive temp writer]
+  PREVIEW -->|explicit empty Finish| PP[PreviewRootScriptPublisher]
+  PD -->|actor cutoff handle| CUT[RunSessionCoordinator]
+  FD -->|actor cutoff handle| CUT
+  OP["operational-preferences.json\nOperationalPreferences"] -->|actor cutoff handle| CUT
+  CUT --> FREEZE[AndroidRunInputFreezer]
+  FREEZE --> WIRE[typed RunHost request and host staging]
+  WIRE --> MAP[ProductRootScriptPlanMapper]
+  MAP --> RENDER[RootScriptRenderer]
+  PP --> RENDER
+  RENDER --> PUBLISH[RootScriptArtifactPublisher]
+  PUBLISH --> TEMP[exclusive temp writer]
   TEMP --> CLOSE[flush + fsync + close + chmod]
   CLOSE --> MOVE["same-directory atomic move\nAndroid app-data rename; no hard-link"]
   MOVE --> PUB["RootScriptArtifact\nscript object+bytes identity\npre-created result object identity"]
   PUB --> CARRIER[backend-private rooted carrier]
   CARRIER --> SCRIPT["one script: Payload fail-fast → Finish best-effort"]
   SCRIPT --> GLR1["GLR1 fixed-order result\ncomplete / durable handoff"]
-  GLR1 --> CODEC[RootScriptResultCodec]
+  GLR1 --> READER[AndroidRootScriptResultReader<br/>single-open bounded read]
+  READER --> CODEC[RootScriptResultCodec]
 ```
 
 ```mermaid
@@ -1356,30 +1506,36 @@ sequenceDiagram
   participant FRepo as Finish typed repository
   participant Store as DataStore actors
   participant Preview as PreviewRootScriptUseCase
-  participant Run as RunInputFreezer
+  participant PreviewPublisher as PreviewRootScriptPublisher
+  participant Run as RunSessionCoordinator
+  participant Freezer as AndroidRunInputFreezer
   participant Renderer as RootScriptRenderer
+  participant Publisher as RootScriptArtifactPublisher
   participant Workspace as isolated preview workspace
 
   UI->>PRepo: submit actor-current Payload transform
   PRepo->>Store: updateData
   Store-->>UI: exact committed PayloadDefinition
   UI->>Preview: exact full-save result
-  Preview->>Renderer: Payload + explicit empty Finish
-  Renderer->>Workspace: create result object; write/fsync/close/publish script
+  Preview->>PreviewPublisher: Payload + explicit empty Finish
+  PreviewPublisher->>Publisher: mapped plan for isolated workspace
+  Publisher->>Renderer: render deterministic script text
+  Publisher->>Workspace: create result, write/fsync/chmod/atomic publish
   Workspace-->>UI: preview script path
   UI->>PRepo: queue Payload cutoff
   UI->>FRepo: queue Finish cutoff
   PRepo->>Store: identity updateData at actor position
   FRepo->>Store: identity updateData at actor position
   Store-->>Run: exact immutable cutoff objects
+  Run->>Freezer: descriptor + captured Payload/Finish cutoff handles
   Note over Preview,Run: later edits remain behind each cutoff and apply to the next preview or run
 ```
 
 P-RUN-IO-001/批次01 owner 与行为边界：
 
 - `domain/payload` 只拥有主目标、顺序、`required` 与 acceptance；`domain/finish` 只拥有附加动作、`severity` 与 `alwaysRun`。二者都不包含 backend root 原语或 carrier。
-- `RootScriptRenderer` 是唯一整脚本 writer；`PayloadScriptRenderer` 与 `PayloadVerifier` 只产生 Payload action/acceptance 片段。没有 `PayloadExecutor`、`FinishExecutor` 或 JVM root session。
-- script temp 完成 write/flush/fsync/close/chmod 后才在0700 fresh workspace内以同目录atomic move发布，move保留同一inode；不使用Android `untrusted_app` SELinux禁止的hard-link。`PublishedArtifactIdentity` 从同一 `O_NOFOLLOW` opened fd 取得 device/inode/mode/size/SHA-256。result object 先以 exclusive ordinary file 创建，解析时在同一 opened fd 上重验 object identity并读取bytes。Payload预览动作以`Result<String>`跨ViewModel/UI边界，Material/Miuix只投影成功路径或可见失败Toast，发布异常不得终止主线程。
+- `RootScriptRenderer`是唯一整脚本文本writer；`PayloadScriptRenderer`与`PayloadVerifier`只产生Payload action/acceptance片段。physical write/publish全部由`RootScriptArtifactPublisher`负责，没有`PayloadExecutor`、`FinishExecutor`或JVM root session。
+- script temp完成write/flush/fsync/close/chmod后才在0700 fresh workspace内以同目录atomic move发布，move保留同一inode；不使用Android`untrusted_app` SELinux禁止的hard-link。`PublishedArtifactAccess`从同一`O_NOFOLLOW` opened fd取得device/inode/mode/size/SHA-256。result object先以exclusive ordinary file创建；`AndroidRootScriptResultReader`随后只open一次，在同一fd上重验object identity、有界读取并调用pure codec。Payload预览动作以`Result<String>`跨ViewModel/UI边界，Material/Miuix只投影成功路径或可见失败Toast，发布异常不得终止主线程。
 - `RootScriptResultCodec` 只接受 GLR1 的 ASCII、LF-only、固定顺序、完整 item 四元组与 `complete=1`；unknown/duplicate/missing/out-of-order/partial、非法 state-reason-exit conjunction、Payload fail-fast 违规、Finish alwaysRun 违规或 reboot handoff 违规均整体拒绝，不从日志补猜。
 - preview 通过 `PreviewRootScriptPublisher` 调同一个 renderer，但每次使用新的 `root-script-preview/<runId>` workspace；P-RUN-IO-001/批次01 只生成 artifact，不选择 backend、不执行脚本、不把 raw uid 0 投影为产品成功。
 - 原R2实施批按用户裁定未做扩展验证；2026-11-05的R2-H1纠错只补了Android 15/内核6.6 AVD上的真实Payload Save发布路径：同目录atomic move成功、Toast显示published path、App进程与`MainActivity`保持存活、crash buffer为空、workspace mode/result/script/无temp均符合合同。完整fault-injection、GLR1语义与替换攻击矩阵仍未执行；后续只补缺失矩阵，不重复R1的SHA/基线检查。
@@ -1388,7 +1544,7 @@ P-RUN-IO-001/批次01 owner 与行为边界：
 
 ### 11.12 2026-11-05：P-RUN-X-001 neutral backend 与 typed RunHost（current authority）
 
-本节取代 §11.7、§11.9 与 §11.9.1 的 current execution/membership 图。旧节只保留历史沿革；current tree 不再含动态注册、Flow 反射、registry digest、Bundle host 参数、旧 AIDL 或 Glued Kotlin connector。P-RUN-X-001/批次01 建立 execution spine；批次02 只将 RunHost 纯合同归 `core/runhost`、Android client/wire/host adapter 归 `data/runhost`、通用 FD connector 归 `data/log`，并把 App framework entry 改为 `runhost/AppRunHostService`。AIDL、state machine、Flow/LogHub、Payload/Finish 与成功语义不变。selectable PRODUCT_ROOT backend 数量仍为 0；debug/release都包含`DIAGNOSTIC_ONLY`的`DIAGNOSE`，CUSTOM仍disabled。P-DIAG-NATIVE-001/批次01新增的JNA/shared-library细节及原子prepare提交以§11.16为current authority。
+本节取代 §11.7、§11.9 与 §11.9.1 的 current execution/membership 图。旧节只保留历史沿革；current tree 不再含动态注册、Flow 反射、registry digest、Bundle host 参数、旧 AIDL 或 Glued Kotlin connector。P-RUN-X-001/批次01建立execution spine；批次02把纯合同归`core/runhost`、Android client/wire/host adapter归`data/runhost`、通用FD connector归`data/log`；批次03再以一个platform-neutral `RunHostController`、一个Android preparation adapter和一个Binder endpoint取代两份重复host orchestration，两个framework entry只保留各自构造、runtime投影与destroy差异。AIDL、既有state machine、Flow/LogHub、Payload/Finish与成功语义不变。selectable PRODUCT_ROOT backend数量仍为0；debug/release都包含`DIAGNOSTIC_ONLY`的`DIAGNOSE`，CUSTOM仍disabled。
 
 #### 11.12.1 Class 与 owner
 
@@ -1460,16 +1616,31 @@ classDiagram
     +stop()
   }
 
-  class RunInputFreezer {
-    +freeze(BackendDescriptor) FrozenRunInput
-    +release(FrozenRunInput)
-  }
-
-  class AndroidRunSessionAdapter {
+  class RunSessionCoordinator {
     +refresh()
     +start(RunCommand)
     +abort()
-    +shareTerminal()
+    +clearTerminal()
+  }
+
+  class RunDispatchPort {
+    <<interface>>
+    +prepare(descriptor, target, cutoff) RunDispatchPreparation
+  }
+
+  class AndroidRunHostDispatchAdapter {
+    +prepare(descriptor, target, cutoff) RunDispatchPreparation
+  }
+
+  class AndroidRunInputFreezer {
+    +freeze(BackendDescriptor, RunInputCutoff) AndroidFrozenRunInputLease
+  }
+
+  class RunPresentationPort {
+    <<interface>>
+    +shareTerminal(title)
+    +abortDisabledMessage()
+    +resolveTerminalFont(reference)
   }
 
   class LogHub {
@@ -1491,8 +1662,29 @@ classDiagram
 
   class AppRunHostClient
   class ShizukuRunHostClient
-  class AppRunHostService
-  class GhostlockUserService
+  class AppUidRunHostService
+  class ShizukuShellRunHostService
+  class RunHostController {
+    +setCallback(identity, sink)
+    +prepare(model, materialize)
+    +start(identity)
+    +snapshot(identity)
+    +cancel(identity)
+    +requestClose(identity)
+    +frameworkDestroyAuthorized()
+  }
+  class RunHostStateMachine
+  class RunHostBinderEndpoint {
+    +setCallback(...)
+    +prepare(RunHostRequest)
+    +start(...)
+    +getSnapshot(...)
+    +cancel(...)
+    +requestClose(...)
+  }
+  class AndroidRunHostPreparationAdapter {
+    +materialize(model, identity, duplicateDescriptors)
+  }
   class AndroidRunWorkspace
   class RootArtifactStagingAdapter
   class RunHostRequestWireCodec
@@ -1524,31 +1716,36 @@ classDiagram
   BackendUiEntry --> BackendUi
   BackendUiCatalog o-- BackendUiEntry : process-local presentation projection
   BackendRuntime --> Flow : fresh one-shot instance
-  AndroidRunSessionAdapter --> BackendDescriptor : captured exact stable key
-  AndroidRunSessionAdapter --> RunInputFreezer : freeze once
-  AndroidRunSessionAdapter --> LogHub : application-lifetime owner
-  AndroidRunSessionAdapter --> AppRunHostClient
-  AndroidRunSessionAdapter --> ShizukuRunHostClient
+  RunSessionCoordinator --> BackendDescriptor : captured exact stable key
+  RunSessionCoordinator --> RunDispatchPort : immutable executor plus actor cutoffs
+  RunSessionCoordinator --> LogHub : accepted commit and lease transfer
+  RunSessionCoordinator --> RunPresentationPort : abort text and terminal font
+  RunDispatchPort <|.. AndroidRunHostDispatchAdapter
+  AndroidRunHostDispatchAdapter --> AndroidRunInputFreezer : freeze once
+  AndroidRunHostDispatchAdapter --> RunHostRequestWireCodec : duplicate PFDs
+  AndroidRunHostDispatchAdapter --> AppRunHostClient : fixed APP target
+  AndroidRunHostDispatchAdapter --> ShizukuRunHostClient : fixed SHIZUKU target
   AppRunHostClient --> IRunHost
   ShizukuRunHostClient --> IRunHost
-  AppRunHostService ..|> IRunHost : app flowhost process
-  GhostlockUserService ..|> IRunHost : Shizuku shell process
-  AppRunHostService --> AndroidRunWorkspace
-  GhostlockUserService --> AndroidRunWorkspace
-  AppRunHostService --> RootArtifactStagingAdapter
-  GhostlockUserService --> RootArtifactStagingAdapter
-  AppRunHostService --> RunHostRequestWireCodec
-  AppRunHostService --> RunHostSnapshotWireCodec
-  GhostlockUserService --> RunHostRequestWireCodec
-  GhostlockUserService --> RunHostSnapshotWireCodec
-  AppRunHostService --> ProductRunPreparer
-  GhostlockUserService --> ProductRunPreparer
-  AppRunHostService --> BackendRegistry : runtime(key) only
-  GhostlockUserService --> BackendRegistry : runtime(key) only
+  AppUidRunHostService ..|> IRunHost : app flowhost process
+  ShizukuShellRunHostService ..|> IRunHost : Shizuku shell process
+  AppUidRunHostService --> RunHostBinderEndpoint : six business delegates
+  ShizukuShellRunHostService --> RunHostBinderEndpoint : six business delegates
+  RunHostBinderEndpoint --> RunHostController : transport-neutral actions
+  RunHostBinderEndpoint --> AndroidRunHostPreparationAdapter : deferred materialization
+  RunHostBinderEndpoint --> RunHostRequestWireCodec
+  RunHostBinderEndpoint --> RunHostSnapshotWireCodec
+  RunHostController *-- RunHostStateMachine : sole lifecycle owner
+  RunHostController --> Flow : run and safe stop
+  AndroidRunHostPreparationAdapter --> AndroidRunWorkspace
+  AndroidRunHostPreparationAdapter --> RootArtifactStagingAdapter
+  AndroidRunHostPreparationAdapter --> ProductRunPreparer
+  AppUidRunHostService --> BackendRegistry : runtime(key) only
+  ShizukuShellRunHostService --> BackendRegistry : runtime(key) only
   IRunHost --> RunReport : typed immutable snapshot
 ~~~
 
-Owner 边界固定如下：`composition/backend`的BackendRegistry私有拥有唯一immutable definition list；每个BackendDefinition只在outer composition同时引用纯descriptor、backend runtime与Android UI。AppContainer取得descriptor/UI projection并构造唯一BackendUiCatalog；普通inner caller不得import outer definition/registry。`core/runhost`只拥有platform-neutral protocol/model/state machine；`data/runhost`拥有client、AIDL codec、Android host adapter；`runhost/AppRunHostService`与`shizuku/GhostlockUserService`是两个framework entry。仅这两个entry可以调用`BackendRegistry.runtime(key)`并立即只持有BackendRuntimeEntry，不能读取UI、definition或membership list。application data adapter拥有frozen source与request PFD；RunHost在prepare时dup descriptor，并拥有staged input、workspace、fresh Flow、callback与terminal snapshot；App host workspace位于app-private no-backup root，Shizuku workspace位于shell-owned `/data/local/tmp/<package>-runhost`，两者都核验non-symlink与actual owner；LogHub拥有client coroutine；UI/ViewModel只订阅neutral state。BackendDescriptor、RunHostRequest、AIDL snapshot与profile都不携带BackendDefinition、BackendRuntime、BackendUi或Flow object。旧caller-zero process-carrier helper不属current tree；未来真实carrier必须随具名消费者重建。
+Owner边界固定如下：`composition/backend`的BackendRegistry私有拥有唯一immutable definition list；每个BackendDefinition只在outer composition同时引用纯descriptor、backend runtime与Android UI。AppContainer取得descriptor/UI projection并构造唯一BackendUiCatalog；普通inner caller不得import outer definition/registry。`core/runhost/RunHostController`独占host mutex、state machine、candidate、callback/snapshot、cancellation、Flow worker、log sequence/drop与唯一quiescence count/barrier；它不引用Android、AIDL、data或composition。`data/runhost/wire/RunHostBinderEndpoint`独占Parcel/AIDL/callback wire，`data/runhost/host/AndroidRunHostPreparationAdapter`独占role/live context、domain/readiness、PFD/workspace/staging/publication/fresh Flow。`runhost/appuid/AppUidRunHostService`与`runhost/shizukushell/ShizukuShellRunHostService`仅各做一次`BackendRegistry.runtime(key)`投影、六个endpoint delegate和entry-local destroy。RunSessionCoordinator用同一privilege snapshot做admission与dispatch，data dispatch lease拥有request PFD；App workspace位于app-private no-backup root，Shizuku workspace位于shell-owned `/data/local/tmp/<package>-runhost`，两者都核验non-symlink与actual owner；UI/ViewModel只订阅neutral state。
 
 #### 11.12.2 prepare、run 与 result Sequence
 
@@ -1557,58 +1754,85 @@ sequenceDiagram
   autonumber
   participant UI as Run UI
   participant VM as RunViewModel
-  participant AD as AndroidRunSessionAdapter
+  participant SC as RunSessionCoordinator
   participant RG as BackendRegistry
-  participant FR as RunInputFreezer
+  participant DD as AndroidRunHostDispatchAdapter
+  participant FR as AndroidRunInputFreezer
   participant RC as LogHub
   participant CL as App or Shizuku RunHostClient
-  participant RH as typed RunHost
+  participant FE as thin framework entry
+  participant EP as Binder endpoint
+  participant HC as RunHostController
+  participant PA as Android preparation adapter
   participant ST as RootArtifactStagingAdapter
   participant FL as fresh Flow
   participant RS as common root script
 
   UI->>VM: start selected stable key
-  VM->>AD: RunCommand(key)
-  AD->>RG: captured descriptor key and dynamic availability callback
-  RG-->>AD: neutral BackendDescriptor and availability
-  AD->>FR: freeze descriptor, profile v3, Payload, Finish
-  FR-->>AD: FrozenRunInput(runId, generation, artifacts)
-  AD->>RC: start application-owned run
-  RC->>CL: typed RunHostRequest plus read-only PFDs
-  CL->>RH: setCallback(runId, generation)
-  CL->>RH: prepare(request)
-  RH->>RH: Parcel budget and structural validation
-  RH->>RH: state, identity and semantic fingerprint preflight
-  RH->>RG: runtime(key) exact projection
-  RG-->>RH: BackendRuntimeEntry with descriptor and runtime
-  RH->>RH: capability shape, actual UID plus SELinux domain, readiness validation
-  RH->>ST: dup and stage every PFD into host workspace
-  ST-->>RH: verified host-owned artifact identities
-  RH->>FL: create one fresh Flow; constructor loads backend DSO when native-backed
-  RH->>RH: build complete PreparedRun plus PREPARED snapshot candidate
-  RH->>RH: host-lock atomic lifecycle PREPARED plus candidate publication
-  RH-->>CL: prepare OK
-  CL->>RH: start(runId, generation)
-  RH->>FL: run(BackendFlowInput)
-  FL-->>RH: BackendRunFacts primitive, dispatch, cleanup, diagnostic
+  VM->>SC: RunCommand(key)
+  SC->>RG: captured descriptor key and dynamic availability callback
+  RG-->>SC: neutral BackendDescriptor and availability
+  SC->>SC: capture one executor and Operational/Payload/Finish cutoffs
+  SC->>DD: prepare(descriptor, fixed executor, cutoffs)
+  DD->>FR: freeze profile and opened inputs
+  FR-->>DD: AndroidFrozenRunInputLease with master PFDs
+  DD->>DD: duplicate into typed request, close masters
+  DD-->>SC: RunDispatchLease owning request PFDs
+  SC->>RC: start context, unopened storage sinks, lease execute closure
+  RC->>RC: accepted commit before execute starts
+  RC->>DD: dispatch fixed App or Shizuku target
+  DD->>CL: typed RunHostRequest plus read-only PFDs
+  CL->>FE: setCallback(runId, generation)
+  FE->>EP: delegate
+  EP->>HC: reserve identity and callback sink
+  CL->>FE: prepare(request)
+  FE->>EP: delegate generated request
+  EP->>EP: actual Parcel budget and model decode
+  EP->>HC: prepare(model, deferred duplicate closure)
+  HC->>HC: structure, identity, fingerprint preflight, register materializer
+  HC->>PA: materialize outside controller mutex
+  PA->>RG: entry closure calls runtime(key) exact projection
+  RG-->>PA: narrow descriptor, availability and fresh-Flow factory
+  PA->>PA: capability, live role/UID/SELinux and readiness gates
+  PA->>EP: invoke descriptor duplicate closure
+  EP-->>PA: owned PFD copies
+  PA->>ST: create workspace, transfer and stage every PFD
+  ST-->>PA: verified host-owned artifact identities
+  PA->>FL: create one fresh Flow, native-backed constructor may load DSO
+  PA-->>HC: complete prepared candidate
+  HC->>HC: atomic lifecycle PREPARED + candidate + snapshot commit
+  HC-->>EP: stable code after owner transfer/loser cleanup
+  EP-->>FE: wire code
+  FE-->>CL: prepare OK
+  CL->>FE: start(runId, generation)
+  FE->>EP: delegate
+  EP->>HC: start(identity)
+  HC->>FL: run(BackendFlowInput)
+  FL-->>HC: BackendRunFacts primitive, dispatch, cleanup, diagnostic
   opt PRODUCT_ROOT future carrier
     FL->>RS: dispatch exact published artifact
-    RS-->>RH: typed GLR1 Payload and Finish item facts
+    RS-->>HC: typed GLR1 Payload and Finish item facts
   end
-  RH->>RH: compose immutable six-layer terminal snapshot
+  HC->>HC: claim terminal, drain connector, commit immutable snapshot, finish worker owner
   par low-latency callback
-    RH-->>CL: onTerminal(snapshot)
+    HC->>EP: captured event sink outside mutex
+    EP-->>CL: onTerminal(snapshot)
   and durable authority polling
-    CL->>RH: getSnapshot(runId, generation)
-    RH-->>CL: typed current or terminal snapshot
+    CL->>FE: getSnapshot(runId, generation)
+    FE->>EP: delegate
+    EP->>HC: snapshot(identity)
+    HC-->>CL: bounded current or terminal snapshot
   end
-  CL-->>RC: RunReport
+  CL-->>DD: typed terminal client outcome
+  DD-->>RC: RunExecutionResult, close request PFDs
   RC-->>VM: RunSessionState(report)
   VM-->>UI: six layers plus independent diagnostic and product projector
-  CL->>RH: requestClose(runId, generation)
-  RH->>RH: terminal retention decision and workspace cleanup
-  RH-->>CL: DESTROYED accepted
-  CL->>RH: App unbind or Shizuku remove
+  CL->>FE: requestClose(runId, generation)
+  FE->>EP: delegate
+  EP->>HC: wait allowed-state quiescence, revalidate and close
+  HC->>HC: retention decision and external workspace cleanup owner
+  HC-->>CL: DESTROYED accepted only after quiescence
+  CL->>FE: App unbind or Shizuku remove
 ~~~
 
 request 不包含 RunCapability。successful prepare 后的 capability 只能由命中的BackendRuntimeEntry所携带的BackendDescriptor投影。callback event 只作 bounded progress；terminal snapshot 才是 result authority。client 不依赖 terminal callback 必达，而是以 getSnapshot 读取持久 authority。late callback 必须匹配 current runId、generation、strictly-increasing sequence 且尚未 terminal，否则 client 丢弃且不得改变 report。
@@ -1637,7 +1861,7 @@ stateDiagram-v2
   DESTROYED --> [*]: framework destroy or service unbind
 ~~~
 
-generation 小于 current identity 返回 stale，generation 大于 current 返回 busy，同 generation 不同 runId 返回 mismatch。framework destroy 只在 requestClose 已把状态推进到 DESTROYED 后生效；RUNNING 的直接 destroy 不清理 worker 或攻击资源。
+generation小于current identity返回stale，generation大于current返回busy，同generation不同runId返回mismatch。状态转移仍只由既有`RunHostStateMachine`决定；controller另以一个in-flight count和一个current-epoch completion barrier回答“最后物理访问者是否静止”，不建立第二状态机。framework destroy只有在requestClose已推进DESTROYED且materializer、worker finalizer、safe stop及workspace cleanup全部quiescent后生效；RUNNING的直接destroy不清理worker或攻击资源。
 
 #### 11.12.4 产品结果投影
 
@@ -1771,8 +1995,14 @@ classDiagram
     -PrivateFileSink
     -MediaStoreSink
   }
-  class AndroidRunSessionAdapter {
+  class RunSessionCoordinator {
     +start(command)
+  }
+  class AndroidRunHostDispatchAdapter {
+    +prepare(descriptor, target, cutoff)
+  }
+  class AndroidRunPresentationAdapter {
+    +shareTerminal(title)
   }
   LogConnector <|.. KotlinLogConnector
   LogConnector <|.. FdLogConnector
@@ -1782,9 +2012,11 @@ classDiagram
   LogHub --> LogDocumentFormatter : sole row encoder
   LogHub --> LogSinkBinding : one run-owned list
   LogHub --> LogRowsSnapshot : publishes UI prefix
-  AndroidRunSessionAdapter --> AndroidLogSinkFactory : create unopened storage sinks
-  AndroidRunSessionAdapter --> RunHostLogConnector : one per App or Shizuku request
-  AndroidRunSessionAdapter --> LogHub : pass storage bindings to start
+  RunSessionCoordinator --> AndroidLogSinkFactory : create unopened storage sinks through LogSinkProvider
+  RunSessionCoordinator --> AndroidRunHostDispatchAdapter : prepared single-owner dispatch lease
+  RunSessionCoordinator --> LogHub : pass storage bindings and execute closure
+  AndroidRunHostDispatchAdapter --> RunHostLogConnector : one per App or Shizuku request
+  AndroidRunPresentationAdapter --> LogHub : copy exact private-file prefix
   AndroidLogSinkFactory --> LogSinkBinding : private and optional MediaStore
   LogSinkBinding --> LogSink
 ~~~
@@ -1792,9 +2024,11 @@ classDiagram
 ~~~mermaid
 sequenceDiagram
   participant UI as Run UI
-  participant A as AndroidRunSessionAdapter
+  participant A as RunSessionCoordinator
   participant C as AndroidLogSinkFactory
   participant H as LogHub
+  participant DA as AndroidRunHostDispatchAdapter
+  participant S as AndroidRunPresentationAdapter
   participant RC as RunHostLogConnector
   participant CL as App or Shizuku client
   participant RH as RunHost
@@ -1805,7 +2039,9 @@ sequenceDiagram
   participant F as private-file worker
   participant M as optional MediaStore worker
   participant V as UI sink
-  UI->>A: start selected backend
+  UI->>A: start selected backend after immutable target and input cutoffs
+  A->>DA: prepare typed request lease
+  DA-->>A: lease with fixed App or Shizuku target
   A->>C: create frozen request's unopened storage sinks
   C-->>A: private-file and optional MediaStore bindings
   A->>H: start frozen context, request, storage bindings
@@ -1813,18 +2049,19 @@ sequenceDiagram
     H->>F: abort unopened sink without file I/O
     H->>M: abort unopened sink without MediaStore I/O
   else run accepted
-    H->>H: reserve token; create UI sink; append it to same binding list
+    H->>H: commit token, context, sinks and lazy execute, then start execute
     H->>P: raw Start then initial Info
-    A->>RC: create for exact run identity
-    A->>H: attach RC in run-scoped connector scope
-    A->>CL: run(request, RC)
+    H->>DA: dispatch accepted lease
+    DA->>RC: create for exact run identity
+    DA->>H: attach RC in run-scoped connector scope
+    DA->>CL: run(request, RC)
     CL->>RH: setCallback + prepare + start
     RH->>KC: create source before Flow
     RH->>RH: start KC collector before producer
     opt current Diagnose native chain
       RH->>FC: create Native and Shell readers before JNA call
       FC-->>KC: complete validated drafts in physical FIFO
-      RH->>RH: native returns; close write ends
+      RH->>RH: native returns, close write ends
       FC-->>RH: EOF then Drained or accepted-prefix Incomplete
       RH->>FC: close read endpoints after collect
     end
@@ -1840,7 +2077,7 @@ sequenceDiagram
       D-->>F: role-list tryEmit same event
       D-->>M: role-list tryEmit same event if enabled
     end
-    RH->>KC: Flow stopped; finishInput
+    RH->>KC: Flow stopped, finishInput
     KC-->>RH: drain then Drained/Incomplete
     RH->>KC: close after collect
     RH-->>CL: immutable terminal snapshot plus callback marker
@@ -1850,11 +2087,12 @@ sequenceDiagram
       RC-->>H: Drained after accepted FIFO
     else gap, duplicate, peer death, timeout, or source failure
       RC-->>H: Incomplete after accepted prefix
-      H->>P: ordinary Warn draft; typed result unchanged
+      H->>P: ordinary Warn draft, typed result unchanged
     end
     H->>RC: close transport after collect
-    CL-->>A: typed RunReport outcome
-    H->>H: freeze new attach; await all connector jobs
+    CL-->>DA: typed RunReport outcome
+    DA-->>H: normalized execution result, close request descriptors
+    H->>H: freeze new attach, await all connector jobs
     H->>P: nine ordinary Info rows under same threshold, then End
     P->>D: ordered processed rows and End
     D-->>V: nonblocking enqueue
@@ -1862,13 +2100,13 @@ sequenceDiagram
     D-->>M: nonblocking enqueue
     H-->>UI: typed phase/report without waiting for slow sink
     opt active manual share or diagnostic
-      A->>H: filePrefix()
+      S->>H: filePrefix()
       H->>P: raw FileBarrier
       P->>D: processed FileBarrier
       D-->>F: enqueue barrier
       F->>F: flush preceding rows once
-      F-->>A: stable path and exact byte length
-      A->>A: copy only that prefix
+      F-->>S: stable path and exact byte length
+      S->>S: copy only that prefix
     end
   end
 ~~~
@@ -1915,30 +2153,32 @@ stateDiagram-v2
 
 ### 11.15 2026-11-05：R5-S1 common product host closure（common spine retained；generic carrier declaration retired）
 
-本节描述仍保留的common host结构。2026-11-08的P-BACKEND-CORE-001/批次01删除了无真实PRODUCT_ROOT consumer的`BackendCarrierArtifact`与`PackagedBackendArtifactResolver`，`RunInputFreezer`不再自动注入一份声明式carrier；这不是删除未来carrier能力。43499、43284或98260若重新获批，必须在自己的纵向设计中把实际carrier作为标准frozen input artifact交给同一staging/publish链，并冻结其source owner与lifecycle。当前没有concrete product runtime进入registry，canonical profile-v3 encoder/decoder仍是独立enable blocker，因此本节不把PRODUCT_ROOT通路标为可达、Ready、selectable或supported。
+本节描述仍保留的common host结构。2026-11-08的P-BACKEND-CORE-001/批次01删除了无真实PRODUCT_ROOT consumer的`BackendCarrierArtifact`与`PackagedBackendArtifactResolver`，`AndroidRunInputFreezer`不自动注入声明式carrier；这不是删除未来carrier能力。P-RUN-CORE-001/批次02进一步把pure plan/text/codec留在core，把publish、identity和single-open result read归入`data/rootscript`。43499、43284或98260若重新获批，必须在自己的纵向设计中把实际carrier作为标准frozen input artifact交给同一staging/publish链，并冻结其source owner与lifecycle。当前没有concrete product runtime进入registry，canonical profile-v3 encoder/decoder仍是独立enable blocker，因此本节不把PRODUCT_ROOT通路标为可达、Ready、selectable或supported。
 
 #### 11.15.1 IPO与单一权威
 
 ~~~mermaid
 flowchart LR
-  P[canonical profile fixture or future v3 source] --> O[OpenedRunInputSource<br/>one O_NOFOLLOW object]
+  PF[canonical profile fixture or future v3 source] --> O[OpenedRunInputSource<br/>one O_NOFOLLOW object]
   M[PayloadRootManagers + PackageManager + uname.release] --> MR[RootManagerArtifactResolver<br/>mandatory executable + actual argv]
   MR --> O
   FC[future concrete backend carrier<br/>standard frozen artifact only] -. not connected .-> O
-  O --> L[FrozenRunInputLease<br/>opaque token to master PFD]
+  O --> L[AndroidFrozenRunInputLease<br/>opaque token to master PFD]
   L -->|duplicate only| W[typed RunHost request PFDs]
   W --> S[RootArtifactStagingAdapter<br/>EXECUTABLE 0500 / other 0400]
   S --> A[Map logicalId to PublishedFlowArtifact]
   R[validated RunHostRequestModel] --> N[RootScriptExecutionPlan<br/>kind policy staged path exact argv acceptance]
   A --> N
   N --> E[RootScriptRenderer]
-  N --> D[RootScriptResultCodec]
+  E --> PUB[RootScriptArtifactPublisher<br/>0700 workspace 0500 script 0600 result]
+  PUB --> F[exact RootScriptArtifact + pre-created GLR1 object]
+  F --> Q[AndroidRootScriptResultReader<br/>bound artifact plus plan]
+  Q --> D[RootScriptResultCodec]
   N --> X[RunReportComposer]
-  E --> F[exact RootScriptArtifact + pre-created GLR1 object]
-  F --> B[BackendFlowInput<br/>report context + terminal claim + log emitter]
+  Q --> B[BackendFlowInput<br/>neutral result reader + terminal claim + log emitter]
   B --> G[Flow computes BackendRunFacts]
   G --> X
-  D --> X
+  Q --> X
   X --> T[Flow returns six-layer RunReport]
   T --> U[RunHost snapshots and transports report]
   Z[stdout log callback raw uid0] -. diagnostic only; cannot upgrade .-> T
@@ -1948,7 +2188,7 @@ flowchart LR
 
 ~~~mermaid
 classDiagram
-  class FrozenRunInputLease {
+  class AndroidFrozenRunInputLease {
     +FrozenRunInput input
     +duplicate(token) ParcelFileDescriptor
     +close()
@@ -1969,7 +2209,14 @@ classDiagram
   class ProductRunPreparer {
     +prepare(workspace, identity, request, staged)
   }
+  class ProductRootScriptPlanMapper
   class RootScriptRenderer
+  class RootScriptArtifactPublisher
+  class RootScriptResultReader {
+    <<interface>>
+    +read() RootScriptDecodeOutcome
+  }
+  class AndroidRootScriptResultReader
   class RootScriptResultCodec
   class RunReportComposer
   class BackendFlowInput {
@@ -1980,58 +2227,73 @@ classDiagram
     +LogEmitter logs
     +complete(BackendRunFacts) RunReport
   }
-  FrozenRunInputLease *-- FrozenRunInput
+  AndroidFrozenRunInputLease *-- FrozenRunInput
   ProductRunPreparer --> PublishedFlowArtifact
-  ProductRunPreparer --> RootScriptExecutionPlan
-  ProductRunPreparer --> RootScriptRenderer
+  ProductRunPreparer --> ProductRootScriptPlanMapper
+  ProductRootScriptPlanMapper --> RootScriptExecutionPlan
+  ProductRunPreparer --> RootScriptArtifactPublisher
+  RootScriptArtifactPublisher --> RootScriptRenderer
+  ProductRunPreparer --> AndroidRootScriptResultReader
+  RootScriptResultReader <|.. AndroidRootScriptResultReader
+  AndroidRootScriptResultReader --> RootScriptResultCodec
   ProductRunPreparer --> BackendFlowInput
-  BackendFlowInput --> RootScriptResultCodec
+  BackendFlowInput --> RootScriptResultReader
   BackendFlowInput --> RunReportComposer
 ~~~
 
-`FrozenRunInputLease`独占masters；request assembly只取得duplicates。全部duplicate成功或失败后masters立即close，随后只删除app-private profile source；root-manager ELF及未来具体backend提供的carrier source由各自source owner持有，不由lease删除。RunHost独占staged paths/workspace；Flow只借用catalog与stable backend-state path。
+`AndroidFrozenRunInputLease`独占masters；request assembly只取得duplicates。全部duplicate成功或失败后masters立即close，随后只删除app-private profile source；root-manager ELF及未来具体backend提供的carrier source由各自source owner持有，不由lease删除。RunHost独占staged paths/workspace；Flow只借用catalog、stable backend-state path与neutral bound reader，不接触File、PFD或physical codec入口。
 
 #### 11.15.3 App/Shizuku共享sequence
 
 ~~~mermaid
 sequenceDiagram
-  participant A as AndroidRunSessionAdapter
-  participant L as FrozenRunInputLease
+  participant A as RunSessionCoordinator
+  participant D as AndroidRunHostDispatchAdapter
+  participant L as AndroidFrozenRunInputLease
   participant H as App or Shizuku RunHost
   participant S as RootArtifactStagingAdapter
   participant P as ProductRunPreparer
+  participant U as RootScriptArtifactPublisher
   participant F as fresh Flow
+  participant Q as AndroidRootScriptResultReader
   participant C as RootScriptResultCodec
   participant R as RunReportComposer
 
-  A->>L: freeze profile + carrier + manager opened objects
-  A->>L: duplicate each opaque token into request
-  A->>L: close masters and owned private source
-  A->>H: prepare typed request
+  A->>D: prepare with fixed executor and actor cutoffs
+  D->>L: freeze profile + carrier + manager opened objects
+  D->>L: duplicate each opaque token into request
+  D->>L: close masters and owned private source
+  D->>H: prepare typed request after LogHub accepted commit
   H->>H: structure/capability/registry/domain/readiness gates
   H->>S: stage owned PFDs and close them
   S-->>H: staged identity list + published catalog
   H->>P: prepare(validated model, staged list)
-  P->>P: build and validate one RootScriptExecutionPlan
-  P->>P: publish exact script + pre-created result object
+  P->>P: pure mapper builds and validates one RootScriptExecutionPlan
+  P->>U: publish exact script + pre-created result object
+  U-->>P: artifact identity
+  P->>Q: bind artifact + same plan
   P-->>H: PreparedProductRun
   H->>F: run(BackendFlowInput + catalog + stable state dir)
   F->>F: compute BackendRunFacts and emit LogDraft
   F->>H: FlowTerminalClaim.claim() through neutral port
   H-->>F: cancelledBeforeClaim or ownership lost
   alt scriptDispatch is SUCCESS
-    F->>C: decode same result object with same plan
-    C-->>F: complete GLR1 or malformed
+    F->>Q: read once through neutral port
+    Q->>Q: O_NOFOLLOW open + same-fd fstat + bounded read
+    Q->>C: decode bytes with same plan
+    C-->>Q: complete GLR1 or malformed
+    Q-->>F: typed decode outcome
   else dispatch not SUCCESS
     F->>F: choose NotAttempted without reading result object
   end
   F->>R: same plan + backend facts + decode outcome + cancellation
   R-->>F: six-layer RunReport
   F-->>H: RunReport
-  H-->>A: immutable terminal snapshot
+  H-->>D: immutable terminal snapshot
+  D-->>A: normalized execution result, close request PFDs
 ~~~
 
-App 与 Shizuku 各自保留现有 lifecycle、domain gate 和 callback owner；两者都先用同一个 `ProductRunPreparer` 发布 plan/script，再由 fresh Flow 自己解码 result、取得中立 terminal claim 并组合 `RunReport`。控制方向始终是 RunHost service 调 Flow；Flow 不调用 `AppRunHostService` 或 `GhostlockUserService`。APP-only backend 在 Shizuku domain gate 先被拒绝；host 不按 backend key 硬编码分支。
+App 与 Shizuku 各自保留现有 lifecycle、domain gate 和 callback owner；两者都先用同一个`ProductRunPreparer`发布plan/script并绑定result reader，再由fresh Flow取得中立terminal claim、按需调用reader并组合`RunReport`。控制方向始终是RunHost service调Flow；Flow不调用`AppUidRunHostService`或`ShizukuShellRunHostService`。APP-only backend在Shizuku domain gate先被拒绝；host不按backend key硬编码分支。
 
 #### 11.15.4 Lease、workspace与retention状态
 
@@ -2163,7 +2425,7 @@ classDiagram
 sequenceDiagram
   autonumber
   participant CL as App/Shizuku client
-  participant RH as AppRunHostService/GhostlockUserService
+  participant RH as AppUidRunHostService/ShizukuShellRunHostService
   participant RG as BackendRegistry
   participant FL as DiagnoseFlow
   participant BD as DiagnoseNativeBinding
@@ -2182,8 +2444,8 @@ sequenceDiagram
   BD->>JNA: Native.load("ghostlock_diagnose", mapping class)
   JNA-->>BD: immutable mapping or throw
   alt load/factory throws
-    RH->>RH: delete workspace; lifecycle remains NEW
-    RH-->>CL: IO_FAILURE; no RunReport/log
+    RH->>RH: delete workspace, lifecycle remains NEW
+    RH-->>CL: IO_FAILURE, no RunReport/log
   else complete candidate
     RH->>RH: build PreparedRun + PREPARED snapshot candidate
     critical host lock
@@ -2198,22 +2460,22 @@ sequenceDiagram
   FL->>RH: Kotlin diagnose:start via BackendFlowInput.logs
   RH->>LH: callback record accepted
   FL->>BD: runChain(logs, nonce)
-  BD->>BD: create Native/Shell pipes; initialize direct request/result fields
+  BD->>BD: create Native/Shell pipes, initialize direct request/result fields
   BD->>JNA: gl_diagnose_run(request, result)
   JNA->>DSO: ordinary C call
-  DSO->>DSO: validate pointers + HANDOFF_NOT_RUN; capture uid/pid/nonce
-  DSO->>DSO: attach Native fd; write one exact record; detach
+  DSO->>DSO: validate pointers + HANDOFF_NOT_RUN, capture uid/pid/nonce
+  DSO->>DSO: attach Native fd, write one exact record, detach
   DSO->>DSO: attach Shell fd
   DSO->>CH: run_handoff()
-  CH->>CH: read GHOSTLOCK_HOME; openat fixed path O_NOFOLLOW
+  CH->>CH: read GHOSTLOCK_HOME, openat fixed path O_NOFOLLOW
   CH->>CH: validate regular file + exact marker on same fd
   CH->>SH: posix_spawn fixed shell with script fd + Shell log fd
-  SH-->>CH: exact Shell record; exit status
+  SH-->>CH: exact Shell record, exit status
   CH->>CH: synchronous wait/reap
   CH-->>DSO: handoff status
-  DSO->>DSO: detach Shell fd; commit result once
+  DSO->>DSO: detach Shell fd, commit result once
   DSO-->>BD: call status + uid/pid/nonce/handoff status
-  BD->>BD: close both write ends; bounded independent drains; strict decode
+  BD->>BD: close both write ends, bounded independent drains, strict decode
   BD->>RH: Native record via BackendFlowInput.logs
   RH->>LH: callback record accepted
   BD->>RH: Shell record via BackendFlowInput.logs

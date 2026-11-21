@@ -8,7 +8,9 @@
 >
 > 本附件只冻结 App/Shizuku RunHost 的跨进程字段、范围、方法、状态、并发和稳定错误码；产品目标、owner、批次与成功语义以主计划为准。出现冲突时主计划优先，本附件不得扩展 scope。
 >
-> 2026-11-08 的 `P-RUN-X-001/批次02` 只重新归属 Kotlin owner：纯合同在 `core/runhost`，client/codec/host adapter 在 `data/runhost`，App framework entry 为 `runhost/AppRunHostService`。本页 AIDL method/field/integer、状态与错误优先级未变。
+> 2026-11-08 的 `P-RUN-X-001/批次02` 重新归属 Kotlin owner；2026-11-17获批实施的`P-RUN-X-001/批次03`再把两份重复orchestration收敛为`core/runhost/RunHostController`、`data/runhost/host/AndroidRunHostPreparationAdapter`与`data/runhost/wire/RunHostBinderEndpoint`，两个framework entry仍各自直接投影runtime并保留本地destroy。本页 AIDL method/field/integer、既有状态转移与错误优先级未变。
+>
+> 同日获批的`P-RUN-CORE-001/批次02`把application admission/cutoff移入`core.run.RunSessionCoordinator`，Android freeze/request assembly/fixed-target dispatch移入`data.runhost.client.AndroidRunHostDispatchAdapter`，物理root-script publish/read移入`data.rootscript`。AIDL source、method、field、integer、client timeout与host lifecycle继续冻结不变。
 
 ## 1. 不变量
 
@@ -24,8 +26,8 @@
 
 | 字段 | grammar / range | owner |
 |---|---|---|
-| `runId` | exactly 32 lowercase hex：`^[0-9a-f]{32}$` | application `RunInputFreezer`；每次 run 新随机值，不复用 |
-| `generation` | signed 64-bit `1..Long.MAX_VALUE` | application `LogHub`；同一 process 单调递增，溢出即拒绝新 run |
+| `runId` | exactly 32 lowercase hex：`^[0-9a-f]{32}$` | application `AndroidRunInputFreezer`；每次 run 新随机值，不复用 |
+| `generation` | signed 64-bit `1..Long.MAX_VALUE` | application `AndroidRunInputFreezer`；同一 process 单调递增，溢出即拒绝新 run |
 | `backendKey` | `^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$`，且必须 exact 命中 immutable registry | `BackendDescriptor.key` |
 | `logicalId` / item id | `^[a-z][a-z0-9._-]{0,63}$`，同一 request 内全局唯一 | freezer；renderer 不重命名 |
 | SHA-256 | exactly 64 lowercase hex | application 对输入 artifact 计算一次；RunHost staging 后对 staged fd 重算 |
@@ -226,7 +228,7 @@ oneway interface IRunHostCallback {
 - host identity 是 `runId + generation`；`setCallback` 与 `prepare` 都携带完整复合 identity。
 - 第一次成功 `setCallback` 可在 NEW 预留 identity；之后 `prepare` 必须相同。若没有 callback，第一次成功 `prepare` 原子建立 identity 与 PREPARED。
 - `prepare` 成功后保存 normalized typed fields + artifact metadata（logicalId/kind/byteCount/sha256）的语义指纹；不比较不稳定的 Parcel bytes 或 fd number。
-- backend Flow构造与constructor-time native load发生在任何PREPARED提交之前；只有完整`PreparedRun candidate`构造成功后，host才在同一host-lock临界区执行`lifecycle.prepare()`并原子发布`prepared + snapshot`。factory/load异常返回`IO_FAILURE`、删除workspace且lifecycle保持NEW；并发`start()`即使在该临界区内观察到state已转PREPARED，也必须等待同一host lock并取得非空`prepared`。
+- backend Flow构造与constructor-time native load发生在任何PREPARED提交之前；Android preparation adapter返回完整candidate后，唯一controller才在同一mutex临界区执行`lifecycle.prepare()`并原子发布`prepared + snapshot`。factory/load异常返回`IO_FAILURE`、删除workspace且lifecycle保持NEW；并发`start()`不能观察到PREPARED但candidate为空。materializer、worker finalizer、safe `Flow.stop()`与workspace cleanup登记同一个in-flight epoch；RUNNING未claim时close仍立即`UNSAFE_TO_DESTROY`，其余允许close的状态必须等该epoch静止后重验，framework destroy还要求DESTROYED且in-flight为0。
 - accepted `start()`的worker在调用`Flow.run`前把本次host-owned workspace root写入进程`GHOSTLOCK_HOME`；该写入与`Flow.run`位于同一terminal failure boundary。只有accepted running candidate可写，prepare loser、未启动candidate和预览路径不得写；同一host进程不重叠运行两个Flow，因此common handoff只解析当前run的`GHOSTLOCK_HOME/root-script/root-script.sh`。
 - host 实例 one-shot，不接受下一 generation 复用。
 
@@ -266,7 +268,7 @@ RUNNING --requestClose--> UNSAFE_TO_DESTROY（状态不变）
 
 RUNNING 的安全取消分成两个不可倒置的线性点：cancel 先在 state-machine mutex 内赢得 cancellation reservation 并返回 OK，但对外 snapshot 仍保持 RUNNING；Flow 停止访问并完成 cleanup 后，worker 才发布唯一 TERMINAL(CANCELLED)。reservation 与 worker publication 之间的 requestClose 固定返回 UNSAFE_TO_DESTROY，因此 workspace、waiter、process、mapping 与 staged artifact 不会在最后访问者停止前被回收。若 worker terminal 先赢，后到 cancel 返回 ALREADY_APPLIED，不能把已完成结果改写成取消。
 
-其它 identity/content 的精确 code 只由 §5.1 决定，不在状态表写“或”。实现以单一 host mutex/serial dispatcher保护状态与 identity；Flow 只通过中立的 `FlowTerminalClaim` 调用一个 `claimTerminal` compare-and-set，并在同一线性点取得 cancellation reservation 后组合 `RunReport`。并发 start/cancel、cancel/terminal、requestClose/terminal 由该 linearization point决定唯一结果；晚到者不产生第二 terminal。RunHost service 调 Flow；Flow 不依赖或反向调用 `AppRunHostService` / `GhostlockUserService`。
+其它 identity/content 的精确 code 只由 §5.1 决定，不在状态表写“或”。实现由唯一`RunHostController` mutex保护状态、identity与唯一quiescence事实；Flow只通过中立的`FlowTerminalClaim`调用一个`claimTerminal` compare-and-set，并在同一线性点取得cancellation reservation后组合`RunReport`。并发start/cancel、cancel/terminal、requestClose/terminal由该linearization point决定唯一结果；晚到者不产生第二terminal。`RunHostBinderEndpoint`只适配transport，`AndroidRunHostPreparationAdapter`只物化Android资源，两个thin entry只委托六个business method；Flow不依赖或反向调用`runhost/appuid/AppUidRunHostService`/`runhost/shizukushell/ShizukuShellRunHostService`。
 
 callback Binder death：清 callback 引用；NEW/PREPARED 不自动 start，RUNNING 不自动 cancel/kill，worker继续到 terminal并持久化 snapshot；client侧`RunHostLogConnector`drain已接收prefix后返回`Incomplete`，UI标 UNKNOWN且不得重试相同 run。host Binder death：client发布 synthetic `HOST_DIED/UNKNOWN`，终结connector为`Incomplete`并关闭自己持有的 PFD/callback；不自动重启。terminal publication exactly once 与 callback delivery zero-or-one 是两个独立判据。
 
@@ -478,6 +480,8 @@ nonzero-digit = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
 
 `script-handoff=0` 只表示脚本正常返回到 carrier，`1` 只表示 reboot durable handoff 已写；它不是产品 `RunTerminal`，也不能表达 SUCCESS/FAILED/DEGRADED。`run-id`、`item-id` 与 generation 分别服从 §2 grammar/range；十进制禁止 `+`、空白与非零值的前导零，item exit value 还必须服从 §6.4 的 kind-dependent range。payload/finish record 必须各按 frozen request 顺序恰好出现一次，同一 record 的四行必须连续且 itemId 相同。complete file 中 Payload 不得停在 DISPATCHING 或 NOT_RUN；Finish 的 DISPATCHING 只允许在 `handoff=1` 时恰为 frozen request 最后一项的唯一 REBOOT，普通 `handoff=0` complete file 不允许任何 DISPATCHING/NOT_RUN。unknown key、重复/缺失/换序/跨 phase ID、非法 state/reason/kind/value 组合、非法 handoff、缺 complete 或 complete 后有内容都使整个 parser 返回 `MALFORMED_RESULT/UNKNOWN`；不保留“可用的部分”冒充完成结果。
 
+物理owner固定为`data.rootscript`：publisher预创建0600 result并捕获identity；`ProductRunPreparer`把artifact与同一plan绑定成neutral `RootScriptResultReader`。Flow先取得唯一terminal claim，只有script dispatch成功才调用一次reader。reader以一次`O_NOFOLLOW` open在同一descriptor上执行fstat、device/inode/mode匹配和`MAX_RESULT_BYTES + 1`边界读取，再把bytes交给pure codec；open/stat/object不匹配映射`IdentityMismatch`，identity确认后的read/size/grammar/policy失败映射`Malformed`，预期失败不逃逸为第二terminal completion。
+
 ### 7.2 Payload/Finish overall
 
 本节只对 `PRODUCT_ROOT` 合成产品阶段。`DIAGNOSTIC_ONLY` 的两个 item list 必须为空，`payloadOverall` 与 `finishOverall` 固定为 `SKIPPED/NOT_STARTED`，唯一终态按本节末尾的 diagnostic 分支合成；这两个 SKIPPED 不是产品成功证据。
@@ -525,6 +529,22 @@ Finish 请求 reboot 时，该 REBOOT 必须是 frozen Finish 的唯一且最后
 client 收到 callback 前设备重启时，下次启动只可从 identity 匹配且 durable complete 的 result 恢复 `REBOOT_REQUESTED` 与已写 facts；不得补写 SUCCESS。pre-handoff reboot、host death或 partial file 都保持 UNKNOWN。held zombie/park 由 backend hint 合成 REBOOT_REQUIRED。
 
 ## 8. P-RUN-X-001/批次01 验证矩阵
+
+**现有入口导航**：下表只定位与取消、完成、关闭有关的现有用例；不替代下列1–9项判据，不新增批次承诺或更改批准/门禁状态。用例未覆盖的物理行为仍按原门补证。
+
+| 用户动作 / 原矩阵项 | 现有用例入口 | 前提与观察边界 |
+|---|---|---|
+| 开始前取消后再启动；运行中取消与完成的两种先后顺序；重复关闭（1、7） | [RunHostStateMachineTest](../../app/src/test/kotlin/com/ghostlock/app/core/runhost/RunHostStateMachineTest.kt)：`cancelBeforeStartPreventsLateStart`、`runningSafeCancelWaitsForWorkerTerminal`、`terminalClaimWinsOverLateCancelAndRepeatedClaim` | JVM；检查返回码、逻辑状态、唯一 terminal claim 和显式关闭授权，不证明 UI、资源回收、callback 或进程退出。 |
+| 取消、关闭及连接时 Host 死亡（1、7） | Android `com.ghostlock.app.data.runhost` 下的 [RunHostCancellationTest](../../app/src/androidTest/kotlin/com/ghostlock/app/data/runhost/RunHostCancellationTest.kt)、[RunHostLifecycleTest](../../app/src/androidTest/kotlin/com/ghostlock/app/data/runhost/RunHostLifecycleTest.kt)、[RunHostHostDeathTest](../../app/src/androidTest/kotlin/com/ghostlock/app/data/runhost/RunHostHostDeathTest.kt) | 已安装同树 app/test APK 的指定 Android 设备；前两项直接测状态机，后一项模拟首次 Binder call death，不等于真实 kill/cleanup 证据。 |
+| 通过 App 或 Shizuku 启动 Diagnose（9；正常执行接线） | Android `com.ghostlock.app.data.runhost` 下的 [AppRunHostSmokeTest](../../app/src/androidTest/kotlin/com/ghostlock/app/data/runhost/AppRunHostSmokeTest.kt)、[ShizukuRunHostSmokeTest](../../app/src/androidTest/kotlin/com/ghostlock/app/data/runhost/ShizukuRunHostSmokeTest.kt) | 指定设备及同树 app/test APK；Shizuku 还需已运行、授权且为 shell domain。两入口分别检查真实 client/service、诊断与日志结果，不能以一端通过代替另一端；不证明 PRODUCT_ROOT。 |
+
+从仓库根执行首行 JVM 定点用例：
+
+```sh
+./gradlew :app:testDebugUnitTest --tests 'com.ghostlock.app.core.runhost.RunHostStateMachineTest' --rerun-tasks --no-build-cache --console=plain
+```
+
+Android 复用原 instrumentation 入口：`adb -s SERIAL shell am instrument -w -r -e class FULL_CLASS com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner`，`FULL_CLASS` 取上表完整包名与类名，`SERIAL` 为本次指定设备。JVM 定点结果在 `build/app/reports/tests/testDebugUnitTest/index.html`；Android 读取本次 instrumentation 的测试结果/退出状态，skip 不算通过。debug/release 全量结果门及报告仍直达 [工程规范 §8.1](../development/engineering-standards.md#engineering-gate-commands)，真机要求仍按 [§8.3](../development/engineering-standards.md#engineering-device-gate)；定点执行不替代全量门，未运行项保持 `NOT_RUN`。
 
 1. 所有 AIDL 方法 transaction id exact 对拍（含 `destroy=16777114`）与方法×状态逐格测试；特别覆盖 setCallback→cancel=`UNRESOLVED/NOT_RUN/CANCELLED`、setCallback→requestClose=`DESTROYED/UNRESOLVED/NOT_RUN/NONE`、successful prepare 前 host death=`UNRESOLVED/UNKNOWN/UNKNOWN`；重复/并发调用验证唯一 linearization、terminal publication exactly once、callback delivery 0/1。
 2. identity/error priority：runId/generation 的 empty、0、-1、max、非法字符、lower/same-different/higher；同一输入同时命中两种错误时逐项证明 §5.1 优先级。

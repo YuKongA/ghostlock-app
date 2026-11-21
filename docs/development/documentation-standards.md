@@ -7,7 +7,11 @@
 > 本仓库一切文档的写法。风格参照 Google Developer Documentation Style Guide：短、直接、面向读者；
 > 内容分类参照 Diátaxis。来源见文末。
 > 效力与冲突处理见 [E-REVIEW-RULE-004/§1：最高思想与质疑义务](../../AGENTS.md#e-review-rule-004)；编号仅定位，不另设权威层级。
-> 沿革：2026-11-03 用户裁定取消文档字节、页数与篇幅硬上限；“短、直接、一处权威”仍是质量要求，拆分只按职责、读者或权威边界。
+> 沿革：2026-11-03 用户裁定取消文档篇幅配额；现行完整口径见[篇幅与拆分](#documentation-length)。
+
+<a id="documentation-task-map"></a>
+
+**按任务定位**：新写/结构整理读“先定类型、怎么写”；涉及代号读[工程代号](#engineering-identifiers)；涉及结构、双语、计划/门禁记录、归档分别读[画图](#documentation-diagrams)、[双语](#documentation-bilingual)、[模板](#documentation-templates)、[流程](#documentation-process)。仅笔误/链接修订不触发模板全填或全文复读。规则仍适用于相关改动，沿链接无需遍历全套文档。
 
 ## 先定类型
 
@@ -20,15 +24,33 @@
 | 参考 | 字段、命令、结构 | `docs/profile/PROFILE_SCHEMA.md`、`defaults.md`、`core/src/README.md` |
 | 解释 | 为什么这样设计 | `design-philosophy.md`、`engineering-standards.md`、`docs/analysis/**`（历史） |
 | 决策记录（ADR） | 一次架构决策：背景/决策/备选/后果 | `docs/analysis/adr/NNNN-*.md` |
-| 计划 | L 级改动开始前 | `docs/analysis/*-plan.md`（完成后可归档） |
+| 计划 | L 级改动开始前 | 新变更用 `openspec/changes/`；既有计划保留原路径与批准，由 OpenSpec 引用；[分工](#planning-tool-authority) |
 | 门禁记录 | 真机验证之后 | `docs/analysis/device-gates/`（归档，永久保留） |
 | 发布说明 | 每个版本 | `docs/release-note-*.md`（归档） |
 
 同一内容只写一处，别处链接；已有同类文档时更新它，不新建平行版本。
 
+<a id="planning-tool-authority"></a>
+
+## 设计与任务工具：各管一件事
+
+| 信息 / 动作 | 唯一入口 |
+|---|---|
+| 全工程规范、批准与门禁原则 | 本套既有规范；工具模板不复制、不覆盖 |
+| 新建 / 修改设计变更 | [OpenSpec propose](../../.agents/skills/openspec-propose/SKILL.md) / [update](../../.agents/skills/openspec-update-change/SKILL.md)；`proposal` 定范围，`design` 记技术取舍，真正改变行为合同时才写 delta specs |
+| 实质架构选择 | 作者使用 [CDA](../../.agents/skills/constraint-driven-architecture/SKILL.md)，结论写同一 design；不是新岗位或审批轮次，小修不启动全套架构分析 |
+| 执行、认领、依赖、运行证据与完成状态 | [OpenSpec apply](../../.agents/skills/openspec-apply-change/SKILL.md) 读取设计后操作 **Beads**；不生成 `tasks.md` 或维护第二份 checkbox |
+| 探索 / 合同同步 / 已完成变更归档 | 按需用 [explore](../../.agents/skills/openspec-explore/SKILL.md)、[sync-specs](../../.agents/skills/openspec-sync-specs/SKILL.md)、[archive](../../.agents/skills/openspec-archive-change/SKILL.md)；不是每批必走的串行步骤 |
+
+既有设计、批准、旧号映射与历史证据保留原锚点；迁移 change 只链接有效章节，不复制长计划。MASTER-PLAN 保留语义代号/设计入口，ROADMAP 保留依赖关系，不再手工同步任务状态。切换前的进度明确标为历史快照，切换后的进度由 Beads 唯一维护；Beads ID 是定位键，title / `external_ref` 保留原语义代号。其它仓库的任务只链接，不导入第二份。
+
+`ready` 只表示工具依赖已满足，artifact `done` 只表示文件存在；都不是设计批准或运行 PASS。Beads 任务的验收引用原矩阵，结果写命令、输入、实际输出/退出码与证明边界；未执行仍为 NOT_RUN。关闭须区分完成、取消和取代。合理的未来需求用 `deferred`，具名条件未满足用 `blocked`；依赖只连接真实消费者/先决条件，不把所有排期箭头变成阻断。
+
+工具安装与 CLI 操作仅在[开发环境 §5](development-environment.md#planning-tools)维护。Beads CLI 是任务唯一写入口；JSONL 是自动生成的交接投影，不手编、不作跨机双向同步。已触发的作者自检/独立审查仍按 [AGENTS §2、§7](../../AGENTS.md#agents-review)，工具升级或机械同步不额外触发 critic。
+
 ## 怎么写
 
-- **短**。删掉不改变读者行为的句子；具体做法优先于抽象描述。
+- **短**。删掉不改变读者行为的重复句；具体做法优先于抽象描述，完整性按下述篇幅规则保留。
 - **直接**。主动语态、现在时；写"运行 X"，不写"X 可以被运行"。
 - **可核对**。数字、命令、日志名照实写；结论不超出证据。不写"应该没问题 / 大概 / 看起来正常"。
 - **可追溯**。引用历史用 `git show <commit>:<path>`；计划与门禁记录必须有 commit 和日期。
@@ -38,6 +60,12 @@
 - 规范类文字用 必须/应当/可以（MUST/SHOULD/MAY）；其他文档不用命令语气。
 - 英文文档按 Google style：active voice、second person、present tense、sentence case 标题。
 - 链接用相对路径；跨文档引用给文件链接、完整代号与中文标题，必要时定位稳定锚点；不用裸章节号或裸局部字母号代替身份。
+
+<a id="documentation-length"></a>
+
+### 篇幅与拆分（2026-11-03 用户裁定）
+
+任何文档、计划、分析、门禁记录与附件均不得以字节数、页数、行数或篇幅设准入/准出上限；只按职责、读者与权威边界拆分，且不得为缩短文档删减判据、证据或沿革。运行时协议、Binder、资源与载荷的容量上限不属于文档长度限制，保持各自合同。“短、直接、一处权威”是质量要求，不是长度配额。
 
 <a id="engineering-identifiers"></a>
 
@@ -88,6 +116,8 @@
 4. **归档不失联**：归档时更新既有入口的目标路径并保留原码；不把 Git 考古当日常定位入口。历史局部号仅作有来源的别名，不再赋予新含义；活跃显示迁移与机器兼容键分开，工具仍消费的字段保留原键并映射，不为文档改号改写工具判据。历史归档与旧门禁记录不批量重命名。ADR 等既有身份保留，新增引用说明对象类型，不重新分配一套同义号。
 5. **避免重复权威**：同一规范只定义一次，其余以完整码链接或明确为派生检查项；编号相似不证明语义相同，编号不同也不授权重复定义。只有歧义妨碍当前追溯/验收时才要求本批消歧，不以旧格式存在为理由阻断无关业务批次。
 
+<a id="documentation-diagrams"></a>
+
 ## 画图
 
 关键结构与流程**必须**画图。文字描述控制流要求读者在脑中重建拓扑；图直接给出拓扑，并让悬空的调用、
@@ -100,13 +130,18 @@
 - **用 Mermaid**：文本化，可进 git、可评审、可 diff、可随代码更新；图更新与代码同一批次。
 - **一图一个关注点**（ISO/IEC/IEEE 42010 的 view/viewpoint 思路）：图给拓扑，正文给理由与例外，
   两者不互相抄。
-- **一个结构只有一处权威图**，其他文档链接它（沿用历史 `routes.md` "核心维护图唯一强制更新"的做法）。
+- **全局 UML 至少维护两个时间视点**：
+  - [当前状态全局 UML](full-process-uml.md#global-current-view)只根据当前工作树绘制已经存在的组件、调用、状态和 owner；尚未执行的门禁照实标为 `NOT_RUN`，不得把计划目标画成当前事实。
+  - [活跃计划最终目标全局 UML](active-plan-target-uml.md#global-active-plan-target-view)合并所有当前有效活跃计划按依赖顺序完成后的目标；它只表达目标拓扑，不把设计认可、production 授权、实现或验证状态改写为 `PASS`。
+- **按变化更新对应视点**：结构性源码改动同批更新当前图；活跃计划的目标、owner、合同或依赖顺序变化同批更新目标图；一批同时改变当前实现与最终目标时两份都更新。计划关闭或被取代后，重新按活跃计划集合计算目标图，不保留已失效目标作为当前 authority。
+- **每个时间视点只有一处权威图**：当前图与目标图回答不同问题，不是冗余副本。其他文档链接对应视点；局部计划图只说明该批差异。确需第三份或更多全局 UML（例如迁移中间态或部署变体）时，文件头必须声明时间视点、问题、事实/计划来源以及与两份基础视图的关系，不建立无标注的平行 authority。
+- 结构性改动必须更新适用视点中的 IPO/状态机/Class/Sequence；获准提交时，提交信息写明更新了哪一视点、哪张图。
 
 <a id="documentation-bilingual"></a>
 
 ## 双语
 
-`README.md` / `README_ZH.md` 与 `docs/profile/**` 的 `_ZH` 必须同批次修改，不允许单边漂移。
+`README.md` / `README_ZH.md` 以及已有 `*_ZH.md` 的对应文档（含 `docs/profile/**`）必须同批次同步，不允许单边漂移。
 `docs/development/**` 用中文；代码注释与提交信息用英文。
 
 <a id="documentation-templates"></a>
@@ -131,7 +166,7 @@
 ## 兼容性与失败恢复  # 源码恢复只引用 Git/Time Machine，不准备 rollback artifact/fixture
 ## 验证矩阵          # 本批行为/前提→方法/预期→对应成功层级；保留暂缓项及原恢复触发
 ## 明确保留          # 不动的部分及理由
-## 进度              # [ ]/[x] 跟踪交付；关闭凭对应证据，不凭已改源码或已做检查
+## 进度              # 直达对应 Beads 任务；正文不再维护第二份 checkbox，关闭凭对应证据
 ```
 
 **门禁记录（真机验证必须）**
@@ -154,8 +189,8 @@
 
 - 文档与代码同一批次改；纯文档改动用 `docs:` 提交。
 - 影响命令、字段、流程的改动必须回写文档。
-- 删文档 = 归档到 git 历史（`git rm`，不改写历史），并更新 `AGENTS.md` 的历史索引。
-- 行为已变化的文档加"现状注（日期）"，或按上面的方式归档。
+- 历史文档归档至 `docs/archive/`，命名 `YYYYMMDD-HHMM-原名`；头部保留原路径、归档日期、归档原因、来源四要素并指向后继。恢复/门禁证据类更新 [INDEX-device-gates](../archive/INDEX-device-gates.md)，其余更新已有相应索引；`git show <commit>:<path>` 是只读兜底，**不得删历史**，不再以 `git rm` 代替现有归档约定。
+- 行为已变化的文档加“现状注（日期）”，或按上面的方式归档。历史归档不批量改号；相关入口改链接而非复制正文，旧锚点与必要旧号映射保留。
 
 ## 检查清单
 
@@ -163,7 +198,7 @@
 - [ ] 没有模糊结论；事实可追溯；数字可核对
 - [ ] 模板字段完整（commit、日期、日志名）
 - [ ] 双语同步；链接可用（相对路径）
-- [ ] 删除/归档已反映到 `AGENTS.md`
+- [ ] 归档已更新对应现有索引与受影响入口（不另建索引）
 
 ---
 

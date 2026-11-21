@@ -1,0 +1,4 @@
+interface:
+  display_name: "Constraint-Driven Architecture"
+  short_description: "Evidence-led architecture for simpler systems"
+  default_prompt: "Use $constraint-driven-architecture to design a defensible initial architecture from product constraints."

@@ -4,6 +4,8 @@
 
 ## Documentation
 
+- [Development environment](docs/development/development-environment.md) — task-specific setup, pinned dependency sources, official installation links, and known checkout wiring issues (Chinese).
+
 - [Kernel Profile Porting Guide](docs/profile/README.md) - add support for a new kernel. GhostLock matches kernels by exact `uname -r` and rejects unsupported builds, showing the status at the top. Built-in profiles live in `app/src/main/assets/profile/`: one HOCON file per release, `index.conf` as the runtime index, and `<major.minor>-template.conf` version-family templates.
 - [Supported devices](docs/profile/SUPPORTED_DEVICES.md) - the built-in kernel list.
 - [Shared execution defaults](docs/profile/defaults.md) - every execution-tuning field, its default, and why.

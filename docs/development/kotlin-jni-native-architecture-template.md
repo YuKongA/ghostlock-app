@@ -12,7 +12,7 @@
 
 1. 先复制 `documentation-standards.md` 的 L 级计划模板。
 2. 在“目标与约束、数据流/控制流差异、改动清单、验证矩阵”中选用本文问题。
-3. 先回答当前必要性；CBN 的适用条件与唯一表格见 [E-REVIEW-RULE-001/§2：成本权衡](design-review-principles.md#review-cbn)，不因套用模板重复填表。
+3. 先回答当前必要性；CBN 的适用条件与短说明见 [E-REVIEW-RULE-001/§2：成本权衡](design-review-principles.md#review-cbn)，不因套用模板重复填表。
 4. 正文记录 branch、commit 和版本；输入识别按 [E-REVIEW-RULE-001/G4](design-review-principles.md#review-g4)，必要身份信息进入已有审核记录。design-critic 对应 gate 的阻断为 0 且用户批准后才实现。
 
 ## 问题组 A：现状与基线
@@ -209,7 +209,7 @@ Native 可以消费上层已决定的数据，但不得自行引入第二套业�
 
 ## 问题组 L：CBN
 
-仅链接 [E-REVIEW-RULE-001/§2：CBN 适用条件与表格](design-review-principles.md#review-cbn)，需要时在取舍发生处填写一次；已有论证直接引用。本附录不再维护“每结构一表、至少两个方案、必须给数字”的第二套要求。
+仅链接 [E-REVIEW-RULE-001/§2：真实取舍说明](design-review-principles.md#review-cbn)；必要时在原设计处说明，不填独立表，已有依据直接引用。
 
 > **沿革（2026-11-05）**：K/L 的全文 hash、旧 core make 命令与无条件 CBN 重复定义收拢到已生效规则；资源、ABI、攻击关键路径和真机验收责任保留。此整理不改既有计划的批准或门禁结果。
 
@@ -228,8 +228,8 @@ Native 可以消费上层已决定的数据，但不得自行引入第二套业�
 把适用项合并进通用计划的“进度”，不要建立第二份进度表。
 
 - [ ] Explore：代码、历史、活跃计划和调用图完成。
-- [ ] Design：数据权威、owner、CBN、UML 完成。
-- [ ] Review：design-critic 阻断为 0。
+- [ ] Design：数据权威、owner、适用取舍与 UML 完成。
+- [ ] Review：触发设计审核时，对应阻断已按原条件关闭；不重复求最终 PASS。
 - [ ] Approval：已有记录可定位用户批准与对应输入；输入标识沿用 G4，不另索全文 hash。
 - [ ] Implement：按单变量批次完成。
 - [ ] Verify：离线、构建、真机适用门禁完成。

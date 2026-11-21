@@ -13,6 +13,8 @@ description: 在 GhostLock 项目中，设计或代码作者正式送审、交�
 
 需要独立审查时，按 [AGENTS §7](../../../AGENTS.md#agents-review) 委派非作者，而非由作者切换身份再自审。
 
+已使用 OpenSpec/CDA 时，直接检查同一 design 及其引用的原合同；按[工具分工](../../../docs/development/documentation-standards.md#planning-tool-authority)从 Beads 取本批任务/证据，不重复生成自检、CDA 或 tasks 报告。
+
 ## 有具体疑点时直达
 
 | 疑点 | 只读对应规则 |

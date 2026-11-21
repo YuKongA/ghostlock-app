@@ -4,6 +4,8 @@
 
 ## 文档
 
+- [开发环境](docs/development/development-environment.md) —— 按任务安装依赖、定位固定版本与官方安装入口，区分环境缺失和工作树接线问题。
+
 - [Kernel Profile 适配指南](docs/profile/README_ZH.md) —— 如何支持一款新内核。GhostLock 按精确 `uname -r` 匹配，未匹配的内核直接拒绝运行并在 App 顶部显示状态。内置配置位于 `app/src/main/assets/profile/`：每个 release 一个 HOCON 文件，`index.conf` 保存运行索引，`<major.minor>-template.conf` 提供各内核大版本模板。
 - [支持设备列表](docs/profile/SUPPORTED_DEVICES_ZH.md) —— 内置内核清单。
 - [公共执行默认值](docs/profile/defaults_ZH.md) —— 每个 `execution` 字段的默认值与取舍。

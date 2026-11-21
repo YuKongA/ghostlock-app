@@ -1,0 +1,26 @@
+name: ghostlock
+version: 1
+description: OpenSpec owns design; Beads owns tasks; existing approval and evidence gates remain authoritative.
+artifacts:
+  - id: proposal
+    generates: proposal.md
+    description: Why this change exists and its authorized boundary
+    template: proposal.md
+    requires: []
+    instruction: Keep the existing semantic identifier. Reference existing scope and approvals instead of copying them. Do not generate a Markdown task list.
+  - id: specs
+    generates: specs/**/*.md
+    description: Behavior contract deltas, only when a contract actually changes
+    template: spec.md
+    requires: [proposal]
+    instruction: Use observable requirements and replayable scenarios, not implementation details. A tracking-only migration or docs/tooling change without product contract changes declares skip_specs in change metadata; do not invent product requirements.
+  - id: design
+    generates: design.md
+    description: Technical decisions or direct references to the existing authoritative design
+    template: design.md
+    requires: [proposal]
+    instruction: Follow AGENTS and the existing review principles. Use CDA for substantive architecture decisions. Existing approved plans stay at their original anchors; link rather than copy. Approval, self-check and independent review belong here or their existing source, not in a new report.
+apply:
+  requires: [proposal, specs, design]
+  tracks: null
+  instruction: Read the change's Beads issue link and use the project bd command for tasks. OpenSpec ready/all_done only describes artifact availability; it grants no approval and proves no implementation or gate. Do not create tasks.md or Markdown progress checkboxes. Preserve original author self-check, independent review, approval scope and applicable gates.

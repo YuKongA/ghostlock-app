@@ -7,7 +7,8 @@
 > 本文的每条原则都以**软件工程理论与公认实践**为主要依据（标准、经典文献、工业实践，见附录 A），
 > 本项目的经验只作为该理论在特定约束下的**实例化证据**。
 > 分层：哲学（本文，为什么）→ 规范（`engineering-standards.md`，怎么做）→ 操作（`AGENTS.md`）。
-> 效力：任何改动开始前必须读过本文。
+> 读取：用于理解相关设计理由或处理原则疑问，只读任务涉及的主题；不作为每次改动前的全文前置。执行入口见 [AGENTS 任务读取表](../../AGENTS.md#agents-reading)，具体流程与门禁不在本文重复定义。教材优先及现有层级不变。
+> Agent 约束与反复纠偏的设计取舍，直达 [§10：poteto 信任金字塔](#philosophy-trust-pyramid)。
 
 ---
 
@@ -193,7 +194,9 @@ profile；攻击窗口内无异常/分配/间接调用；"dirty" 是显式可接
 **项目实例化**：计划与日志分离（要做什么 vs 发生了什么）；门禁证据链（S/CPP/U01/NS*）；历史文档从
 工作树归档但完整保留在 git；失败实验（V1–V21）与成功记录同等详细。
 
-**行为要求**：改动前先考古（`git log --all -- <path>`）；任何"选了 A 不选 B"的决定留下五要素记录。
+**行为要求**：按 [工程规范：取证](engineering-standards.md#engineering-investigation) 定向查相关历史，不全量考古。需要记录的设计取舍在原设计/ADR 中保留五要素；已有记录直接引用，不为机械执行或已裁定选择重写决策记录。
+
+<a id="philosophy-trust-pyramid"></a>
 
 ## 10. 自动化与过程控制：机制防错，而非记忆防错
 
@@ -205,12 +208,27 @@ profile；攻击窗口内无异常/分配/间接调用；"dirty" 是显式可接
 - **Fagan 评审（IBM Systems Journal, 1976）**：对无法自动化的部分保留结构化人工检查（代码评审）。
 - **防错设计（poka-yoke）**：让错误无法发生，而不是要求人更小心。
 
-**原则**：一条只能靠人记住的规则，等于没有规则。
+**原则**：稳定约束尽量由结构和可执行检查承载，文字说明意图、边界与仍需判断的取舍；不把反复提醒作者或 critic 当作长期防错机制。
 
 **项目实例化**：双侧一致性由两个测试对拍；形状对比脚本化；零告警与 clang-tidy
 `--warnings-as-errors` 写进构建；提交格式（Conventional Commits）与门禁模板降低评审成本。
 
-**行为要求**：新增一致性要求时，同时提供测试/脚本/清单，让它不依赖记忆。
+### poteto 信任倒金字塔：优先改善约束，而非堆叠指令
+
+Lauren Tan（poteto）在 [All Code Is Slop (Except Mine)](https://ai.engineer/code/2026/talks/lauren-tan)（2026-11-11，录播 1:03:27–1:04:20）用倒金字塔说明对 Agent 工作环境的投入优先级：代码设计与可机械执行的约束承担主要防错工作，运行/形式化验证补足行为证据，少量文字承载判断。下表为本项目裁剪，不是新的规范效力层级或必须逐层执行的流程。
+
+| 投入优先级（倒金字塔自上而下） | 约束载体 | 在本项目的用途 |
+|---|---|---|
+| 1．代码与设计 | 架构、API、局部重构 | 从真实调用者出发，减少非法操作和错误组合；资源不必共享时先隔离，不先增加锁或 owner。 |
+| 2．可机械执行的检查 | 类型、编译器、静态分析、受控回归测试 | 使已确认的不变量可重复检查；优先复用现有入口，不把工具偏好、fixture 或 TSV 格式升格为行为合同。 |
+| 3．运行与形式化验证 | 真实入口、可观察状态、事件序列；必要时模型检查/证明 | 检查实际行为与用户意图是否一致；只证明所覆盖的条件，形式化结果不替代实现与适用真机证据。 |
+| 4．少量文字指导 | 规则、skill、AGENTS、必要合同说明 | 保留意图、授权边界和无法直接编码的判断；按任务读取、只留唯一权威，不反复复制操作说明。 |
+
+**采用边界**：
+
+- 先确认具体误用、真实消费者与需要保持的合同，再选最小有效落点；不是每次纠偏都新增 lint、类型或抽象。重复失败的前提检验沿用 [排障细则](engineering-standards.md#engineering-investigation)，注释取舍沿用 [代码修改与注释判据](engineering-standards.md#engineering-comment-style)。
+- 这是约束设计的投入优先级，不是“先改代码再设计”的执行顺序，也不是放宽已有检查的依据。已有有效检查继续生效；[作者自检](design-review-principles.md#review-author-self-check)、[独立审查](../../AGENTS.md#agents-review)、批准及[原验证/真机门](engineering-standards.md#engineering-verification-levels)均保持不变，不新增审查轮次或强制形式化验证。
+- 只在本次获准范围内落实；仅获准流程/测试时，生产代码问题只保留线索，不借此改生产接口、补框架或提前实现后续需求。行为证据和未运行项仍按 [§8.0](engineering-standards.md#engineering-evidence) 记录。
 
 ## 11. 职业实践：对后来者（包括 agent）的期望
 
@@ -226,7 +244,7 @@ profile；攻击窗口内无异常/分配/间接调用；"dirty" 是显式可接
 **行为要求（四条）**
 
 1. **先理解，再设计**：读代码与历史；写下改动清单和"不碰什么"；L 级改动设计先获认可。
-2. **先证据，再结论**：能跑的都跑；不能跑的标"未验证"；不写"应该没问题"。
+2. **先证据，再结论**：按 [工程规范 §1.3](engineering-standards.md#engineering-verification-levels) 执行适用且获准的验证，不因“能跑”而全跑；未运行/未覆盖如实标注，欠账按 [工程规范：执行细则](engineering-standards.md#engineering-execution) 保留，不写“应该没问题”。
 3. **保守而谦逊**：不炫技、不顺手、不追新；越是聪明的改动，越要证明它没有改变别的东西。
 4. **留下痕迹**：决策、验证、失败都写进仓库——那就是下一个人的基线。
 
@@ -283,7 +301,7 @@ profile；攻击窗口内无异常/分配/间接调用；"dirty" 是显式可接
 | §7 诚实面对不确定性 | §8.4 归因纪律、§1.5 提交规范 |
 | §8 防御性内核 | §3.2 溢出与范围校验、§4.2 PI 窗口规则（**实证版**：白名单/禁项见 [pi-window-constraints](../analysis/pi-window-constraints.md)）、§4.3 错误分层 |
 | §9 可检索记忆 | `documentation-standards.md`（分类地图、ADR、归档、现状注） |
-| §10 机制防错 | 双侧一致性测试、clang-tidy 策略、`cmp_disasm`、路由模板 |
+| [§10 机制防错 / poteto 信任金字塔](#philosophy-trust-pyramid) | [现有约束与注释](engineering-standards.md#engineering-comment-style)、[适用验证](engineering-standards.md#engineering-verification-levels)、[行为证据](engineering-standards.md#engineering-evidence)；不另设流程 |
 | §11 职业实践 | §9 Agent 检查清单与禁止模式 |
 
 ## 附录 C：项目实例证据（出处）
@@ -302,7 +320,7 @@ profile；攻击窗口内无异常/分配/间接调用；"dirty" 是显式可接
 
 ## 附录 D：操作条目增补（2026-10-05，来自结构审查 G5/G6）
 
-> **历史适用范围**：以下 D.1–D.3 保留 2026-10-05 的词汇模型与操作记录，不是主计划 D1–D9。现行跨端合同按批准计划；并发写入、提交与恢复纪律统一引用 [E-REVIEW-RULE-004/§6](../../AGENTS.md#agents-collaboration)，旧“并行写后先提交”等例外不再授权当前操作。
+> **历史适用范围**：以下 D.1–D.3 保留 2026-10-05 的词汇模型与操作记录，不是主计划 D1–D9。现行跨端合同按批准计划；单 writer/恢复授权仍按 [AGENTS §6](../../AGENTS.md#agents-collaboration)，操作细则直达 [委派](engineering-standards.md#engineering-delegation) / [提交](engineering-standards.md#engineering-commits)；旧“并行写后先提交”等例外不再授权当前操作。
 
 ### D.1 承接原则 3（每个事实只有一个权威）——**词汇/白名单必须导出并对拍**
 

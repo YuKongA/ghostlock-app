@@ -1,4 +1,9 @@
-# 剩余计划（dev · 2026-11-08）
+# 剩余计划入口与迁移前快照
+
+当前剩余项统一从 [MASTER-PLAN 任务入口](MASTER-PLAN.md#active-task-routing) 进入 OpenSpec/Beads；运行 `npm run --silent bd -- list`。本页不再维护第二份进度；下文只是2026-11-21切换前的证据/沿革快照，不是待执行清单，旧未勾选项须按当前有效任务核对。
+
+<details>
+<summary>迁移前快照（只读，不更新 checkbox）</summary>
 
 > **代号范围**：当前项使用[主计划语义代号](backend-root-execution-unification-plan.md#plan-semantic-identifiers)；历史批准、纠错记录和 R5-S1 等来源子号保留兼容，不改变本页产品状态。
 
@@ -59,18 +64,110 @@
 - [x] KT-V1：architecture=`PASS/RUNHOST_OWNER_BOUNDARY=0/FILE_ACTION_ROWS=562`，debug/release unit各`128`且四桶全0，androidTest compile、native host=`31/31`、双variant build与AIDL zero-diff通过。
 - [x] KT-V2：6.6 AVD `emulator-5554` 上 App/Shizuku exact smoke各`OK (1 test)`；不外推为lifecycle全矩阵、真实设备、carrier、root或产品成功。
 
-## 下一设计门：P-RUN-CORE-001/批次02 core/data 依赖方向修复
+## 已完成批次：[P-RUN-CORE-001/批次02 core/data 依赖方向修复](backend-root-execution-unification-plan.md#p-run-core-001-batch-02)
 
-> 状态：仅需求与owner债务已登记，source尚未授权。下一个允许动作只是在现有 `P-RUN-X-001` 计划内细化exact design/ledger，完成design-critic并取得用户批准；不因批次02完成而自动改production source。
+> 状态：基于 `4996d25c` 的106行exact design已由design-critic最终PASS并经用户批准实施。source critic提出的accepted-before-body取消、descriptor/path metadata替换与sink provider降级覆盖三个阻断均已关闭，最终PASS且阻断/重要均为0；current tree的source、architecture、双variant unit、androidTest compile、native host/build、31个FREEZE zero-diff、6.6 AVD 23项与真实设备4项physical I/O门均已关闭。Host去重现已作为独立批获批实施；backend/UI与Diagnose后续批继续未授权，真实carrier/PRODUCT_ROOT继续`NOT_RUN`。
 
-- [ ] KTC-D1：细化 `RunInputFreezer`/root-script I/O、`AndroidRunSessionAdapter`与`ProductRunPreparer`的core/data边界、逐文件ledger、失败语义与对应AVD/设备判据；经critic后等待用户批准。
+- [x] KTC-D0：核对 current caller、`git log --all -- <path>`、Android/PFD/File 反向依赖、资源 owner、失败语义与过度设计候选。
+- [x] KTC-D1：冻结 coordinator/dispatch/presentation/sink 边界、immutable executor target、root-script single-open reader、106 行 exact ledger 与 source/AVD/设备判据。
+- [x] KTC-D2：design-critic关闭KTC-CORE-01..06，最终总判PASS，阻断=0、重要=0、建议=0；机械ledger闭包六项均为0。
+- [x] KTC-D3：用户在critic最终PASS后明确回复“批准”；授权仅覆盖本批106行ledger。
+- [x] KTC-I1：按 exact ledger 单写入流实施，Host 去重、backend/UI 与 Diagnose 后续批不混入。
+- [x] KTC-V1：architecture=`PASS/CORE_OUTER_DEPENDENCY=0/RETIRED_RUN_OWNER=0/FILE_ACTION_ROWS=598`；debug/release unit各155项且四桶全0；androidTest compile、native host 31/31、双variant build、31个FREEZE zero-diff与docs/UML一致性通过。
+- [x] KTC-V2：6.6 AVD `emulator-5554`的physical I/O、staging/sink、App/Shizuku Diagnose与smoke、lifecycle/cancel/host-death共`OK (23 tests)`且无skip；三项新增provider用例覆盖private construction failure、optional MediaStore construction omission与逃逸setup异常前累计binding清理。
+- [x] KTC-V3：真实non-root设备`b4541958`（`23013RK75C`、5.10.252、SDK 36）两个physical I/O exact class为`OK (4 tests)`且无skip；真实carrier/PRODUCT_ROOT保持`NOT_RUN`。
 
-随后固定顺序为：
+## 已完成批次：[P-RUN-X-001/批次03 App/Shizuku Host去重](backend-root-execution-unification-plan.md#p-run-x-001-batch-03)
 
-1. `P-RUN-X-001/批次03` App/Shizuku Host去重；
-2. `P-BACKEND-CORE-001/批次02` backend package纯化；
-3. `P-UI-CORE-001/批次01` UI feature/package与root composition收口；
-4. 上述Kotlin owner批稳定后才重新细化 `P-DIAG-NATIVE-001/批次02`。
+> 状态：完成。91行exact ledger=`ADD=6 / MODIFY=15 / FREEZE=70`；shared controller、preparation adapter、Binder endpoint与thin entries均已落地。source critic的KTH-SRC-01/02/03全部关闭，最终`PASS / 阻断0 / 重要0 / 建议0 / 新增finding 0`；普通门、70个FREEZE零漂移与6.6 AVD五个exact class均已关闭。
+
+- [x] KTH-D0：核对唯一active plan、历史、两份framework entry直接caller、AIDL/manifest identity、重复owner与workspace-create前PFD leak。
+- [x] KTH-D1：KTH-HOST-01/02/03全部关闭；CBN、依赖方向、91行ledger机械闭包及最终定点复审全部通过。
+- [x] KTH-D2：用户于2026-11-17在critic PASS后明确批准production implementation；批准不外扩到backend/UI/Diagnose后续批。
+- [x] KTH-I1：只按91行ledger实施shared controller、preparation adapter、Binder endpoint与两个thin entry。
+- [x] KTH-V1：architecture=`PASS/RUNHOST_OWNER_BOUNDARY=0/FILE_ACTION_ROWS=604`；debug/release unit各`200/200`、androidTest compile、native host`31/31`、双variant build、AIDL/frozen contract与docs/UML通过。
+- [x] KTH-V2：6.6 AVD App/Shizuku smoke及既有lifecycle/cancel/host-death共`OK (5 tests)`且无skip；真实process-kill、carrier与PRODUCT_ROOT仍按原门保持`NOT_RUN`。
+
+本批以后的原入口曾是`P-BACKEND-CORE-001/批次02`；它随后在批准前被完整 BackendPackage 新目标取代，未实施。过重的`P-BACKEND-X-002/决策01`又在用户认可前被精简；决策02虽曾获认可，但其exact batch在production前被新的Custom公开能力／raw-memory要求取代。current合法设计入口见下方`P-BACKEND-X-002/决策03`。
+
+## 已完成：[P-RUN-X-001/批次04 执行域可读命名](backend-root-execution-unification-plan.md#p-run-x-001-batch-04)
+
+> 用户明确要求两个framework entry的类名与文件夹层级都可直接识别执行权限，并裁定为M级、无需独立审查。最终采用对称的`runhost/appuid/AppUidRunHostService`与`runhost/shizukushell/ShizukuShellRunHostService`；只机械同步package、component/反射identity、caller、guard与current docs。
+
+- [x] KTN-D1：最小计划已记录旧名→新名、保持项、caller与验证入口。
+- [x] KTN-I1：两个类/文件、Manifest、App显式Intent、Shizuku class string、R8 keep、architecture路径和current文档已同步。
+- [x] KTN-V1：architecture=`PASS/RUNHOST_OWNER_BOUNDARY=0/FILE_ACTION_ROWS=604/KEEP_DRIFT=0`；debug/release unit各`200/200`、native host`31/31`、androidTest compile及双variant build通过。
+- [x] KTN-V2：6.6/4 KiB AVD启动Shizuku shell server并授予既有API权限后，App/Shizuku exact smoke最终为`OK (2 tests)`、exit=0且无skip；不外推为process-kill、root或PRODUCT_ROOT。
+
+## 已取代、未实施：[P-BACKEND-CORE-001/批次02 backend package纯化](backend-root-execution-unification-plan.md#p-backend-core-001-batch-02)
+
+> 69行same-APK package move曾完成自检与critic，但用户在批准前改为完整code-bearing BackendPackage；旧批没有production授权、没有实现、所有运行门`NOT_RUN`，ledger只留沿革且不得执行。
+
+- [x] BPK-D3：以“未批准、被`P-BACKEND-X-002`取代”关闭，不产生实施授权。
+- [x] BPK-I1/V1/V2：取消旧实现与旧门；没有运行结果，不记PASS。
+
+## 已取代、未实施：[P-BACKEND-X-002/决策01 完整 BackendPackage 插件模型](backend-root-execution-unification-plan.md#p-backend-x-002-decision-01)
+
+> 决策01完成过作者自检与critic，但用户在认可前指出终态机制和验证被错误地并入首批。其完整package、durable lease/journal、DCL/native与双域矩阵保留为研究沿革，不再是可批准入口；没有production授权或实现，所有门保持`NOT_RUN`。
+
+## 已由决策03取代、未实施：[P-BACKEND-X-002/决策02与旧批次01](backend-root-execution-unification-plan.md#p-backend-x-002-decision-02)
+
+> 状态：决策02曾完成作者自检、独立critic与用户认可，旧批次01也曾冻结Java ABI、KMP／native owner、统一i18n／settings和240行ledger；但在任何production授权或实现发生前，用户把Custom需求改为“可枚举并调用任意已加载plugin的公开能力，且可直接管理native memory或指定绝对地址写入”。这与旧filtered Custom、通用`ComponentContext`、Diagnose自用service registry及preparation/runtime registry耦合实质冲突。下列已关闭项只保留旧设计沿革，不能直接获批或拆行实施；当时critic的`CLOSED`不覆盖替代设计，全部产品门仍`NOT_RUN`。
+
+- [x] BXP2-D0：用户纠正范围和验证广度；决策01以未批准／未实施被取代。
+- [x] BXP2-D1：当前痛点、两类component、一跳input capability、Host ABI／target ISA分离、逐批顺序与按声明验证已写入唯一草案。
+- [x] BXP2-D2：非作者design-critic只读审核确认可进入用户认可gate、阻断0；远期未实现及对应门未运行未被误作阻断。
+- [x] BXP2-D2R：定点复审确认plugin-owned Kotlin native load/call owner与Host边界成立，阻断0；未受影响部分未重审。
+- [x] BXP2-D2S：定点复审确认builtin/imported来源、身份、信任、seed/selection、卸载与rollback边界成立，阻断0；未受影响部分未重审。
+- [x] BXP2-D2T：定点复审确认首次主进程启动、唯一owner、同一verifier/installer、readiness、幂等与崩溃可恢复性成立，阻断／重要／建议均为0。
+- [x] BXP2-D1U/D2U：构建／module／文件层次作者自检与critic完成；唯一release-R8 shared-API保留阻断按原条件机械关闭，其余阻断0。
+- [x] BXP2-D1V：Host capability registry增量作者自检完成；三投影、有限依赖闭包、filtered lookup、run-scoped factory及future custom复用已写入草案。
+- [x] BXP2-D2V：同一非作者critic确认registry authority、有限依赖闭包、shared contract、NativeBinding lifecycle、两域typed graph与future custom边界成立；阻断／重要／建议均为0。
+- [x] BXP2-D3：用户于2026-11-18在critic结论后明确认可；只开放批次01 exact design，不等于production批准。
+- [x] BXP2-B1-D：原Android-library版exact API、package/manifest、catalog/seed、graph/wire、registry/loader/native与lifecycle已完成作者自检；其结论不覆盖KMP修订。
+- [x] BXP2-B1-DIAG-RESULT-01：Lead按critic原条件核对并原样冻结current status/identity/log/handoff/cleanup三事实组合及outcome优先级；成功含义未改，机械关闭。
+- [x] BXP2-B1-API-01：同一critic定点确认完整shared ABI、阶段异常与失败资源owner满足原条件，`CLOSED`。
+- [x] BXP2-B1-APP-PROCESS-01：同一critic定点确认main/client death后的service-side独立进程终结owner与验证满足原条件，`CLOSED`。
+- [x] BXP2-B1-C：原critic round 1全部3项关闭；KMP实质修订使原用户批准gate重新关闭。
+- [x] BXP2-B1-KMP-D：KMP core／Diagnose Android source set／官方兼容toolchain preflight设计、228行scope与作者自检完成。
+- [x] BXP2-B1-KMP-HOSTTEST-01：显式`withHostTest {}`创建host-test compilation，`androidHostTest`以test-only implementation取得API runtime，并验证不进入main runtime/D8/archive；preflight不再冒充证明尚未创建的KMP入口。
+- [x] BXP2-B1-KMP-C：同一非作者critic只读审查KMP差异；唯一finding按原条件机械关闭，当前阻断0／重要0／建议0。
+- [x] BXP2-B1-KMP-LAYOUT-01：按用户纠正将插件叶module统一收进`plugin/`并使用嵌套Gradle path；组织父project无源码／产物职责，各叶module沿用自己的`build/`；scope与实质设计不变。
+- [x] BXP2-B1-NATIVE-OWNER-01：明确plugin包含core；`plugin/native-source`仅为不产公共DSO的源码authority，具体backend package独占DSO/load/call/close，`:app`的C/C++／JNA/JNI／project `.so`／`System.load*`／native handle owner全部为0。作者差异自检与非作者定点critic均完成，阻断0／重要0／建议0。
+- [x] BXP2-B1-I18N-D：App／builtin plugin／imported plugin共用的KMP `I18nRegistry`、typed bundle identity、bounded catalog schema、Diagnose settings tree与`i18n/{en,zh}.json`、Host generic renderer、i18n4k薄门面及相称门禁已补入240行scope；现有41个Android UI caller的迁移另留P-UI。
+- [x] BXP2-B1-I18N-ID-01：首轮critic要求把bundle identity绑定authenticated package identity；已改为`HOST_APP`／`PLUGIN(publisherId,packageId)`并补同packageId不同publisher、App伪装、same-owner update与self-only remove判据，同一critic定点复审确认`CLOSED`。
+- [x] BXP2-B1-I18N-FALLBACK-01：按critic原条件机械冻结ordered multi-locale候选；全部active locale的exact／script／language候选耗尽后才用bundle default，补`[fr-CA,zh-Hans]→zh`与去重／最终default unit判据。
+- [x] BXP2-B1-I18N-C：同一非作者critic确认identity finding关闭及fallback机械关闭有效，unified registry／catalog transport／Host renderer owner差异最终阻断0／重要0／建议0。
+- [x] BXP2-B1-A：取消旧production gate；决策03已在批准前取代本批，旧设计不得再直接获批实施。
+- [x] BXP2-I1/V1：取消旧实现与旧门；无授权、未实施，所有产品门`NOT_RUN`且不得记PASS。
+
+### 资源准备／动态选项路线（历史候选；已并入决策03）
+
+> 用户比较backend自行枚举provider并接UI与Host反射／registry注入两条路线，并追问动态选项。当前候选采用第三条路线：Host拥有revisioned准备草稿、provider binding选择、调度、失效与generic renderer；provider拥有导入／extract／build／验证／provenance语义；backend只声明requirement并在run cutoff后从filtered lookup按slot消费冻结结果。cutoff前可在manifest预声明集合内调整选项、候选和步骤，旧revision结果丢弃；accepted run不轮询registry、不反射注入、不热换provider／artifact。复杂preparation API／store／execution domain／状态机留真实profile／extractor／KO consumer批次，不扩大批次01 exact Java ABI、240行ledger或门禁。
+
+- [x] BXP2-D1W：作者沿current UI→cutoff→freeze→RunHost prepare调用链完成差异自检。
+- [x] BXP2-D2W：同一非作者critic确认可进入用户认可gate，阻断0／重要0／建议0。
+- [x] BXP2-D3W：取消独立认可gate；该候选未获用户认可，方向由决策03 preparation plane吸收并与通用runtime registry解耦。
+
+## 当前有效设计，独立审查及用户认可完成：[P-BACKEND-X-002/决策03 分平面插件体系与特权Custom能力目录](backend-root-execution-unification-plan.md#p-backend-x-002-decision-03)
+
+> 决策03保留一个authenticated package catalog／exact identity权威，但把package/catalog、presentation/i18n、preparation/artifact、ordinary backend run、privileged Custom分成职责平面；真正传给plugin code的只有preparation job、ordinary backend run、Custom execution三类context。`.glplugin.zip`继续原子组包`BACKEND`／`PROVIDER`／`CUSTOM`；export分immutable value、finite job、live service，并以`PRIVATE`／`DEPENDENCY`／`CUSTOM_CALLABLE`控制可见性。同package private native直接调用，ordinary跨包依赖必须声明且不可枚举，Custom在专用可丢弃RunHost中枚举本session已加载package明确公开的capability，可通过stable raw-memory／operation contract管理owned native memory或向指定绝对地址读写；Host不暴露reflection、JNA Pointer／Native.invoke或任意JVM对象，plugin Kotlin／private DSO继续独占load／call／close。preparation由Host拥有revisioned draft／调度／freeze，provider以有限job发布immutable Document／Artifact；动态UI字段仍是Host draft数据，不变成provider node。builtin/imported同路、thin archive、KMP、Host零native owner、统一`I18nRegistry`与declarative settings均保持。通用extractor的计划、源码、Capstone/native和Maven发布权威已迁移到独立`NickJi2019/KernelSymbolExtractor`；历史G0/K0/G1保留identity证据，用户2026-11-19在production前以Java-object/JVM/no-CLI方向取代旧KMP／五坐标／canonical-wire topology。replacement最终审查阻断0／重要0／建议0，用户只批准G1R；独立库现为`:api/:engine/:android/:jvm`，四坐标local metadata/checksum、20/20固定fingerprint签名演练及空缓存Java/JVM/Android consumer均通过，G1R关闭。production Java/Kotlin/C仍为0，K1、Maven Central publication与本仓consumer均未授权／未开始。本仓原计划路径只留指针，未来真实consumer只直接固定版本引用Android facade，不恢复同仓module。
+
+- [x] BXP3-D0：新增Custom硬需求、旧设计冲突及“完全体过度设计”问题已写入替代草案。
+- [x] BXP3-D1：作者沿current disabled Custom／empty Lua catalog、Diagnose直接binding、BackendUi Android Compose及UI→cutoff→freezer→RunHost调用链完成自检；已修正Custom export依赖闭包、session package选择、DCL保持项与Host／plugin私有类表述。
+- [x] BXP3-D2：既有非作者design-critic按固定SHA只读审核决策03且未复用旧PASS；总判可进入用户认可gate，阻断0／重要0／建议0。
+- [x] BXP3-D3：用户于2026-11-19在critic阻断／重要／建议均为0后明确回复“认可”；只关闭设计认可gate，不构成production批准。
+- [ ] BXP3-B1：初版exact design及可编辑`.glplugin.zip`格式差异均已完成作者自检与同一非作者critic定点复审，最终阻断／重要／建议／新增finding均为0；用户于2026-11-20明确批准production implementation，P0 KMP/AGP单变量preflight已通过，现进入148行ledger的production source，不复用旧240行。
+- [ ] BXP3-I1/V1：production已授权且P0通过；source implementation刚开放，architecture、完整unit、native、artifact、AVD与真机门仍`NOT_RUN`，Desktop不在本批范围。
+
+当前顺序为：
+
+1. 决策03作者自检、独立critic与用户认可均已完成；
+2. 当前最小exact vertical只含package/catalog与builtin Diagnose package的私有native直调，不制造同包service registry；ZIP格式差异审查与production批准已关闭，P0单变量preflight已通过，现按148行ledger进入production source；
+3. 以data-only profile provider证明独立更新／回滚且无需重装APK；
+4. 由真实Custom consumer冻结可枚举能力目录和首个raw-memory／operation contract；
+5. 再按真实caller逐批迁移43499、KO／43284、98260和新增架构；extractor consumer另批只直接引用已发布、固定且校验身份的`kernel-symbol-extractor-android` Maven版本，先report-only，不复制源码／submodule／composite／AAR，也不回退旧Rust；caller自行负责report/expectation objects的持久化／格式转换／导出，并在重建objects前先验证自有authenticated envelope真实性／完整性，library semantic verifier不替代该门；远期PC／OCI／TUF／toolchain按触发细化，不阻断较早批；
+6. plugin owner稳定后，再细化`P-UI-CORE-001`的`:app:shared` KMP UI、App base catalogs→唯一`I18nRegistry`、`:app:android`／`:app:desktop`平台壳，并与`P-DIAG-NATIVE-001/批次02`重新排定。
 
 ## 上述 Kotlin owner 批完成后重新细化的暂缓门：[P-DIAG-NATIVE-001/批次02：并发source churn与>10 MiB压力](backend-root-execution-unification-plan.md#p-diag-native-001-batch-02)
 
@@ -140,10 +237,10 @@
 - [x] R2-H1 Android发布纠错已在`GhostLock_6_6`完成：kernel 6.6.30，Payload Save成功，App未崩溃，published script/result mode与无temp残留符合合同；只关闭SELinux hard-link故障，不代表下项完整矩阵通过。
 - [x] 执行 P-RUN-IO-001/批次01 root-script fault matrix 与 ordinary-file identity/staging matrix；host=`31/31`、6.6 AVD=`3/3`、architecture=`D0_VERIFY=PASS ARCH_VIOLATIONS=0`，三个命令均exit 0；真实carrier设备门仍单独保持`NOT_RUN`。
 - [x] P-RUN-X-001/批次01 Kotlin compile、debug/release exact unit各`111/111`、typed App/Shizuku正常transport/runtime已由P-RUN-HANDOFF-001/批次01 current-tree证据覆盖；4 KiB/16 KiB AVD的App/direct-JNA/Shizuku full exact class各为`OK (3 tests)`。
-- [ ] 补齐P-RUN-X-001/批次01专属`RunHostLifecycleTest`、`RunHostCancellationTest`、`RunHostHostDeathTest` exact AVD证据；正常Diagnose/Handoff纵向不替代生命周期、取消与host-death判据。
+- [x] P-RUN-X-001/批次03在6.6 AVD同一exact命令补齐`RunHostLifecycleTest`、`RunHostCancellationTest`、`RunHostHostDeathTest`，并与App/Shizuku smoke合计返回`OK (5 tests)`、exit=0；这关闭专属class欠账，不外推为真实process-kill。
 - [x] 执行 P-RUN-CORE-001/批次01/P-LOG-IO-001/批次02 architecture source guard；exact command exit=0，literal=`D0_VERIFY=PASS ... ARCH_VIOLATIONS=0 ... OLD_AIDL_TRANSACTION=0 MANUAL_JNI_OBJECT_MARSHALLING=0 ... SUPERSEDED_RUN_LOG_TOPOLOGY=0 RUNHOST_CLIENT_LOG_SINK_OWNER=0 ... UNCLASSIFIED=0`。
 - 证据纪律：失败保留为失败并回到debug；未执行项只记`NOT_RUN`，不用source implementation冒充PASS。本句是执行规则，不作为开发交付checkbox。
-- [ ] lifecycle/cancel/host-death欠账由AS-V2在本轮最终树偿还；真实carrier设备门不再作为本轮前置，按AS-V4继续`NOT_RUN`。当前所有真攻击 backend 均已断开。
+- [x] lifecycle/cancel/host-death专属class欠账已由P-RUN-X-001/批次03 current tree偿还；后续package/producer批改变最终路径后，AS-V2仍负责重跑最终树regression。真实process-kill与carrier设备门继续`NOT_RUN`，当前所有真攻击backend均已断开。
 
 ## Source implementation 已完成
 
@@ -175,3 +272,5 @@ P-DIAG-NATIVE-001/批次01是已完成的非攻击诊断批；P-BACKEND-NATIVE-0
 - [x] 旧native tree保持source-only，不修改其攻击、handoff、waiter/race、restore或park实现。
 
 P-BACKEND-NATIVE-001/批次01 / P-BACKEND-NATIVE-002/批次01不再是自动排队的future child。未来若用户重新批准任一真实攻击backend，必须新建L级计划并明确取代本次断开裁定；已完成的P-DIAG-NATIVE-001/批次01仅覆盖非root诊断链。
+
+</details>
