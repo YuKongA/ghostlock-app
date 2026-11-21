@@ -82,7 +82,7 @@
 
 ## 10. 排障 · 提交
 
-**未经用户明确要求不 commit/push/建 PR。** 获准后按 [提交纪律](/docs/development/engineering-standards.md#engineering-commits) 执行；仅遇工具链问题时读 [构建排障](/docs/development/engineering-standards.md#engineering-build)。
+**完成一批改动并通过适用验证后，主动做范围明确的本地 commit，无需用户另行催促；push / 建 PR 仍由明确指令触发。** 提交按 [提交纪律](/docs/development/engineering-standards.md#engineering-commits) 执行，不夹带其他对话或未完成改动；仅遇工具链问题时读 [构建排障](/docs/development/engineering-standards.md#engineering-build)。
 
 <a id="agents-pointers"></a>
 

@@ -70,7 +70,7 @@ L 级改动**必须**先给出设计并获得用户认可，再写代码。历�
 
 ### 1.5 提交与分支
 
-- 分支流向：`very-not-stable-dev` → 上游 `main`。**未经用户明确要求不得 commit / push / 建 PR。**
+- **本地提交与对外操作分开**：完成已授权批次并满足下述前提后，主动做本地 commit，不等待用户再次要求；用户明确要求暂不提交时遵守该停止条件。push / 建 PR 按 [AGENTS §10](../../AGENTS.md#agents-submit) 另行触发，分支 `very-not-stable-dev` → `main`；不提交 `build/`、`*.so`、`local.properties`。只暂存本批已核对的路径/差异，不使用全仓暂存夹带其他对话、既有暂存或未完成改动；第三方工具的自动提交也必须满足相同范围要求。
 - 提交信息用 Conventional Commits：`type(scope): summary`，`type ∈ {feat,fix,docs,refactor,test,chore,build,revert}`；
   行为变化与不变量写进 body（历史范例：`fix(profile): resolve imported v1 reports and edit them per their own release`）。
 - 一个提交只表达一个意图；不夹带无关格式化；大变更拆成小提交序列（对应批次化）。
