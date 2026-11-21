@@ -131,7 +131,10 @@ tasks.register("cleanBuildPollution") {
         var matched = 0
         var deleted = 0
         val samples = mutableListOf<String>()
-        root.walkTopDown().onEnter { dir -> !Files.isSymbolicLink(dir.toPath()) }.forEach { f ->
+        // Package managers own dependency trees; legitimate files can be named no-conflict.js.
+        root.walkTopDown().onEnter { dir ->
+            !Files.isSymbolicLink(dir.toPath()) && dir.name != "node_modules"
+        }.forEach { f ->
             if (!f.isFile) return@forEach
             if (Files.isSymbolicLink(f.toPath())) return@forEach
             scanned++
@@ -176,6 +179,52 @@ private val glNinja = resolveTool("ninja")
 private val glCmakeCommon = listOf("-G", "Ninja", "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
     "-DCMAKE_MAKE_PROGRAM=" + glNinja)
 
+/** Delegates report generation and status modeling to the pinned Allure CLI. */
+abstract class AllureReportTask : org.gradle.api.DefaultTask() {
+    @get:org.gradle.api.tasks.InputFile
+    abstract val reportBridge: org.gradle.api.file.RegularFileProperty
+
+    @get:org.gradle.api.tasks.OutputDirectory
+    abstract val reportDirectory: org.gradle.api.file.DirectoryProperty
+
+    @get:javax.inject.Inject
+    abstract val execOps: org.gradle.process.ExecOperations
+
+    fun report(scope: String, directories: List<File>, runnerFailed: Boolean = false) = execOps.exec {
+        commandLine(listOf("python3", reportBridge.get().asFile.absolutePath,
+            "--scope", scope, "--output", reportDirectory.get().asFile.absolutePath,
+            "--ctest", "--allow-skips") + (if (runnerFailed) listOf("--runner-failed") else emptyList()) +
+            directories.map { it.absolutePath })
+        isIgnoreExitValue = true
+    }
+}
+
+// One dependency installation per Gradle graph, including parallel root/app reporting.
+val prepareAllure = tasks.register<Exec>("prepareAllure") {
+    val bridge = layout.projectDirectory.file("tools/allure_report.py")
+    val packageMetadata = layout.buildDirectory.file("tooling/allure/node_modules/allure/package.json")
+    val executable = layout.buildDirectory.file("tooling/allure/node_modules/.bin/allure")
+    inputs.file(bridge)
+    outputs.files(packageMetadata, executable)
+    // Missing output files are otherwise a stable Gradle snapshot after `clean`.
+    outputs.upToDateWhen { packageMetadata.get().asFile.isFile && executable.get().asFile.isFile }
+    commandLine("python3", bridge.asFile.absolutePath, "--install")
+}
+
+tasks.withType<AllureReportTask>().configureEach {
+    dependsOn(prepareAllure)
+    reportBridge.set(layout.projectDirectory.file("tools/allure_report.py"))
+    reportDirectory.set(layout.buildDirectory.dir("reports/allure/$name"))
+    outputs.upToDateWhen { false }
+}
+
+// A build service is recreated on cache reuse; task-local mutable properties are not shared.
+abstract class NativeTestResults : org.gradle.api.services.BuildService<org.gradle.api.services.BuildServiceParameters.None> {
+    val completed = java.util.concurrent.ConcurrentHashMap<String, File>()
+}
+
+gradle.sharedServices.registerIfAbsent("nativeTestResults", NativeTestResults::class) {}
+
 /**
  * Configures, builds, and executes one module-owned host CTest tree.
  *
@@ -183,7 +232,10 @@ private val glCmakeCommon = listOf("-G", "Ninja", "-DCMAKE_BUILD_TYPE=RelWithDeb
  * paths, and every fixed option. The task deliberately reruns CTest on every
  * invocation; an incremental compile is allowed, a cached test result is not.
  */
-abstract class NativeHostCmakeTestTask : org.gradle.api.DefaultTask() {
+abstract class NativeHostCmakeTestTask : AllureReportTask() {
+    @get:org.gradle.api.tasks.Internal
+    abstract val aggregateReportDirectory: org.gradle.api.file.DirectoryProperty
+
     @get:org.gradle.api.tasks.InputDirectory
     @get:org.gradle.api.tasks.PathSensitive(org.gradle.api.tasks.PathSensitivity.RELATIVE)
     abstract val sourceDir: org.gradle.api.file.DirectoryProperty
@@ -216,14 +268,20 @@ abstract class NativeHostCmakeTestTask : org.gradle.api.DefaultTask() {
     @get:org.gradle.api.tasks.OutputDirectory
     abstract val outputDir: org.gradle.api.file.DirectoryProperty
 
-    @get:javax.inject.Inject
-    abstract val execOps: org.gradle.process.ExecOperations
+    @get:org.gradle.api.services.ServiceReference("nativeTestResults")
+    abstract val results: org.gradle.api.provider.Property<NativeTestResults>
 
     /** Runs configure, build, then CTest; the first non-zero process stops the gate. */
     @org.gradle.api.tasks.TaskAction
     fun runGate() {
         val source = sourceDir.get().asFile.absolutePath
         val output = outputDir.get().asFile.absolutePath
+        val report = outputDir.file("test-results/ctest-results.xml").get().asFile
+        report.parentFile.mkdirs()
+        reportDirectory.get().asFile.deleteRecursively()
+        aggregateReportDirectory.get().asFile.deleteRecursively()
+        results.get().completed.remove(name)
+        Files.deleteIfExists(report.toPath())
         val configureCommand = buildList {
             add(cmakeExecutable.get())
             addAll(configureOptions.get())
@@ -250,10 +308,46 @@ abstract class NativeHostCmakeTestTask : org.gradle.api.DefaultTask() {
         val ctestCommand = buildList {
             addAll(listOf(ctestExecutable.get(), "--test-dir", output))
             addAll(ctestOptions.get())
+            addAll(listOf("--output-junit", report.absolutePath))
         }
-        execOps.exec {
+        val result = execOps.exec {
             commandLine(*ctestCommand.toTypedArray())
-        }.assertNormalExitValue()
+            isIgnoreExitValue = true
+        }
+        logger.lifecycle("CTEST_MODULE={} CTEST_EXIT={}", name, result.exitValue)
+        val reported = try {
+            report(name, listOf(report.parentFile), result.exitValue != 0)
+        } catch (error: Exception) {
+            result.assertNormalExitValue()
+            throw error
+        }
+        // Report success never replaces the original runner exit status.
+        result.assertNormalExitValue()
+        reported.assertNormalExitValue()
+        results.get().completed[name] = report.parentFile
+    }
+}
+
+tasks.withType<NativeHostCmakeTestTask>().configureEach {
+    aggregateReportDirectory.set(layout.buildDirectory.dir("reports/allure/host-native"))
+}
+
+abstract class NativeTestHostSummaryTask : AllureReportTask() {
+    @get:org.gradle.api.tasks.Input
+    abstract val expectedModules: org.gradle.api.provider.SetProperty<String>
+
+    @get:org.gradle.api.services.ServiceReference("nativeTestResults")
+    abstract val results: org.gradle.api.provider.Property<NativeTestResults>
+
+    @org.gradle.api.tasks.TaskAction
+    fun summarize() {
+        reportDirectory.get().asFile.deleteRecursively()
+        val completed = results.get().completed
+        val expected = expectedModules.get()
+        check(expected.isNotEmpty() && completed.keys == expected) {
+            "missing current-run host test results: ${expected - completed.keys}"
+        }
+        report("host-native", expected.sorted().map { completed.getValue(it) }).assertNormalExitValue()
     }
 }
 
@@ -359,8 +453,10 @@ abstract class VerifyNativeTestInventoryTask : org.gradle.api.DefaultTask() {
         }
 
         logger.lifecycle(
-            "NATIVE_TEST_INVENTORY=PASS CANDIDATES={} HOST=31 43499GLUED=27 CONTRACTS=3 AVBCHECK=1",
+            "NATIVE_TEST_INVENTORY=PASS CANDIDATES={} HOST_SOURCES={} GROUPS={}",
             candidates.size,
+            expectedHostKeys.sumOf { actualHostCounts.getValue(it) },
+            actualHostCounts.filterKeys { it in expectedHostKeys }.toSortedMap(),
         )
     }
 }
@@ -410,77 +506,7 @@ val verifyNativeTestInventory = tasks.register<VerifyNativeTestInventoryTask>("v
 
 
 
-/**
- *  avbcheck 的主机侧（原 tools/avbcheck/Makefile 的 host/test 目标）。
- *
- *  写成**任务类**：本仓启用了 configuration cache，脚本级任务的 action 不能触碰脚本对象
- *  （providers/layout/project），所以这里用注入的服务与类型化属性，全部全限定名，免去 import。
- */
-abstract class AvbcheckHostTask : org.gradle.api.DefaultTask() {
-    @get:org.gradle.api.tasks.InputDirectory
-    @get:org.gradle.api.tasks.PathSensitive(org.gradle.api.tasks.PathSensitivity.RELATIVE)
-    abstract val sourceDir: org.gradle.api.file.DirectoryProperty
-
-    @get:org.gradle.api.tasks.OutputDirectory
-    abstract val outputDir: org.gradle.api.file.DirectoryProperty
-
-    @get:org.gradle.api.tasks.Input
-    abstract val cmakeExecutable: org.gradle.api.provider.Property<String>
-
-    @get:org.gradle.api.tasks.Input
-    abstract val ctestExecutable: org.gradle.api.provider.Property<String>
-
-    @get:org.gradle.api.tasks.Input
-    abstract val ninjaExecutable: org.gradle.api.provider.Property<String>
-
-    @get:org.gradle.api.tasks.Input
-    abstract val configureOptions: org.gradle.api.provider.ListProperty<String>
-
-    @get:org.gradle.api.tasks.Input
-    abstract val buildOptions: org.gradle.api.provider.ListProperty<String>
-
-    @get:org.gradle.api.tasks.Input
-    abstract val buildTargets: org.gradle.api.provider.ListProperty<String>
-
-    @get:org.gradle.api.tasks.Input
-    abstract val ctestOptions: org.gradle.api.provider.ListProperty<String>
-
-    @get:javax.inject.Inject
-    abstract val execOps: org.gradle.process.ExecOperations
-
-    @org.gradle.api.tasks.TaskAction
-    fun run() {
-        val source = sourceDir.get().asFile.absolutePath
-        val out = outputDir.get().asFile.absolutePath
-        val configureCommand = buildList {
-            add(cmakeExecutable.get())
-            addAll(configureOptions.get())
-            add("-DCMAKE_MAKE_PROGRAM=${ninjaExecutable.get()}")
-            addAll(listOf("-S", source, "-B", out))
-        }
-        execOps.exec {
-            commandLine(*configureCommand.toTypedArray())
-        }.assertNormalExitValue()
-        val buildCommand = buildList {
-            addAll(listOf(cmakeExecutable.get(), "--build", out))
-            addAll(buildOptions.get())
-            add("--target")
-            addAll(buildTargets.get())
-        }
-        execOps.exec {
-            commandLine(*buildCommand.toTypedArray())
-        }.assertNormalExitValue()
-        val ctestCommand = buildList {
-            addAll(listOf(ctestExecutable.get(), "--test-dir", out))
-            addAll(ctestOptions.get())
-        }
-        execOps.exec {
-            commandLine(*ctestCommand.toTypedArray())
-        }.assertNormalExitValue()
-    }
-}
-
-val avbcheck = tasks.register<AvbcheckHostTask>("avbcheck") {
+val avbcheck = tasks.register<NativeHostCmakeTestTask>("avbcheck") {
     group = "verification"
     description = "Builds and tests the host side of tools/avbcheck (offline cross-check + unit test)"
     sourceDir.set(layout.projectDirectory.dir("tools/avbcheck"))
@@ -498,7 +524,7 @@ val avbcheck = tasks.register<AvbcheckHostTask>("avbcheck") {
 
 val nativeTest43499GluedHost = tasks.register<NativeHostCmakeTestTask>("nativeTest43499GluedHost") {
     group = "verification"
-    description = "Builds and executes all 27 host-compatible 43499-Glued CTests."
+    description = "Builds and executes all host-compatible 43499-Glued CTests."
     sourceDir.set(layout.projectDirectory.dir("app/src/main/cpp/backends/43499glued/tests"))
     sourceInputs.from(
         fileTree("app/src/main/cpp/backends/43499glued") {
@@ -545,13 +571,12 @@ val nativeTestContractsHost = tasks.register<NativeHostCmakeTestTask>("nativeTes
     outputs.upToDateWhen { false }
 }
 
-tasks.register("nativeTestHost") {
+tasks.register<NativeTestHostSummaryTask>("nativeTestHost") {
     group = "verification"
-    description = "Runs the complete current-tree host-native aggregate (31 CTests)."
+    description = "Runs and reports the complete current-tree host-native aggregate with Allure."
+    reportDirectory.set(layout.buildDirectory.dir("reports/allure/host-native"))
     dependsOn(verifyNativeTestInventory, nativeTest43499GluedHost, nativeTestContractsHost, avbcheck)
-    doLast {
-        logger.lifecycle("NATIVE_TEST_HOST=PASS TOTAL=31 FAILED=0")
-    }
+    expectedModules.set(listOf(nativeTest43499GluedHost.name, nativeTestContractsHost.name, avbcheck.name))
 }
 
 tasks.register("nativeBuildAndroid") {

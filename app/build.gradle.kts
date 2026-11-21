@@ -1,10 +1,14 @@
 @file:Suppress("UnstableApiUsage")
 
 import com.android.build.api.variant.HostTestBuilder
+import java.io.File
+import java.nio.file.Files
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.Properties
+import java.util.concurrent.ConcurrentHashMap
+import org.gradle.api.internal.tasks.testing.filter.DefaultTestFilter
 
 plugins {
     id("com.android.application")
@@ -21,94 +25,46 @@ val appVersionName = "2.0.12"
 val jnaVersion = "5.19.1"
 val jnaCoordinate = "net.java.dev.jna:jna:$jnaVersion@aar"
 
-/** Parses every debug unit-test XML suite and enforces the frozen four buckets. */
-abstract class VerifyUnitTestXmlTask : org.gradle.api.DefaultTask() {
-    @get:org.gradle.api.tasks.InputDirectory
-    @get:org.gradle.api.tasks.PathSensitive(org.gradle.api.tasks.PathSensitivity.RELATIVE)
-    abstract val resultsDirectory: org.gradle.api.file.DirectoryProperty
+abstract class UnitTestXmlRuns : org.gradle.api.services.BuildService<org.gradle.api.services.BuildServiceParameters.None> {
+    val started = ConcurrentHashMap<String, File>()
+    val completed = ConcurrentHashMap<String, File>()
+    val reported = ConcurrentHashMap<String, File>()
+}
 
+val unitTestXmlRuns = gradle.sharedServices.registerIfAbsent("unitTestXmlRuns", UnitTestXmlRuns::class) {}
+
+/** Keeps producer freshness/full-scope proof here; Allure owns parsing, statistics and reports. */
+abstract class UnitTestAllureReportTask : org.gradle.api.DefaultTask() {
     @get:org.gradle.api.tasks.Input
-    abstract val expectedTests: org.gradle.api.provider.Property<Int>
+    abstract val producerPath: org.gradle.api.provider.Property<String>
 
-    @get:org.gradle.api.tasks.Input
-    abstract val expectedFailures: org.gradle.api.provider.Property<Int>
+    @get:org.gradle.api.tasks.InputFile
+    abstract val reportBridge: org.gradle.api.file.RegularFileProperty
 
-    @get:org.gradle.api.tasks.Input
-    abstract val expectedErrors: org.gradle.api.provider.Property<Int>
+    @get:org.gradle.api.tasks.OutputDirectory
+    abstract val reportDirectory: org.gradle.api.file.DirectoryProperty
 
-    @get:org.gradle.api.tasks.Input
-    abstract val expectedSkipped: org.gradle.api.provider.Property<Int>
+    @get:org.gradle.api.services.ServiceReference("unitTestXmlRuns")
+    abstract val runs: org.gradle.api.provider.Property<UnitTestXmlRuns>
 
-    /** Securely parses all suites and checks paths, suite names, and totals. */
+    @get:javax.inject.Inject
+    abstract val execOps: org.gradle.process.ExecOperations
+
     @org.gradle.api.tasks.TaskAction
     fun verifyResults() {
-        val root = resultsDirectory.get().asFile
-        val xmlFiles = root.walkTopDown()
-            .filter { file -> file.isFile && file.extension.equals("xml", ignoreCase = true) }
-            .sortedBy { file -> file.relativeTo(root).invariantSeparatorsPath }
-            .toList()
-        check(xmlFiles.isNotEmpty()) { "no unit-test XML under ${root.absolutePath}" }
-
-        val factory = javax.xml.parsers.DocumentBuilderFactory.newInstance().apply {
-            setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-            setFeature("http://xml.org/sax/features/external-general-entities", false)
-            setFeature("http://xml.org/sax/features/external-parameter-entities", false)
-            setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
-            isXIncludeAware = false
-            setExpandEntityReferences(false)
-        }
-        val seenPaths = mutableSetOf<String>()
-        val seenSuites = mutableSetOf<String>()
-        var tests = 0
-        var failures = 0
-        var errors = 0
-        var skipped = 0
-        xmlFiles.forEach { xml ->
-            val relative = xml.relativeTo(root).invariantSeparatorsPath
-            check(seenPaths.add(relative)) { "duplicate XML relative path: $relative" }
-            val document = xml.inputStream().use { input ->
-                factory.newDocumentBuilder().parse(input)
-            }
-            val suite = document.documentElement
-            check(suite.tagName == "testsuite") {
-                "$relative root is ${suite.tagName}, not testsuite"
-            }
-            val suiteName = suite.getAttribute("name")
-            check(suiteName.isNotBlank()) { "$relative has an empty suite name" }
-            check(seenSuites.add(suiteName)) { "duplicate suite name: $suiteName" }
-
-            fun exactBucket(name: String): Int {
-                check(suite.hasAttribute(name)) { "$relative is missing $name" }
-                val raw = suite.getAttribute(name)
-                val value = raw.toIntOrNull()
-                check(value != null && value >= 0) { "$relative has invalid $name=$raw" }
-                return value
-            }
-            tests += exactBucket("tests")
-            failures += exactBucket("failures")
-            errors += exactBucket("errors")
-            skipped += exactBucket("skipped")
-        }
-        check(tests == expectedTests.get()) {
-            "tests=$tests expected=${expectedTests.get()}"
-        }
-        check(failures == expectedFailures.get()) {
-            "failures=$failures expected=${expectedFailures.get()}"
-        }
-        check(errors == expectedErrors.get()) {
-            "errors=$errors expected=${expectedErrors.get()}"
-        }
-        check(skipped == expectedSkipped.get()) {
-            "skipped=$skipped expected=${expectedSkipped.get()}"
-        }
-        logger.lifecycle(
-            "UNIT_TEST_XML=PASS FILES={} TESTS={} FAILURES={} ERRORS={} SKIPPED={}",
-            xmlFiles.size,
-            tests,
-            failures,
-            errors,
-            skipped,
+        reportDirectory.get().asFile.deleteRecursively()
+        // The executing Test supplies its actual report location; no inferred success dependency.
+        val root = runs.get().started[producerPath.get()] ?: error(
+            "no current-run unit-test execution evidence for ${producerPath.get()}; old XML is not execution evidence",
         )
+        val completed = runs.get().completed[producerPath.get()] == root.canonicalFile
+        logger.lifecycle("UNIT_TEST_PRODUCER={} COMPLETED={}", producerPath.get(), completed)
+        execOps.exec {
+            commandLine(listOf("python3", reportBridge.get().asFile.absolutePath,
+                "--scope", reportDirectory.get().asFile.name, "--output", reportDirectory.get().asFile.absolutePath,
+                root.absolutePath) + (if (completed) emptyList() else listOf("--runner-failed")))
+        }.assertNormalExitValue()
+        runs.get().reported[producerPath.get()] = root.canonicalFile
     }
 }
 
@@ -314,26 +270,68 @@ androidComponents {
     }
 }
 
-val verifyDebugUnitTestXml = tasks.register<VerifyUnitTestXmlTask>("verifyDebugUnitTestXml") {
-    group = "verification"
-    description = "Verifies all debug unit-test XML against exact four-bucket totals."
-    resultsDirectory.set(layout.buildDirectory.dir("test-results/testDebugUnitTest"))
-    expectedTests.set(128)
-    expectedFailures.set(0)
-    expectedErrors.set(0)
-    expectedSkipped.set(0)
-    dependsOn("testDebugUnitTest")
-}
-
-val verifyReleaseUnitTestXml = tasks.register<VerifyUnitTestXmlTask>("verifyReleaseUnitTestXml") {
-    group = "verification"
-    description = "Verifies all release unit-test XML against exact four-bucket totals."
-    resultsDirectory.set(layout.buildDirectory.dir("test-results/testReleaseUnitTest"))
-    expectedTests.set(128)
-    expectedFailures.set(0)
-    expectedErrors.set(0)
-    expectedSkipped.set(0)
-    dependsOn("testReleaseUnitTest")
+listOf("Debug", "Release").forEach { variant ->
+    val producerName = "test${variant}UnitTest"
+    val producerIdentity = "$path:$producerName"
+    val freshResultsRequired = objects.property<Boolean>().convention(false)
+    val evidence = unitTestXmlRuns
+    val allureOutput = rootProject.layout.buildDirectory.dir("reports/allure/android-${variant.lowercase()}")
+    val report = tasks.register<UnitTestAllureReportTask>("report${variant}UnitTestAllure") {
+        val producer = tasks.named<Test>(producerName)
+        producerPath.set(producerIdentity)
+        reportBridge.set(rootProject.layout.projectDirectory.file("tools/allure_report.py"))
+        reportDirectory.set(allureOutput)
+        onlyIf { freshResultsRequired.get() }
+        outputs.upToDateWhen { false }
+        dependsOn(providers.provider { if (freshResultsRequired.get()) listOf(":prepareAllure") else emptyList<String>() })
+        mustRunAfter(producer)
+    }
+    tasks.withType<Test>().matching { it.name == producerName }.configureEach {
+        // The existing verification entry reruns only its Test; direct Test retains caching.
+        outputs.upToDateWhen { !freshResultsRequired.get() }
+        // Finalizers run after a failed Test too; only the existing gate enables this report.
+        finalizedBy(report)
+        usesService(evidence)
+        doFirst {
+            evidence.get().completed.remove(path)
+            evidence.get().started.remove(path)
+            evidence.get().reported.remove(path)
+            allureOutput.get().asFile.deleteRecursively()
+            val test = this as Test
+            if (freshResultsRequired.get()) {
+                check(test.filter.includePatterns.isEmpty() && test.filter.excludePatterns.isEmpty() &&
+                    // Gradle 9 exposes task-bound CLI filters only on this implementation.
+                    (test.filter as DefaultTestFilter).commandLineIncludePatterns.isEmpty() &&
+                    test.includes.isEmpty() && test.excludes.isEmpty()) {
+                    "full-variant verification requires an unfiltered Test; use $path directly for selected tests"
+                }
+            }
+            val directory = (this as Test).reports.junitXml.outputLocation.get().asFile
+            directory.walkTopDown().filter { it.isFile && it.extension.equals("xml", ignoreCase = true) }
+                .forEach { Files.delete(it.toPath()) }
+            evidence.get().started[path] = directory.canonicalFile
+        }
+        doLast {
+            evidence.get().completed[path] =
+                (this as Test).reports.junitXml.outputLocation.get().asFile.canonicalFile
+        }
+    }
+    tasks.register("verify${variant}UnitTestXml") {
+        group = "verification"
+        description = "Verifies current full $variant unit tests and creates the Allure human/agent report."
+        val producer = tasks.named<Test>(producerName)
+        freshResultsRequired.set(true)
+        dependsOn(producer)
+        // A success-dependency on the finalizer would cancel it when Test fails in Gradle 9.
+        mustRunAfter(report)
+        usesService(evidence)
+        doLast {
+            if (!evidence.get().reported.containsKey(producerIdentity)) {
+                allureOutput.get().asFile.deleteRecursively()
+                error("missing current-run Allure verification for $producerIdentity")
+            }
+        }
+    }
 }
 
 base {

@@ -1252,20 +1252,22 @@ flowchart LR
   TSV["native-test-disposition.tsv<br/>machine authority"] --> INVENTORY
   TSV --> C43499["43499glued/tests/CMakeLists.txt<br/>registration drift guard"]
   TSV --> CCONTRACT["tools/tests/CMakeLists.txt<br/>registration drift guard"]
-  INVENTORY --> T43499["nativeTest43499GluedHost<br/>configure → build → CTest 27"]
+  INVENTORY --> T43499["nativeTest43499GluedHost<br/>configure → build → CTest → module Allure"]
   C43499 --> T43499
-  INVENTORY --> TCONTRACT["nativeTestContractsHost<br/>configure → build → CTest 1"]
+  INVENTORY --> TCONTRACT["nativeTestContractsHost<br/>configure → build → CTest → module Allure"]
   CCONTRACT --> TCONTRACT
-  INVENTORY --> TAVB["avbcheck typed task<br/>configure → build → CTest 1"]
-  T43499 --> HOST_GATE["root nativeTestHost<br/>29/29"]
+  INVENTORY --> TAVB["avbcheck typed task<br/>configure → build → CTest → module Allure"]
+  T43499 --> HOST_GATE["root nativeTestHost<br/>current-run module set → Allure aggregate"]
   TCONTRACT --> HOST_GATE
   TAVB --> HOST_GATE
   HOST_GATE --> CHECK_ALL["root checkAll"]
   ANDROID_GATE["nativeBuildAndroid<br/>debug + release build"] --> CHECK_ALL
-  XML["verifyDebugUnitTestXml<br/>152 / 0 / 0 / 0"] --> CHECK_ALL
+  TEST_DEBUG["testDebugUnitTest"] --> XML_DEBUG["verifyDebugUnitTestXml<br/>current full run → Allure"]
+  TEST_RELEASE["testReleaseUnitTest"] --> XML_RELEASE["verifyReleaseUnitTestXml<br/>current full run → Allure"]
+  XML_DEBUG --> CHECK_ALL
 ```
 
-Host CTest仍可把保留source作为测试输入，但它不是APK production graph或registry接线。这张图只表达source/build ownership；本轮没有运行Gradle、CTest、AVD或真机门，因此断开后的构建结果保持`NOT_RUN`，且不宣称任何漏洞ELF可运行。
+Allure只读取本轮Test／CTest结构化结果并生成报告；runner退出状态、producer完整性与全量范围仍由Gradle持有，图中不预写实际PASS数量。此时点仍保留legacy App native topology、只构建debug/release的`nativeBuildAndroid`和`checkAll`；`checkAll`仍只聚合debug结果门，release结果门独立调用。Host CTest仍可把保留source作为测试输入，但它不是APK production graph或registry接线。这张图只表达source/build ownership；本轮没有运行Gradle、CTest、AVD或真机门，因此断开后的构建结果保持`NOT_RUN`，且不宣称任何漏洞ELF可运行。
 
 ### 11.9 2026-11-02：新进程 Flow 通道（历史；由 §11.12 typed RunHost 取代）
 

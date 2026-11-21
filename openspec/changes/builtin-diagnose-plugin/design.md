@@ -14,16 +14,24 @@
 
 <!-- migrated-source: 043fdf6a Beads gl-dek description -->
 本节是迁入OpenSpec的现行设计/验收正文；Beads只保存执行状态、原批准和实际证据。历史来源仅作追溯。
-2026-11-20生产批准及P0 PASS保留；scope仅§19.5.70的148行。最新优先先修构建，源实现暂缓；不接provider/import/Custom/真实backend，不用旧240行。
+2026-11-20生产批准保留；scope仅§19.5.70的148行。2026-11-21用户明确把AGP现行唯一版本固定为`9.1.0`，旧AGP `9.4.1` P0只保留为历史证据，不能作为当前门PASS；现有source不回退成空模块重演旧实验，改在当前树执行同命令的`9.1.0`工具链复验。当前执行状态与依赖只读Beads。不接provider/import/Custom/真实backend，不用旧240行。
 原始来源（已归档/承接）：docs/archive/20261121-1301-backend-root-execution-unification-plan.md#p-backend-x-002-decision-03-batch-01
+
+### 提交基线与 build hunk owner 修订（2026-11-21）
+
+本批源码候选必须以已独立验证的 [E-BUILD-X-002 Allure 报告门基线](../allure-reporting-gates/design.md#record-allure-reporting-gates) 为 parent；随后才由 `gl-4on` 增加剩余构建闭环清理。三棵候选的逐路径／hunk唯一 owner与临时 index冻结方法以该设计为准，取代“只反转 Beads 依赖即可提交”的旧假设，但不改变本节148行production scope、AGP `9.1.0`裁定或产品合同。
+
+`gl-dek` 必须整文件拥有 `plugin/packages/diagnose/build.gradle.kts` 的最终字节，并拥有 `nativeTestContractsHost` 的 plugin-owned source inputs、tools CMake／Diagnose ABI include、App plugin asset／boundary producer及 `nativeBuildAndroid` plugin总入口。它不得吸收 Allure task／bridge／报告规范，也不得吸收旧 ONDK／profile／LKM／CI／`checkAll` 清理。`gl-4on`可以复验前述 producer，但不再拥有这些前驱源码。该划分使 `gl-dek` 候选本身可构建，且避免同一未跟踪 build script 在两个提交间出现无定义中间态。
+
+同一owner同时负责把`engineering-standards.md`的`nativeBuildAndroid`当前命令和`full-process-uml.md`的plugin build topology／gate节点同步到上述B1事实；`gl-4on`随后只删除`checkAll`和其它失效构建边，不得把该命令降回裸debug/release assemble。Allure候选此前只更新报告链、去预写结果数字，并保留HEAD当时仍存在的旧native topology／`nativeBuildAndroid`／`checkAll`。
 
 <!-- migrated-source: design gl-dek -->
 <!-- source: f882e670:docs/plan/backend-root-execution-unification-plan.md:L4408-L4838 -->
 <a id="p-backend-x-002-decision-03-batch-01"></a>
 
-###### P-BACKEND-X-002/决策03/批次01：builtin Diagnose package/catalog 最小纵切（L级 exact design；production已批准，P0通过／source进行中）
+###### P-BACKEND-X-002/决策03/批次01：builtin Diagnose package/catalog 最小纵切（L级 exact design；production已批准；当前状态只读Beads）
 
-> 状态（2026-11-20）：本节只细化决策03获认可后的第一个真实vertical。目标不是一次实现完全体，而是把现有release-visible Diagnose从same-APK静态`BackendRegistry`搬成一个由APK携带、首次启动安装到唯一catalog、经PFD传给App／Shizuku RunHost、在one-shot进程内动态加载、由插件Kotlin直接拥有JNA／private DSO的builtin `.glplugin.zip`。用户在production批准前纠正封装合同：扩展名必须明示ZIP；普通ZIP重排／改timestamp／改压缩级别不得改变plugin逻辑身份；manifest改为除自身外全部regular file共用SHA-256表并允许multidex；删除64 MiB／64 entry／128 KiB等格式级固定上限；whole-ZIP SHA-256与byteCount不再进入index、catalog或wire，ZIP CRC只负责容器意外损坏，安全完整性仍由APK认证的semantic content root与manifest逐文件SHA-256承担。该差异不引入Merkle tree、第二installer或第二identity authority，但实质改变manifest、catalog identity、wire及验收，故旧`BXP3-B1-C`结论不覆盖。作者差异自检和同一非作者critic定点复审均已完成，critic最终阻断／重要／建议／新增finding均为0；用户随后于2026-11-20明确批准本批production implementation。`BXP3-B1-P0`已在current Gradle 9.8.1／Kotlin 2.4.20／AGP 9.4.1上通过Android＋JVM＋App consumer及configuration-cache复用，现开放本批Diagnose/catalog/wire/native production source；其余产品门不得因P0通过提前记为PASS。
+> 状态沿革：本节只细化决策03获认可后的第一个真实vertical。目标不是一次实现完全体，而是把现有release-visible Diagnose从same-APK静态`BackendRegistry`搬成一个由APK携带、首次启动安装到唯一catalog、经PFD传给App／Shizuku RunHost、在one-shot进程内动态加载、由插件Kotlin直接拥有JNA／private DSO的builtin `.glplugin.zip`。用户在production批准前纠正封装合同：扩展名必须明示ZIP；普通ZIP重排／改timestamp／改压缩级别不得改变plugin逻辑身份；manifest改为除自身外全部regular file共用SHA-256表并允许multidex；删除64 MiB／64 entry／128 KiB等格式级固定上限；whole-ZIP SHA-256与byteCount不再进入index、catalog或wire，ZIP CRC只负责容器意外损坏，安全完整性仍由APK认证的semantic content root与manifest逐文件SHA-256承担。该差异不引入Merkle tree、第二installer或第二identity authority，但实质改变manifest、catalog identity、wire及验收，故旧`BXP3-B1-C`结论不覆盖。作者差异自检和同一非作者critic定点复审均已完成，critic最终阻断／重要／建议／新增finding均为0；用户随后于2026-11-20明确批准本批production implementation。旧`BXP3-B1-P0`曾在Gradle 9.8.1／Kotlin 2.4.20／AGP 9.4.1的空API／最小core输入上通过，只作为当时输入的历史证据。用户于2026-11-21明确把AGP现行唯一版本固定为`9.1.0`；由于148行source已经存在，当前不删除或掏空模块重演旧实验，而是在现有工作树用同一命令复验Gradle 9.8.1／Kotlin 2.4.20／AGP 9.1.0的Android＋JVM＋App consumer与configuration-cache闭包。复验前保持`NOT_RUN`，其余产品门也不得提前记为PASS。
 
 ###### 19.5.68 现状与基线
 
@@ -130,7 +138,6 @@ lib/arm64-v8a/libjnidispatch.so
 licenses/jna/LICENSE
 licenses/jna/AL2.0
 licenses/jna/LGPL2.1
-licenses/jna/INVENTORY.txt
 ~~~
 
 `publisherId/packageId/component id/variant/logicalLoadName`使用`[a-z0-9][a-z0-9._-]{0,95}`；`backendKey`保留现行`BackendDescriptor` grammar `[A-Za-z0-9][A-Za-z0-9._:-]{0,95}`，因此`DIAGNOSE`合法且不被误套小写plugin-id规则；`versionName`必须为1..128 UTF-8 bytes的single-line printable文本；entry class为`<=240` UTF-8 bytes的合法Java binary name，本批固定在`com.ghostlock.plugin.diagnose.*`且exact值仍由component字段给出（不从`packageId`字符串猜Java namespace）；entry path同样`<=240` UTF-8 bytes。
@@ -200,7 +207,7 @@ UI不再用显示层补一个选择结果。`BackendUiCatalog.selectedEntry()`�
 | ADD | `plugin/packages/diagnose/build.gradle.kts` | Android library＋package-owned CMake/JNA；main只`compileOnly(:plugin:api)`，unit test另`testImplementation(:plugin:api)`且producer inputs显式排除test/API；debug/release compilation仍供本module测试，但只有标准`release` compilation的classes/runtime dependency closure与arm64 native进入D8/verified `.glplugin.zip`，发布唯一`glPluginElements` outgoing artifact；允许D8 multidex，禁止两个App build type各产一份同version不同content-root object。 |
 | ADD | `plugin/packages/diagnose/src/main/AndroidManifest.xml` | 标准Android library所需的空manifest；不声明component、permission、provider或Host入口。 |
 | ADD | `plugin/packages/diagnose/src/main/plugin/manifest-source.json` | 只保存人工identity／compatibility／component／native声明；producer为所有构建产物和notice生成统一`files[]` SHA-256表，不保存ZIP byte hash／size。 |
-| MOVE_REWRITE | `app/src/main/assets/third_party/jna/INVENTORY.txt` → `plugin/packages/diagnose/src/main/plugin/licenses/jna/INVENTORY.txt` | pin JNA coordinate/version与archive内notice来源；license bytes只进plugin package，不在APK普通asset再留一份。 |
+| DELETE | `app/src/main/assets/third_party/jna/INVENTORY.txt` | inventory不是运行、兼容或真实性合同；不迁移、不打包，也不以AAR／POM／license字节哈希建立JNA专项门禁。 |
 | MOVE_REWRITE | `app/src/main/assets/third_party/jna/LICENSE` → `plugin/packages/diagnose/src/main/plugin/licenses/jna/LICENSE` | 复用现有JNA redistribution notice单一source。 |
 | MOVE_REWRITE | `app/src/main/assets/third_party/jna/AL2.0` → `plugin/packages/diagnose/src/main/plugin/licenses/jna/AL2.0` | 复用现有JNA Apache-2.0 text单一source。 |
 | MOVE_REWRITE | `app/src/main/assets/third_party/jna/LGPL2.1` → `plugin/packages/diagnose/src/main/plugin/licenses/jna/LGPL2.1` | 复用现有JNA LGPL-2.1 text单一source。 |
@@ -284,7 +291,7 @@ UI不再用显示层补一个选择结果。`BackendUiCatalog.selectedEntry()`�
 | MODIFY | `app/src/main/kotlin/com/ghostlock/app/runhost/README.md` | 记录catalog不进RunHost、exact object重验、plugin-owned native与one-shot kill。 |
 | MODIFY | `docs/development/full-process-uml.md` | 只在implementation切换真实owner同批把已实现链改为catalog→PFD→loader→plugin；设计阶段不先冒充现状。 |
 | MODIFY | `docs/development/introduction.md` | implementation验收后把current authority从static definition／App-owned JNA/native更新为catalog／plugin-owned chain，保留原Diagnose历史证据的当时边界。 |
-| MODIFY | `docs/plan/backend-root-execution-runhost-wire.md` | 同步现行RunHost wire authority的archive PFD＋semantic content root两个字段、PFD owner／fingerprint和不变的profile/business method边界，不新建平行wire文档。 |
+| MODIFY | `openspec/changes/builtin-diagnose-plugin/specs/runhost-wire/spec.md` | 旧`docs/plan/backend-root-execution-runhost-wire.md`已随计划系统迁移退出当前authority；本批只在所属change的现行delta spec同步archive PFD＋semantic content root两个字段、PFD owner／fingerprint和不变的profile/business method边界，不提前同步主规范或新建平行wire文档。 |
 | MODIFY | `docs/development/engineering-standards.md` | 实现同批只更新`nativeBuildAndroid`现行命令的owner／产物说明：入口仍唯一，Diagnose native/package改由plugin叶模块产生，不改门禁强度或PASS判据。 |
 | MODIFY | `README.md`; `README_ZH.md` | implementation验收同批把same-APK `BackendRegistry`、CUSTOM placeholder及App-owned Diagnose Flow/JNA/DSO的现状说明改为catalog＋builtin package＋plugin-owned native；不先写后继provider/import为已实现。 |
 
@@ -422,7 +429,7 @@ App域workspace位于app-private目录；Shizuku域沿现有owner使用shell-own
 
 这张表不宣称imported已实现。未来imported批只能在`AndroidPluginCatalogStore`的verified-object install入口之前增加trust admission和policy UI；若它要求改变manifest、object identity、catalog owner、loader或RunHost合同，必须重新L级审查，不能另建一条import runtime。
 
-**build/toolchain兼容**：[Kotlin官方兼容表](https://kotlinlang.org/docs/multiplatform/multiplatform-compatibility-guide.html)把Kotlin/KMP 2.4.20的“fully supported”上限列为Gradle 9.7.0与AGP 9.3.1；当前仓库是Gradle 9.8.1／AGP 9.4.1，官方也说明更新版可使用但可能有warning或部分feature不工作。因此本批不冒充“官方完全支持”，也不擅自降级当前全工程工具链。implementation第一动作是只配置`:plugin:api`和最小`:plugin:core`的单变量preflight，确认current wrapper／Kotlin 2.4.20／AGP 9.4.1下Android＋JVM编译、configuration cache与`:app` consumer成立。连续两次同一preflight失败即停回debug／重新设计，不顺便降级AGP/Kotlin或用legacy `androidTarget`旁路。Diagnose native叶使用普通Android library，符合Android官方对KMP plugin不承载`externalNativeBuild`的边界；`:app` application/AIDL继续Android-specific，P-UI后继再迁`:app:shared`。
+**build/toolchain兼容**：[Kotlin官方兼容表](https://kotlinlang.org/docs/multiplatform/multiplatform-compatibility-guide.html)把Kotlin/KMP 2.4.20的“fully supported”上限列为Gradle 9.7.0与AGP 9.3.1。用户于2026-11-21明确把AGP现行唯一版本固定为`9.1.0`；该版本不超过上述AGP上限，但当前Gradle wrapper 9.8.1仍高于表中Gradle上限，因此本批不冒充整个组合“官方完全支持”。旧单变量P0的输入已经被现有source取代，当前不回写或暂删source；恢复执行的第一门是在现有工作树确认Gradle 9.8.1／Kotlin 2.4.20／AGP 9.1.0下Android＋JVM编译、configuration cache与`:app` consumer成立。连续两次同一复验失败即停回debug／重新设计，不擅自改离AGP 9.1.0、改Kotlin/Gradle或用legacy `androidTarget`旁路。Diagnose native叶使用普通Android library，符合Android官方对KMP plugin不承载`externalNativeBuild`的边界；`:app` application/AIDL继续Android-specific，P-UI后继再迁`:app:shared`。
 
 **catalog／启动恢复**：
 
@@ -475,7 +482,7 @@ App域workspace位于app-private目录；Shizuku域沿现有owner使用shell-own
 ### 验收定义与原边界：gl-dek
 
 <!-- migrated-source: acceptance_criteria gl-dek -->
-2026-11-20生产批准及P0 PASS保留；scope仅§19.5.70的148行。最新优先先修构建，源实现暂缓；不接provider/import/Custom/真实backend，不用旧240行。
+2026-11-20生产批准保留；scope仅§19.5.70的148行。2026-11-21用户固定AGP `9.1.0`后，旧AGP `9.4.1` P0只保留为历史证据；当前树须按下表在`9.1.0`上复验，不回退source重演空模块实验。实际状态与依赖只读Beads。不接provider/import/Custom/真实backend，不用旧240行。
 
 <!-- source: f882e670:docs/plan/backend-root-execution-unification-plan.md:L4839-L4863 -->
 <a id="b1-validation-matrix"></a>
@@ -486,13 +493,13 @@ App域workspace位于app-private目录；Shizuku域沿现有owner使用shell-own
 
 | gate | exact method | 必须观察的结果 | 运行证据入口 |
 |---|---|---|---|
-| B1-P0 toolchain preflight | 只接入空`:plugin:api`和最小`:plugin:core`后串行执行`./gradlew :plugin:api:test :plugin:core:assemble :plugin:core:jvmTest :app:compileDebugKotlin --configuration-cache --console=plain`并原命令复跑；先以`:plugin:core:tasks --all`保存Android单variant compilation实际task identity，`assemble`必须消费它而非只构建JVM | 已明示超出官方fully-supported上限的current wrapper＋Kotlin 2.4.20＋AGP 9.4.1组合在本工程实际成立；Android/JVM都真实编译，第二次复用configuration cache；无legacy `androidTarget`、悄然降版、只跑JVM或toolchain改版旁路 | Beads `gl-dek`（原运行记录保留于gl-dek notes） |
+| B1-P0 / AGP 9.1.0 current-tree toolchain复验 | 不回退现有source；固定AGP `9.1.0`，先以`:plugin:core:tasks --all`保存Android单variant compilation实际task identity，再串行执行`./gradlew :plugin:api:test :plugin:core:assemble :plugin:core:jvmTest :app:compileDebugKotlin --configuration-cache --console=plain`并原命令复跑；`assemble`必须消费Android与JVM产物而非只构建JVM | Gradle 9.8.1＋Kotlin 2.4.20＋AGP 9.1.0的当前source组合在本工程实际成立；Android/JVM都真实编译，第二次复用configuration cache；无legacy `androidTarget`、只跑JVM、擅自改离AGP 9.1.0或其它toolchain旁路；结果不冒充旧空模块单变量P0重演 | Beads `gl-dek`（旧9.4.1结果保留为历史；当前9.1.0结果另行记录） |
 | API／core／package unit | `./gradlew :plugin:api:test :plugin:core:jvmTest :plugin:packages:diagnose:testDebugUnitTest :plugin:packages:diagnose:testReleaseUnitTest --console=plain` | API inventory逐member一致；manifest/catalog/content-root、JSON编辑自由度、multidex全矩阵；Diagnose raw→stage、异常与close组合全通过，0 failure/error/skip/unknown | Beads `gl-3ki`（原运行记录保留于gl-dek notes） |
 | App full unit | `./gradlew :app:verifyDebugUnitTestXml :app:verifyReleaseUnitTestXml --console=plain` | catalog seed/crash/selection、wire PFD owner、loader、Flow adapter、controller lease/client teardown及现有全部unit两variant全量通过 | Beads `gl-3ki`（原运行记录保留于gl-dek notes） |
 | source architecture | `python3 tools/tests/test_kotlin_architecture_d0.py`后执行`python3 tools/kotlin_architecture_d0.py verify --repo . --fixtures app/src/test/resources/architecture --section all` | `:app` active build/runtime的Diagnose/JNA/native owner=0，且legacy断图native source只允许本节具名旧目录；static BackendRegistry/runtime=0；App→Diagnose implementation edge=0；API→Kotlin/Android/JNA=0；plugin→Host implementation=0；唯一catalog writer／presentation projection／loader成立；`UNCLASSIFIED=0` | Beads `gl-3ki`（原运行记录保留于gl-dek notes） |
 | native host contracts | `./gradlew nativeTestHost --console=plain` | 搬迁后的`gl_log/run_handoff/diagnose_api`当前host contract全量通过；source-only 43284没有进入产品build | Beads `gl-3ki`（原运行记录保留于gl-dek notes） |
 | Android build | `./gradlew nativeBuildAndroid --console=plain`，其现行说明同批改为“verified plugin native/package + debug/release App总入口” | leaf package只产一份Diagnose DSO与`.glplugin.zip`，两个App variant消费同一package artifact与content root；任务不再意味着`:app`持有native/JNA distribution | Beads `gl-3ki`（原运行记录保留于gl-dek notes） |
-| plugin ZIP package | `:plugin:packages:diagnose:verifyGlPluginZip` | ZIP结构／CRC、strict semantic manifest、全部files hash、multidex、ELF和license通过；把同一内容用不同entry order／timestamp／compression重打包后ZIP bytes可不同但content root必须相同；任一文件内容或manifest语义变化必须改变root或因hash不符被拒绝；debug/release APK index都指向该content root，不要求reproducible ZIP bytes | Beads `gl-3ki`（原运行记录保留于gl-dek notes） |
+| plugin ZIP package | `:plugin:packages:diagnose:verifyGlPluginZip` | ZIP结构／CRC、strict semantic manifest、全部regular files通用hash、multidex与ELF通过；JNA许可证只作为随包再分发文本，不设inventory或AAR／POM／license字节专项身份门。把同一内容用不同entry order／timestamp／compression重打包后ZIP bytes可不同但content root必须相同；任一文件内容或manifest语义变化必须改变root或因hash不符被拒绝；debug/release APK index都指向该content root，不要求reproducible ZIP bytes | Beads `gl-3ki`（原运行记录保留于gl-dek notes） |
 | APK boundary | `:app:verifyDebugBuiltinPluginBoundary`与`:app:verifyReleaseBuiltinPluginBoundary` | APK asset/index各恰一个匹配archive；App DEX无`com.ghostlock.plugin.diagnose`／JNA，普通APK `lib/`无`libghostlock_diagnose.so`／`libjnidispatch.so`；plugin DEX无API／Host classes；App classpath无Diagnose project runtime edge | Beads `gl-3ki`（原运行记录保留于gl-dek notes） |
 | assemble／AIDL | `./gradlew :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest --console=plain`并核generated AIDL schema | 两variant和test APK成功；AIDL只新增archive PFD＋semantic content root两个字段且没有ZIP byteCount／byte hash，profile形状与现有business method set都不变 | Beads `gl-3ki`（原运行记录保留于gl-dek notes） |
 | Android bootstrap | 6.6 arm64 AVD fresh install、same-APK restart、模拟higher plugin version upgrade与corrupt/index mismatch negative instrumentation | fresh显式选择DIAGNOSE；restart不重复安装；upgrade object-before-catalog原子；无选择不高亮第一项；FAILED reason在路径页和主页可见且无synthetic membership；run NOT_READY；installed/archive/extracted DCL文件mode符合0400/0500，normal／partial failure cleanup可删除完整0500 tree而retained terminal不改mode | Beads `gl-bvj`（原运行记录保留于gl-dek notes） |
