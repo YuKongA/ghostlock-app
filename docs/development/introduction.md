@@ -2,10 +2,10 @@
 
 <a id="run-introduction"></a>
 
-> **代号与快照范围**：当前条目引用主计划语义代号（Beads `gl-4tt`，`plan-semantic-identifiers`），不是统一 RUN 前缀下的旧 R 序号；下文原快照、历史批准与门禁保持原义，旧来源子号按映射定位。
+> **代号与快照范围**：当前条目引用主计划语义代号（[gl-4tt设计](../../openspec/changes/runtime-foundations/design.md#record-gl-4tt)，`plan-semantic-identifiers`），不是统一 RUN 前缀下的旧 R 序号；下文原快照、历史批准与门禁保持原义，旧来源子号按映射定位。
 
 > 当前快照：P-RUN-X-001/批次03已于2026-11-17完成shared Host去重；P-DIAG-NATIVE-001/批次01的4 KiB/16 KiB App/Shizuku纵向历史证据继续有效。
-> 有效设计与批准在 Beads；当前 B1 exact scope/矩阵为 `gl-dek`，父设计为 `gl-sfg`，最新构建优先项为 `gl-4on`。旧统一 ledger 只保留历史，不再是当前逐文件范围 authority；结构图见 [UML 当前执行视图](full-process-uml.md#run-current-views)。
+> 有效设计在OpenSpec、原批准与进度在Beads；当前 B1 exact scope/矩阵为 `gl-dek`，父设计为 `gl-sfg`，最新构建优先项为 `gl-4on`。旧统一 ledger 只保留历史，不再是当前逐文件范围 authority；结构图见 [UML 当前执行视图](full-process-uml.md#run-current-views)。
 > 旧计划只从 docs/archive/ 读取，不再授权实现。
 > 本批已执行的门只按§七逐项记录；Diagnose的AVD runtime matrix已齐，不把其外推为任何真攻击backend或真实设备证据。
 
@@ -53,7 +53,7 @@ DataStore actor 是每个 aggregate 的唯一写顺序 owner。设置事件提�
 
 ## 三、typed RunHost 执行链
 
-合同定义：[P-RUN-IPC-001：RunHost wire 与状态机](backend-root-execution-runhost-wire.md#p-run-ipc-001)；下列为本页原快照说明，不复制合同 authority。
+合同定义：[P-RUN-IPC-001：RunHost wire 与状态机](../../openspec/specs/runhost-wire/spec.md#p-run-ipc-001)；下列为本页原快照说明，不复制合同 authority。
 
 1. UI 只提交 selected stable backend key。
 2. `RunSessionCoordinator`从captured descriptor projection解析key、读取动态availability，并把同一次privilege snapshot固定为admission与dispatch共同的executor target；显示名称只来自BackendUiCatalog。

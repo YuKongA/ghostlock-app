@@ -277,7 +277,12 @@
 | `docs/plan/backend-root-execution-plan-disposition.tsv` | [20261121-1301-backend-root-execution-plan-disposition.tsv](20261121-1301-backend-root-execution-plan-disposition.tsv) | Beads；旧号映射gl-4tt，B1 gl-dek，父设计gl-sfg |
 | `docs/plan/MASTER-PLAN.md` | [20261121-1301-MASTER-PLAN.md](20261121-1301-MASTER-PLAN.md) | Beads；旧号映射gl-4tt，B1 gl-dek，父设计gl-sfg |
 | `docs/plan/backend-root-execution-unification-plan.md` | [20261121-1301-backend-root-execution-unification-plan.md](20261121-1301-backend-root-execution-unification-plan.md) | Beads；旧号映射gl-4tt，B1 gl-dek，父设计gl-sfg |
-| `docs/plan/backend-root-execution-runhost-wire.md` | [backend-root-execution-runhost-wire.md](../development/backend-root-execution-runhost-wire.md) | 现行公共合同，B1增量gl-dek |
+| `docs/plan/backend-root-execution-runhost-wire.md` | [backend-root-execution-runhost-wire.md](../../openspec/specs/runhost-wire/spec.md) | 现行公共合同，B1增量gl-dek |
 | `openspec/` 与六个 `openspec-*` skills | [20261121-1301-openspec](20261121-1301-openspec/) | Beads原生字段/状态；构建exact全文gl-4on；旧接入gl-1w2仅历史 |
 
 本次只移动上列现行退役对象；此前历史归档未批量改号。TSV原行、原批准、旧锚点及当轮证据保持；被取代240行/旧plugin方案不进入当前实施范围。开发者专用清单原文保存在归档及gl-ind notes：五条未闭要求合并为gl-4uv、gl-orc、gl-gyw三个具名deferred任务；已完成命名gl-i94不重开，旧存储文件裁定由gl-zgp的typed DataStore取代。
+
+
+## 2026-11-21 分工纠正（取代上节的Beads-only结论）
+
+旧纯Markdown计划继续归档，不恢复旧目录。完整有效设计与验收现由OpenSpec proposal/design/specs维护，Beads保留52条原记录的身份/状态/依赖/批准与实际证据，spec_id直达正文；CDA负责方法。上节迁移和卸载是已发生的历史，不是当前指令。当前分工见[文档规范](../development/documentation-standards.md#planning-tool-authority)，纠正设计见[OpenSpec](../../openspec/changes/planning-tool-responsibilities/design.md)，任务/验证记录为gl-8yr。

@@ -1,12 +1,24 @@
-> **现行公共合同定位（2026-11-21）**：本页保留已批准 RunHost 基础 wire/state/GLR1 合同，不属于退役计划。产品成功/公共边界见 Beads `gl-4tt`，共享 controller 合同见 `gl-oaq`。**B1 已批准增量唯一见 `gl-dek` 的 design/acceptance/notes**：archive PFD＋semantic content root 两字段及其 ownership/物理终结；旧 archive byteCount/whole-ZIP SHA-256 仅为被取代的初版沿革。下文“主计划优先”现在指所属 Beads 有效设计；它不表示增量已实现或任何门已通过。原批准、数值、字段和本文正文保持。
+# RunHost typed wire 基础公共规范
 
-# RunHost typed wire 与状态机（基础公共合同 · 2026-11-04 批准）
+## Purpose
+
+承接原已批准RunHost wire/state/GLR1基线，保持现有字段、数值、状态机与验收边界。B1已批准但尚未完成的archive handoff增量仅在所属change中维护，不提前发布为本主规范已实现行为。
+
+## Requirements
+
+### Requirement: Frozen RunHost wire and lifecycle
+
+The system SHALL preserve the following approved base contract, including typed identity, error precedence, ownership and its original device gates. This migration grants no new product approval.
+
+> **现行公共合同定位（2026-11-21）**：本页保存已批准的RunHost基础wire/state/GLR1合同。公共执行语义见[OpenSpec公共执行设计](../../changes/runtime-foundations/design.md#record-gl-4tt)，共享controller见[RunHost设计](../../changes/runhost-foundations/design.md#record-gl-oaq)。B1已批准但未完成的增量只在[当批设计](../../changes/builtin-diagnose-plugin/design.md#record-gl-dek)与[delta spec](../../changes/builtin-diagnose-plugin/specs/runhost-wire/spec.md)维护；Beads `gl-dek`仅保存原批准、进度及运行证据。archive PFD＋semantic content root不含旧byteCount/whole-ZIP SHA-256字段；该增量尚未同步为本基线已实现行为。下文旧“主计划优先”仅指所属OpenSpec有效设计的具名差异；原批准、数值、状态机与门禁不变。
+
+##### RunHost typed wire 与状态机（基础公共合同 · 2026-11-04 批准）
 
 <a id="p-run-ipc-001"></a>
 
-> **附件代号**：`P-RUN-IPC-001`（产品－执行编排－进程通信合同），从属 P-RUN-X-001：执行统一计划（Beads `gl-4tt`；具体后继按本页头部直达）。本页章节号仅标 wire 定义；决策/批次使用主计划语义代号（Beads `gl-4tt`；具体后继按本页头部直达），原批准与旧 D/R 引用按该表兼容，不新增授权。
+> **附件代号**：`P-RUN-IPC-001`（产品－执行编排－进程通信合同），从属 P-RUN-X-001：执行统一计划（Beads [gl-4tt](../../changes/runtime-foundations/design.md#record-gl-4tt)；具体后继按本页头部直达）。本页章节号仅标 wire 定义；决策/批次使用主计划语义代号（Beads [gl-4tt](../../changes/runtime-foundations/design.md#record-gl-4tt)；具体后继按本页头部直达），原批准与旧 D/R 引用按该表兼容，不新增授权。
 
-> 状态：**已随 九项语义决策（原 D1–D9）（Beads `gl-4tt`；具体后继按本页头部直达） 获批；2026-11-04 用户单独批准进入 P-RUN-X-001/批次01：execution spine（原 R3）（Beads `gl-4tt`；具体后继按本页头部直达），本附件是 production typed wire/state implementation authority**。
+> 状态：**已随 九项语义决策（原 D1–D9）（Beads [gl-4tt](../../changes/runtime-foundations/design.md#record-gl-4tt)；具体后继按本页头部直达） 获批；2026-11-04 用户单独批准进入 P-RUN-X-001/批次01：execution spine（原 R3）（Beads [gl-4tt](../../changes/runtime-foundations/design.md#record-gl-4tt)；具体后继按本页头部直达），本附件是 production typed wire/state implementation authority**。
 >
 > 本附件只冻结 App/Shizuku RunHost 的跨进程字段、范围、方法、状态、并发和稳定错误码；产品目标、owner、批次与成功语义以主计划为准。出现冲突时主计划优先，本附件不得扩展 scope。
 >
@@ -14,7 +26,7 @@
 >
 > 同日获批的`P-RUN-CORE-001/批次02`把application admission/cutoff移入`core.run.RunSessionCoordinator`，Android freeze/request assembly/fixed-target dispatch移入`data.runhost.client.AndroidRunHostDispatchAdapter`，物理root-script publish/read移入`data.rootscript`。AIDL source、method、field、integer、client timeout与host lifecycle继续冻结不变。
 
-## 1. 不变量
+##### 1. 不变量
 
 1. App 与 Shizuku 使用同一 wire；执行域不同，不产生两套业务合同。
 2. request 只含 bounded typed fields 与 read-only `ParcelFileDescriptor`；禁止 reflection symbol、class/method name、arbitrary `Bundle`、registry digest、自由输入 path。
@@ -24,7 +36,7 @@
 6. terminal snapshot 一经发布不可变；日志文本不参与状态转移或产品成功。
 7. `destroy()` 不得成为不可中止 backend 的 kill 通道；launcher 只有在 `requestClose` 接受后才调用 framework destroy/unbind。
 
-## 2. 标识 grammar 与 hard limits
+##### 2. 标识 grammar 与 hard limits
 
 | 字段 | grammar / range | owner |
 |---|---|---|
@@ -50,11 +62,11 @@
 | snapshot Parcel | 256 KiB | 丢弃 oversized candidate，发布 bounded minimal snapshot：`lastCode=23`、未完成 result=`UNKNOWN/reason=13`、`terminal=5`；不得把 code/reason 名写进 terminal |
 | root result file | 256 KiB | parser 返回 `MALFORMED_RESULT/UNKNOWN`；不作部分解析 |
 
-所有 `0`、`-1`、上限、上限+1、空值、重复 ID、非法 UTF-8/非 ASCII log 都进入 P-RUN-X-001/批次01：execution spine（Beads `gl-4tt`；具体后继按本页头部直达） / P-LOG-X-001/批次03：LogConnector与顺序（Beads `gl-s7q`） 极端值矩阵。
+所有 `0`、`-1`、上限、上限+1、空值、重复 ID、非法 UTF-8/非 ASCII log 都进入 P-RUN-X-001/批次01：execution spine（Beads [gl-4tt](../../changes/runtime-foundations/design.md#record-gl-4tt)；具体后继按本页头部直达） / P-LOG-X-001/批次03：LogConnector与顺序（Beads [gl-s7q](../../changes/logging-runtime/design.md#record-gl-s7q)） 极端值矩阵。
 
-## 3. Wire DTO
+##### 3. Wire DTO
 
-### 3.1 `RunHostRequest`
+##### 3.1 `RunHostRequest`
 
 | 字段 | 类型 | 约束 |
 |---|---|---|
@@ -77,7 +89,7 @@ request 也不携带可由 caller 伪造的 run capability。RunHost 在 exact r
 
 shape 不匹配固定返回 `INVALID_REQUEST`。因为 capability 只有 registry lookup 后才可知，同一**结构合法但 capability-incompatible** shape 配未知 backend key 时先返回 `UNKNOWN_BACKEND`；命中 backend 后再做 capability shape 检查，顺序见 §5.1。结构本身的 grammar/enum/reference 错误仍按 §5.1 step 2 先返回 `INVALID_REQUEST`。`DIAGNOSTIC_ONLY` 可携带 profile 与 host fixture 所需的 read-only artifact，但这些 artifact 不得通过 Payload/Finish 冒充产品动作。
 
-### 3.2 `RunInputArtifactParcel`
+##### 3.2 `RunInputArtifactParcel`
 
 | 字段 | 类型 | 约束 |
 |---|---|---|
@@ -89,7 +101,7 @@ shape 不匹配固定返回 `INVALID_REQUEST`。因为 capability 只有 registr
 
 不传目标 path、mode、uid 或 SELinux label；这些由 host-local staging policy 决定。
 
-### 3.3 `PayloadItemParcel`
+##### 3.3 `PayloadItemParcel`
 
 | 字段 | 类型 | 约束 |
 |---|---|---|
@@ -112,7 +124,7 @@ COMMAND 正文若超过单 arg 上限，必须作为 USER_SCRIPT artifact；不�
 | `4=LKM` | `3=MODULE_PRESENT` | 必须指向 `kind=LKM` artifact | `0..32` 个 module arg |
 | `5=DETACHED_PROCESS` | `4=TAKEOVER_ACK` | 必须指向 `kind=EXECUTABLE` 或 `USER_SCRIPT` artifact | `0..32` 个 argv token |
 
-### 3.4 `FinishItemParcel`
+##### 3.4 `FinishItemParcel`
 
 | 字段 | 类型 | 约束 |
 |---|---|---|
@@ -133,7 +145,7 @@ COMMAND 正文若超过单 arg 上限，必须作为 USER_SCRIPT artifact；不�
 
 所有 Finish kind 都必须显式给出 §3.4 的 `severity`；unknown/reserved kind、artifact kind 不匹配、COMMAND/REBOOT 携带 artifact、REBOOT 带 args、`alwaysRun=false`、重复 REBOOT 或 REBOOT 后仍有 item 都固定 `INVALID_REQUEST`。
 
-### 3.5 `RunHostSnapshot`
+##### 3.5 `RunHostSnapshot`
 
 | 字段 | 类型 | 语义 |
 |---|---|---|
@@ -153,14 +165,14 @@ COMMAND 正文若超过单 arg 上限，必须作为 USER_SCRIPT artifact；不�
 
 snapshot 禁止携带 raw log、任意 evidence map、native pointer、fd 或自由 path。callback由应用侧`RunHostLogConnector`适配为`LogDraft`并动态attach到唯一`LogHub`；LogHub再经raw/processed双流与单dispatcher非阻塞分发到UI、private-file及可选MediaStore独立sink。
 
-### 3.6 `RunHostSnapshotReply`
+##### 3.6 `RunHostSnapshotReply`
 
 | 字段 | 类型 | 约束 |
 |---|---|---|
 | `code` | `Int` | §6 `RunHostCode`；unknown code 由 client 映射 `INTERNAL_CONTRACT_FAILURE` |
 | `snapshot` | nullable `RunHostSnapshot` | `code=OK` 时必须非空；其它 code 时必须 null |
 
-### 3.7 `StageResultParcel`
+##### 3.7 `StageResultParcel`
 
 | 字段 | 类型 | 约束 |
 |---|---|---|
@@ -171,7 +183,7 @@ snapshot 禁止携带 raw log、任意 evidence map、native pointer、fd 或自
 
 `StageResultParcel` 不携带任意 reason string、log、path、pid、uid、地址或 backend-private map。诊断详情只进 log；产品合成只读上述稳定字段。
 
-### 3.8 `ItemResultParcel`
+##### 3.8 `ItemResultParcel`
 
 | 字段 | 类型 | 约束 |
 |---|---|---|
@@ -182,7 +194,7 @@ snapshot 禁止携带 raw log、任意 evidence map、native pointer、fd 或自
 
 snapshot 中 Payload/Finish result list 的顺序必须与 frozen request 完全相同；缺项、重复项、换序、额外项或跨 phase 重用 ID 都映射 `MALFORMED_RESULT/UNKNOWN`，不得只丢坏项后继续合成。
 
-### 3.9 `RunHostLogRecord`
+##### 3.9 `RunHostLogRecord`
 
 | 字段 | 类型 | 约束 |
 |---|---|---|
@@ -195,7 +207,7 @@ snapshot 中 Payload/Finish result list 的顺序必须与 frozen request 完全
 
 SGR grammar 固定为 `ESC '[' parameter (';' parameter){0,3} 'm'`：每个 parameter 为 1–3 位十进制，且只能是 `0`、`30..37`、`39`、`90..97`；整个序列最多 16 bytes。禁止 NUL、CR/LF、TAB、光标/擦除/链接/粗体等其它控制序列。整个 log Parcel 不得超过 12 KiB；host 侧验证、预算、parcel 或 callback delivery 失败会丢弃该 record 并计入 host-owned `droppedLogs`。client 对 identity、sequence、enum、message 或 parcel 的独立复验失败会保留此前合法prefix，并把该`RunHostLogConnector`终结为`Incomplete`；它不反向改写 immutable host snapshot。应用client在唯一completion deadline内同时等待typed terminal snapshot、callback terminal marker和connector end；snapshot先到不允许提前关闭transport。immutable terminal snapshot仍是产品authority，不能用log补造terminal。
 
-## 4. AIDL 方法与 transaction 语义
+##### 4. AIDL 方法与 transaction 语义
 
 候选接口精确形状：
 
@@ -223,9 +235,9 @@ oneway interface IRunHostCallback {
 - `destroy()` 明确保留 Shizuku UserService framework 固定 transaction id `16777114`；service 端也按 §5 状态表拒绝/忽略提前 transaction，不能只依赖业务 client 自律。业务 client 只有 `requestClose=OK/ALREADY_APPLIED` 且 host 已进入 DESTROYED 后才调用 framework destroy。
 - App client 对应动作是 unbind/stop service；两端仍走相同 `requestClose` 判据。
 
-## 5. Identity、错误优先级、状态机与并发
+##### 5. Identity、错误优先级、状态机与并发
 
-### 5.1 Identity 建立与确定性错误优先级
+##### 5.1 Identity 建立与确定性错误优先级
 
 - host identity 是 `runId + generation`；`setCallback` 与 `prepare` 都携带完整复合 identity。
 - 第一次成功 `setCallback` 可在 NEW 预留 identity；之后 `prepare` 必须相同。若没有 callback，第一次成功 `prepare` 原子建立 identity 与 PREPARED。
@@ -245,7 +257,7 @@ oneway interface IRunHostCallback {
 7. PFD/type/size/digest/object identity/staging policy 失败 → `ARTIFACT_INVALID`。
 8. workspace/render/publish/result I/O 失败 → `IO_FAILURE`；未分类 invariant → `INTERNAL_CONTRACT_FAILURE`。
 
-### 5.2 状态机
+##### 5.2 状态机
 
 ```text
 NEW --prepare/OK--> PREPARED --start/OK--> RUNNING --claimTerminal/CAS--> TERMINAL
@@ -274,9 +286,9 @@ RUNNING 的安全取消分成两个不可倒置的线性点：cancel 先在 stat
 
 callback Binder death：清 callback 引用；NEW/PREPARED 不自动 start，RUNNING 不自动 cancel/kill，worker继续到 terminal并持久化 snapshot；client侧`RunHostLogConnector`drain已接收prefix后返回`Incomplete`，UI标 UNKNOWN且不得重试相同 run。host Binder death：client发布 synthetic `HOST_DIED/UNKNOWN`，终结connector为`Incomplete`并关闭自己持有的 PFD/callback；不自动重启。terminal publication exactly once 与 callback delivery zero-or-one 是两个独立判据。
 
-## 6. 稳定数值合同
+##### 6. 稳定数值合同
 
-### 6.1 `RunHostCode` 与 `RunHostState`
+##### 6.1 `RunHostCode` 与 `RunHostState`
 
 | code | `RunHostCode` | 语义 |
 |---:|---|---|
@@ -308,7 +320,7 @@ unknown code 一律映射 `INTERNAL_CONTRACT_FAILURE/UNKNOWN`，不得当作 OK�
 | 3 | `TERMINAL` |
 | 4 | `DESTROYED` |
 
-### 6.2 `StageState`
+##### 6.2 `StageState`
 
 | value | state | 约束 |
 |---:|---|---|
@@ -320,7 +332,7 @@ unknown code 一律映射 `INTERNAL_CONTRACT_FAILURE/UNKNOWN`，不得当作 OK�
 | 5 | `UNKNOWN` | 缺证据、host death、malformed 或未知值映射 |
 | 6 | `SKIPPED` | 前置未发生且无资源需要 cleanup |
 
-### 6.3 `ItemState`
+##### 6.3 `ItemState`
 
 | value | state |
 |---:|---|
@@ -332,7 +344,7 @@ unknown code 一律映射 `INTERNAL_CONTRACT_FAILURE/UNKNOWN`，不得当作 OK�
 | 5 | `UNKNOWN` |
 | 6 | `CANCELLED` |
 
-### 6.4 `ExitKind`
+##### 6.4 `ExitKind`
 
 | value | kind | `exitValue` range |
 |---:|---|---|
@@ -343,7 +355,7 @@ unknown code 一律映射 `INTERNAL_CONTRACT_FAILURE/UNKNOWN`，不得当作 OK�
 
 不使用 `-1` 兼任“无退出码”；kind/value 组合非法即 `INTERNAL_CONTRACT_FAILURE/UNKNOWN`。
 
-### 6.5 `ResultReason`
+##### 6.5 `ResultReason`
 
 | value | reason |
 |---:|---|
@@ -366,7 +378,7 @@ unknown code 一律映射 `INTERNAL_CONTRACT_FAILURE/UNKNOWN`，不得当作 OK�
 
 value 12 与 unknown reason 都在 decode/construct 边界改成 13，所属 state 改成 UNKNOWN；取消拒绝只由同步 `RunHostCode=20` 表达，不持久化为 stage/item reason。
 
-### 6.6 `RunCapability`、`DiagnosticOutcome` 与 `RunTerminal`
+##### 6.6 `RunCapability`、`DiagnosticOutcome` 与 `RunTerminal`
 
 `RunCapability` 是 `BackendDescriptor` 的互斥稳定值，不是 caller request 参数：
 
@@ -421,7 +433,7 @@ successful prepare 原子把 `UNRESOLVED` 改为命中 `BackendDescriptor` 的 `
 
 NEW 的 cancel/requestClose 只有在 identity 已由 setCallback 预留时才走上表；identity 尚未建立时仍按 §5.1 返回 `BAD_STATE`。client synthetic `TERMINAL` 是本地 report/snapshot projection，不冒充 host durable terminal publication，也不触发第二 callback。任何其它组合都映射 `lastCode=23`、`diagnosticOutcome=UNKNOWN`（已 resolve 的 product run 仍保持 `NOT_APPLICABLE`）与 `terminal=UNKNOWN`。产品成功 projector 的唯一真值是 `runCapability=PRODUCT_ROOT && terminal=SUCCESS`；`DIAGNOSTIC_ONLY + PASS + DIAGNOSTIC_COMPLETE` 必须投影为 false。
 
-### 6.7 Result 与 event 合法组合矩阵
+##### 6.7 Result 与 event 合法组合矩阵
 
 `StageResultParcel` 只接受下列 conjunction；未列组合在 decode/construct 边界统一变为 `state=UNKNOWN, reason=INTERNAL_CONTRACT_FAILURE, exitKind=NONE, exitValue=0`，同时 snapshot `lastCode=23`：
 
@@ -449,9 +461,9 @@ NEW 的 cancel/requestClose 只有在 identity 已由 setCallback 预留时才�
 
 `RunHostLogRecord` 不携带 stage/state/reason/exit/report 字段。`origin + level + message` 只描述展示语义；unknown enum、超限、非法 ASCII/SGR、identity 不匹配、重复或倒序 sequence 一律丢弃并增加诊断丢弃计数，绝不改变 terminal。六层 `RunReport` 由 Flow 从 typed execution facts 组合并返回，`LogHub` 只在 terminal commit 中将它投影成普通 canonical Info records；UI 不维护第二套 report renderer。
 
-## 7. `GLR1` root result 与 terminal 合成
+##### 7. `GLR1` root result 与 terminal 合成
 
-### 7.1 唯一 line protocol
+##### 7.1 唯一 line protocol
 
 本节是 root result file 的唯一 grammar；主计划只链接本节，不再重复半定义格式。文件必须 ASCII、LF-only、末尾换行、无 NUL/CR，且总长不超过 256 KiB。
 
@@ -484,7 +496,7 @@ nonzero-digit = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
 
 物理owner固定为`data.rootscript`：publisher预创建0600 result并捕获identity；`ProductRunPreparer`把artifact与同一plan绑定成neutral `RootScriptResultReader`。Flow先取得唯一terminal claim，只有script dispatch成功才调用一次reader。reader以一次`O_NOFOLLOW` open在同一descriptor上执行fstat、device/inode/mode匹配和`MAX_RESULT_BYTES + 1`边界读取，再把bytes交给pure codec；open/stat/object不匹配映射`IdentityMismatch`，identity确认后的read/size/grammar/policy失败映射`Malformed`，预期失败不逃逸为第二terminal completion。
 
-### 7.2 Payload/Finish overall
+##### 7.2 Payload/Finish overall
 
 本节只对 `PRODUCT_ROOT` 合成产品阶段。`DIAGNOSTIC_ONLY` 的两个 item list 必须为空，`payloadOverall` 与 `finishOverall` 固定为 `SKIPPED/NOT_STARTED`，唯一终态按本节末尾的 diagnostic 分支合成；这两个 SKIPPED 不是产品成功证据。
 
@@ -503,7 +515,7 @@ Finish 是 ordered best-effort，不因某个 Finish 自身失败而跳过后续
 
 renderer/freezer 持有 `required/severity/alwaysRun` authority；result file 只按 itemId 关联，不能自行改这些策略。顺序 Payload 出现 required UNKNOWN+FAILED 或 FAILED+CANCELLED 固定 malformed；Finish 不 fail-fast，mixed set 才严格使用其优先级，例如 Finish FAILED+CANCELLED→FAILED、Finish CANCELLED+SKIPPED→CANCELLED。
 
-### 7.3 六层 facts → terminal 唯一优先级
+##### 7.3 六层 facts → terminal 唯一优先级
 
 先按 `RunCapability` 分支，禁止把 diagnostic facts 送入产品表：
 
@@ -524,21 +536,21 @@ renderer/freezer 持有 `required/severity/alwaysRun` authority；result file �
 
 raw uid 0 只能影响 primitive，不会跳过 dispatch/Payload/cleanup 条件。若 primitive 从未开始，cleanup=`SKIPPED/NOT_STARTED` 可随已知 primitive failure 合成为 FAILED；只要 primitive 已 RUNNING，cleanup 未 SUCCESS 就不能得到 SUCCESS。
 
-### 7.4 reboot durable handoff
+##### 7.4 reboot durable handoff
 
 Finish 请求 reboot 时，该 REBOOT 必须是 frozen Finish 的唯一且最后一个 REBOOT。脚本必须在 reboot syscall 前写完整 fixed-order file，其中对应项为 `state=1`、`reason=0`、`exit_kind=0`、`exit_value=0`，并写 `handoff=1`、`complete=1`，随后 flush + `fsync` 预创建的 result fd。唯一写法是带 `.state` 后缀的 `finish.<id>.state=1`，不另设第二语法；不存在“REBOOT 后还有待执行 Finish”的合法 request。
 
 client 收到 callback 前设备重启时，下次启动只可从 identity 匹配且 durable complete 的 result 恢复 `REBOOT_REQUESTED` 与已写 facts；不得补写 SUCCESS。pre-handoff reboot、host death或 partial file 都保持 UNKNOWN。held zombie/park 由 backend hint 合成 REBOOT_REQUIRED。
 
-## 8. P-RUN-X-001/批次01 验证矩阵
+##### 8. P-RUN-X-001/批次01 验证矩阵
 
 **现有入口导航**：下表只定位与取消、完成、关闭有关的现有用例；不替代下列1–9项判据，不新增批次承诺或更改批准/门禁状态。用例未覆盖的物理行为仍按原门补证。
 
 | 用户动作 / 原矩阵项 | 现有用例入口 | 前提与观察边界 |
 |---|---|---|
-| 开始前取消后再启动；运行中取消与完成的两种先后顺序；重复关闭（1、7） | [RunHostStateMachineTest](../../app/src/test/kotlin/com/ghostlock/app/core/runhost/RunHostStateMachineTest.kt)：`cancelBeforeStartPreventsLateStart`、`runningSafeCancelWaitsForWorkerTerminal`、`terminalClaimWinsOverLateCancelAndRepeatedClaim` | JVM；检查返回码、逻辑状态、唯一 terminal claim 和显式关闭授权，不证明 UI、资源回收、callback 或进程退出。 |
-| 取消、关闭及连接时 Host 死亡（1、7） | Android `com.ghostlock.app.data.runhost` 下的 [RunHostCancellationTest](../../app/src/androidTest/kotlin/com/ghostlock/app/data/runhost/RunHostCancellationTest.kt)、[RunHostLifecycleTest](../../app/src/androidTest/kotlin/com/ghostlock/app/data/runhost/RunHostLifecycleTest.kt)、[RunHostHostDeathTest](../../app/src/androidTest/kotlin/com/ghostlock/app/data/runhost/RunHostHostDeathTest.kt) | 已安装同树 app/test APK 的指定 Android 设备；前两项直接测状态机，后一项模拟首次 Binder call death，不等于真实 kill/cleanup 证据。 |
-| 通过 App 或 Shizuku 启动 Diagnose（9；正常执行接线） | Android `com.ghostlock.app.data.runhost` 下的 [AppRunHostSmokeTest](../../app/src/androidTest/kotlin/com/ghostlock/app/data/runhost/AppRunHostSmokeTest.kt)、[ShizukuRunHostSmokeTest](../../app/src/androidTest/kotlin/com/ghostlock/app/data/runhost/ShizukuRunHostSmokeTest.kt) | 指定设备及同树 app/test APK；Shizuku 还需已运行、授权且为 shell domain。两入口分别检查真实 client/service、诊断与日志结果，不能以一端通过代替另一端；不证明 PRODUCT_ROOT。 |
+| 开始前取消后再启动；运行中取消与完成的两种先后顺序；重复关闭（1、7） | [RunHostStateMachineTest](../../../app/src/test/kotlin/com/ghostlock/app/core/runhost/RunHostStateMachineTest.kt)：`cancelBeforeStartPreventsLateStart`、`runningSafeCancelWaitsForWorkerTerminal`、`terminalClaimWinsOverLateCancelAndRepeatedClaim` | JVM；检查返回码、逻辑状态、唯一 terminal claim 和显式关闭授权，不证明 UI、资源回收、callback 或进程退出。 |
+| 取消、关闭及连接时 Host 死亡（1、7） | Android `com.ghostlock.app.data.runhost` 下的 [RunHostCancellationTest](../../../app/src/androidTest/kotlin/com/ghostlock/app/data/runhost/RunHostCancellationTest.kt)、[RunHostLifecycleTest](../../../app/src/androidTest/kotlin/com/ghostlock/app/data/runhost/RunHostLifecycleTest.kt)、[RunHostHostDeathTest](../../../app/src/androidTest/kotlin/com/ghostlock/app/data/runhost/RunHostHostDeathTest.kt) | 已安装同树 app/test APK 的指定 Android 设备；前两项直接测状态机，后一项模拟首次 Binder call death，不等于真实 kill/cleanup 证据。 |
+| 通过 App 或 Shizuku 启动 Diagnose（9；正常执行接线） | Android `com.ghostlock.app.data.runhost` 下的 [AppRunHostSmokeTest](../../../app/src/androidTest/kotlin/com/ghostlock/app/data/runhost/AppRunHostSmokeTest.kt)、[ShizukuRunHostSmokeTest](../../../app/src/androidTest/kotlin/com/ghostlock/app/data/runhost/ShizukuRunHostSmokeTest.kt) | 指定设备及同树 app/test APK；Shizuku 还需已运行、授权且为 shell domain。两入口分别检查真实 client/service、诊断与日志结果，不能以一端通过代替另一端；不证明 PRODUCT_ROOT。 |
 
 从仓库根执行首行 JVM 定点用例：
 
@@ -546,7 +558,7 @@ client 收到 callback 前设备重启时，下次启动只可从 identity 匹�
 ./gradlew :app:testDebugUnitTest --tests 'com.ghostlock.app.core.runhost.RunHostStateMachineTest' --rerun-tasks --no-build-cache --console=plain
 ```
 
-Android 复用原 instrumentation 入口：`adb -s SERIAL shell am instrument -w -r -e class FULL_CLASS com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner`，`FULL_CLASS` 取上表完整包名与类名，`SERIAL` 为本次指定设备。JVM 定点结果在 `build/app/reports/tests/testDebugUnitTest/index.html`；Android 读取本次 instrumentation 的测试结果/退出状态，skip 不算通过。debug/release 全量结果门及报告仍直达 [工程规范 §8.1](engineering-standards.md#engineering-gate-commands)，真机要求仍按 [§8.3](engineering-standards.md#engineering-device-gate)；定点执行不替代全量门，未运行项保持 `NOT_RUN`。
+Android 复用原 instrumentation 入口：`adb -s SERIAL shell am instrument -w -r -e class FULL_CLASS com.ghostlock.app.test/androidx.test.runner.AndroidJUnitRunner`，`FULL_CLASS` 取上表完整包名与类名，`SERIAL` 为本次指定设备。JVM 定点结果在 `build/app/reports/tests/testDebugUnitTest/index.html`；Android 读取本次 instrumentation 的测试结果/退出状态，skip 不算通过。debug/release 全量结果门及报告仍直达 [工程规范 §8.1](../../../docs/development/engineering-standards.md#engineering-gate-commands)，真机要求仍按 [§8.3](../../../docs/development/engineering-standards.md#engineering-device-gate)；定点执行不替代全量门，未运行项保持 `NOT_RUN`。
 
 1. 所有 AIDL 方法 transaction id exact 对拍（含 `destroy=16777114`）与方法×状态逐格测试；特别覆盖 setCallback→cancel=`UNRESOLVED/NOT_RUN/CANCELLED`、setCallback→requestClose=`DESTROYED/UNRESOLVED/NOT_RUN/NONE`、successful prepare 前 host death=`UNRESOLVED/UNKNOWN/UNKNOWN`；重复/并发调用验证唯一 linearization、terminal publication exactly once、callback delivery 0/1。
 2. identity/error priority：runId/generation 的 empty、0、-1、max、非法字符、lower/same-different/higher；同一输入同时命中两种错误时逐项证明 §5.1 优先级。
@@ -557,3 +569,9 @@ Android 复用原 instrumentation 入口：`adb -s SERIAL shell am instrument -w
 7. lifecycle：App unbind、Shizuku callback death、对 transaction 16777114 的 premature direct call、RUNNING unsafe close、requestClose 后 destroy、host crash；提前 destroy 必须观测为 no-op且 worker/resource未被清理。
 8. result protocol：§6.7 每个合法/非法 state×reason×exit conjunction、每个 stable integer（含 ResultReason 12 必须拒绝并映射 13/UNKNOWN）、顺序/重复/缺失/unknown key、256 KiB边界、partial/complete、handoff=0/1、reboot pre/post-fsync；Payload required `UNKNOWN+FAILED`、`FAILED+CANCELLED` 必须 malformed，另测单一 trigger、all-success、optional failed/unknown、合法/非法 skip；Finish empty、`FAILED+CANCELLED`、`CANCELLED+SKIPPED`、alwaysRun skip 与普通 NOT_RUN；六层 terminal 合成表逐行与组合穷举。
 9. capability/cross-process：同一 request 在 App RunHost 与 Shizuku RunHost 得到同一 validation/result code；BackendDescriptor domain 与实际 pid/uid/SELinux不一致固定为 code 24。PRODUCT_ROOT+SUCCESS 是产品 success 唯一正例；`DIAGNOSTIC_ONLY+PASS+DIAGNOSTIC_COMPLETE`、diagnostic FAIL/UNKNOWN、capability/outcome/terminal 非法组合都必须证明不能升级产品 success。
+
+
+#### Scenario: Cancel before successful preparation
+
+- **WHEN** the matching run has set its callback and receives cancel before successful prepare
+- **THEN** the base contract projects UNRESOLVED / NOT_RUN / CANCELLED and retains the original state/error and device evidence requirements.

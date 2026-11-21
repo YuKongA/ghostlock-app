@@ -24,7 +24,7 @@
 | 参考 | 字段、命令、结构 | `docs/profile/PROFILE_SCHEMA.md`、`defaults.md`、`core/src/README.md` |
 | 解释 | 为什么这样设计 | `design-philosophy.md`、`engineering-standards.md`、`docs/analysis/**`（历史） |
 | 决策记录（ADR） | 一次架构决策：背景/决策/备选/后果 | `docs/analysis/adr/NNNN-*.md` |
-| 计划 | L 级改动开始前 | Beads 原生任务/decision 的正文；[字段分工](#planning-tool-authority) |
+| 计划 | L 级改动开始前 | OpenSpec proposal/design/specs；任务与实际证据在Beads；[分工](#planning-tool-authority) |
 | 门禁记录 | 真机验证之后 | `docs/analysis/device-gates/`（归档，永久保留） |
 | 发布说明 | 每个版本 | `docs/release-note-*.md`（归档） |
 
@@ -32,24 +32,25 @@
 
 <a id="planning-tool-authority"></a>
 
-## 设计与执行：Beads 唯一计划入口
+## 设计与执行：OpenSpec + Beads + CDA
 
-| 信息 / 动作 | 唯一位置 |
+| 信息 / 动作 | 唯一位置与入口 |
 |---|---|
-| 全工程规范、公共合同与门禁原则 | 既有规范/合同文件；Beads 引用，不复制成第二套规则 |
-| 目标、当前承诺、非目标、后续需求及重访触发 | 本任务 `description`；按已有范围规则区分，不因录入而授权实现 |
-| 真实调用者、设计取舍、owner/失败语义、图及逐文件 scope | 本任务 `design`；多个任务共用的有效设计用原生 `decision` 保存一次，以 `spec_id` / `relates-to` 直达 |
-| 验收方法、预期及对应成功层级 | `acceptance_criteria`；共享矩阵只定义一次，子任务注明适用行，不复制全表 |
-| 原批准、纠正、独立审查、历史结果与本轮证据 | 同一记录 `notes` / comments；写明日期、原话/来源、适用范围、取代关系及输入身份。批准变更就地同步 description/design 的当前边界，不靠读者翻评论猜结论 |
-| 认领、执行状态与真实先决条件 | Beads 原生 status/dependencies；只连接真实依赖，不把所有排期、参考或未来需求变成 blocker |
+| 全工程治理、审查与门禁原则 | 本套现行规范；工具模板不复制、放宽或覆盖 |
+| 目标、范围、非目标、当前承诺与后续触发 | OpenSpec `proposal.md` / `design.md`；[propose](../../.agents/skills/openspec-propose/SKILL.md) / [update](../../.agents/skills/openspec-update-change/SKILL.md) |
+| 真实调用者、取舍、owner/失败语义、图与逐文件scope | 同一 OpenSpec `design.md`；共享设计只定义一处。作者按需使用 [CDA](../../.agents/skills/constraint-driven-architecture/SKILL.md)，不是另交报告 |
+| 行为规范与验收定义 | `openspec/specs` 的当前公共合同、change 的 `specs` 增量及 `design` 验收矩阵；已批准但未实现/未验收的增量不提前同步主规范 |
+| 执行任务、认领、真实依赖、实时进度 | Beads；[apply](../../.agents/skills/openspec-apply-change/SKILL.md)从 `spec_id` 读取 OpenSpec，不维护 `tasks.md` 或另一份checkbox |
+| 原批准、纠正、独立审查及实际命令/结果 | 原 Beads 的 notes/comments；保留日期、原话/来源、范围、输入与取代关系。设计受纠正时同步OpenSpec当前边界，证据不重写为新批准 |
+| 探索、合同同步、完成后归档 | 按需用 [explore](../../.agents/skills/openspec-explore/SKILL.md)、[sync-specs](../../.agents/skills/openspec-sync-specs/SKILL.md)、[archive](../../.agents/skills/openspec-archive-change/SKILL.md)，不是每批必走的额外串行流程 |
 
-先从语义代号/当前任务定位，使用 `show <id> --json --brief-deps`；只按疑点展开共享设计和相关规范，不默认读全部任务或归档。旧号映射保存在 `gl-4tt` 的 notes；现行语义根入口见[代号登记](#work-identifiers)。其它仓库任务只链接，不导入第二份。
+**旧纯Markdown计划已完整迁移，不恢复 MASTER/ROADMAP/REMAINING 或旧计划正文 authority。** OpenSpec 持有完整有效设计，不能只放一个指向旧计划或Beads design的壳。Beads `spec_id` 直达对应文件/稳定锚点，description只概括执行对象，design留空，acceptance_criteria只指向适用验收定义；不复制完整设计、scope或矩阵。原批准和历史证据中的引用/当时设计说明是只读沿革，不是并行可编辑设计。
 
-实质架构选择仍由作者按 [CDA](../../.agents/skills/constraint-driven-architecture/SKILL.md) 完成，结论写同一 `design`；作者自检与独立审查仍由 [AGENTS §2、§7](../../AGENTS.md#agents-review) 按原触发执行。skill 只导航职责，不另写设计、自检或审查报告。OpenSpec 与旧 Markdown 计划已退役，仅在[既有归档索引](../archive/INDEX-plans.md#beads-plan-migration)保留历史，不再生成 change、tasks 或同步旧 checkbox。
+先从相关Beads任务或[语义代号登记](#work-identifiers)直达OpenSpec，按问题读取所需章节；不默认展开全部change、依赖或归档。旧号映射只在[公共执行设计](../../openspec/changes/runtime-foundations/design.md#legacy-identifiers)维护；其它仓库任务仅链接，不导入第二份。
 
-`ready` 只是依赖投影，不表示获准；`closed` 不证明运行 PASS。共享 decision 的关闭表示设计记录已收录，其正文中的批准/候选/取代状态不因此改变；不是新增执行任务或批准机。执行任务只能按原验收及实际证据关闭，区分完成、取消与取代。未执行仍为 NOT_RUN；合理未来需求用 `deferred`，具名条件缺失用 `blocked`。原真机门、原批准范围、暂停/冻结与最终树复验条件保持。
+`ready`/artifact `done`只说明依赖或工件状态，不表示批准、实现或运行PASS；Beads decision.closed可能只是设计收录，不是整个产品变更验收。原批准范围、冻结/暂停、真机门与最终树复验条件保持；实际未执行仍为NOT_RUN。合理后续需求仍deferred，具名条件缺失仍blocked；依赖只连接实际先决条件，参考链接不设新阻断。
 
-CLI 是唯一写入口；JSONL 是自动生成的可携带投影，不手编、不作并发双向同步。安装、字段操作、bootstrap 与提交前导出只见[开发环境 §5](development-environment.md#planning-tools)。迁移/链接/状态机械更新不额外触发 critic。
+作者自检与非作者独立审查继续按[AGENTS §2、§7](../../AGENTS.md#agents-review)的原触发，直接检查同一OpenSpec正文和Beads证据，不生成额外报告或最终PASS轮次。Beads CLI是任务唯一写入口，JSONL是生成的交接投影；安装、按字段读写及导出见[开发环境 §5](development-environment.md#planning-tools)。
 
 ## 怎么写
 
@@ -81,7 +82,7 @@ CLI 是唯一写入口；JSONL 是自动生成的可携带投影，不手编、�
 - **全局短码 `R<n>`**：仅指 [engineering-rules.md](engineering-rules.md) 的全工程规则，例 `R1：单一权威`；该表是 R 语义的唯一来源。全局表示适用范围，不表示最高权威：教材仍高于经验规则，教材条文继续引用具名章节，不为编号改写教材或另造“最高守则”。
 - **局部根代号 `<类别>-<主模块>-<范围>-<序号>`**：如 `P-LOG-IO-001：日志文件输出`，前三段可反推产品/工程、主责模块和主要合同领域，末段区分同一作用域的不同工作。计划和局部规范均可有根代号；对象类型、状态、版本和负责人写在正文，不再塞进代号。
 - **局部子项 `<根代号>/<类型><序号>`**：新增条目用 `/需求01`、`/决策01`、`/批次01`、`/问题01`，标题同时写中文含义；同一根的同类型连续分配，复审和另开报告不重置。问题分配先查该根的既有审核记录；在根文档的已有审核位置保留“问题号→定义锚点”链接，不另建问题台账。普通段落用 1、1.1，不给每段分配永久代号。
-- **活跃旧号迁移为语义主代号**：旧 D1/R4C 等不能仅套统一计划前缀。按条目实际主责模块与合同领域分组，使用如 `P-PAYLOAD-CORE-001/决策01`、`P-LOG-X-001/批次01`；标题同时写中文主题。一个文件可定义多个语义根，不因此拆文件/新建计划；同一合同下连续决策/批次共用根，真正不同领域使用不同根。旧号只在 Beads 共享设计 `gl-4tt` 的映射及原证据中保留，旧锚点在归档仍可达；不重新批准、排序或重写历史。规范的旧 A–G 等仍按自身根定位，与产品决策不混用。
+- **活跃旧号迁移为语义主代号**：旧 D1/R4C 等不能仅套统一计划前缀。按条目实际主责模块与合同领域分组，使用如 `P-PAYLOAD-CORE-001/决策01`、`P-LOG-X-001/批次01`；标题同时写中文主题。一个文件可定义多个语义根，不因此拆文件/新建计划；同一合同下连续决策/批次共用根，真正不同领域使用不同根。旧号只在 OpenSpec 公共执行设计的映射及原证据中保留，旧锚点在归档仍可达；不重新批准、排序或重写历史。规范的旧 A–G 等仍按自身根定位，与产品决策不混用。
 
 ### 唯一短词表
 
@@ -112,7 +113,7 @@ CLI 是唯一写入口；JSONL 是自动生成的可携带投影，不手编、�
 | 领域/范围 | RULE | 工作规范与验收规则 |
 | 领域/范围 | X | 由具名主模块负责的跨模块/跨层合同，正文必须列出边界，不代表“全仓任意修改” |
 
-P-LOG-IO-001：日志导出（Beads `gl-s7q`，`p-log-io-001`）、P-LOG-X-001：跨层日志中枢（Beads `gl-s7q`，`p-log-x-001`）、[P-RUN-IPC-001：RunHost wire](backend-root-execution-runhost-wire.md#p-run-ipc-001) 均为已有内容的实际身份；`E-BUILD-NATIVE-001` 仍仅为未分配示例。`CORE` 指模块内部合同，`IO` 指文件/流，`X` 只用于确有具名 owner 的跨层/跨模块合同，不作为不分析归属的兜底；其它影响仍列在原范围中。测试随被验证合同归属，不因 test 字样自动成为工程工具任务。
+P-LOG-IO-001：日志导出（[gl-s7q设计](../../openspec/changes/logging-runtime/design.md#record-gl-s7q)，`p-log-io-001`）、P-LOG-X-001：跨层日志中枢（[gl-s7q设计](../../openspec/changes/logging-runtime/design.md#record-gl-s7q)，`p-log-x-001`）、[P-RUN-IPC-001：RunHost wire](../../openspec/specs/runhost-wire/spec.md#p-run-ipc-001) 均为已有内容的实际身份；`E-BUILD-NATIVE-001` 仍仅为未分配示例。`CORE` 指模块内部合同，`IO` 指文件/流，`X` 只用于确有具名 owner 的跨层/跨模块合同，不作为不分析归属的兜底；其它影响仍列在原范围中。测试随被验证合同归属，不因 test 字样自动成为工程工具任务。
 
 ### 分配、定位与兼容
 
@@ -126,39 +127,39 @@ P-LOG-IO-001：日志导出（Beads `gl-s7q`，`p-log-io-001`）、P-LOG-X-001�
 
 ### 已分配工程代号（只定位，不复制状态）
 
-使用 `npm run --silent bd -- show <id> --json --brief-deps` 直达下列设计；多任务共享的 decision 不自动展开。旧 D1/R4C 等映射仅在 `gl-4tt` 的 notes 保留，原锚点仍可从[归档索引](../archive/INDEX-plans.md#beads-plan-migration)追溯。批准和当前状态只看 Beads 的具名记录，不从代号或 decision.closed 推断。
+下表直达OpenSpec唯一设计；Beads任务的spec_id使用同一路径。旧D1/R4C等映射仅在公共执行design的legacy-identifiers保留，原锚点仍可从[归档索引](../archive/INDEX-plans.md#beads-plan-migration)追溯。批准和当前状态只看 Beads 的具名记录，不从代号或 decision.closed 推断。
 
 | 根代号 | 中文主题／主责范围 | 唯一定义 |
 |---|---|---|
-| P-RUN-X-001 | 统一计划容器与执行主干跨层合同；具体决策/批次按实际模块分配 | Beads `gl-4tt` |
-| P-RUN-IPC-001 | 产品执行编排的 App/Shizuku 进程通信合同；从属上项 | [RunHost typed wire 与状态机](backend-root-execution-runhost-wire.md#p-run-ipc-001) |
+| P-RUN-X-001 | 统一计划容器与执行主干跨层合同；具体决策/批次按实际模块分配 | [gl-4tt设计](../../openspec/changes/runtime-foundations/design.md#record-gl-4tt) |
+| P-RUN-IPC-001 | 产品执行编排的 App/Shizuku 进程通信合同；从属上项 | [RunHost typed wire 与状态机](../../openspec/specs/runhost-wire/spec.md#p-run-ipc-001) |
 | E-REVIEW-RULE-001 | 设计审核与规划规则；旧 A–G 为本根条目组 | [设计与规划审查原则](design-review-principles.md#e-review-rule-001) |
 | E-REVIEW-RULE-002 | 工程实施、批次与验证规范；章节号仅限本文 | [工程与设计规范](engineering-standards.md#e-review-rule-002) |
 | E-REVIEW-RULE-003 | 设计原则的理论依据与解释；旧 D 为操作附录 | [设计哲学](design-philosophy.md#e-review-rule-003) |
 | E-REVIEW-RULE-004 | Agent 执行纪律与门禁入口；编号不改变既有权威层级 | [AGENTS](../../AGENTS.md#e-review-rule-004) |
 | E-DOC-RULE-001 | 文档、工程代号与计划模板；跨端架构问题表为附录 | [文档编写规范](documentation-standards.md#e-doc-rule-001) |
 | E-DOC-UI-001 | 双 UI 套件的文档指南；范围为 UI，不属于某一运行批次 | [UI 生成指南](ui-ai-guide.md#e-doc-ui-001) |
-| P-PAYLOAD-CORE-001 | Payload 必需性、失败与成功语义；有效设计已迁入Beads | Beads `gl-kct` |
-| P-FINISH-CORE-001 | Finish 严重度与必执行语义；有效设计已迁入Beads | Beads `gl-7c2` |
-| P-PAYLOAD-IO-001 | Payload 接管确认与文件保留；有效设计已迁入Beads | Beads `gl-2qz` |
-| P-RUN-IO-001 | 运行输入 staging、脚本发布与产物持久化；有效设计已迁入Beads | Beads `gl-dzp` |
-| P-BACKEND-CORE-001 | BackendDefinition 组合根、BackendDescriptor 与具名BackendUi边界；BD-I3配置实现延后 | Beads `gl-7yv` |
-| P-UI-ICON-001 | Material/Miuix 全项目语义图标目录；有效设计已迁入Beads | Beads `gl-rot` |
-| P-UI-ICON-002 | Material/Miuix 当前依赖的全量图标目录需求；有效设计已迁入Beads | Beads `gl-72l` |
-| P-UI-CORE-001 | App内KMP shared Compose UI、App/plugin共用唯一KMP `I18nRegistry`与catalog schema、Compose Multiplatform非文本资源、Android/Desktop平台壳、UI feature/package与单向presentation owner收口；远期目标已记录，exact design待plugin owner稳定后重开 | Beads `gl-75t` |
-| P-BACKEND-X-001 | Backend 成员资格、删除与断开闭包；有效设计已迁入Beads | Beads `gl-5r9` |
-| P-BACKEND-X-002 | 多组件 PluginPackage、共享 API、独立输入 provider（含固定 Maven 版本的外部 Kernel Symbol Extractor consumer）、settings presentation与注册到唯一App/plugin `I18nRegistry`的authenticated bundle、thin variant 与 RunHost 安全装载 | Beads `gl-sfg` |
-| P-RUN-CORE-001 | 运行结果、会话终态与内部 core 收口；有效设计已迁入Beads | Beads `gl-k6e` |
-| E-DOC-X-002 | 开发环境、Beads设计/执行与CDA（旧接入沿革保留） | Beads `gl-ind` |
-| E-BUILD-X-001 | 当前构建闭环修复；精确设计已迁入Beads，原批准保持 | Beads `gl-4on` |
-| E-DOC-X-001 | 计划权威、归档与跨文档入口收口；有效设计已迁入Beads | Beads `gl-8zk` |
-| P-LOG-IO-001 | 日志自动导出与文件 sink；有效设计已迁入Beads | Beads `gl-s7q` |
-| P-LOG-X-001 | 跨层单一日志中枢及结果归属边界；有效设计已迁入Beads | Beads `gl-s7q` |
-| P-SETTINGS-IO-001 | 全项目持久化分类、完整 data class typed DataStore 与 run 前落盘边界；有效设计已迁入Beads | Beads `gl-zgp` |
-| P-DIAG-NATIVE-001 | Diagnose 的 native／JNA／shell 诊断纵向；有效设计已迁入Beads | Beads `gl-yhz` |
-| P-RUN-HANDOFF-001 | common 固定位置脚本 handoff 与 Diagnose 单次 native chain；有效设计已迁入Beads | Beads `gl-obq` |
-| P-BACKEND-NATIVE-001 | 43284-Glued native carrier 候选；有效设计已迁入Beads | Beads `gl-2u2` |
-| P-BACKEND-NATIVE-002 | 98260 native carrier 候选；有效设计已迁入Beads | Beads `gl-2ot` |
+| P-PAYLOAD-CORE-001 | Payload 必需性、失败与成功语义；有效正文在OpenSpec | [gl-kct设计](../../openspec/changes/runtime-foundations/design.md#record-gl-kct) |
+| P-FINISH-CORE-001 | Finish 严重度与必执行语义；有效正文在OpenSpec | [gl-7c2设计](../../openspec/changes/runtime-foundations/design.md#record-gl-7c2) |
+| P-PAYLOAD-IO-001 | Payload 接管确认与文件保留；有效正文在OpenSpec | [gl-2qz设计](../../openspec/changes/runtime-foundations/design.md#record-gl-2qz) |
+| P-RUN-IO-001 | 运行输入 staging、脚本发布与产物持久化；有效正文在OpenSpec | [gl-dzp设计](../../openspec/changes/runtime-foundations/design.md#record-gl-dzp) |
+| P-BACKEND-CORE-001 | BackendDefinition 组合根、BackendDescriptor 与具名BackendUi边界；BD-I3配置实现延后 | [gl-7yv设计](../../openspec/changes/runtime-foundations/design.md#record-gl-7yv) |
+| P-UI-ICON-001 | Material/Miuix 全项目语义图标目录；有效正文在OpenSpec | [gl-rot设计](../../openspec/changes/semantic-icon-catalog/design.md#record-gl-rot) |
+| P-UI-ICON-002 | Material/Miuix 当前依赖的全量图标目录需求；有效正文在OpenSpec | [gl-72l设计](../../openspec/changes/ui-followups/design.md#record-gl-72l) |
+| P-UI-CORE-001 | App内KMP shared Compose UI、App/plugin共用唯一KMP `I18nRegistry`与catalog schema、Compose Multiplatform非文本资源、Android/Desktop平台壳、UI feature/package与单向presentation owner收口；远期目标已记录，exact design待plugin owner稳定后重开 | [gl-75t设计](../../openspec/changes/ui-followups/design.md#record-gl-75t) |
+| P-BACKEND-X-001 | Backend 成员资格、删除与断开闭包；有效正文在OpenSpec | [gl-5r9设计](../../openspec/changes/runtime-foundations/design.md#record-gl-5r9) |
+| P-BACKEND-X-002 | 多组件 PluginPackage、共享 API、独立输入 provider（含固定 Maven 版本的外部 Kernel Symbol Extractor consumer）、settings presentation与注册到唯一App/plugin `I18nRegistry`的authenticated bundle、thin variant 与 RunHost 安全装载 | [gl-sfg设计](../../openspec/changes/plugin-architecture/design.md#record-gl-sfg) |
+| P-RUN-CORE-001 | 运行结果、会话终态与内部 core 收口；有效正文在OpenSpec | [gl-k6e设计](../../openspec/changes/runtime-foundations/design.md#record-gl-k6e) |
+| E-DOC-X-002 | 开发环境、OpenSpec设计/Beads执行与CDA（旧接入沿革保留） | [OpenSpec/Beads职责](../../openspec/changes/planning-tool-responsibilities/design.md) |
+| E-BUILD-X-001 | 当前构建闭环修复；精确设计在OpenSpec，原批准保持 | [gl-4on设计](../../openspec/changes/build-closure-repair/design.md#record-gl-4on) |
+| E-DOC-X-001 | 计划权威、归档与跨文档入口收口；有效正文在OpenSpec | [gl-8zk设计](../../openspec/changes/archive/2026-11-21-workflow-history/design.md#record-gl-8zk) |
+| P-LOG-IO-001 | 日志自动导出与文件 sink；有效正文在OpenSpec | [gl-s7q设计](../../openspec/changes/logging-runtime/design.md#record-gl-s7q) |
+| P-LOG-X-001 | 跨层单一日志中枢及结果归属边界；有效正文在OpenSpec | [gl-s7q设计](../../openspec/changes/logging-runtime/design.md#record-gl-s7q) |
+| P-SETTINGS-IO-001 | 全项目持久化分类、完整 data class typed DataStore 与 run 前落盘边界；有效正文在OpenSpec | [gl-zgp设计](../../openspec/changes/datastore-runtime/design.md#record-gl-zgp) |
+| P-DIAG-NATIVE-001 | Diagnose 的 native／JNA／shell 诊断纵向；有效正文在OpenSpec | [gl-yhz设计](../../openspec/changes/diagnose-handoff-foundations/design.md#record-gl-yhz) |
+| P-RUN-HANDOFF-001 | common 固定位置脚本 handoff 与 Diagnose 单次 native chain；有效正文在OpenSpec | [gl-obq设计](../../openspec/changes/diagnose-handoff-foundations/design.md#record-gl-obq) |
+| P-BACKEND-NATIVE-001 | 43284-Glued native carrier 候选；有效正文在OpenSpec | [gl-2u2设计](../../openspec/changes/plugin-followups/design.md#record-gl-2u2) |
+| P-BACKEND-NATIVE-002 | 98260 native carrier 候选；有效正文在OpenSpec | [gl-2ot设计](../../openspec/changes/plugin-followups/design.md#record-gl-2ot) |
 
 <a id="documentation-diagrams"></a>
 
@@ -192,9 +193,9 @@ P-LOG-IO-001：日志导出（Beads `gl-s7q`，`p-log-io-001`）、P-LOG-X-001�
 
 ## 模板
 
-**Beads 设计内容（L 级改动必须，不另建计划文件）**
+**OpenSpec 设计内容（L 级改动必须，不另建旧式计划文件）**
 
-以下八类内容写入同一 Beads 的相应字段；小修按原分级裁剪，“目标与约束/进度”内区分本批承诺、后续需求和待裁定，具体依 [design-review-principles.md](design-review-principles.md) 的滚动细化与阶段规则。不新增独立需求台账，不改写已有专用任务清单。后续需求仅保留来源/目标、未知、owner 与重访触发，逐文件清单和详细验证矩阵只细化当前准备实施的批次；既有本批承诺移出仍须批准。
+以下八类内容写入同一OpenSpec proposal/design/specs的适用部分；小修按原分级裁剪，“目标与约束/进度”内区分本批承诺、后续需求和待裁定，具体依 [design-review-principles.md](design-review-principles.md) 的滚动细化与阶段规则。不新增独立需求台账，不改写已有专用任务清单。后续需求仅保留来源/目标、未知、owner 与重访触发，逐文件清单和详细验证矩阵只细化当前准备实施的批次；既有本批承诺移出仍须批准。
 
 涉及 Kotlin/JNI/Native 跨层契约、资源 owner 或 Native transaction 时，可在下列通用八节内按需套用
 [E-DOC-RULE-001/跨端附录：架构问题清单](kotlin-jni-native-architecture-template.md#cross-platform-appendix) 的问题清单。该文件是专用附录，

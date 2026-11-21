@@ -1,7 +1,8 @@
-# Beads design and execution
+# Beads execution and evidence
 
-Use the project-pinned `npm run --silent bd -- …` command.
-Installation, bootstrap, task commands and persistence: [development environment](../docs/development/development-environment.md#planning-tools).
-Authority and approval boundaries: [planning tools](../docs/development/documentation-standards.md#planning-tool-authority).
+Use the project-pinned `npm run --silent bd -- …` command for tasks, dependencies, status and approval/runtime evidence.
+The sole design body is in OpenSpec proposal/design/specs; `spec_id` links to its exact file/anchor. Keep `design` empty and acceptance as a reference, not another matrix.
+Installation, bootstrap and commands: [development environment](../docs/development/development-environment.md#planning-tools).
+Authority and original gates: [tool responsibilities](../docs/development/documentation-standards.md#planning-tool-authority).
 
-`issues.jsonl` is CLI-generated; never edit it by hand. It transports complete design, scope, approval/evidence notes, acceptance and task records, not full Dolt history or concurrent cross-machine synchronization.
+`issues.jsonl` is CLI-generated; never edit it by hand. It is not full Dolt history or concurrent cross-machine synchronization. Commit the referenced OpenSpec files with the task projection.

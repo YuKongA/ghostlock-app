@@ -1,0 +1,25 @@
+schema: ghostlock
+context: 'Write in Chinese; preserve OpenSpec structural headings and SHALL/MUST keywords.
+
+  Read AGENTS.md and documentation-standards.md#planning-tool-authority only as relevant.
+
+  OpenSpec proposal/design/specs owns complete current design, scope and acceptance
+  criteria; old Markdown plans are historical sources only.
+
+  Beads owns execution tasks, dependencies, status and actual evidence/approval records;
+  spec_id links here, never duplicate design bodies.
+
+  CDA is the author''s design method, not a new report or approval. Preserve existing
+  self-check, independent review and device gates.
+
+  Do not create tasks.md, duplicate progress checkboxes, or treat artifact readiness
+  as approval or execution PASS.'
+operations:
+  apply:
+    guidance:
+    - Use npm run --silent bd for tasks; artifact readiness does not grant approval
+      or prove gates.
+  archive:
+    guidance:
+    - Confirm the linked Beads work is closed with appropriate evidence and original
+      gate requirements; never archive unfinished work from zero Markdown task count.

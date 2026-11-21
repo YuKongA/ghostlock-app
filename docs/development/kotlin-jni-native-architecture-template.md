@@ -5,12 +5,12 @@
 > **代号范围**：`E-DOC-RULE-001/跨端附录`；旧 A–N、D.1、E.1 等仅是此附录的问题组。跨文档须带“跨端附录”限定；问题表不成为第二套批准或验收规则。
 
 > 本文件是 [`documentation-standards.md`](documentation-standards.md)“L 级计划”模板的 JNI 架构专用附录，不是第二套通用计划规范。
-> 设计内容写入同一 Beads 的 design / acceptance_criteria 字段，按[通用内容要求](documentation-standards.md#documentation-templates)按需加入本文问题，不另建计划文件。
+> 设计内容写入同一OpenSpec的design/specs验收章节，按[通用内容要求](documentation-standards.md#documentation-templates)按需加入本文问题，不另建计划文件。
 > 本模板不预选层数、库形态、ABI、handle、Flow 或资源模型；没有证据需要的章节直接删除。
 
 ## 使用方式
 
-1. 定位当前 Beads 任务/共享设计，沿 `documentation-standards.md` 的 L 级内容要求就地补充。
+1. 从Beads spec_id定位当前OpenSpec设计，沿 `documentation-standards.md` 的 L 级内容要求就地补充。
 2. 在“目标与约束、数据流/控制流差异、改动清单、验证矩阵”中选用本文问题。
 3. 先回答当前必要性；CBN 的适用条件与短说明见 [E-REVIEW-RULE-001/§2：成本权衡](design-review-principles.md#review-cbn)，不因套用模板重复填表。
 4. 正文记录 branch、commit 和版本；输入识别按 [E-REVIEW-RULE-001/G4](design-review-principles.md#review-g4)，必要身份信息进入已有审核记录。design-critic 对应 gate 的阻断为 0 且用户批准后才实现。

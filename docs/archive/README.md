@@ -7,7 +7,7 @@
 | 目录 | 放什么 | 判据 |
 |---|---|---|
 | `docs/analysis/` | **现状 / 机制 / 契约 / 设计参考**（描述「是什么」） | 当前仍有效的契约、格式、机制说明；**在途工作所依据的设计稿**（例 `execution-combination-menu-and-general-profile.md`） |
-| Beads | **未来要做什么、为何、范围、批准与验收** | 设计、状态、真实依赖与证据唯一入口；旧 `docs/plan` / OpenSpec 已完整迁移归档，日常不回读历史获得执行指令 |
+| OpenSpec / Beads | **未来要做什么、设计与如何验收 / 执行状态与证据** | OpenSpec维护proposal/design/specs唯一正文；Beads管理任务与依赖。旧`docs/plan`不恢复；2026-11-21的Beads-only方案已纠正 |
 | `docs/archive/`（本目录） | **已实现完的 plan** / **不再需要的 analysis** / **一次性交接稿** | ① 其验收项已勾选或对应提交已落地；② 所描述的机制已不存在或被取代；③ 内容已被后续文档吸收 |
 
 **就地保留（不进本目录）**：
