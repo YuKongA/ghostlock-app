@@ -9,17 +9,20 @@ import com.ghostlock.app.backend.backends.diagnose.jna.DiagnoseJnaLibrary
 import com.ghostlock.app.backend.backends.diagnose.jna.DiagnoseNativeBinding
 import com.ghostlock.app.composition.backend.BackendRegistry
 import com.ghostlock.app.data.runhost.client.AppRunHostClient
+import com.ghostlock.app.data.runhost.client.AndroidRunHostDispatchAdapter
 import com.ghostlock.app.core.runhost.RunHostIdentity
 import com.ghostlock.app.data.runhost.client.RunHostLogConnector
 import com.ghostlock.app.data.runhost.client.RunHostClientOutcome
 import com.ghostlock.app.data.runhost.RunHostTestFixture
 import com.ghostlock.app.data.runhost.client.ShizukuRunHostClient
-import com.ghostlock.app.core.run.LogHub
-import com.ghostlock.app.core.run.RunInputFreezer
-import com.ghostlock.app.data.run.AndroidRunSessionAdapter
+import com.ghostlock.app.core.log.LogHub
+import com.ghostlock.app.core.run.RunSessionCoordinator
+import com.ghostlock.app.data.rootscript.RootScriptArtifactPublisher
+import com.ghostlock.app.data.run.AndroidLogSinkFactory
+import com.ghostlock.app.data.run.AndroidRunInputFreezer
+import com.ghostlock.app.data.run.AndroidRunPresentationAdapter
 import com.ghostlock.app.data.run.AndroidRunWorkspace
 import com.ghostlock.app.data.run.RootManagerArtifactResolver
-import com.ghostlock.app.data.run.RootArtifactStagingAdapter
 import com.ghostlock.app.domain.finish.FinishDefinition
 import com.ghostlock.app.domain.finish.FinishRepository
 import com.ghostlock.app.domain.payload.PayloadDefinition
@@ -39,7 +42,6 @@ import com.ghostlock.app.domain.run.RunSessionPhase
 import com.ghostlock.app.domain.run.RunSessionState
 import com.ghostlock.app.domain.run.RunTerminal
 import com.ghostlock.app.domain.run.StageState
-import com.ghostlock.app.domain.settings.ObserveOperationalPreferencesUseCase
 import com.ghostlock.app.domain.settings.OperationalPreferences
 import com.ghostlock.app.domain.settings.OperationalPreferencesPort
 import kotlinx.coroutines.async
@@ -68,7 +70,7 @@ class DiagnoseJnaSmokeTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val identity = RunHostIdentity(UUID.randomUUID().toString().replace("-", ""), 1L)
         val workspace = AndroidRunWorkspace.createApp(context, identity, BACKEND_KEY)
-        RootArtifactStagingAdapter().publishDiagnosticArtifact(workspace, identity)
+        RootScriptArtifactPublisher().publishDiagnostic(workspace.rootScript, identity)
         val previousHome = System.getenv(GHOSTLOCK_HOME)
         val binding = DiagnoseNativeBinding()
         try {
@@ -103,23 +105,29 @@ class DiagnoseJnaSmokeTest {
         }
     }
 
-    /** App flowhost routes the real Diagnose run through AndroidRunSessionAdapter and the sole LogHub. */
+    /** App flowhost routes the real Diagnose run through the coordinator and focused Android adapters. */
     @Test
     fun appFlowHostRoundTrip() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val logHub = LogHub(LogDocumentFormatter())
-        val adapter = AndroidRunSessionAdapter(
-            context = context,
+        val formatter = LogDocumentFormatter()
+        val logHub = LogHub(formatter)
+        val presentation = AndroidRunPresentationAdapter(context, logHub, formatter)
+        val adapter = RunSessionCoordinator(
             registryEntries = BackendRegistry.descriptors,
             availability = BackendRegistry::availability,
             backendLabel = { key -> if (key == BACKEND_KEY) "Diagnose" else null },
             selectedKey = { BACKEND_KEY },
             logHub = logHub,
-            formatter = LogDocumentFormatter(),
-            freezer = diagnosticFreezer(context),
-            appClient = AppRunHostClient(context),
-            shizukuClient = null,
+            dispatch = AndroidRunHostDispatchAdapter(
+                freezer = diagnosticFreezer(context),
+                appClient = AppRunHostClient(context),
+                shizukuClient = null,
+            ),
+            sinkProvider = AndroidLogSinkFactory(context),
+            presentation = presentation,
             operationalPreferencesPort = diagnosticPreferences(),
+            payloadRepository = failFastPayloadRepository(),
+            finishRepository = failFastFinishRepository(),
             applicationScope = this,
             observePrivilege = appPrivilege(Process.myUid()),
         )
@@ -220,25 +228,30 @@ class DiagnoseJnaSmokeTest {
         })
     }
 
-    /** Builds the production freezer with fail-fast repositories that Diagnose must never read. */
-    private fun diagnosticFreezer(context: android.content.Context): RunInputFreezer = RunInputFreezer(
-        context = context,
-        payloadRepository = object : PayloadRepository {
-            override fun submit(
-                transform: (PayloadDefinition) -> PayloadDefinition,
-            ): kotlinx.coroutines.Deferred<PayloadDefinition> = error("Diagnose submit Payload")
-            override fun snapshot(): kotlinx.coroutines.Deferred<PayloadDefinition> =
-                error("Diagnose snapshot Payload")
-        },
-        finishRepository = object : FinishRepository {
-            override fun submit(
-                transform: (FinishDefinition) -> FinishDefinition,
-            ): kotlinx.coroutines.Deferred<FinishDefinition> = error("Diagnose submit Finish")
-            override fun snapshot(): kotlinx.coroutines.Deferred<FinishDefinition> =
-                error("Diagnose snapshot Finish")
-        },
-        rootManagerResolver = RootManagerArtifactResolver(context),
-    )
+    /** Builds the production Android freezer; Diagnose receives its empty cutoff from the coordinator. */
+    private fun diagnosticFreezer(context: android.content.Context): AndroidRunInputFreezer =
+        AndroidRunInputFreezer(
+            context = context,
+            rootManagerResolver = RootManagerArtifactResolver(context),
+        )
+
+    /** Returns a repository that fails if Diagnose incorrectly requests product Payload state. */
+    private fun failFastPayloadRepository(): PayloadRepository = object : PayloadRepository {
+        override fun submit(
+            transform: (PayloadDefinition) -> PayloadDefinition,
+        ): kotlinx.coroutines.Deferred<PayloadDefinition> = error("Diagnose submit Payload")
+        override fun snapshot(): kotlinx.coroutines.Deferred<PayloadDefinition> =
+            error("Diagnose snapshot Payload")
+    }
+
+    /** Returns a repository that fails if Diagnose incorrectly requests product Finish state. */
+    private fun failFastFinishRepository(): FinishRepository = object : FinishRepository {
+        override fun submit(
+            transform: (FinishDefinition) -> FinishDefinition,
+        ): kotlinx.coroutines.Deferred<FinishDefinition> = error("Diagnose submit Finish")
+        override fun snapshot(): kotlinx.coroutines.Deferred<FinishDefinition> =
+            error("Diagnose snapshot Finish")
+    }
 
     /** Supplies one frozen App-executor fact without touching device preferences. */
     private fun appPrivilege(uid: Int): ObservePrivilegeUseCase = ObservePrivilegeUseCase(

@@ -1,14 +1,10 @@
-package com.ghostlock.app.core.run
+package com.ghostlock.app.data.run
 
 import android.content.Context
-import com.ghostlock.app.data.run.RootManagerArtifactResolver
+import com.ghostlock.app.core.run.RunInputCutoff
 import com.ghostlock.app.domain.backend.BackendDescriptor
-import com.ghostlock.app.domain.finish.FinishDefinition
 import com.ghostlock.app.domain.finish.FinishKind
-import com.ghostlock.app.domain.finish.FinishRepository
-import com.ghostlock.app.domain.payload.PayloadDefinition
 import com.ghostlock.app.domain.payload.PayloadKind
-import com.ghostlock.app.domain.payload.PayloadRepository
 import com.ghostlock.app.domain.run.FrozenArtifactInvocation
 import com.ghostlock.app.domain.run.FrozenRunInput
 import com.ghostlock.app.domain.run.ProfileSnapshot
@@ -16,47 +12,21 @@ import com.ghostlock.app.domain.run.RunCapability
 import com.ghostlock.app.domain.run.RunInputArtifactKind
 import java.io.File
 import java.util.UUID
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Deferred
 
 /**
- * Single application boundary that freezes backend/profile/Payload/Finish and opened source objects.
+ * Android boundary that freezes backend/profile/Payload/Finish and opened source objects.
  *
  * @param context Application context used for the private immutable profile fixture directory.
- * @param payloadRepository Complete typed Payload authority.
- * @param finishRepository Complete typed Finish authority.
  * @param rootManagerResolver Installed manager executable and exact argv resolver.
  * @note Product carriers are supplied only by a concrete backend artifact design; no global carrier wrapper exists.
  */
-class RunInputFreezer(
+class AndroidRunInputFreezer(
     context: Context,
-    private val payloadRepository: PayloadRepository,
-    private val finishRepository: FinishRepository,
     private val rootManagerResolver: RootManagerArtifactResolver,
 ) {
     private val lock = Any()
     private val sourceDirectory = File(context.applicationContext.noBackupFilesDir, "run-input")
     private var generation: Long = 0L
-
-    /**
-     * Queues Payload and Finish snapshots at the caller's run-action cutoff.
-     *
-     * @param spec Exact selected backend descriptor.
-     * @return Handles whose immutable values cannot include later accepted edits.
-     */
-    fun cutoff(spec: BackendDescriptor): RunInputCutoff = when (spec.runCapability) {
-        RunCapability.DIAGNOSTIC_ONLY -> RunInputCutoff(
-            backendKey = spec.key,
-            payload = CompletableDeferred(PayloadDefinition(items = emptyList())),
-            finish = CompletableDeferred(FinishDefinition()),
-        )
-        RunCapability.PRODUCT_ROOT -> RunInputCutoff(
-            backendKey = spec.key,
-            payload = payloadRepository.snapshot(),
-            finish = finishRepository.snapshot(),
-        )
-        RunCapability.UNRESOLVED -> error("cannot freeze unresolved backend capability")
-    }
 
     /**
      * Freezes one run and returns ownership of every master descriptor in one closeable lease.
@@ -65,7 +35,7 @@ class RunInputFreezer(
      * @return Immutable run input plus opaque-token descriptor ownership.
      * @throws IllegalStateException When an input or manager object cannot be fixed exactly once.
      */
-    suspend fun freeze(spec: BackendDescriptor, cutoff: RunInputCutoff): FrozenRunInputLease {
+    suspend fun freeze(spec: BackendDescriptor, cutoff: RunInputCutoff): AndroidFrozenRunInputLease {
         require(cutoff.backendKey == spec.key) { "run input cutoff backend mismatch" }
         val identity = nextIdentity()
         val profileFile = publishProfileFixture(identity.first, spec)
@@ -118,7 +88,7 @@ class RunInputFreezer(
                 inputArtifacts = sources.map(OpenedRunInputSource::artifact),
                 artifactInvocations = invocations,
             )
-            return FrozenRunInputLease(input, sources)
+            return AndroidFrozenRunInputLease(input, sources)
         } catch (problem: Throwable) {
             sources.forEach { source -> runCatching { source.master.close() } }
             runCatching { if (profileFile.exists()) profileFile.delete() }
@@ -142,28 +112,26 @@ class RunInputFreezer(
         check(sourceDirectory.isDirectory || sourceDirectory.mkdir()) { "cannot create run input directory" }
         val file = File(sourceDirectory, "$runId-profile-v3.json")
         check(file.createNewFile()) { "run profile fixture already exists" }
-        val bytes = (
-            "{\"backend_key\":\"" + spec.key + "\",\"schema_version\":3}\n"
-            ).toByteArray(Charsets.UTF_8)
-        file.outputStream().use { output ->
-            output.write(bytes)
-            output.flush()
-            output.fd.sync()
+        try {
+            val bytes = (
+                "{\"backend_key\":\"" + spec.key + "\",\"schema_version\":3}\n"
+                ).toByteArray(Charsets.UTF_8)
+            file.outputStream().use { output ->
+                output.write(bytes)
+                output.flush()
+                output.fd.sync()
+            }
+            check(file.setReadable(true, true) && file.setWritable(true, true)) {
+                "cannot restrict run profile fixture"
+            }
+            return file
+        } catch (problem: Throwable) {
+            runCatching { if (file.exists()) check(file.delete()) }
+            throw problem
         }
-        check(file.setReadable(true, true) && file.setWritable(true, true)) {
-            "cannot restrict run profile fixture"
-        }
-        return file
     }
 
     private companion object {
         const val PROFILE_ARTIFACT_ID: String = "profile"
     }
 }
-
-/** Exact DataStore actor-cutoff handles captured synchronously by one run action. */
-class RunInputCutoff internal constructor(
-    val backendKey: String,
-    val payload: Deferred<PayloadDefinition>,
-    val finish: Deferred<FinishDefinition>,
-)

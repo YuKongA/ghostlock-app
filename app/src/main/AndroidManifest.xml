@@ -47,9 +47,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <!-- Typed one-shot RunHost; App and Shizuku share the same AIDL business schema. -->
+        <!-- App-UID RunHost; Shizuku shell execution uses the same AIDL business schema. -->
         <service
-            android:name="com.ghostlock.app.runhost.AppRunHostService"
+            android:name="com.ghostlock.app.runhost.appuid.AppUidRunHostService"
             android:process=":flowhost"
             android:exported="false"
             android:stopWithTask="false" />

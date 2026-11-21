@@ -5,6 +5,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.provider.MediaStore
+import com.ghostlock.app.core.run.LogSinkProvider
 import com.ghostlock.app.domain.run.LogFilePrefix
 import com.ghostlock.app.domain.run.LogFileSink
 import com.ghostlock.app.domain.run.LogSink
@@ -50,12 +51,20 @@ private class AndroidLogMediaStoreGateway(private val resolver: ContentResolver)
 /**
  * Creates run-scoped private-file and optional MediaStore sink instances for the adapter.
  * Workers do not start or perform platform I/O until LogHub accepts the run and emits Start.
+ *
+ * @param privateDirectory App-private canonical log directory.
+ * @param gateway Android MediaStore boundary.
+ * @param scope Application-lifetime sink worker scope.
+ * @param privateSinkBuilder Narrow internal construction seam for deterministic degradation tests.
+ * @param mediaSinkBuilder Narrow internal construction seam for deterministic optional-sink tests.
  */
 class AndroidLogSinkFactory internal constructor(
     private val privateDirectory: File,
     private val gateway: LogMediaStoreGateway,
     private val scope: CoroutineScope,
-) {
+    private val privateSinkBuilder: ((LogSinkRequest, (LogSinkFailure) -> Unit) -> LogFileSink)? = null,
+    private val mediaSinkBuilder: ((LogSinkRequest, (LogSinkFailure) -> Unit) -> LogSink)? = null,
+) : LogSinkProvider {
     constructor(context: Context) : this(
         privateDirectory = File(context.applicationContext.filesDir, "run-logs"),
         gateway = AndroidLogMediaStoreGateway(context.applicationContext.contentResolver),
@@ -63,18 +72,42 @@ class AndroidLogSinkFactory internal constructor(
     )
 
     /** @return Ready but unopened per-run storage sinks; the private-file role is always present. */
-    fun create(request: LogSinkRequest, onFailure: (LogSinkFailure) -> Unit): List<LogSinkBinding> {
-        val file = runCatching { PrivateFileSink(privateDirectory, request, scope, onFailure) }
-            .getOrElse { problem -> FailedFileSink(problem, onFailure) }
-        val media = if (request.enabled) {
-            runCatching { MediaStoreSink(request, gateway, scope, onFailure) }.getOrElse { problem ->
-                onFailure(LogSinkFailure(LogSinkFailureKind.OPEN, "automatic export setup: ${problem::class.java.simpleName}"))
-                null
+    override fun create(
+        request: LogSinkRequest,
+        onFailure: (LogSinkFailure) -> Unit,
+    ): List<LogSinkBinding> {
+        val bindings = mutableListOf<LogSinkBinding>()
+        try {
+            val file = runCatching {
+                privateSinkBuilder?.invoke(request, onFailure)
+                    ?: PrivateFileSink(privateDirectory, request, scope, onFailure)
             }
-        } else null
-        return buildList {
-            add(LogSinkBinding(LogSinkRole.PRIVATE_FILE, file))
-            media?.let { add(LogSinkBinding(LogSinkRole.MEDIA_STORE, it)) }
+                .getOrElse { problem -> FailedFileSink(problem, onFailure) }
+            bindings += LogSinkBinding(LogSinkRole.PRIVATE_FILE, file)
+            if (request.enabled) {
+                val media = runCatching {
+                    mediaSinkBuilder?.invoke(request, onFailure)
+                        ?: MediaStoreSink(request, gateway, scope, onFailure)
+                }
+                    .getOrElse { problem ->
+                        onFailure(
+                            LogSinkFailure(
+                                LogSinkFailureKind.OPEN,
+                                "automatic export setup: ${problem::class.java.simpleName}",
+                            ),
+                        )
+                        null
+                    }
+                media?.let { sink ->
+                    bindings += LogSinkBinding(LogSinkRole.MEDIA_STORE, sink)
+                }
+            }
+            return bindings.toList()
+        } catch (problem: Throwable) {
+            bindings.forEach { binding ->
+                runCatching { binding.sink.abort("log sink provider setup failed") }
+            }
+            throw problem
         }
     }
 

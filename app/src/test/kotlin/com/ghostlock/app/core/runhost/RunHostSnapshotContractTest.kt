@@ -9,6 +9,7 @@ import com.ghostlock.app.domain.run.StageResult
 import com.ghostlock.app.domain.run.StageState
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Pure contract cases for the immutable six-layer RunHost snapshot. */
@@ -49,6 +50,24 @@ class RunHostSnapshotContractTest {
         diagnosticSnapshot().copy(logSequence = 16_384L)
         assertThrows(IllegalArgumentException::class.java) {
             diagnosticSnapshot().copy(logSequence = -1L)
+        }
+    }
+
+    /** Workspace retention is limited to the exact four recovery or evidence terminals. */
+    @Test
+    fun workspaceRetentionMatchesExactTerminalSet() {
+        val retaining = setOf(
+            RunTerminal.UNKNOWN,
+            RunTerminal.NEEDS_ATTENTION,
+            RunTerminal.REBOOT_REQUIRED,
+            RunTerminal.REBOOT_REQUESTED,
+        )
+        RunTerminal.entries.forEach { terminal ->
+            if (terminal in retaining) {
+                assertTrue(terminal.requiresWorkspaceRetention())
+            } else {
+                assertFalse(terminal.requiresWorkspaceRetention())
+            }
         }
     }
 

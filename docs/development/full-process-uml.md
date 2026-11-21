@@ -4,13 +4,13 @@
 
 > **时间视点**：当前工作树；只描述源码中已经存在的结构与行为。活跃计划完成后的目标见[活跃计划最终目标全局 UML](active-plan-target-uml.md#global-active-plan-target-view)。两份图回答不同问题，不互相替代。
 >
-> **当前截面（2026-11-21）**：`BXP3-B1` production source 已进入工作树，但完整 V1、AVD 与具名 ARM64 真机门尚未全部关闭；下图因此表示“已存在但仍在验证中的实现”，不表示 BXP3-B1 已完成。当前唯一 backend package 是 APK builtin、ARM64、单 component 的 `DIAGNOSE`；provider、外部导入、Custom、真实攻击 backend、额外 ABI、Desktop 与统一 KMP i18n 尚未实现。
+> **当前截面（2026-11-21）**：P-RUN-CORE-001/批次02、P-RUN-X-001/批次03与批次04的runtime完成态已进入本树；`RunSessionCoordinator`、shared `RunHostController`及两个execution-domain leaf package均已存在。`BXP3-B1` plugin source尚未进入本树，因此下图仍是same-APK backend registry、JNA与native topology；provider、外部导入、真实攻击backend、额外ABI、Desktop与统一KMP i18n均未实现。
 >
 > **本页优先级**：§0 是当前全局 authority。后续 A0–A6、旧 D7 及历次局部图继续保留沿革和子系统细节；其中旧标题即使含“current authority”，也不得覆盖 §0 的 2026-11-21 当前截面。
 
 <a id="run-current-views"></a>
 
-> **代号与旧视图入口**：本页后续内容混合历次结构，A0–A6 与 §11.10 的旧 D7 属各自历史计划；Mermaid 内 D1/R1 等仅为节点变量。旧视图按主计划语义映射（[gl-4tt设计](../../openspec/changes/runtime-foundations/design.md#record-gl-4tt)，`plan-semantic-identifiers`）定位：[P-RUN-IO-001/批次01：脚本](#run-view-r2)、[P-RUN-X-001/批次01：执行主干](#run-view-r3)、[P-LOG-X-001/批次01：日志中枢](#run-view-r4c)、[P-BACKEND-X-001/来源S1：既有 common source](#run-view-r5)。原历史、状态和取代关系不变，来源S1不授权接回 carrier；wire 字段仍见 [P-RUN-IPC-001](../../openspec/specs/runhost-wire/spec.md#p-run-ipc-001)。
+> **代号与旧视图入口**：本页后续内容混合历次结构，A0–A6 与 §11.10 的旧 D7 属各自历史计划；Mermaid 内 D1/R1 等仅为节点变量。旧视图按主计划语义映射（[gl-4tt设计](../../openspec/changes/runtime-foundations/design.md#record-gl-4tt)，`plan-semantic-identifiers`）定位：[P-RUN-IO-001/批次01：脚本](#run-view-r2)、[P-RUN-X-001/批次01：执行主干](#run-view-r3)、[P-LOG-X-001/批次01：日志中枢](#run-view-r4c)、[P-BACKEND-X-001/来源S1：既有 common source](#run-view-r5)。原历史、状态和取代关系不变，来源S1不授权接回carrier；wire字段仍见[P-RUN-IPC-001](../../openspec/specs/runhost-wire/spec.md#p-run-ipc-001)。
 
 > 2026-10-23 JNI v4 已获用户“按照计划”批准：§11 取代旧的 route/JNI handle/Flow/Finish 局部图。
 
@@ -23,98 +23,90 @@
 
 ```mermaid
 flowchart TB
-  subgraph BUILD[Gradle 与 package producer]
+  subgraph BUILD[Gradle 与 same-APK producer]
     direction LR
-    API[":plugin:api\nJava diagnostic-v1 ABI"]
-    CORE[":plugin:core\nKMP manifest / index / catalog model"]
-    DIAG[":plugin:packages:diagnose\nKotlin + JNA + private native source"]
-    ZIP["verified builtin\n.glplugin.zip\nARM64 / one BACKEND component"]
-    DIAG --> ZIP
-    API -. compileOnly ABI .-> DIAG
+    APP[":app Kotlin + JNA runtime"]
+    NATIVE["app/src/main/cpp/common\n+ backends/diagnose"]
+    APK["debug / release APK\nDiagnose DSO in APK lib/"]
+    HOST_GATE["nativeTestHost\ncurrent-run Allure aggregate"]
+    ANDROID_GATE["nativeBuildAndroid\ndebug + release build"]
+    DEBUG_GATE["verifyDebugUnitTestXml\ncurrent-run Allure"]
+    RELEASE_GATE["verifyReleaseUnitTestXml\nindependent current-run Allure"]
+    CHECK_ALL["legacy checkAll aggregate"]
+    NATIVE --> APP --> APK
+    ANDROID_GATE --> APK
+    HOST_GATE --> CHECK_ALL
+    ANDROID_GATE --> CHECK_ALL
+    DEBUG_GATE --> CHECK_ALL
   end
 
   subgraph MAIN[Android main process]
     direction LR
-    ASSET["APK generated asset\nbuiltin index + archive"]
-    SEED["BuiltinPluginSeeder"]
-    STORE["AndroidPluginCatalogStore\nimmutable objects + catalog"]
-    COORD["PluginCatalogCoordinator\nINITIALIZING / READY / FAILED"]
-    PROJ["BackendCatalogProjection\nBackendDescriptor + PluginObjectRef"]
-    UI["BackendPresentationRegistry\nDiagnose Host UI adapter"]
+    REG["BackendRegistry\none immutable definition list"]
+    UI["BackendUiCatalog\nprojection from same registry"]
     SELECT["AppSelection / BackendSessionStore"]
     SESSION["RunSessionCoordinator\nadmission + cutoff"]
-    FREEZE["AndroidRunInputFreezer\narchive PFD + root inputs"]
+    FREEZE["AndroidRunInputFreezer\nprofile / root inputs"]
+    DISPATCH["AndroidRunHostDispatchAdapter\nfixed App or Shizuku target"]
+    HUB["LogHub + presentation adapter"]
 
-    ASSET --> SEED --> STORE --> COORD --> PROJ
-    PROJ --> UI
-    PROJ --> SESSION
+    REG --> UI
+    REG --> SESSION
     SELECT --> SESSION
-    SESSION --> FREEZE
+    SESSION --> FREEZE --> DISPATCH
+    SESSION --> HUB
   end
 
-  subgraph HOST["一次性 App 或 Shizuku RunHost process"]
+  subgraph HOST["App-UID 或 Shizuku-shell RunHost process"]
     direction LR
-    ENDPOINT["Binder endpoint"]
+    ENTRY["AppUidRunHostService\nor ShizukuShellRunHostService"]
+    ENDPOINT["RunHostBinderEndpoint\nParcel / callback wire"]
     CONTROLLER["RunHostController\nlifecycle / terminal / quiescence"]
-    PREP["AndroidRunHostPreparationAdapter\nworkspace + staged Host artifacts"]
-    LOADER["RunHostPluginLoader\ncopy / verify / extract / DCL"]
-    ADAPTER["PluginBackendFlow\nplugin result → Host facts"]
-    ENTRY["DiagnoseEntryPoint"]
-    RUN["DiagnoseRun\nplugin-owned Kotlin orchestration"]
-    BINDING["DiagnoseNativeBinding\nplugin-owned JNA load/call/close"]
-    DSO["private libghostlock_diagnose.so\n+ plugin-private libjnidispatch.so"]
+    PREP["AndroidRunHostPreparationAdapter\ndomain / workspace / staging"]
+    RUNTIME["BackendRegistry.runtime(key)\nnarrow runtime projection"]
+    FLOW["fresh DiagnoseFlow\nSequentialFlow orchestration"]
+    BINDING["DiagnoseNativeBinding\nJNA load / call"]
+    DSO["same-APK libghostlock_diagnose.so\n+ JNA libjnidispatch.so"]
     LOG["KotlinLogConnector / LogHub wire"]
     REPORT["typed RunReport / terminal snapshot"]
 
+    ENTRY --> ENDPOINT
     ENDPOINT --> CONTROLLER
-    ENDPOINT --> PREP --> LOADER
-    LOADER --> ENTRY --> RUN
-    LOADER --> ADAPTER
-    CONTROLLER --> ADAPTER
-    ADAPTER --> RUN --> BINDING --> DSO
-    ADAPTER --> REPORT
+    ENDPOINT --> PREP
+    ENTRY --> RUNTIME --> PREP
+    PREP --> FLOW --> BINDING --> DSO
+    CONTROLLER --> FLOW
     CONTROLLER --> LOG
     CONTROLLER --> REPORT
   end
 
-  ZIP --> ASSET
-  CORE -. typed metadata and catalog model .-> SEED
-  CORE -. typed manifest verification model .-> LOADER
-  API -. parent-classloader runtime ABI .-> LOADER
-  FREEZE -->|"PFD + semantic content root + typed Host inputs"| ENDPOINT
-  HOST -->|"terminal snapshot / log callback"| MAIN
+  APK --> REG
+  DISPATCH -->|"typed request + read-only PFDs"| ENTRY
+  REPORT -->|"terminal snapshot"| DISPATCH
+  LOG -->|"callback records"| HUB
 ```
 
 当前不变量：
 
-- main process 不加载 Diagnose/JNA DSO，也不执行插件代码；它只拥有 catalog、selection、UI projection 与 run cutoff。
-- manifest/catalog 是 backend membership 与精确对象来源；`BackendPresentationRegistry` 不能创造 membership。
-- RunHost 先重验 archive、manifest、API/ABI/domain，再加载 entry；插件 Kotlin 独占 JNA/native load、call、close。
-- 当前 `PluginBackendFlow` 仍是 Host `Flow` 适配器；是否让旧 Host `Flow/SequentialFlow` 退出是尚未批准的设计差异，不在本当前图中预先实施。
+- `BackendRegistry`是same-APK membership唯一authority；descriptor、runtime与UI都从同一immutable definition list投影。`DIAGNOSE`是`DIAGNOSTIC_ONLY`，`CUSTOM`保持disabled，selectable `PRODUCT_ROOT`数量为0。
+- `RunSessionCoordinator`独占admission/cutoff，`RunHostController`独占lifecycle/candidate/callback/snapshot/quiescence；Binder endpoint只拥有transport，preparation adapter只拥有domain/workspace/staging/materialization。
+- 两个leaf package只保留framework差异、各一次runtime投影、六个endpoint delegate和entry-local destroy；不建立第二份host orchestration。
+- Diagnose Kotlin、JNA binding与native DSO仍由`:app`同版发布并在目标RunHost进程加载；本树没有plugin archive、catalog object、PFD plugin handoff、DCL或plugin-owned native组件。
 
-### 0.2 catalog 与一次运行状态
+### 0.2 一次 RunHost lifecycle
 
 ```mermaid
 stateDiagram-v2
-  state "main catalog" as Catalog {
-    [*] --> INITIALIZING
-    INITIALIZING --> READY: builtin reconcile + verify + atomic catalog publish
-    INITIALIZING --> FAILED: index / archive / identity / I/O failure
-    READY --> [*]: one terminal generation for this process
-    FAILED --> [*]: bounded reason; selection/run disabled
-  }
-
-  state "one RunHost process" as RunHost {
-    [*] --> NEW
-    NEW --> PREPARED: request + PFD verified and materialized
-    NEW --> REJECTED: prepare fail closed
-    PREPARED --> RUNNING: execute accepted
-    RUNNING --> TERMINAL: plugin facts + cleanup + log drain
-    PREPARED --> TERMINAL: close before start
-    REJECTED --> DESTROYED: plugin-tainted or authorized close
-    TERMINAL --> DESTROYED: execution lease close, workspace cleanup, physical process exit
-    DESTROYED --> [*]
-  }
+  [*] --> NEW
+  NEW --> PREPARED: request validated and candidate atomically committed
+  NEW --> TERMINAL: cancel before prepare
+  NEW --> DESTROYED: requestClose after rejection or no candidate
+  PREPARED --> RUNNING: start accepted
+  PREPARED --> TERMINAL: cancel before start
+  PREPARED --> DESTROYED: requestClose before start
+  RUNNING --> TERMINAL: sole worker terminal claim
+  TERMINAL --> DESTROYED: quiescence then workspace cleanup
+  DESTROYED --> [*]: framework destroy authorized
 ```
 
 ### 0.3 一次 Diagnose 运行 Sequence
@@ -123,33 +115,42 @@ stateDiagram-v2
 sequenceDiagram
   participant UI as Android UI
   participant Main as RunSessionCoordinator
-  participant Catalog as READY BackendCatalogView
+  participant Registry as BackendRegistry
   participant Freeze as AndroidRunInputFreezer
-  participant Host as App/Shizuku RunHost
-  participant Loader as RunHostPluginLoader
-  participant Adapter as PluginBackendFlow
-  participant Plugin as DiagnoseRun
-  participant Native as DiagnoseNativeBinding/DSO
+  participant Client as App/Shizuku RunHost client
+  participant Entry as execution-domain leaf service
+  participant Endpoint as Binder endpoint
+  participant Controller as RunHostController
+  participant Prep as AndroidRunHostPreparationAdapter
+  participant Flow as fresh DiagnoseFlow
+  participant Native as JNA binding / same-APK DSO
 
   UI->>Main: start(selected backend key)
-  Main->>Catalog: resolve same-generation descriptor + PluginObjectRef
-  Catalog-->>Main: DIAGNOSE + exact content root
-  Main->>Freeze: freeze object, preferences, Payload/Finish cutoff
-  Freeze-->>Main: archive PFD + typed request lease
-  Main->>Host: prepare(request, PFD)
-  Host->>Loader: copy, verify, extract, validate domain/API/ABI
-  Loader->>Plugin: construct entry and instantiate one run
-  Loader-->>Host: prepared PluginBackendFlow + execution lease
-  Main->>Host: execute
-  Host->>Adapter: run(Host BackendFlowInput)
-  Adapter->>Plugin: execute(narrow DiagnosticRunContext)
-  Plugin->>Native: runChain / logs / handoff
-  Native-->>Plugin: native and shell facts
-  Plugin-->>Adapter: DiagnosticRunResult
-  Adapter->>Plugin: close through resource owner
-  Adapter-->>Host: BackendRunFacts → RunReport
-  Host-->>Main: terminal snapshot + drained logs
-  Host->>Host: close lease, delete workspace, authorize physical process exit
+  Main->>Registry: resolve descriptor + current availability
+  Registry-->>Main: DIAGNOSE / DIAGNOSTIC_ONLY
+  Main->>Freeze: freeze Operational / Payload / Finish + inputs
+  Freeze-->>Main: typed request lease with read-only PFDs
+  Main->>Client: prepare on fixed App or Shizuku target
+  Client->>Entry: typed Binder request
+  Entry->>Registry: runtime(key) exact narrow projection
+  Entry->>Endpoint: six business delegates
+  Endpoint->>Controller: structure / identity / lifecycle preflight
+  Controller->>Prep: materialize outside controller mutex
+  Prep->>Prep: domain gate, dup/stage PFDs, create workspace
+  Prep->>Flow: create one fresh Flow
+  Prep-->>Controller: complete candidate
+  Controller->>Controller: atomic PREPARED commit
+  Main->>Client: start
+  Client->>Endpoint: start(runId, generation)
+  Controller->>Flow: run(BackendFlowInput)
+  Flow->>Native: one diagnose native chain
+  Native-->>Flow: primitive / dispatch / cleanup + logs
+  Flow-->>Controller: BackendRunFacts
+  Controller-->>Client: durable terminal snapshot + callback marker
+  Client-->>Main: normalized terminal outcome
+  Client->>Endpoint: requestClose after log drain
+  Controller->>Controller: await quiescence, delete workspace, DESTROYED
+  Client->>Entry: App unbind or Shizuku remove
   Main-->>UI: terminal state
 ```
 

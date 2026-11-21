@@ -11,7 +11,7 @@ import com.ghostlock.app.core.runhost.RunHostPayloadItemRequest
 import com.ghostlock.app.core.runhost.RunHostPayloadKind
 import com.ghostlock.app.core.runhost.RunHostRequestModel
 import com.ghostlock.app.core.rootscript.PublishedArtifactIdentity
-import com.ghostlock.app.core.rootscript.RootScriptResultCodec
+import com.ghostlock.app.data.rootscript.PublishedArtifactAccess
 import com.ghostlock.app.data.run.AndroidRunWorkspace
 import com.ghostlock.app.data.run.RootArtifactStagingAdapter
 import com.ghostlock.app.data.run.StagedRunInputArtifact
@@ -81,12 +81,11 @@ class ProductRunPreparerTest {
                 "handoff=0\n" +
                 "complete=1\n",
         )
-        val resultFile = workspace.rootScript.resolve("root-result.glr1")
-        val decoded = RootScriptResultCodec.decode(resultFile, prepared.rootScript.resultIdentity, prepared.plan)
+        val decoded = prepared.resultReader.read()
         val report = RunReportComposer().compose(
             prepared.plan,
             successfulBackendFacts(),
-            RootScriptDecodeOutcome.Complete(decoded),
+            decoded,
         )
         assertEquals(ItemState.SUCCESS, report.payloadItems.single().state)
         assertEquals(RunTerminal.SUCCESS, report.terminal)
@@ -133,7 +132,7 @@ class ProductRunPreparerTest {
         text: String,
     ): StagedRunInputArtifact {
         file.writeText(text)
-        val identity = PublishedArtifactIdentity.capture(file)
+        val identity = PublishedArtifactAccess.capture(file)
         return StagedRunInputArtifact(
             metadata = RunHostArtifactRequest(logicalId, kind, identity.byteCount, identity.sha256),
             file = file,

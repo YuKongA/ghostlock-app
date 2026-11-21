@@ -6,7 +6,7 @@ import com.ghostlock.app.core.flow.FlowReportContext
 import com.ghostlock.app.core.flow.FlowTerminalClaim
 import com.ghostlock.app.core.rootscript.PublishedArtifactIdentity
 import com.ghostlock.app.core.rootscript.RootScriptArtifact
-import com.ghostlock.app.core.run.KotlinLogConnector
+import com.ghostlock.app.core.log.KotlinLogConnector
 import com.ghostlock.app.domain.run.DiagnosticOutcome
 import com.ghostlock.app.domain.run.ExitKind
 import com.ghostlock.app.domain.run.LogDraft
@@ -209,7 +209,7 @@ class DiagnoseFlowTest {
             profile = ProfileSnapshot("profile", ProfileSnapshot.CURRENT_SCHEMA_VERSION, "0".repeat(64)),
             logs = logs,
             cancellation = RunCancellationView { cancellation.get() },
-            reportContext = FlowReportContext(RunCapability.DIAGNOSTIC_ONLY, null),
+            reportContext = FlowReportContext(RunCapability.DIAGNOSTIC_ONLY, null, null),
             terminalClaim = FlowTerminalClaim { cancellation.get() },
         )
     }

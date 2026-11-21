@@ -1,8 +1,6 @@
 package com.ghostlock.app.core.rootscript
 
-import java.nio.file.Files
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -357,51 +355,6 @@ class RootScriptRendererTest {
                 ),
                 "/workspace/result.glr1",
             )
-        }
-    }
-
-    /** Rejects path replacement inputs and proves a successful publish leaves one complete final script. */
-    @Test
-    fun publishRejectsSymlinkWorkspaceAndExistingResultWithoutReplacement() {
-        val renderer = RootScriptRenderer()
-        val plan = basePlan()
-        val parent = Files.createTempDirectory("root-script-publish")
-        val actualWorkspace = Files.createDirectory(parent.resolve("actual"))
-        val linkedWorkspace = parent.resolve("linked")
-        Files.createSymbolicLink(linkedWorkspace, actualWorkspace.fileName)
-        assertThrows(IllegalStateException::class.java) {
-            renderer.publish(linkedWorkspace.toFile(), plan)
-        }
-
-        val occupiedWorkspace = Files.createDirectory(parent.resolve("occupied"))
-        val result = occupiedWorkspace.resolve("root-result.glr1")
-        Files.writeString(result, "sentinel")
-        assertThrows(Exception::class.java) {
-            renderer.publish(occupiedWorkspace.toFile(), plan)
-        }
-        assertEquals("sentinel", Files.readString(result))
-        assertFalse(Files.exists(occupiedWorkspace.resolve("root-script.sh")))
-
-        val occupiedScriptWorkspace = Files.createDirectory(parent.resolve("occupied-script"))
-        val occupiedScript = occupiedScriptWorkspace.resolve("root-script.sh")
-        Files.writeString(occupiedScript, "script-sentinel")
-        assertThrows(Exception::class.java) {
-            renderer.publish(occupiedScriptWorkspace.toFile(), plan)
-        }
-        assertEquals("script-sentinel", Files.readString(occupiedScript))
-        assertFalse(Files.exists(occupiedScriptWorkspace.resolve("root-result.glr1")))
-
-        val publishedWorkspace = Files.createDirectory(parent.resolve("published"))
-        val artifact = renderer.publish(publishedWorkspace.toFile(), plan)
-        val publishedScript = publishedWorkspace.resolve("root-script.sh")
-        assertTrue(artifact.scriptIdentity.matches(publishedScript.toFile()))
-        assertTrue(
-            Files.readString(publishedScript).startsWith(
-                "#!/system/bin/sh\n# GHOSTLOCK_HANDOFF_V1\n",
-            ),
-        )
-        Files.list(publishedWorkspace).use { entries ->
-            assertFalse(entries.anyMatch { path -> path.fileName.toString().endsWith(".tmp") })
         }
     }
 

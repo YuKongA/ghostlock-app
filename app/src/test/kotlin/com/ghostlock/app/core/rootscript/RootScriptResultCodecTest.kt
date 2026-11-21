@@ -208,7 +208,10 @@ class RootScriptResultCodecTest {
             )
         }
         assertThrows(IllegalArgumentException::class.java) {
-            RootScriptResultCodec.decode(ByteArray(256 * 1024 + 1) { 'a'.code.toByte() }, plan)
+            RootScriptResultCodec.decode(
+                ByteArray(RootScriptResultCodec.MAX_RESULT_BYTES + 1) { 'a'.code.toByte() },
+                plan,
+            )
         }
     }
 

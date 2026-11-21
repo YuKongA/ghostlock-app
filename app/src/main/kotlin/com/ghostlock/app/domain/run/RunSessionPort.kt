@@ -28,11 +28,4 @@ interface RunSessionPort {
     /** Clears retained presentation log facts without changing the physical run. */
     fun clearTerminal()
 
-    /**
-     * Exports and opens the terminal share sheet through the Android adapter.
-     *
-     * @param chooserTitle Localized system chooser title supplied by presentation.
-     * @return True when the share intent was created and launched.
-     */
-    suspend fun shareTerminal(chooserTitle: String): Boolean
 }

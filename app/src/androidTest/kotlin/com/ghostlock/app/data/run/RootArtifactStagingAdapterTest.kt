@@ -7,9 +7,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.ghostlock.app.core.runhost.RunHostArtifactKind
 import com.ghostlock.app.core.runhost.RunHostArtifactRequest
 import com.ghostlock.app.core.runhost.RunHostIdentity
-import com.ghostlock.app.core.rootscript.PublishedArtifactIdentity
-import com.ghostlock.app.core.rootscript.ROOT_SCRIPT_HANDOFF_FILE_NAME
-import com.ghostlock.app.core.rootscript.ROOT_SCRIPT_HANDOFF_MARKER
+import com.ghostlock.app.data.rootscript.PublishedArtifactAccess
 import java.io.File
 import java.nio.file.Files
 import java.security.MessageDigest
@@ -61,8 +59,8 @@ class RootArtifactStagingAdapterTest {
             assertArrayEquals(executableBytes, staged[1].file.readBytes())
             assertEquals(DATA_MODE, Os.stat(staged[0].file.absolutePath).st_mode and MODE_MASK)
             assertEquals(EXECUTABLE_MODE, Os.stat(staged[1].file.absolutePath).st_mode and MODE_MASK)
-            assertTrue(staged[0].identity.matches(staged[0].file))
-            assertTrue(staged[1].identity.matches(staged[1].file))
+            assertTrue(PublishedArtifactAccess.matches(staged[0].identity, staged[0].file))
+            assertTrue(PublishedArtifactAccess.matches(staged[1].identity, staged[1].file))
 
             val catalog = RootArtifactStagingAdapter().publishCatalog(staged)
             assertEquals(listOf("profile", "root-manager"), catalog.keys.toList())
@@ -130,8 +128,8 @@ class RootArtifactStagingAdapterTest {
 
             val firstFile = File(workspace.stagedInputs, "first.bin").apply { writeText("first") }
             val secondFile = File(workspace.stagedInputs, "second.bin").apply { writeText("second") }
-            val firstIdentity = PublishedArtifactIdentity.capture(firstFile)
-            val secondIdentity = PublishedArtifactIdentity.capture(secondFile)
+            val firstIdentity = PublishedArtifactAccess.capture(firstFile)
+            val secondIdentity = PublishedArtifactAccess.capture(secondFile)
             val duplicateMetadata = RunHostArtifactRequest(
                 logicalId = "duplicate",
                 kind = RunHostArtifactKind.DATA,
@@ -170,49 +168,27 @@ class RootArtifactStagingAdapterTest {
 
         try {
             artifact.writeBytes(bytes)
-            val mutationIdentity = PublishedArtifactIdentity.capture(artifact)
+            val mutationIdentity = PublishedArtifactAccess.capture(artifact)
             artifact.writeBytes("different!".toByteArray(Charsets.US_ASCII))
-            assertFalse(mutationIdentity.matches(artifact))
+            assertFalse(PublishedArtifactAccess.matches(mutationIdentity, artifact))
 
             artifact.writeBytes(bytes)
-            val inodeIdentity = PublishedArtifactIdentity.capture(artifact)
+            val inodeIdentity = PublishedArtifactAccess.capture(artifact)
             Files.move(artifact.toPath(), original.toPath())
             artifact.writeBytes(bytes)
-            assertFalse(inodeIdentity.matches(artifact))
-            assertFalse(inodeIdentity.matchesObject(artifact))
-            assertTrue(inodeIdentity.matches(original))
+            assertFalse(PublishedArtifactAccess.matches(inodeIdentity, artifact))
+            assertFalse(PublishedArtifactAccess.matchesObject(inodeIdentity, artifact))
+            assertTrue(PublishedArtifactAccess.matches(inodeIdentity, original))
 
-            val symlinkIdentity = PublishedArtifactIdentity.capture(artifact)
+            val symlinkIdentity = PublishedArtifactAccess.capture(artifact)
             assertTrue(artifact.delete())
             target.writeBytes(bytes)
             Files.createSymbolicLink(artifact.toPath(), target.toPath().fileName)
-            assertFalse(symlinkIdentity.matches(artifact))
-            assertFalse(symlinkIdentity.matchesObject(artifact))
+            assertFalse(PublishedArtifactAccess.matches(symlinkIdentity, artifact))
+            assertFalse(PublishedArtifactAccess.matchesObject(symlinkIdentity, artifact))
         } finally {
             Files.deleteIfExists(artifact.toPath())
             root.deleteRecursively()
-        }
-    }
-
-    /** Diagnose publishes the same fixed filename and marker consumed by common run_handoff. */
-    @Test
-    fun diagnosticArtifactUsesFixedHandoffContract() {
-        val workspace = createWorkspace()
-        val identity = RunHostIdentity(UUID.randomUUID().toString().replace("-", ""), 1L)
-        try {
-            val artifact = RootArtifactStagingAdapter().publishDiagnosticArtifact(workspace, identity)
-            val script = File(workspace.rootScript, ROOT_SCRIPT_HANDOFF_FILE_NAME)
-            val text = script.readText(Charsets.US_ASCII)
-
-            assertEquals(script.absolutePath, artifact.scriptPath)
-            assertTrue(artifact.scriptIdentity.matches(script))
-            assertEquals(EXECUTABLE_MODE, Os.stat(script.absolutePath).st_mode and MODE_MASK)
-            assertTrue(text.startsWith("#!/system/bin/sh\n$ROOT_SCRIPT_HANDOFF_MARKER\n"))
-            assertTrue(text.contains("DIAGNOSE_STATUS=\$?"))
-            assertTrue(text.contains("diagnose:shell:handoff-ok"))
-            assertFalse(File(workspace.rootScript, "diagnostic-noop.sh").exists())
-        } finally {
-            assertTrue(workspace.deleteAfterTerminal())
         }
     }
 

@@ -2,7 +2,7 @@ package com.ghostlock.app.core.flow
 
 import com.ghostlock.app.core.rootscript.PublishedArtifactIdentity
 import com.ghostlock.app.core.rootscript.RootScriptArtifact
-import com.ghostlock.app.core.run.KotlinLogConnector
+import com.ghostlock.app.core.log.KotlinLogConnector
 import com.ghostlock.app.domain.run.LogConnectorEnd
 import com.ghostlock.app.domain.run.ProfileSnapshot
 import com.ghostlock.app.domain.run.RunCancellationView
@@ -20,14 +20,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Uniform Flow input and one-shot sequential execution contract. */
-class FlowRequestTest {
-    /** FlowRequest wraps only the neutral frozen input. */
-    @Test
-    fun requestCarriesUniformInput() {
-        val input = input()
-        assertEquals(input, FlowRequest(input).input)
-    }
-
+class SequentialFlowTest {
     /** A fresh sequential Flow returns one typed report, emits logs, and rejects reuse. */
     @Test
     fun sequentialFlowIsOneShotAndReturnsFacts() = runBlocking {
@@ -196,7 +189,7 @@ class FlowRequestTest {
             profile = ProfileSnapshot("profile", ProfileSnapshot.CURRENT_SCHEMA_VERSION, "0".repeat(64)),
             logs = logs,
             cancellation = RunCancellationView { cancellation.get() },
-            reportContext = FlowReportContext(RunCapability.DIAGNOSTIC_ONLY, null),
+            reportContext = FlowReportContext(RunCapability.DIAGNOSTIC_ONLY, null, null),
             terminalClaim = FlowTerminalClaim { false },
         )
     }

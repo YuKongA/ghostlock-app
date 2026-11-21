@@ -1,4 +1,4 @@
-package com.ghostlock.app.core.run
+package com.ghostlock.app.core.log
 
 import com.ghostlock.app.domain.run.*
 import java.io.File
@@ -29,11 +29,13 @@ class LogHubSinkTest {
             hub.start(context(), request(), emptyList()) { RunExecutionResult.Completed(diagnosticReport()) }
         }.exceptionOrNull() is IllegalArgumentException)
         val duplicates = RecordingFactory()
+        val duplicateBindings = duplicates.create() + duplicates.create()
         assertTrue(runCatching {
-            hub.start(context(), request(), duplicates.create() + duplicates.create()) {
+            hub.start(context(), request(), duplicateBindings) {
                 RunExecutionResult.Completed(diagnosticReport())
             }
         }.exceptionOrNull() is IllegalArgumentException)
+        assertTrue(duplicates.files().all(RecordingFileSink::aborted))
         val rejected = RecordingFactory()
         assertFalse(hub.start(context().copy(startAllowed = false), request(), rejected.create()) {
             RunExecutionResult.Completed(diagnosticReport())
@@ -52,6 +54,47 @@ class LogHubSinkTest {
             row.level == LogLevel.Warn && row.message == "log sink: OPEN: synthetic"
         })
         assertEquals(RunTerminal.DIAGNOSTIC_COMPLETE, hub.state.value.report?.terminal)
+    }
+
+    /** Token exhaustion is a pre-commit throw and aborts every supplied sink before propagating. */
+    @Test
+    fun tokenExhaustionAbortsSuppliedSinks() {
+        val hub = LogHub(LogDocumentFormatter())
+        LogHub::class.java.getDeclaredField("activeToken").also { field ->
+            field.isAccessible = true
+            field.setLong(hub, Long.MAX_VALUE)
+        }
+        val factory = RecordingFactory()
+
+        assertTrue(
+            runCatching {
+                hub.start(context(), request(), factory.create()) {
+                    RunExecutionResult.Completed(diagnosticReport())
+                }
+            }.exceptionOrNull() is IllegalStateException,
+        )
+        assertTrue(factory.file().aborted)
+        assertFalse(hub.isRunning())
+    }
+
+    /** The execute coroutine observes the run only after the complete accepted commit is installed. */
+    @Test
+    fun acceptedCommitPrecedesExecuteStart() = runBlocking {
+        val hub = LogHub(LogDocumentFormatter())
+        val factory = RecordingFactory()
+        val observed = CompletableDeferred<Pair<Boolean, RunSessionPhase>>()
+        val release = CompletableDeferred<Unit>()
+
+        assertTrue(hub.start(context(), request(), factory.create()) {
+            observed.complete(hub.isRunning() to hub.state.value.phase)
+            release.await()
+            RunExecutionResult.Completed(diagnosticReport())
+        })
+
+        assertEquals(true to RunSessionPhase.Running, observed.await())
+        release.complete(Unit)
+        withTimeout(10_000L) { factory.file().finished.await() }
+        Unit
     }
 
     @Test
@@ -299,6 +342,7 @@ class LogHubSinkTest {
             return bindings
         }
         fun file(): RecordingFileSink = synchronized(created) { created.last() }
+        fun files(): List<RecordingFileSink> = synchronized(created) { created.toList() }
     }
 
     private class RecordingFileSink(scope: CoroutineScope) : LogFileSink {

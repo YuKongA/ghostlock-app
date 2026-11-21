@@ -5,12 +5,9 @@ import android.system.Os
 import android.system.OsConstants
 import com.ghostlock.app.core.runhost.RunHostArtifactRequest
 import com.ghostlock.app.core.runhost.RunHostArtifactKind
-import com.ghostlock.app.core.runhost.RunHostIdentity
 import com.ghostlock.app.core.flow.PublishedFlowArtifact
 import com.ghostlock.app.core.rootscript.PublishedArtifactIdentity
-import com.ghostlock.app.core.rootscript.ROOT_SCRIPT_HANDOFF_FILE_NAME
-import com.ghostlock.app.core.rootscript.ROOT_SCRIPT_HANDOFF_MARKER
-import com.ghostlock.app.core.rootscript.RootScriptArtifact
+import com.ghostlock.app.data.rootscript.PublishedArtifactAccess
 import com.ghostlock.app.domain.run.RunInputArtifactKind
 import java.io.File
 import java.io.FileOutputStream
@@ -71,44 +68,6 @@ class RootArtifactStagingAdapter {
             require(catalog.size == staged.size) { "duplicate staged artifact identity" }
         }
 
-    /**
-     * Publishes the inert script/result pair required by a diagnostic-only Flow input.
-     *
-     * @param workspace Host workspace.
-     * @param identity Run identity.
-     * @return Published artifact that is never dispatched as a product root script.
-     */
-    fun publishDiagnosticArtifact(
-        workspace: AndroidRunWorkspace,
-        identity: RunHostIdentity,
-    ): RootScriptArtifact {
-        val script = File(workspace.rootScript, ROOT_SCRIPT_HANDOFF_FILE_NAME)
-        val result = File(workspace.rootScript, "diagnostic-result.empty")
-        writeExclusive(
-            script,
-            (
-                "#!/system/bin/sh\n" +
-                    ROOT_SCRIPT_HANDOFF_MARKER + "\n" +
-                    "false\n" +
-                    "DIAGNOSE_STATUS=\$?\n" +
-                    "if [ \"\$DIAGNOSE_STATUS\" -ne 1 ]; then exit 126; fi\n" +
-                    "printf '%s\\n' '[I/0ms] diagnose:shell:handoff-ok'\n" +
-                    "exit 0\n"
-                ).toByteArray(Charsets.US_ASCII),
-            0b101000000,
-        )
-        writeExclusive(result, ByteArray(0), 0b110000000)
-        return RootScriptArtifact(
-            runId = identity.runId,
-            generation = identity.generation,
-            scriptPath = script.absolutePath,
-            resultPath = result.absolutePath,
-            scriptIdentity = PublishedArtifactIdentity.capture(script),
-            resultIdentity = PublishedArtifactIdentity.capture(result),
-            retainedArtifacts = emptyList(),
-        )
-    }
-
     /** Copies one descriptor and verifies source metadata and digest while reading it once. */
     private fun stageOne(
         workspace: AndroidRunWorkspace,
@@ -154,27 +113,11 @@ class RootArtifactStagingAdapter {
         }
         require(actualDigest == metadata.sha256) { "staged digest mismatch" }
         Os.chmod(target.absolutePath, finalMode)
-        val identity = PublishedArtifactIdentity.capture(target)
+        val identity = PublishedArtifactAccess.capture(target)
         require(identity.byteCount == metadata.byteCount && identity.sha256 == metadata.sha256) {
             "published staged artifact identity mismatch"
         }
         return StagedRunInputArtifact(metadata, target, identity)
-    }
-
-    /** Writes one new ordinary file, fsyncs it, and applies the final mode. */
-    private fun writeExclusive(file: File, bytes: ByteArray, mode: Int) {
-        val descriptor = Os.open(
-            file.absolutePath,
-            OsConstants.O_CREAT or OsConstants.O_EXCL or OsConstants.O_WRONLY or
-                OsConstants.O_CLOEXEC or OsConstants.O_NOFOLLOW,
-            mode,
-        )
-        FileOutputStream(descriptor).use { output ->
-            output.write(bytes)
-            output.flush()
-            output.fd.sync()
-        }
-        Os.chmod(file.absolutePath, mode)
     }
 
     /** Maps one validated transport artifact kind to the neutral Flow contract. */

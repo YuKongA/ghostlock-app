@@ -1,9 +1,10 @@
-package com.ghostlock.app.core.run
+package com.ghostlock.app.core.log
 
 import com.ghostlock.app.domain.run.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CompletableJob
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
@@ -22,12 +23,19 @@ import kotlinx.coroutines.launch
  * Each accepted run owns a separate connector scope; this class sees only [LogConnector] and [LogDraft], never a
  * source transport. The dispatcher enqueues one immutable event into independent unbounded sink queues, so no sink
  * I/O blocks connector collection or another sink.
+ *
+ * @param formatter Sole canonical GLLOG2 formatter.
+ * @param dispatcher Application worker dispatcher; the internal overload permits deterministic lifecycle tests.
  */
-class LogHub(
+class LogHub internal constructor(
     private val formatter: LogDocumentFormatter,
+    dispatcher: CoroutineDispatcher,
 ) {
+    /** Creates the production application-lifetime hub on the default worker dispatcher. */
+    constructor(formatter: LogDocumentFormatter) : this(formatter, Dispatchers.Default)
+
     private val lock = Any()
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private val raw = Channel<RawEvent>(Channel.UNLIMITED)
     private val processed = Channel<ProcessedEvent>(Channel.UNLIMITED)
     private val mutableState = MutableStateFlow(RunSessionState())
@@ -66,63 +74,91 @@ class LogHub(
         }
     }
 
-    /** Accepts one Flow with already-created run-scoped storage sinks; rejected sinks are aborted without I/O. */
+    /**
+     * Accepts one Flow with already-created run-scoped storage sinks.
+     *
+     * @param context Frozen run presentation and admission context.
+     * @param sinkRequest Exact storage identity and format request.
+     * @param storageSinks Unopened storage bindings; rejected bindings are aborted without I/O.
+     * @param onExecutionFinished Accepted-run resource finalizer, invoked once even if cancellation wins before body entry.
+     * @param execute Accepted execution body with the sole connector attachment function.
+     * @return True only after the run slot, state, events, job, and completion finalizer are committed.
+     * @throws IllegalArgumentException When the supplied sink roles violate the storage contract.
+     * @throws IllegalStateException When the run token is exhausted.
+     */
     fun start(
         context: RunSessionState,
         sinkRequest: LogSinkRequest,
         storageSinks: List<LogSinkBinding>,
+        onExecutionFinished: () -> Unit = {},
         execute: suspend (suspend (LogConnector) -> LogConnectorEnd) -> RunExecutionResult,
     ): Boolean {
         lateinit var launched: Job
+        var setupJob: Job? = null
         val suppliedSinks = storageSinks.toList()
-        synchronized(lock) {
-            if (activeJob != null || streamFailure != null || !context.startAllowed ||
-                context.backendKey == null || context.backendKey != sinkRequest.backendKey
-            ) {
-                suppliedSinks.forEach { it.sink.abort("log run was not accepted") }
-                return false
-            }
-            val roles = suppliedSinks.map(LogSinkBinding::role)
-            if (roles.size != roles.toSet().size || roles.count { it == LogSinkRole.PRIVATE_FILE } != 1 ||
-                LogSinkRole.UI in roles || suppliedSinks.any { binding ->
-                    binding.role == LogSinkRole.PRIVATE_FILE && binding.sink !is LogFileSink
+        var preCommitSinks = suppliedSinks
+        var committed = false
+        try {
+            synchronized(lock) {
+                if (activeJob != null || streamFailure != null || !context.startAllowed ||
+                    context.backendKey == null || context.backendKey != sinkRequest.backendKey
+                ) {
+                    suppliedSinks.forEach { it.sink.abort("log run was not accepted") }
+                    return false
                 }
-            ) {
-                suppliedSinks.forEach { it.sink.abort("invalid storage sink list") }
-                throw IllegalArgumentException("one private-file sink and at most one MediaStore sink are required")
-            }
-            check(activeToken < Long.MAX_VALUE) { "log hub token exhausted" }
-            val token = ++activeToken
-            val startedAt = System.nanoTime() / 1_000_000L
-            abortRequested = false
-            val ui = runCatching { UiSink(token, scope, ::publishUiSnapshot) }.getOrElse { problem ->
-                suppliedSinks.forEach { it.sink.abort("UI log sink creation failed") }
-                throw problem
-            }
-            val sinks = listOf(LogSinkBinding(LogSinkRole.UI, ui)) + suppliedSinks
-            val run = ActiveRun(token, startedAt, context.minimumLogLevel, sinkRequest, sinks)
-            latestRun = run
-            visibleToken = token
-            mutableState.value = context.copy(
-                phase = RunSessionPhase.Running,
-                report = null,
-                entries = LogRowsSnapshot.fromRecords(emptyList(), token, 0L),
-            )
-            enqueue(RawEvent.Start(run))
-            enqueue(RawEvent.Record(token, LogDraft(LogOrigin.Kotlin, LogLevel.Info, "backend run: ${context.backendLabel}")))
-            launched = scope.launch(start = CoroutineStart.LAZY) {
-                try {
-                    val result = execute { connector -> attachConnector(token, connector) }
-                    awaitConnectors(token)
-                    complete(token, result)
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (problem: Throwable) {
-                    abortConnectors(token)
-                    complete(token, RunExecutionResult.TransportFailure(
-                        "log-hub:exception:${problem::class.java.simpleName}",
-                    ))
-                } finally {
+                val roles = suppliedSinks.map(LogSinkBinding::role)
+                require(
+                    roles.size == roles.toSet().size &&
+                        roles.count { it == LogSinkRole.PRIVATE_FILE } == 1 &&
+                        LogSinkRole.UI !in roles &&
+                        suppliedSinks.none { binding ->
+                            binding.role == LogSinkRole.PRIVATE_FILE && binding.sink !is LogFileSink
+                        },
+                ) { "one private-file sink and at most one MediaStore sink are required" }
+                check(activeToken < Long.MAX_VALUE) { "log hub token exhausted" }
+                val token = activeToken + 1L
+                val startedAt = System.nanoTime() / 1_000_000L
+                val ui = UiSink(token, scope, ::publishUiSnapshot)
+                val sinks = listOf(LogSinkBinding(LogSinkRole.UI, ui)) + suppliedSinks
+                preCommitSinks = sinks
+                val run = ActiveRun(token, startedAt, context.minimumLogLevel, sinkRequest, sinks)
+                val runningState = context.copy(
+                    phase = RunSessionPhase.Running,
+                    report = null,
+                    entries = LogRowsSnapshot.fromRecords(emptyList(), token, 0L),
+                )
+                launched = scope.launch(start = CoroutineStart.LAZY) {
+                    try {
+                        val result = execute { connector -> attachConnector(token, connector) }
+                        awaitConnectors(token)
+                        complete(token, result)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (problem: Throwable) {
+                        abortConnectors(token)
+                        complete(token, RunExecutionResult.TransportFailure(
+                            "log-hub:exception:${problem::class.java.simpleName}",
+                        ))
+                    }
+                }
+                setupJob = launched
+
+                activeToken = token
+                abortRequested = false
+                latestRun = run
+                visibleToken = token
+                mutableState.value = runningState
+                activeJob = launched
+                committed = true
+                enqueue(RawEvent.Start(run))
+                enqueue(
+                    RawEvent.Record(
+                        token,
+                        LogDraft(LogOrigin.Kotlin, LogLevel.Info, "backend run: ${context.backendLabel}"),
+                    ),
+                )
+                launched.invokeOnCompletion {
+                    runCatching(onExecutionFinished)
                     completeAbort(token)
                     synchronized(lock) {
                         if (latestRun?.token == token && activeJob === launched) {
@@ -131,10 +167,17 @@ class LogHub(
                         }
                     }
                 }
+                launched.start()
             }
-            activeJob = launched
+        } catch (problem: Throwable) {
+            if (!committed) {
+                setupJob?.cancel(CancellationException("log run setup failed"))
+                preCommitSinks.forEach { binding ->
+                    runCatching { binding.sink.abort("log run setup failed") }
+                }
+            }
+            throw problem
         }
-        launched.start()
         return true
     }
 

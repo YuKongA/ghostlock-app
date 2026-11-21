@@ -33,6 +33,7 @@ import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -61,6 +62,65 @@ class AndroidLogSinkFactoryTest {
         assertFalse(directory.exists())
         assertEquals(0, gateway.inserts.get())
         assertTrue((bindings.single { it.role == LogSinkRole.PRIVATE_FILE }.sink as LogFileSink).finished.isCompleted)
+    }
+
+    /** A private-sink construction failure degrades to the required failed file role. */
+    @Test
+    fun failedPrivateConstructionKeepsRequiredFileRole() {
+        val failures = CopyOnWriteArrayList<LogSinkFailure>()
+        val factory = factory(
+            gateway = FakeGateway(RecordingOutputStream()),
+            privateSinkBuilder = { _, _ -> error("private-construction") },
+        )
+
+        val bindings = factory.create(request().copy(enabled = false), failures::add)
+        val file = bindings.single { it.role == LogSinkRole.PRIVATE_FILE }.sink as LogFileSink
+
+        assertFalse(file.tryEmit(events().first))
+        assertTrue(file.finished.isCompleted)
+        assertEquals(1, failures.size)
+        assertEquals(LogSinkFailureKind.OPEN, failures.single().kind)
+    }
+
+    /** Optional MediaStore construction failure is reported and omitted while the private file completes. */
+    @Test
+    fun mediaConstructionFailureOmitsOnlyOptionalSink() = runBlocking {
+        val failures = CopyOnWriteArrayList<LogSinkFailure>()
+        val factory = factory(
+            gateway = FakeGateway(RecordingOutputStream()),
+            mediaSinkBuilder = { _, _ -> error("media-construction") },
+        )
+        val bindings = factory.create(request(), failures::add)
+        val file = bindings.single { it.role == LogSinkRole.PRIVATE_FILE }.sink as LogFileSink
+        val (start, entry, end) = events()
+
+        assertTrue(bindings.none { it.role == LogSinkRole.MEDIA_STORE })
+        assertTrue(file.tryEmit(start))
+        assertTrue(file.tryEmit(entry))
+        assertTrue(file.tryEmit(end))
+        val finished = withTimeout(5_000L) { file.finished.await() }
+
+        assertTrue(java.io.File(finished.path).readText().contains("one-record"))
+        assertEquals(1, failures.size)
+        assertEquals(LogSinkFailureKind.OPEN, failures.single().kind)
+    }
+
+    /** An escaping failure aborts the private binding already accumulated by the provider. */
+    @Test
+    fun escapingSetupFailureAbortsAccumulatedBinding() {
+        val privateSink = AbortRecordingFileSink()
+        val factory = factory(
+            gateway = FakeGateway(RecordingOutputStream()),
+            privateSinkBuilder = { _, _ -> privateSink },
+            mediaSinkBuilder = { _, _ -> error("media-construction") },
+        )
+
+        val failure = assertThrows(IllegalStateException::class.java) {
+            factory.create(request()) { throw IllegalStateException("failure-callback") }
+        }
+
+        assertEquals("failure-callback", failure.message)
+        assertEquals(1, privateSink.abortCount.get())
     }
 
     @Test
@@ -136,12 +196,18 @@ class AndroidLogSinkFactoryTest {
         )
     }
 
-    private fun factory(gateway: LogMediaStoreGateway): AndroidLogSinkFactory {
+    private fun factory(
+        gateway: LogMediaStoreGateway,
+        privateSinkBuilder: ((LogSinkRequest, (LogSinkFailure) -> Unit) -> LogFileSink)? = null,
+        mediaSinkBuilder: ((LogSinkRequest, (LogSinkFailure) -> Unit) -> LogSink)? = null,
+    ): AndroidLogSinkFactory {
         val cache = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir
         return AndroidLogSinkFactory(
             privateDirectory = java.io.File(cache, "sink-test-${System.nanoTime()}"),
             gateway = gateway,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+            privateSinkBuilder = privateSinkBuilder,
+            mediaSinkBuilder = mediaSinkBuilder,
         )
     }
 
@@ -195,5 +261,16 @@ class AndroidLogSinkFactoryTest {
         override fun flush() { flushes.incrementAndGet() }
         override fun close() { closed.countDown() }
         fun bytes(): ByteArray = synchronized(bytes) { bytes.toByteArray() }
+    }
+
+    /** Minimal prebuilt file sink used to observe provider cleanup before any worker starts. */
+    private class AbortRecordingFileSink : LogFileSink {
+        val abortCount = AtomicInteger(0)
+        override val finished = CompletableDeferred<com.ghostlock.app.domain.run.LogFilePrefix>()
+        override fun tryEmit(event: LogSinkEvent): Boolean = true
+        override fun abort(reason: String) {
+            abortCount.incrementAndGet()
+            finished.completeExceptionally(IllegalStateException(reason))
+        }
     }
 }

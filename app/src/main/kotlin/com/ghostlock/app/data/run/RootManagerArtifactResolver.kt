@@ -3,7 +3,6 @@ package com.ghostlock.app.data.run
 import android.content.Context
 import android.content.pm.PackageManager
 import android.system.Os
-import com.ghostlock.app.core.run.OpenedRunInputSource
 import com.ghostlock.app.domain.payload.PayloadDefinition
 import com.ghostlock.app.domain.payload.PayloadRootManagers
 import com.ghostlock.app.domain.run.RunInputArtifactKind

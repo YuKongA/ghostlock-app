@@ -137,6 +137,15 @@ data class RunHostSnapshotModel(
     )
 
 }
+
+/** Returns whether a terminal requires retaining the host workspace as recovery or evidence state. */
+fun RunTerminal.requiresWorkspaceRetention(): Boolean = this in setOf(
+    RunTerminal.UNKNOWN,
+    RunTerminal.NEEDS_ATTENTION,
+    RunTerminal.REBOOT_REQUIRED,
+    RunTerminal.REBOOT_REQUESTED,
+)
+
 /** Returns whether one stage result obeys the stable state/reason/exit conjunction matrix. */
 private fun StageResult.isValidStageResult(): Boolean {
     val noExit = exitKind == ExitKind.NONE && exitValue == 0

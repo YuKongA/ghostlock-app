@@ -1,31 +1,12 @@
 package com.ghostlock.app.core.rootscript
 
-import java.io.File
 import java.nio.charset.StandardCharsets
 
 /** Strict GLR1 line-protocol codec. */
 object RootScriptResultCodec {
-    private const val MAX_RESULT_BYTES: Int = 256 * 1024
+    /** Maximum complete GLR1 document size accepted before parsing. */
+    const val MAX_RESULT_BYTES: Int = 256 * 1024
     private val runIdPattern = Regex("^[0-9a-f]{32}$")
-
-    /**
-     * Reads result bytes only after same-open-object verification, then performs strict decoding.
-     *
-     * @param file Pre-created result path.
-     * @param identity Pre-execution object identity.
-     * @param plan The same normalized plan used by the renderer.
-     * @return Complete typed result.
-     * @throws IllegalArgumentException On replacement, truncation, malformed content, or policy mismatch.
-     */
-    fun decode(
-        file: File,
-        identity: PublishedArtifactIdentity,
-        plan: RootScriptExecutionPlan,
-    ): RootScriptResult {
-        val bytes = identity.readSameObject(file)
-            ?: throw IllegalArgumentException("result artifact identity mismatch")
-        return decode(bytes, plan)
-    }
 
     /**
      * Decodes a complete ASCII GLR1 file and validates ordering plus Payload/Finish policy.

@@ -1,4 +1,4 @@
-package com.ghostlock.app.core.run
+package com.ghostlock.app.data.run
 
 import android.os.ParcelFileDescriptor
 import com.ghostlock.app.domain.finish.FinishDefinition
@@ -15,7 +15,7 @@ import org.robolectric.RobolectricTestRunner
 
 /** Same-open-object and owned-source lifecycle checks for the freeze lease. */
 @RunWith(RobolectricTestRunner::class)
-class FrozenRunInputLeaseTest {
+class AndroidFrozenRunInputLeaseTest {
     @Test
     fun duplicateKeepsOpenedInodeAfterPathReplacement() {
         val directory = Files.createTempDirectory("frozen-run-lease")
@@ -54,7 +54,7 @@ class FrozenRunInputLeaseTest {
         assertFalse(source.exists())
     }
 
-    private fun lease(source: OpenedRunInputSource): FrozenRunInputLease = FrozenRunInputLease(
+    private fun lease(source: OpenedRunInputSource): AndroidFrozenRunInputLease = AndroidFrozenRunInputLease(
         input = FrozenRunInput(
             runId = "0123456789abcdef0123456789abcdef",
             generation = 1L,

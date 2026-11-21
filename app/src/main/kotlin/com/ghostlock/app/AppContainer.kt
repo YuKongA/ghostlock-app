@@ -4,11 +4,11 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.ViewModelProvider
 import com.ghostlock.app.data.runhost.client.AppRunHostClient
+import com.ghostlock.app.data.runhost.client.AndroidRunHostDispatchAdapter
 import com.ghostlock.app.data.runhost.client.ShizukuRunHostClient
 import com.ghostlock.app.composition.backend.BackendRegistry
-import com.ghostlock.app.core.run.LogHub
-import com.ghostlock.app.core.run.RunInputFreezer
-import com.ghostlock.app.data.run.AndroidRunSessionAdapter
+import com.ghostlock.app.core.log.LogHub
+import com.ghostlock.app.core.run.RunSessionCoordinator
 import com.ghostlock.app.data.backend.BackendSelectionAdapter
 import com.ghostlock.app.data.backend.BackendSessionStore
 import com.ghostlock.app.data.device.AndroidDeviceStatusAdapter
@@ -16,6 +16,11 @@ import com.ghostlock.app.data.diagnostics.AndroidDiagnosticReportBuilder
 import com.ghostlock.app.data.finish.DataStoreFinishRepository
 import com.ghostlock.app.data.payload.DataStorePayloadRepository
 import com.ghostlock.app.data.privilege.AndroidPrivilegeAdapter
+import com.ghostlock.app.data.rootscript.PreviewRootScriptPublisher
+import com.ghostlock.app.data.rootscript.RootScriptArtifactPublisher
+import com.ghostlock.app.data.run.AndroidLogSinkFactory
+import com.ghostlock.app.data.run.AndroidRunInputFreezer
+import com.ghostlock.app.data.run.AndroidRunPresentationAdapter
 import com.ghostlock.app.data.run.RootManagerArtifactResolver
 import com.ghostlock.app.data.settings.DataStoreAppSelectionRepository
 import com.ghostlock.app.data.settings.DataStoreOperationalPreferencesRepository
@@ -31,7 +36,6 @@ import com.ghostlock.app.domain.payload.ReadPayloadEditorUseCase
 import com.ghostlock.app.domain.payload.SavePayloadEditorUseCase
 import com.ghostlock.app.domain.run.PreviewRootScriptUseCase
 import com.ghostlock.app.domain.run.LogDocumentFormatter
-import com.ghostlock.app.core.rootscript.PreviewRootScriptPublisher
 import com.ghostlock.app.core.rootscript.RootScriptRenderer
 import com.ghostlock.app.domain.privilege.ObservePrivilegeUseCase
 import com.ghostlock.app.domain.privilege.RefreshPrivilegeUseCase
@@ -114,32 +118,42 @@ class AppContainer(context: Context) {
     private val payloadRepository = DataStorePayloadRepository.create(applicationContext, applicationScope)
     private val finishRepository = DataStoreFinishRepository.create(applicationContext, applicationScope)
     private val rootManagerArtifactResolver = RootManagerArtifactResolver(context)
-    private val runInputFreezer = RunInputFreezer(
+    private val runInputFreezer = AndroidRunInputFreezer(
         context = context,
-        payloadRepository = payloadRepository,
-        finishRepository = finishRepository,
         rootManagerResolver = rootManagerArtifactResolver,
     )
     private val logDocumentFormatter = LogDocumentFormatter()
     private val logHub = LogHub(logDocumentFormatter)
+    private val runPresentation = AndroidRunPresentationAdapter(
+        context = context,
+        logHub = logHub,
+        formatter = logDocumentFormatter,
+    )
+    private val runDispatch = AndroidRunHostDispatchAdapter(
+        freezer = runInputFreezer,
+        appClient = AppRunHostClient(context),
+        shizukuClient = ShizukuRunHostClient(context),
+    )
+    private val runSession = RunSessionCoordinator(
+        registryEntries = backendDescriptors,
+        availability = BackendRegistry::availability,
+        backendLabel = { key ->
+            backendUiCatalog.entry(key)?.let(backendUiCatalog::displayName)
+        },
+        selectedKey = { backendSessionStore.selectedKey },
+        logHub = logHub,
+        dispatch = runDispatch,
+        sinkProvider = AndroidLogSinkFactory(applicationContext),
+        presentation = runPresentation,
+        operationalPreferencesPort = operationalPreferencesAdapter,
+        payloadRepository = payloadRepository,
+        finishRepository = finishRepository,
+        applicationScope = applicationScope,
+        observePrivilege = observePrivilege,
+    )
     private val runBackend = RunBackendUseCase(
-        AndroidRunSessionAdapter(
-            context = context,
-            registryEntries = backendDescriptors,
-            availability = BackendRegistry::availability,
-            backendLabel = { key ->
-                backendUiCatalog.entry(key)?.let(backendUiCatalog::displayName)
-            },
-            selectedKey = { backendSessionStore.selectedKey },
-            logHub = logHub,
-            formatter = logDocumentFormatter,
-            freezer = runInputFreezer,
-            appClient = AppRunHostClient(context),
-            shizukuClient = ShizukuRunHostClient(context),
-            operationalPreferencesPort = operationalPreferencesAdapter,
-            applicationScope = applicationScope,
-            observePrivilege = observePrivilege,
-        ),
+        port = runSession,
+        presentation = runPresentation,
     )
     private val diagnosticReportAdapter = AndroidDiagnosticReportBuilder(
         context = context,
@@ -154,7 +168,7 @@ class AppContainer(context: Context) {
     private val previewRootScript = PreviewRootScriptUseCase(
         previewPort = PreviewRootScriptPublisher(
             previewRoot = java.io.File(applicationContext.filesDir, "root-script-preview"),
-            renderer = RootScriptRenderer(),
+            publisher = RootScriptArtifactPublisher(RootScriptRenderer()),
         ),
     )
 

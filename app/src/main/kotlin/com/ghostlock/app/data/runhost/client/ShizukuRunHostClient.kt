@@ -29,7 +29,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import rikka.shizuku.Shizuku
 
 /**
- * Shizuku-domain typed client.
+ * Shizuku shell-UID execution-domain typed client.
  *
  * @param binding Shizuku lifecycle adapter kept outside the typed business protocol.
  */
@@ -265,7 +265,7 @@ private class AndroidShizukuRunHostBinding(context: Context) : ShizukuRunHostBin
     )
 
     private companion object {
-        const val SERVICE_CLASS: String = "com.ghostlock.app.shizuku.GhostlockUserService"
+        const val SERVICE_CLASS: String = "com.ghostlock.app.runhost.shizukushell.ShizukuShellRunHostService"
         const val SHELL_UID: Int = 2000
         const val SHELL_DOMAIN: String = "u:r:shell:s0"
         const val BIND_TIMEOUT_MS: Long = 10_000L

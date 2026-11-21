@@ -6,8 +6,8 @@ import android.net.Uri
 import android.provider.MediaStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.ghostlock.app.core.run.LogHub
-import com.ghostlock.app.core.run.KotlinLogConnector
+import com.ghostlock.app.core.log.LogHub
+import com.ghostlock.app.core.log.KotlinLogConnector
 import com.ghostlock.app.domain.run.DiagnosticOutcome
 import com.ghostlock.app.domain.run.RunCapability
 import com.ghostlock.app.domain.run.RunExecutionResult

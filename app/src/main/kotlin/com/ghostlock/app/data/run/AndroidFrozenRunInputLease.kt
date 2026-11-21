@@ -1,4 +1,4 @@
-package com.ghostlock.app.core.run
+package com.ghostlock.app.data.run
 
 import android.os.Build
 import android.os.ParcelFileDescriptor
@@ -18,7 +18,7 @@ import java.util.UUID
  * One source object opened, identified, and hashed through the same open file description.
  *
  * @property artifact Neutral immutable artifact metadata containing an opaque source token.
- * @property master Master descriptor transferred to [FrozenRunInputLease].
+ * @property master Master descriptor transferred to [AndroidFrozenRunInputLease].
  * @property ownedSource Private source file deleted only after every request duplicate has been created.
  */
 data class OpenedRunInputSource(
@@ -106,7 +106,7 @@ data class OpenedRunInputSource(
  * @property input Immutable neutral run facts; source tokens are opaque lookup keys, never paths.
  * @note Closing the lease closes every master first and then deletes only explicitly owned app-private files.
  */
-class FrozenRunInputLease(
+class AndroidFrozenRunInputLease(
     val input: FrozenRunInput,
     sources: List<OpenedRunInputSource>,
 ) : AutoCloseable {

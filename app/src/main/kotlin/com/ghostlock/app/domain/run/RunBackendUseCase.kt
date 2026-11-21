@@ -10,6 +10,7 @@ import kotlinx.coroutines.Deferred
  */
 class RunBackendUseCase(
     private val port: RunSessionPort,
+    private val presentation: RunPresentationPort,
 ) {
     /** Current session stream; observer cancellation only detaches the observer. */
     val state: StateFlow<RunSessionState> = port.state
@@ -27,5 +28,5 @@ class RunBackendUseCase(
     fun clearTerminal() = port.clearTerminal()
 
     /** @return True when terminal sharing was launched. */
-    suspend fun shareTerminal(chooserTitle: String): Boolean = port.shareTerminal(chooserTitle)
+    suspend fun shareTerminal(chooserTitle: String): Boolean = presentation.shareTerminal(chooserTitle)
 }

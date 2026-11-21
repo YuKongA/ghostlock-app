@@ -44,6 +44,8 @@ ARCHITECTURE_RULES = (
     "manual-jni-object-marshalling",
     "diagnose-native-boundary",
     "superseded-settings-authority",
+    "core-outer-dependency",
+    "retired-run-owner",
 )
 
 REFLECTION_FORBIDDEN_PREFIXES = (
@@ -187,6 +189,7 @@ KEEP_KOTLIN = {
     "app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptRenderer.kt",
     "app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptResult.kt",
     "app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptResultCodec.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/rootscript/PreviewRootScriptPublisher.kt",
     "app/src/main/kotlin/com/ghostlock/app/data/diagnostics/AndroidDiagnosticReportBuilder.kt",
     "app/src/main/kotlin/com/ghostlock/app/data/run/RootManagerArtifactResolver.kt",
     "app/src/main/kotlin/com/ghostlock/app/domain/payload/PayloadEditor.kt",
@@ -197,7 +200,7 @@ KEEP_KOTLIN = {
 KEEP_TESTS = {
     "app/src/test/kotlin/com/ghostlock/app/core/rootscript/PayloadScriptRendererTest.kt",
     "app/src/test/kotlin/com/ghostlock/app/core/rootscript/PayloadVerifierTest.kt",
-    "app/src/test/kotlin/com/ghostlock/app/core/rootscript/PublishedArtifactIdentityTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/rootscript/PublishedArtifactAccessTest.kt",
     "app/src/test/kotlin/com/ghostlock/app/core/rootscript/RootScriptRendererTest.kt",
     "app/src/test/kotlin/com/ghostlock/app/core/rootscript/RootScriptResultCodecTest.kt",
     "app/src/test/kotlin/com/ghostlock/app/data/run/RootManagerArtifactResolverTest.kt",
@@ -455,7 +458,7 @@ HND_MODIFY_TARGETS = {
     "app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptArtifact.kt",
     "app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptRenderer.kt",
     "app/src/main/kotlin/com/ghostlock/app/data/run/RootArtifactStagingAdapter.kt",
-    "app/src/main/kotlin/com/ghostlock/app/shizuku/GhostlockUserService.kt",
+    "app/src/main/kotlin/com/ghostlock/app/runhost/shizukushell/ShizukuShellRunHostService.kt",
     "app/src/test/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseFlowTest.kt",
     "app/src/test/kotlin/com/ghostlock/app/core/flow/FlowRequestTest.kt",
     "app/src/test/kotlin/com/ghostlock/app/core/rootscript/RootScriptRendererTest.kt",
@@ -531,7 +534,7 @@ BACKEND_CORE_MODIFY_TARGETS = {
     "app/src/main/kotlin/com/ghostlock/app/data/backend/BackendSessionStore.kt",
     "app/src/main/kotlin/com/ghostlock/app/data/lua/AndroidLuaScriptRepository.kt",
     "app/src/main/kotlin/com/ghostlock/app/domain/backend/BackendAvailability.kt",
-    "app/src/main/kotlin/com/ghostlock/app/shizuku/GhostlockUserService.kt",
+    "app/src/main/kotlin/com/ghostlock/app/runhost/shizukushell/ShizukuShellRunHostService.kt",
     "app/src/main/kotlin/com/ghostlock/app/ui/screen/module/BackendPage.kt",
     "app/src/main/kotlin/com/ghostlock/app/ui/screen/module/BackendPageUiState.kt",
     "app/src/main/kotlin/com/ghostlock/app/ui/viewmodel/HomeViewModel.kt",
@@ -656,7 +659,7 @@ RUNHOST_OWNER_FILE_MOVES = {
     "app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostRequest.kt":
         "app/src/main/kotlin/com/ghostlock/app/core/runhost/RunHostRequest.kt",
     "app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostService.kt":
-        "app/src/main/kotlin/com/ghostlock/app/runhost/AppRunHostService.kt",
+        "app/src/main/kotlin/com/ghostlock/app/runhost/appuid/AppUidRunHostService.kt",
     "app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostSnapshot.kt":
         "app/src/main/kotlin/com/ghostlock/app/core/runhost/RunHostSnapshot.kt",
     "app/src/main/kotlin/com/ghostlock/app/backend/transport/RunHostSnapshotPoller.kt":
@@ -717,7 +720,7 @@ RUNHOST_OWNER_MODIFY_TARGETS = {
     "app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/jna/DiagnoseNativeBinding.kt",
     "app/src/main/kotlin/com/ghostlock/app/data/run/AndroidRunWorkspace.kt",
     "app/src/main/kotlin/com/ghostlock/app/data/run/RootArtifactStagingAdapter.kt",
-    "app/src/main/kotlin/com/ghostlock/app/shizuku/GhostlockUserService.kt",
+    "app/src/main/kotlin/com/ghostlock/app/runhost/shizukushell/ShizukuShellRunHostService.kt",
     "app/src/main/kotlin/com/ghostlock/app/ui/screen/module/BackendPage.kt",
     "app/src/test/kotlin/com/ghostlock/app/core/run/LogConnectorTest.kt",
     "app/src/androidTest/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseJnaSmokeTest.kt",
@@ -741,6 +744,138 @@ RUNHOST_OWNER_FROZEN_AIDL = {
 ADD_TARGETS.update({target: RUNHOST_OWNER_BATCH for target in RUNHOST_OWNER_FILE_MOVES.values()})
 ADD_TARGETS.update({target: RUNHOST_OWNER_BATCH for target in RUNHOST_OWNER_ADD_TARGETS})
 
+RUN_CORE_BATCH = "P-RUN-CORE-001/批次02"
+
+RUN_CORE_FILE_MOVES = {
+    "app/src/main/kotlin/com/ghostlock/app/core/run/FrozenRunInputLease.kt":
+        "app/src/main/kotlin/com/ghostlock/app/data/run/AndroidFrozenRunInputLease.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/run/KotlinLogConnector.kt":
+        "app/src/main/kotlin/com/ghostlock/app/core/log/KotlinLogConnector.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/run/LogHub.kt":
+        "app/src/main/kotlin/com/ghostlock/app/core/log/LogHub.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/run/RunInputFreezer.kt":
+        "app/src/main/kotlin/com/ghostlock/app/data/run/AndroidRunInputFreezer.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/flow/FlowRequestTest.kt":
+        "app/src/test/kotlin/com/ghostlock/app/core/flow/SequentialFlowTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/rootscript/PublishedArtifactIdentityTest.kt":
+        "app/src/test/kotlin/com/ghostlock/app/data/rootscript/PublishedArtifactAccessTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/run/FrozenRunInputLeaseTest.kt":
+        "app/src/test/kotlin/com/ghostlock/app/data/run/AndroidFrozenRunInputLeaseTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/run/LogConnectorTest.kt":
+        "app/src/test/kotlin/com/ghostlock/app/core/log/LogConnectorTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/run/LogHubSinkTest.kt":
+        "app/src/test/kotlin/com/ghostlock/app/core/log/LogHubSinkTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/run/RunInputFreezerPersistenceTest.kt":
+        "app/src/test/kotlin/com/ghostlock/app/core/run/RunSessionCoordinatorTest.kt",
+}
+
+RUN_CORE_FILE_DELETES = {
+    "app/src/main/kotlin/com/ghostlock/app/core/flow/FlowRequest.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/run/AndroidRunSessionAdapter.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/run/AndroidRunSessionAdapterTest.kt",
+}
+
+RUN_CORE_ADD_TARGETS = {
+    "app/src/main/kotlin/com/ghostlock/app/core/flow/RootScriptResultReader.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/run/LogSinkProvider.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/run/RunDispatchPort.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/run/RunInputCutoff.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/run/RunSessionCoordinator.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/runhost/ProductRootScriptPlanMapper.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/rootscript/AndroidRootScriptResultReader.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/rootscript/PreviewRootScriptPublisher.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/rootscript/PublishedArtifactAccess.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/rootscript/RootScriptArtifactPublisher.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/run/AndroidRunPresentationAdapter.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/runhost/client/AndroidRunHostDispatchAdapter.kt",
+    "app/src/main/kotlin/com/ghostlock/app/domain/run/RunPresentationPort.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/flow/BackendFlowInputResultReaderTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/runhost/ProductRootScriptPlanMapperTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/rootscript/AndroidRootScriptResultReaderTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/rootscript/PreviewRootScriptPublisherTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/rootscript/RootScriptArtifactPublisherTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/run/AndroidRunInputFreezerTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/run/AndroidRunPresentationAdapterTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/runhost/wire/RunHostRequestWireCodecTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/data/rootscript/RootScriptPhysicalIoTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/data/run/AndroidFrozenRunInputLeaseDeviceTest.kt",
+}
+
+RUN_CORE_MODIFY_TARGETS = {
+    "app/src/main/kotlin/com/ghostlock/app/AppContainer.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/flow/BackendFlowInput.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/rootscript/PublishedArtifactIdentity.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptRenderer.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptResultCodec.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/runhost/RunHostSnapshot.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/run/AndroidLogSinkFactory.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/run/RootArtifactStagingAdapter.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/run/RootManagerArtifactResolver.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/runhost/host/ProductRunPreparer.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/runhost/wire/RunHostRequestWireCodec.kt",
+    "app/src/main/kotlin/com/ghostlock/app/domain/run/RunBackendUseCase.kt",
+    "app/src/main/kotlin/com/ghostlock/app/domain/run/RunSessionPort.kt",
+    "app/src/main/kotlin/com/ghostlock/app/runhost/appuid/AppUidRunHostService.kt",
+    "app/src/main/kotlin/com/ghostlock/app/runhost/shizukushell/ShizukuShellRunHostService.kt",
+    "app/src/test/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseFlowTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/rootscript/RootScriptRendererTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/rootscript/RootScriptResultCodecTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/runhost/RunHostSnapshotContractTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/runhost/host/ProductRunPreparerTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseJnaSmokeTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/data/run/AndroidLogSinkFactoryTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/data/run/LogHubMediaStoreIntegrationTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/data/run/RootArtifactStagingAdapterTest.kt",
+}
+
+RUN_CORE_FROZEN_TARGETS = {
+    "app/src/main/aidl/com/ghostlock/app/run/FinishItemParcel.aidl",
+    "app/src/main/aidl/com/ghostlock/app/run/IRunHost.aidl",
+    "app/src/main/aidl/com/ghostlock/app/run/IRunHostCallback.aidl",
+    "app/src/main/aidl/com/ghostlock/app/run/ItemResultParcel.aidl",
+    "app/src/main/aidl/com/ghostlock/app/run/PayloadItemParcel.aidl",
+    "app/src/main/aidl/com/ghostlock/app/run/RunHostLogRecord.aidl",
+    "app/src/main/aidl/com/ghostlock/app/run/RunHostRequest.aidl",
+    "app/src/main/aidl/com/ghostlock/app/run/RunHostSnapshot.aidl",
+    "app/src/main/aidl/com/ghostlock/app/run/RunHostSnapshotReply.aidl",
+    "app/src/main/aidl/com/ghostlock/app/run/RunInputArtifactParcel.aidl",
+    "app/src/main/aidl/com/ghostlock/app/run/StageResultParcel.aidl",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/jna/DiagnoseJnaLibrary.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/flow/RunReportComposer.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptArtifact.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptExecutionPlan.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/rootscript/RootScriptResult.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/runhost/RunHostProtocol.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/runhost/RunHostRequest.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/run/AndroidRunWorkspace.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/runhost/client/AppRunHostClient.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/runhost/client/RunHostClientOutcome.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/runhost/client/RunHostLogConnector.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/runhost/client/RunHostSnapshotPoller.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/runhost/client/ShizukuRunHostClient.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/runhost/wire/RunHostParcelBudget.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/runhost/wire/RunHostSnapshotWireCodec.kt",
+    "app/src/main/kotlin/com/ghostlock/app/domain/run/FrozenRunInput.kt",
+}
+
+ADD_TARGETS.update({target: RUN_CORE_BATCH for target in RUN_CORE_ADD_TARGETS})
+
+RUNHOST_DEDUP_BATCH = "P-RUN-X-001/批次03"
+
+RUNHOST_DEDUP_ADD_TARGETS = {
+    "app/src/main/kotlin/com/ghostlock/app/core/runhost/RunHostController.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/runhost/host/AndroidRunHostPreparationAdapter.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/runhost/wire/RunHostBinderEndpoint.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/runhost/RunHostControllerTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/runhost/host/AndroidRunHostPreparationAdapterTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/runhost/wire/RunHostBinderEndpointTest.kt",
+}
+
+RUNHOST_DEDUP_MODIFY_TARGETS = {
+    "app/src/main/kotlin/com/ghostlock/app/runhost/appuid/AppUidRunHostService.kt",
+    "app/src/main/kotlin/com/ghostlock/app/runhost/shizukushell/ShizukuShellRunHostService.kt",
+}
+
 D7_FILE_MOVES = {
     "app/src/main/kotlin/com/ghostlock/app/ui/backend/Backend43284ConfigCard.kt":
         "app/src/main/kotlin/com/ghostlock/app/ui/backend/BackendToggleConfigCard.kt",
@@ -763,7 +898,7 @@ R3_FILE_DELETES = {
     "app/src/main/aidl/com/ghostlock/app/flow/IFlowHost.aidl",
     "app/src/main/aidl/com/ghostlock/app/flow/IFlowHostCallback.aidl",
     "app/src/main/aidl/com/ghostlock/app/shizuku/IGhostlockCallback.aidl",
-    "app/src/main/aidl/com/ghostlock/app/shizuku/IGhostlockUserService.aidl",
+    "app/src/main/aidl/com/ghostlock/app/shizuku/IShizukuShellRunHostService.aidl",
     "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43284glued/AndroidIpSecRuntime.kt",
     "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43284glued/BackendCve43284Glued.kt",
     "app/src/main/kotlin/com/ghostlock/app/backend/backends/cve43284glued/Flow43284GluedEntry.kt",
@@ -825,7 +960,7 @@ OLD_AIDL_CONTRACTS = {
     "IFlowHost": "app/src/main/aidl/com/ghostlock/app/flow/IFlowHost.aidl",
     "IFlowHostCallback": "app/src/main/aidl/com/ghostlock/app/flow/IFlowHostCallback.aidl",
     "IGhostlockCallback": "app/src/main/aidl/com/ghostlock/app/shizuku/IGhostlockCallback.aidl",
-    "IGhostlockUserService": "app/src/main/aidl/com/ghostlock/app/shizuku/IGhostlockUserService.aidl",
+    "IShizukuShellRunHostService": "app/src/main/aidl/com/ghostlock/app/shizuku/IShizukuShellRunHostService.aidl",
 }
 
 MANUAL_JNI_EXEMPT_PREFIXES = (
@@ -1362,12 +1497,12 @@ def architecture_violations(repo: Path) -> list[str]:
     registry_import = composition_prefix + "BackendRegistry"
     registry_import_allowlist = {
         source_prefix + "AppContainer.kt",
-        source_prefix + "runhost/AppRunHostService.kt",
-        source_prefix + "shizuku/GhostlockUserService.kt",
+        source_prefix + "runhost/appuid/AppUidRunHostService.kt",
+        source_prefix + "runhost/shizukushell/ShizukuShellRunHostService.kt",
     }
     runtime_only_registry_callers = {
-        source_prefix + "runhost/AppRunHostService.kt",
-        source_prefix + "shizuku/GhostlockUserService.kt",
+        source_prefix + "runhost/appuid/AppUidRunHostService.kt",
+        source_prefix + "runhost/shizukushell/ShizukuShellRunHostService.kt",
     }
     import_pattern = re.compile(r"(?m)^\s*import\s+([A-Za-z_][A-Za-z0-9_.]*)")
     violations: list[str] = []
@@ -1405,8 +1540,8 @@ def architecture_violations(repo: Path) -> list[str]:
                     f"superseded-settings-authority|{rel}:{line}|{match.group(0)}"
                 )
         if rel in {
-            source_prefix + "runhost/AppRunHostService.kt",
-            source_prefix + "shizuku/GhostlockUserService.kt",
+            source_prefix + "runhost/appuid/AppUidRunHostService.kt",
+            source_prefix + "runhost/shizukushell/ShizukuShellRunHostService.kt",
         }:
             for match in re.finditer(
                 r"\b(?:DataStoreFactory|dataStoreFile|getSharedPreferences)\b|androidx\.datastore\.",
@@ -1431,8 +1566,8 @@ def architecture_violations(repo: Path) -> list[str]:
             )
 
         if rel in {
-            source_prefix + "runhost/AppRunHostService.kt",
-            source_prefix + "shizuku/GhostlockUserService.kt",
+            source_prefix + "runhost/appuid/AppUidRunHostService.kt",
+            source_prefix + "runhost/shizukushell/ShizukuShellRunHostService.kt",
         }:
             for match in re.finditer(
                 r"\b(?:DataStore|DataStoreFactory|dataStoreFile|getSharedPreferences)\b|"
@@ -1454,6 +1589,12 @@ def architecture_violations(repo: Path) -> list[str]:
             line = stripped.count("\n", 0, match.start()) + 1
             violations.append(
                 f"backend-retired-contract|{rel}:{line}|{match.group(0)}"
+            )
+
+        for match in re.finditer(r"\b(?:AndroidRunSessionAdapter|FlowRequest)\b", stripped):
+            line = stripped.count("\n", 0, match.start()) + 1
+            violations.append(
+                f"retired-run-owner|{rel}:{line}|{match.group(0)}"
             )
 
         for match in re.finditer(r"\bclass\s+LogHub\b", stripped):
@@ -1507,6 +1648,14 @@ def architecture_violations(repo: Path) -> list[str]:
                 "com.ghostlock.app.backend.launcher.",
             )):
                 rule = "runhost-owner-boundary"
+            elif layer == "core" and imported.startswith((
+                "android.",
+                "androidx.",
+                "com.ghostlock.app.data.",
+                "com.ghostlock.app.run.",
+                "java.io.File",
+            )):
+                rule = "core-outer-dependency"
             elif rel.startswith(source_prefix + "core/runhost/") and imported.startswith((
                 "android.",
                 "androidx.",
@@ -1601,6 +1750,16 @@ def architecture_violations(repo: Path) -> list[str]:
                 violations.append(f"{rule}|{rel}:{line}|{imported}")
 
         body_without_imports = re.sub(r"(?m)^\s*import\s+[^\n]+$", "", stripped)
+        if layer == "core":
+            for match in re.finditer(
+                r"\b(?:androidx?\.|com\.ghostlock\.app\.(?:data|run)\.|"
+                r"java\.io\.File\b|ParcelFileDescriptor\b)",
+                body_without_imports,
+            ):
+                line = body_without_imports.count("\n", 0, match.start()) + 1
+                violations.append(
+                    f"core-outer-dependency|{rel}:{line}|{match.group(0)}"
+                )
         if (
             not rel.startswith(source_prefix + "composition/backend/")
             and composition_prefix in body_without_imports
@@ -1667,7 +1826,7 @@ def architecture_violations(repo: Path) -> list[str]:
             )
 
         if rel in {
-            source_prefix + "core/run/LogHub.kt",
+            source_prefix + "core/log/LogHub.kt",
             source_prefix + "data/run/AndroidLogSinkFactory.kt",
             source_prefix + "domain/run/LogDocumentFormatter.kt",
         }:
@@ -1675,7 +1834,7 @@ def architecture_violations(repo: Path) -> list[str]:
                 line = stripped.count("\n", 0, match.start()) + 1
                 violations.append(f"superseded-run-log-topology|{rel}:{line}|{match.group(0)}")
 
-        if rel == source_prefix + "core/run/LogHub.kt":
+        if rel == source_prefix + "core/log/LogHub.kt":
             for match in re.finditer(
                 r"\b(?:FdLogConnector|RunHostLogConnector|KotlinLogConnector|"
                 r"ParcelFileDescriptor|IRunHost|IRunHostCallback|DiagnoseJnaLibrary)\b",
@@ -1687,10 +1846,9 @@ def architecture_violations(repo: Path) -> list[str]:
                 )
 
         if rel in {
-            source_prefix + "core/run/LogHub.kt",
+            source_prefix + "core/log/LogHub.kt",
             source_prefix + "data/runhost/client/AppRunHostClient.kt",
             source_prefix + "data/runhost/client/ShizukuRunHostClient.kt",
-            source_prefix + "data/run/AndroidRunSessionAdapter.kt",
         }:
             for match in re.finditer(
                 r"\(\s*LogRecord\s*\)\s*->\s*Unit|\btoDomainOrNull\b",
@@ -1702,13 +1860,14 @@ def architecture_violations(repo: Path) -> list[str]:
                 )
 
         if rel in {
-            source_prefix + "core/run/LogHub.kt",
-            source_prefix + "core/run/KotlinLogConnector.kt",
+            source_prefix + "core/log/LogHub.kt",
+            source_prefix + "core/log/KotlinLogConnector.kt",
             source_prefix + "data/runhost/client/RunHostLogConnector.kt",
             source_prefix + "data/run/AndroidLogSinkFactory.kt",
         }:
             for match in re.finditer(
-                r"\bChannel(?:\s*<[^>\n]+>)?\s*\(\s*([^,\)\n]+)",
+                r"\bChannel(?:\s*<[^>\n]+>)?\s*\(\s*"
+                r"(?:capacity\s*=\s*)?([^,\)\n]+)",
                 stripped,
             ):
                 capacity = re.sub(r"\s+", "", match.group(1))
@@ -1766,7 +1925,7 @@ def architecture_violations(repo: Path) -> list[str]:
                 )
 
     if len(log_hub_declarations) != 1 or not log_hub_declarations[0].startswith(
-        source_prefix + "core/run/LogHub.kt:"
+        source_prefix + "core/log/LogHub.kt:"
     ):
         violations.append(
             "diagnose-native-boundary|app/src/main/kotlin:1|log-hub-declarations="
@@ -1799,43 +1958,179 @@ def architecture_violations(repo: Path) -> list[str]:
                 + str(len(exact_loads))
             )
 
-    prepare_commit_hosts = (
-        source_prefix + "runhost/AppRunHostService.kt",
-        source_prefix + "shizuku/GhostlockUserService.kt",
-    )
-    for host_rel in prepare_commit_hosts:
-        host_path = repo / host_rel
-        if not host_path.is_file():
-            violations.append(
-                f"diagnose-native-boundary|{host_rel}:1|missing-atomic-prepare-host"
-            )
+    runhost_paths = {
+        "controller": source_prefix + "core/runhost/RunHostController.kt",
+        "preparation": source_prefix + "data/runhost/host/AndroidRunHostPreparationAdapter.kt",
+        "endpoint": source_prefix + "data/runhost/wire/RunHostBinderEndpoint.kt",
+        "app_entry": source_prefix + "runhost/appuid/AppUidRunHostService.kt",
+        "shizuku_entry": source_prefix + "runhost/shizukushell/ShizukuShellRunHostService.kt",
+    }
+    runhost_texts: dict[str, str] = {}
+    for owner, rel in runhost_paths.items():
+        path = repo / rel
+        if not path.is_file():
+            violations.append(f"runhost-owner-boundary|{rel}:1|missing-{owner}")
             continue
-        host_text = strip_kotlin(host_path.read_text(encoding="utf-8"))
-        required_order = (
-            r"val\s+candidate\s*=\s*PreparedRun\s*\("
-            r"(?:(?!val\s+candidateSnapshot).)*?"
-            r"flow\s*=\s*runtimeEntry\.createFlow\s*\(\s*\)"
-            r"(?:(?!val\s+candidateSnapshot).)*?"
-            r"val\s+candidateSnapshot\s*=\s*preparedSnapshot\s*\(\s*candidate"
-            r"(?:(?!val\s+code).)*?"
-            r"val\s+code\s*=\s*synchronized\s*\(\s*lock\s*\)\s*\{"
-            r"\s*lifecycle\.prepare\s*\(\s*identity\s*,\s*fingerprint\s*\)"
-            r"(?:(?!prepared\s*=\s*candidate).)*?prepared\s*=\s*candidate"
-            r"(?:(?!snapshot\s*=\s*candidateSnapshot).)*?snapshot\s*=\s*candidateSnapshot"
-        )
-        if re.search(required_order, host_text, flags=re.DOTALL) is None:
+        runhost_texts[owner] = strip_kotlin(path.read_text(encoding="utf-8"))
+
+    def require_exact(owner: str, pattern: str, count: int, fact: str) -> None:
+        text = runhost_texts.get(owner)
+        if text is None:
+            return
+        actual = len(re.findall(pattern, text, flags=re.MULTILINE))
+        if actual != count:
             violations.append(
-                f"diagnose-native-boundary|{host_rel}:1|non-atomic-prepare-publication"
+                f"runhost-owner-boundary|{runhost_paths[owner]}:1|{fact}-count={actual}"
             )
-        throwable_cleanup = (
-            r"catch\s*\(\s*problem\s*:\s*Throwable\s*\)\s*\{"
-            r"\s*workspace\?\.deleteAfterTerminal\s*\(\s*\)"
-            r"\s*RunHostCode\.IO_FAILURE"
-        )
-        if re.search(throwable_cleanup, host_text, flags=re.DOTALL) is None:
+
+    require_exact("controller", r"\bRunHostStateMachine\s*\(\s*\)", 1, "state-machine-owner")
+    require_exact("controller", r"\bKotlinLogConnector\s*\(\s*\)", 1, "kotlin-log-owner")
+    require_exact("controller", r"\bBackendFlowInput\s*\(", 1, "flow-input-owner")
+    require_exact(
+        "controller",
+        r"private\s+var\s+inFlightPhysicalOperations\s*:\s*Int",
+        1,
+        "quiescence-counter",
+    )
+    require_exact(
+        "controller",
+        r"private\s+var\s+currentEpochCompletion\s*:\s*CompletableFuture<Unit>\?",
+        1,
+        "quiescence-barrier",
+    )
+    require_exact(
+        "controller",
+        r"private\s+var\s+\w+\s*:\s*CompletableFuture\s*<",
+        1,
+        "completion-field",
+    )
+    require_exact(
+        "controller",
+        r"\bdata\s+class\s+RunHostPreparedCandidate\b",
+        1,
+        "candidate-declaration",
+    )
+    controller_text = runhost_texts.get("controller", "")
+    for token, pattern in (
+        ("android-dependency", r"\b(?:androidx?\.|ParcelFileDescriptor|SystemClock)"),
+        ("outer-owner", r"\b(?:BackendRegistry|AndroidRunWorkspace|IRunHost|IRunHostCallback)\b"),
+        ("second-work-queue", r"\b(?:Channel|ArrayDeque|ConcurrentLinkedQueue|BlockingQueue)\b"),
+        ("timeout-retry-monitor", r"\b(?:withTimeout|retry|monitor)\w*\b"),
+    ):
+        match = re.search(pattern, controller_text)
+        if match:
+            line = controller_text.count("\n", 0, match.start()) + 1
             violations.append(
-                f"diagnose-native-boundary|{host_rel}:1|prepare-load-failure-not-cleaned"
+                f"runhost-owner-boundary|{runhost_paths['controller']}:{line}|{token}"
             )
+
+    preparation_text = runhost_texts.get("preparation", "")
+    for token, pattern in (
+        ("preparation-lifecycle-owner", r"\b(?:RunHostStateMachine|KotlinLogConnector)\b"),
+        ("preparation-wire-owner", r"\b(?:IRunHost|IRunHostCallback|RunHostLogRecord|SystemClock)\b"),
+        ("preparation-composition-owner", r"\bBackendRegistry\b"),
+        ("preparation-terminal-owner", r"\b(?:publishTerminal|droppedLogs|logSequence)\b"),
+    ):
+        match = re.search(pattern, preparation_text)
+        if match:
+            line = preparation_text.count("\n", 0, match.start()) + 1
+            violations.append(
+                f"runhost-owner-boundary|{runhost_paths['preparation']}:{line}|{token}"
+            )
+
+    endpoint_text = runhost_texts.get("endpoint", "")
+    for required, pattern in (
+        ("request-parcel-budget", r"\brequest\.parcelDataSize\s*\(\s*\)"),
+        ("descriptor-duplication", r"\brequest\.duplicateDescriptors\s*\("),
+        ("bounded-snapshot", r"\btoBoundedWire\s*\(\s*\)"),
+        ("log-timestamp", r"\bSystemClock\.elapsedRealtime\s*\(\s*\)"),
+    ):
+        if re.search(pattern, endpoint_text) is None:
+            violations.append(
+                f"runhost-owner-boundary|{runhost_paths['endpoint']}:1|missing-{required}"
+            )
+    for token, pattern in (
+        ("endpoint-lifecycle-owner", r"\b(?:RunHostStateMachine|BackendFlowInput|KotlinLogConnector)\b"),
+        ("endpoint-composition-owner", r"\bBackendRegistry\b"),
+        ("endpoint-workspace-owner", r"\b(?:AndroidRunWorkspace|deleteAfterTerminal)\b"),
+        ("endpoint-framework-destroy", r"\b(?:frameworkDestroyAuthorized|stopSelf|System\.exit)\b"),
+    ):
+        match = re.search(pattern, endpoint_text)
+        if match:
+            line = endpoint_text.count("\n", 0, match.start()) + 1
+            violations.append(
+                f"runhost-owner-boundary|{runhost_paths['endpoint']}:{line}|{token}"
+            )
+
+    business_methods = ("setCallback", "prepare", "start", "getSnapshot", "cancel", "requestClose")
+    for owner in ("app_entry", "shizuku_entry"):
+        entry_text = runhost_texts.get(owner, "")
+        require_exact(owner, r"\bBackendRegistry\s*\.\s*runtime\s*\(", 1, "direct-runtime-projection")
+        require_exact(owner, r"\bRunHostController\s*\(\s*\)", 1, "controller-composition")
+        require_exact(
+            owner,
+            r"\bAndroidRunHostPreparationAdapter\s*\(",
+            1,
+            "preparation-composition",
+        )
+        require_exact(owner, r"\bRunHostBinderEndpoint\s*\(", 1, "endpoint-composition")
+        for method in business_methods:
+            require_exact(owner, rf"\bendpoint\s*\.\s*{method}\s*\(", 1, f"delegate-{method}")
+        match = re.search(
+            r"\b(?:RunHostStateMachine|BackendFlowInput|KotlinLogConnector|"
+            r"RunHostPreparedCandidate|CoroutineScope|synchronized|Atomic\w*)\b",
+            entry_text,
+        )
+        if match:
+            line = entry_text.count("\n", 0, match.start()) + 1
+            violations.append(
+                f"runhost-owner-boundary|{runhost_paths[owner]}:{line}|entry-business-owner"
+            )
+        require_exact(
+            owner,
+            r"\bcontroller\s*\.\s*frameworkDestroyAuthorized\s*\(\s*\)",
+            1,
+            "entry-local-destroy-gate",
+        )
+    require_exact("app_entry", r"\bstopSelf\s*\(\s*\)", 1, "app-stop-self")
+    require_exact("shizuku_entry", r"\bSystem\s*\.\s*exit\s*\(\s*0\s*\)", 1, "shizuku-exit")
+    require_exact("shizuku_entry", r"@Volatile", 1, "live-context-volatility")
+    if "context?.let" not in runhost_texts.get("shizuku_entry", ""):
+        violations.append(
+            f"runhost-owner-boundary|{runhost_paths['shizuku_entry']}:1|missing-live-context-read"
+        )
+
+    runtime_callers: list[str] = []
+    state_machine_owners: list[str] = []
+    candidate_declarations: list[str] = []
+    for path in kotlin_source_paths(repo):
+        rel = relative(path, repo)
+        text = strip_kotlin(path.read_text(encoding="utf-8"))
+        runtime_callers.extend(
+            [rel] * len(re.findall(r"\bBackendRegistry\s*\.\s*runtime\s*\(", text))
+        )
+        state_machine_owners.extend(
+            [rel] * len(re.findall(r"\bRunHostStateMachine\s*\(\s*\)", text))
+        )
+        candidate_declarations.extend(
+            [rel] * len(re.findall(r"\bdata\s+class\s+RunHostPreparedCandidate\b", text))
+        )
+    expected_entries = sorted([runhost_paths["app_entry"], runhost_paths["shizuku_entry"]])
+    if sorted(runtime_callers) != expected_entries:
+        violations.append(
+            "runhost-owner-boundary|app/src/main/kotlin:1|runtime-callers="
+            + ",".join(runtime_callers)
+        )
+    if state_machine_owners != [runhost_paths["controller"]]:
+        violations.append(
+            "runhost-owner-boundary|app/src/main/kotlin:1|state-machine-owners="
+            + ",".join(state_machine_owners)
+        )
+    if candidate_declarations != [runhost_paths["controller"]]:
+        violations.append(
+            "runhost-owner-boundary|app/src/main/kotlin:1|candidate-declarations="
+            + ",".join(candidate_declarations)
+        )
 
     old_aidl_pattern = re.compile(
         r"\b(?:" + "|".join(re.escape(name) for name in OLD_AIDL_CONTRACTS) + r")\b"
@@ -1913,6 +2208,23 @@ def file_action_rows(repo: Path) -> list[dict[str, object]]:
     paths += [
         repo / rel
         for rel in sorted(
+            RUNHOST_DEDUP_ADD_TARGETS | RUNHOST_DEDUP_MODIFY_TARGETS
+        )
+        if (repo / rel).is_file()
+    ]
+    paths += [
+        repo / rel
+        for rel in sorted(
+            set(RUN_CORE_FILE_MOVES.values())
+            | RUN_CORE_ADD_TARGETS
+            | RUN_CORE_MODIFY_TARGETS
+            | RUN_CORE_FROZEN_TARGETS
+        )
+        if (repo / rel).is_file()
+    ]
+    paths += [
+        repo / rel
+        for rel in sorted(
             set(RUNHOST_OWNER_FILE_MOVES.values())
             | RUNHOST_OWNER_ADD_TARGETS
             | RUNHOST_OWNER_MODIFY_TARGETS
@@ -1939,6 +2251,7 @@ def file_action_rows(repo: Path) -> list[dict[str, object]]:
     backend_core_move_targets = set(BACKEND_CORE_FILE_MOVES.values())
     settings_move_targets = set(SETTINGS_FILE_MOVES.values())
     runhost_owner_move_targets = set(RUNHOST_OWNER_FILE_MOVES.values())
+    run_core_move_targets = set(RUN_CORE_FILE_MOVES.values())
     for path in sorted(set(paths)):
         rel = relative(path, repo)
         text = path.read_text(encoding="utf-8", errors="replace")
@@ -1946,7 +2259,37 @@ def file_action_rows(repo: Path) -> list[dict[str, object]]:
         target = rel
         batch = "FROZEN"
         evidence = "existing-unlisted-path"
-        if rel in RUNHOST_OWNER_FILE_MOVES:
+        if rel in RUNHOST_DEDUP_MODIFY_TARGETS:
+            action = "modify-in-place"
+            batch = RUNHOST_DEDUP_BATCH
+            evidence = "approved-runhost-dedup-boundary"
+        elif rel in RUNHOST_DEDUP_ADD_TARGETS:
+            action = "added-approved"
+            batch = RUNHOST_DEDUP_BATCH
+            evidence = "runhost-dedup-target"
+        elif rel in RUN_CORE_FILE_MOVES:
+            action = "move-source-1to1"
+            target = RUN_CORE_FILE_MOVES[rel]
+            batch = RUN_CORE_BATCH
+            evidence = "retired-run-core-source"
+        elif rel in RUN_CORE_FILE_DELETES:
+            action = "delete"
+            target = "ABSENT"
+            batch = RUN_CORE_BATCH
+            evidence = "removed-run-core-owner"
+        elif rel in RUN_CORE_MODIFY_TARGETS:
+            action = "modify-in-place"
+            batch = RUN_CORE_BATCH
+            evidence = "approved-run-core-boundary"
+        elif rel in RUN_CORE_ADD_TARGETS or rel in run_core_move_targets:
+            action = "move-target-1to1" if rel in run_core_move_targets else "added-approved"
+            batch = RUN_CORE_BATCH
+            evidence = "run-core-target"
+        elif rel in RUN_CORE_FROZEN_TARGETS:
+            action = "freeze"
+            batch = RUN_CORE_BATCH
+            evidence = "unchanged-run-core-contract"
+        elif rel in RUNHOST_OWNER_FILE_MOVES:
             action = "move-source-1to1"
             target = RUNHOST_OWNER_FILE_MOVES[rel]
             batch = RUNHOST_OWNER_BATCH
@@ -2052,6 +2395,32 @@ def file_action_rows(repo: Path) -> list[dict[str, object]]:
             "source_state": "PRESENT",
         })
     current_paths = {str(row["path"]) for row in rows}
+    for rel, target in sorted(RUN_CORE_FILE_MOVES.items()):
+        if rel in current_paths:
+            continue
+        rows.append({
+            "path": rel,
+            "symbol_resource": "file",
+            "current_owner": "ABSENT",
+            "action": "move-source-1to1",
+            "target": target,
+            "batch": RUN_CORE_BATCH,
+            "evidence": "retired-run-core-source",
+            "source_state": "ABSENT",
+        })
+    for rel in sorted(RUN_CORE_FILE_DELETES):
+        if rel in current_paths:
+            continue
+        rows.append({
+            "path": rel,
+            "symbol_resource": "file",
+            "current_owner": "ABSENT",
+            "action": "delete",
+            "target": "ABSENT",
+            "batch": RUN_CORE_BATCH,
+            "evidence": "removed-run-core-owner",
+            "source_state": "ABSENT",
+        })
     for rel, target in sorted(RUNHOST_OWNER_FILE_MOVES.items()):
         if rel in current_paths:
             continue
@@ -2466,10 +2835,13 @@ def write_inventory(repo: Path, output: Path) -> None:
         atomic_write(output / name, payload)
 
 
-def verify_inventory(repo: Path, fixtures: Path, section: str = "all") -> dict[str, int]:
-    missing = [name for name in TSV_NAMES if not (fixtures / name).is_file()]
-    if missing:
-        raise ValueError("missing manifests: " + ",".join(missing))
+def verify_inventory(repo: Path, fixtures: Path | None = None, section: str = "all") -> dict[str, int]:
+    if section != "architecture":
+        if fixtures is None:
+            raise ValueError("--fixtures is required for section " + section)
+        missing = [name for name in TSV_NAMES if not (fixtures / name).is_file()]
+        if missing:
+            raise ValueError("missing manifests: " + ",".join(missing))
     result: dict[str, int] = {}
     if section in {"all", "architecture"}:
         violations = architecture_violations(repo)
@@ -2497,6 +2869,83 @@ def verify_inventory(repo: Path, fixtures: Path, section: str = "all") -> dict[s
         if unclassified:
             raise ValueError("unclassified Kotlin: " + ",".join(sorted(unclassified)))
         by_path = {row["path"]: row for row in rows}
+        for source, target in RUN_CORE_FILE_MOVES.items():
+            source_row = by_path.get(source)
+            target_row = by_path.get(target)
+            if (repo / source).exists():
+                raise ValueError("stale run core move source: " + source)
+            if (
+                source_row is None
+                or source_row.get("source_state") != "ABSENT"
+                or source_row.get("action") != "move-source-1to1"
+                or source_row.get("target") != target
+                or source_row.get("batch") != RUN_CORE_BATCH
+            ):
+                raise ValueError("invalid run core move source row: " + source)
+            if (
+                target_row is None
+                or target_row.get("source_state") != "PRESENT"
+                or target_row.get("action") != "move-target-1to1"
+                or target_row.get("batch") != RUN_CORE_BATCH
+            ):
+                raise ValueError("invalid run core move target row: " + target)
+        for deleted in RUN_CORE_FILE_DELETES:
+            deleted_row = by_path.get(deleted)
+            if (repo / deleted).exists():
+                raise ValueError("stale run core deleted owner: " + deleted)
+            if (
+                deleted_row is None
+                or deleted_row.get("source_state") != "ABSENT"
+                or deleted_row.get("action") != "delete"
+                or deleted_row.get("target") != "ABSENT"
+                or deleted_row.get("batch") != RUN_CORE_BATCH
+            ):
+                raise ValueError("invalid run core delete row: " + deleted)
+        for added in RUN_CORE_ADD_TARGETS:
+            added_row = by_path.get(added)
+            if (
+                added_row is None
+                or added_row.get("source_state") != "PRESENT"
+                or added_row.get("action") != "added-approved"
+                or added_row.get("batch") != RUN_CORE_BATCH
+            ):
+                raise ValueError("invalid run core added row: " + added)
+        for modified in RUN_CORE_MODIFY_TARGETS - RUNHOST_DEDUP_MODIFY_TARGETS:
+            modified_row = by_path.get(modified)
+            if (
+                modified_row is None
+                or modified_row.get("source_state") != "PRESENT"
+                or modified_row.get("action") != "modify-in-place"
+                or modified_row.get("batch") != RUN_CORE_BATCH
+            ):
+                raise ValueError("invalid run core modified row: " + modified)
+        for frozen in RUN_CORE_FROZEN_TARGETS:
+            frozen_row = by_path.get(frozen)
+            if (
+                frozen_row is None
+                or frozen_row.get("source_state") != "PRESENT"
+                or frozen_row.get("action") != "freeze"
+                or frozen_row.get("batch") != RUN_CORE_BATCH
+            ):
+                raise ValueError("invalid run core frozen row: " + frozen)
+        for added in RUNHOST_DEDUP_ADD_TARGETS:
+            added_row = by_path.get(added)
+            if (
+                added_row is None
+                or added_row.get("source_state") != "PRESENT"
+                or added_row.get("action") != "added-approved"
+                or added_row.get("batch") != RUNHOST_DEDUP_BATCH
+            ):
+                raise ValueError("invalid runhost dedup added row: " + added)
+        for modified in RUNHOST_DEDUP_MODIFY_TARGETS:
+            modified_row = by_path.get(modified)
+            if (
+                modified_row is None
+                or modified_row.get("source_state") != "PRESENT"
+                or modified_row.get("action") != "modify-in-place"
+                or modified_row.get("batch") != RUNHOST_DEDUP_BATCH
+            ):
+                raise ValueError("invalid runhost dedup modified row: " + modified)
         for source, target in SETTINGS_FILE_MOVES.items():
             source_row = by_path.get(source)
             target_row = by_path.get(target)
@@ -2510,7 +2959,16 @@ def verify_inventory(repo: Path, fixtures: Path, section: str = "all") -> dict[s
                 or source_row.get("batch") != SETTINGS_BATCH
             ):
                 raise ValueError("invalid settings move source row: " + source)
-            if (
+            if target in RUN_CORE_FILE_MOVES:
+                if (
+                    target_row is None
+                    or target_row.get("source_state") != "ABSENT"
+                    or target_row.get("action") != "move-source-1to1"
+                    or target_row.get("target") != RUN_CORE_FILE_MOVES[target]
+                    or target_row.get("batch") != RUN_CORE_BATCH
+                ):
+                    raise ValueError("invalid retired settings move target row: " + target)
+            elif (
                 target_row is None
                 or target_row.get("source_state") != "PRESENT"
                 or target_row.get("action") != "move-target-1to1"
@@ -2571,10 +3029,28 @@ def verify_inventory(repo: Path, fixtures: Path, section: str = "all") -> dict[s
                 raise ValueError("missing retired R6 source row: " + source)
             if source_row.get("action") != "move-source-1to1" or source_row.get("target") != target:
                 raise ValueError("invalid R6 source mapping: " + source)
-            if target_row is None or target_row.get("source_state") != "PRESENT":
-                raise ValueError("missing R6 move target: " + target)
-            if target_row.get("action") != "move-target-1to1" or target_row.get("batch") != "R6":
-                raise ValueError("invalid R6 target action: " + target)
+            if target in RUN_CORE_FILE_MOVES:
+                if (
+                    target_row is None
+                    or target_row.get("source_state") != "ABSENT"
+                    or target_row.get("action") != "move-source-1to1"
+                    or target_row.get("target") != RUN_CORE_FILE_MOVES[target]
+                    or target_row.get("batch") != RUN_CORE_BATCH
+                ):
+                    raise ValueError("invalid retired R6 move target: " + target)
+            elif target in RUN_CORE_MODIFY_TARGETS:
+                if (
+                    target_row is None
+                    or target_row.get("source_state") != "PRESENT"
+                    or target_row.get("action") != "modify-in-place"
+                    or target_row.get("batch") != RUN_CORE_BATCH
+                ):
+                    raise ValueError("invalid superseded R6 move target: " + target)
+            else:
+                if target_row is None or target_row.get("source_state") != "PRESENT":
+                    raise ValueError("missing R6 move target: " + target)
+                if target_row.get("action") != "move-target-1to1" or target_row.get("batch") != "R6":
+                    raise ValueError("invalid R6 target action: " + target)
         for source, target in LOG_V3_FILE_MOVES.items():
             source_row = by_path.get(source)
             target_row = by_path.get(target)
@@ -2584,10 +3060,19 @@ def verify_inventory(repo: Path, fixtures: Path, section: str = "all") -> dict[s
                 raise ValueError("missing retired log v3 source row: " + source)
             if source_row.get("action") != "move-source-1to1" or source_row.get("target") != target:
                 raise ValueError("invalid log v3 source mapping: " + source)
-            if target_row is None or target_row.get("source_state") != "PRESENT":
-                raise ValueError("missing log v3 move target: " + target)
-            if target_row.get("action") != "move-target-1to1" or target_row.get("batch") != "P-LOG-X-001/批次02":
-                raise ValueError("invalid log v3 target action: " + target)
+            if target in RUN_CORE_MODIFY_TARGETS:
+                if (
+                    target_row is None
+                    or target_row.get("source_state") != "PRESENT"
+                    or target_row.get("action") != "modify-in-place"
+                    or target_row.get("batch") != RUN_CORE_BATCH
+                ):
+                    raise ValueError("invalid superseded log v3 move target: " + target)
+            else:
+                if target_row is None or target_row.get("source_state") != "PRESENT":
+                    raise ValueError("missing log v3 move target: " + target)
+                if target_row.get("action") != "move-target-1to1" or target_row.get("batch") != "P-LOG-X-001/批次02":
+                    raise ValueError("invalid log v3 target action: " + target)
         for source, target in BACKEND_CORE_FILE_MOVES.items():
             source_row = by_path.get(source)
             target_row = by_path.get(target)
@@ -3428,7 +3913,12 @@ def command_inventory(args: argparse.Namespace) -> None:
 
 
 def command_verify(args: argparse.Namespace) -> None:
-    result = verify_inventory(Path(args.repo).resolve(), Path(args.fixtures).resolve(), args.section)
+    fixtures = (
+        Path(args.fixtures).resolve()
+        if args.section != "architecture" and args.fixtures is not None
+        else None
+    )
+    result = verify_inventory(Path(args.repo).resolve(), fixtures, args.section)
     print("D0_VERIFY=PASS " + " ".join(f"{key}={value}" for key, value in result.items()))
 
 
@@ -3490,7 +3980,7 @@ def parser() -> argparse.ArgumentParser:
     inventory.set_defaults(handler=command_inventory)
     verify = sub.add_parser("verify")
     verify.add_argument("--repo", required=True)
-    verify.add_argument("--fixtures", required=True)
+    verify.add_argument("--fixtures", help="TSV directory; required except for --section architecture")
     verify.add_argument(
         "--section",
         choices=("all", "architecture", "inventory", "component", "ksu", "surface"),

@@ -14,7 +14,7 @@ import com.ghostlock.app.run.IRunHostCallback
 import com.ghostlock.app.run.RunHostLogRecord
 import com.ghostlock.app.run.RunHostRequest
 import com.ghostlock.app.run.RunHostSnapshot
-import com.ghostlock.app.runhost.AppRunHostService
+import com.ghostlock.app.runhost.appuid.AppUidRunHostService
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CoroutineScope
@@ -26,7 +26,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * App-domain client for the same typed IRunHost contract used by Shizuku.
+ * App-UID execution-domain client for the same typed IRunHost contract used by Shizuku shell execution.
  *
  * @param context Application context used only for binding the dedicated `:flowhost` service.
  */
@@ -185,7 +185,7 @@ class AppRunHostClient(context: Context) {
             }
         }
         val bound = applicationContext.bindService(
-            Intent(applicationContext, AppRunHostService::class.java),
+            Intent(applicationContext, AppUidRunHostService::class.java),
             connection,
             Context.BIND_AUTO_CREATE,
         )

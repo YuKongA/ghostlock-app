@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -52,6 +53,55 @@ class RunHostStateMachineTest {
         assertEquals(RunHostCode.UNSAFE_TO_DESTROY, machine.requestClose(identity))
         assertEquals(true, machine.claimTerminal(identity))
         assertEquals(RunHostState.TERMINAL, machine.state())
+        assertNull(machine.claimTerminal(identity))
+        assertFalse(machine.frameworkDestroyAuthorized())
+        assertEquals(RunHostCode.OK, machine.requestClose(identity))
+        assertEquals(RunHostState.DESTROYED, machine.state())
+        assertTrue(machine.frameworkDestroyAuthorized())
+        assertEquals(RunHostCode.ALREADY_APPLIED, machine.requestClose(identity))
+    }
+
+    @Test
+    fun cancelBeforeStartPreventsLateStart() {
+        listOf(false, true).forEach { prepareFirst ->
+            val machine = RunHostStateMachine()
+            assertEquals(RunHostCode.BAD_STATE, machine.cancel(identity, false))
+            assertEquals(RunHostState.NEW, machine.state())
+
+            assertEquals(RunHostCode.OK, machine.setCallback(identity))
+            if (prepareFirst) {
+                assertEquals(RunHostCode.OK, machine.prepare(identity, fingerprint))
+            }
+
+            assertEquals(RunHostCode.OK, machine.cancel(identity, false))
+            assertEquals(RunHostState.TERMINAL, machine.state())
+            assertEquals(RunHostCode.BAD_STATE, machine.start(identity))
+            assertNull(machine.claimTerminal(identity))
+            assertEquals(RunHostCode.ALREADY_APPLIED, machine.cancel(identity, true))
+            assertFalse(machine.frameworkDestroyAuthorized())
+            assertEquals(RunHostCode.OK, machine.requestClose(identity))
+            assertEquals(RunHostState.DESTROYED, machine.state())
+            assertTrue(machine.frameworkDestroyAuthorized())
+        }
+    }
+
+    @Test
+    fun terminalClaimWinsOverLateCancelAndRepeatedClaim() {
+        val machine = RunHostStateMachine()
+        assertEquals(RunHostCode.OK, machine.prepare(identity, fingerprint))
+        assertEquals(RunHostCode.OK, machine.start(identity))
+
+        assertEquals(false, machine.claimTerminal(identity))
+        assertEquals(RunHostState.TERMINAL, machine.state())
+        assertEquals(RunHostCode.ALREADY_APPLIED, machine.cancel(identity, true))
+        assertNull(machine.claimTerminal(identity))
+        assertEquals(RunHostState.TERMINAL, machine.state())
+        assertEquals(RunHostCode.OK, machine.snapshotCode(identity))
+        assertFalse(machine.frameworkDestroyAuthorized())
+        assertEquals(RunHostCode.OK, machine.requestClose(identity))
+        assertEquals(RunHostCode.ALREADY_APPLIED, machine.requestClose(identity))
+        assertEquals(RunHostState.DESTROYED, machine.state())
+        assertTrue(machine.frameworkDestroyAuthorized())
     }
 
     /** Exact identity and fingerprint retries remain idempotent before start. */

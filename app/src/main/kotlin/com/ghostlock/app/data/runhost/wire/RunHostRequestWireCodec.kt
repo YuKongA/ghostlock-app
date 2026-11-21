@@ -10,11 +10,100 @@ import com.ghostlock.app.core.runhost.RunHostPayloadAcceptance
 import com.ghostlock.app.core.runhost.RunHostPayloadItemRequest
 import com.ghostlock.app.core.runhost.RunHostPayloadKind
 import com.ghostlock.app.core.runhost.RunHostRequestModel
+import com.ghostlock.app.domain.finish.FinishKind
+import com.ghostlock.app.domain.finish.FinishSeverity
+import com.ghostlock.app.domain.payload.PayloadAcceptance
+import com.ghostlock.app.domain.payload.PayloadKind
+import com.ghostlock.app.domain.run.FrozenRunInput
 import com.ghostlock.app.data.run.OpenedRunInputArtifact
 import com.ghostlock.app.run.FinishItemParcel
 import com.ghostlock.app.run.PayloadItemParcel
 import com.ghostlock.app.run.RunHostRequest
 import com.ghostlock.app.run.RunInputArtifactParcel
+
+/**
+ * Builds the generated typed request from one neutral frozen input.
+ *
+ * @param duplicateSource Callback that duplicates one opaque source token into caller-owned wire state.
+ * @return AIDL request owning every successfully duplicated descriptor.
+ * @throws Throwable After closing every descriptor duplicated before a mapping failure.
+ */
+internal fun FrozenRunInput.toWireRequest(
+    duplicateSource: (String) -> ParcelFileDescriptor,
+): RunHostRequest {
+    val invocationByItemId = artifactInvocations.associateBy { invocation -> invocation.itemId }
+    val openedArtifacts = mutableListOf<RunInputArtifactParcel>()
+    try {
+        inputArtifacts.forEach { artifact ->
+            openedArtifacts += RunInputArtifactParcel().also { parcel ->
+                parcel.logicalId = artifact.logicalId
+                parcel.kind = artifact.kind.wireValue
+                parcel.byteCount = artifact.byteCount
+                parcel.sha256 = artifact.sha256
+                parcel.fd = duplicateSource(artifact.sourceToken)
+            }
+        }
+        return RunHostRequest().also { request ->
+            request.runId = runId
+            request.generation = generation
+            request.backendKey = backendKey
+            request.profileArtifactId = profile.artifactId
+            request.artifacts = openedArtifacts
+            request.payloadItems = payload.enabledItems().map { item ->
+                PayloadItemParcel().also { parcel ->
+                    parcel.itemId = item.id
+                    parcel.required = item.required
+                    when (item.kind) {
+                        PayloadKind.Command -> {
+                            require(item.scriptMode == 0) {
+                                "script-mode Payload requires a staged USER_SCRIPT artifact"
+                            }
+                            parcel.kind = 1
+                            parcel.artifactId = null
+                            parcel.args = item.command.trim().split(Regex("\\s+")).filter(String::isNotEmpty)
+                        }
+
+                        PayloadKind.RootManager -> {
+                            val invocation = requireNotNull(invocationByItemId[item.id]) {
+                                "root-manager artifact invocation is missing"
+                            }
+                            parcel.kind = 3
+                            parcel.artifactId = invocation.artifactId
+                            parcel.args = invocation.args
+                        }
+
+                        PayloadKind.Lkm -> error("LKM artifact staging belongs to a carrier child plan")
+                    }
+                    parcel.acceptanceKind = when (item.acceptance) {
+                        PayloadAcceptance.ExitZero -> 1
+                        PayloadAcceptance.DaemonAck -> 2
+                        PayloadAcceptance.ModulePresent -> 3
+                    }
+                }
+            }
+            request.finishItems = finish.items.map { item ->
+                FinishItemParcel().also { parcel ->
+                    parcel.itemId = item.id
+                    parcel.kind = when (item.kind) {
+                        FinishKind.Command -> 1
+                        FinishKind.Script -> error("Finish script staging belongs to the file artifact adapter")
+                        FinishKind.Reboot -> 3
+                    }
+                    parcel.severity = when (item.severity) {
+                        FinishSeverity.Normal -> 1
+                        FinishSeverity.SafetyCritical -> 2
+                    }
+                    parcel.alwaysRun = item.alwaysRun
+                    parcel.artifactId = null
+                    parcel.args = item.args
+                }
+            }
+        }
+    } catch (problem: Throwable) {
+        openedArtifacts.forEach { artifact -> runCatching { artifact.fd.close() } }
+        throw problem
+    }
+}
 
 /**
  * Converts a generated AIDL request into the normalized in-process contract.

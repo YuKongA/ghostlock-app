@@ -2,7 +2,6 @@ package com.ghostlock.app.core.flow
 
 import com.ghostlock.app.core.rootscript.RootScriptArtifact
 import com.ghostlock.app.core.rootscript.RootScriptExecutionPlan
-import com.ghostlock.app.core.rootscript.RootScriptResultCodec
 import com.ghostlock.app.domain.run.BackendTerminalHint
 import com.ghostlock.app.domain.run.DiagnosticOutcome
 import com.ghostlock.app.domain.run.ExitKind
@@ -15,22 +14,26 @@ import com.ghostlock.app.domain.run.RunReport
 import com.ghostlock.app.domain.run.RunTerminal
 import com.ghostlock.app.domain.run.StageResult
 import com.ghostlock.app.domain.run.StageState
-import java.io.File
 
 /**
  * Pure report inputs frozen before one Flow starts.
  *
  * @property runCapability Immutable registry capability.
  * @property productPlan Exact plan rendered into the root script for PRODUCT_ROOT; absent for diagnostics.
+ * @property productResultReader Bound physical result reader for PRODUCT_ROOT; absent for diagnostics.
  */
 data class FlowReportContext(
     val runCapability: RunCapability,
     val productPlan: RootScriptExecutionPlan?,
+    val productResultReader: RootScriptResultReader?,
 ) {
     init {
         require(runCapability != RunCapability.UNRESOLVED) { "Flow capability is unresolved" }
+        require((productPlan == null) == (productResultReader == null)) {
+            "Flow product plan and result reader must be present together"
+        }
         require((runCapability == RunCapability.PRODUCT_ROOT) == (productPlan != null)) {
-            "Flow product plan disagrees with capability"
+            "Flow product inputs disagree with capability"
         }
     }
 }
@@ -148,21 +151,7 @@ private fun BackendFlowInput.productReport(
     val decode = if (facts.scriptDispatch.state != StageState.SUCCESS) {
         RootScriptDecodeOutcome.NotAttempted
     } else {
-        val resultFile = File(rootScript.resultPath)
-        if (!rootScript.resultIdentity.matchesObject(resultFile)) {
-            RootScriptDecodeOutcome.IdentityMismatch
-        } else {
-            runCatching {
-                RootScriptResultCodec.decode(
-                    file = resultFile,
-                    identity = rootScript.resultIdentity,
-                    plan = plan,
-                )
-            }.fold(
-                onSuccess = RootScriptDecodeOutcome::Complete,
-                onFailure = { RootScriptDecodeOutcome.Malformed },
-            )
-        }
+        requireNotNull(reportContext.productResultReader) { "Flow product result reader is missing" }.read()
     }
     return RunReportComposer().compose(plan, facts, decode, cancelled)
 }

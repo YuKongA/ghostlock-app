@@ -1,4 +1,4 @@
-package com.ghostlock.app.core.run
+package com.ghostlock.app.core.log
 
 import com.ghostlock.app.data.log.FdLogConnector
 import com.ghostlock.app.core.runhost.RunHostCode

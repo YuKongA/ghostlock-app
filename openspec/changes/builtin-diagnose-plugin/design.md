@@ -14,12 +14,12 @@
 
 <!-- migrated-source: 043fdf6a Beads gl-dek description -->
 本节是迁入OpenSpec的现行设计/验收正文；Beads只保存执行状态、原批准和实际证据。历史来源仅作追溯。
-2026-11-20生产批准保留；scope仅§19.5.70的148行。2026-11-21用户明确把AGP现行唯一版本固定为`9.1.0`，旧AGP `9.4.1` P0只保留为历史证据，不能作为当前门PASS；现有source不回退成空模块重演旧实验，改在当前树执行同命令的`9.1.0`工具链复验。当前执行状态与依赖只读Beads。不接provider/import/Custom/真实backend，不用旧240行。
+2026-11-20生产批准保留；scope仅§19.5.70补正后的150行。2026-11-21用户明确把AGP现行唯一版本固定为`9.1.0`，旧AGP `9.4.1` P0只保留为历史证据，不能作为当前门PASS；现有source不回退成空模块重演旧实验，改在当前树执行同命令的`9.1.0`工具链复验。当前执行状态与依赖只读Beads。不接provider/import/Custom/真实backend，不用旧240行。
 原始来源（已归档/承接）：docs/archive/20261121-1301-backend-root-execution-unification-plan.md#p-backend-x-002-decision-03-batch-01
 
 ### 提交基线与 build hunk owner 修订（2026-11-21）
 
-本批源码候选必须以已独立验证的 [E-BUILD-X-002 Allure 报告门基线](../allure-reporting-gates/design.md#record-allure-reporting-gates) 为 parent；随后才由 `gl-4on` 增加剩余构建闭环清理。三棵候选的逐路径／hunk唯一 owner与临时 index冻结方法以该设计为准，取代“只反转 Beads 依赖即可提交”的旧假设，但不改变本节148行production scope、AGP `9.1.0`裁定或产品合同。
+本批源码候选必须以已独立验证并提交的 [E-BUILD-X-002 Allure 报告门基线](../allure-reporting-gates/design.md#record-allure-reporting-gates) 为祖先，并直接以其后的 [runtime source baseline恢复批](../allure-reporting-gates/design.md#record-runtime-source-baseline-recovery) 为 parent；随后才由 `gl-4on` 增加剩余构建闭环清理。四棵候选的逐路径／hunk唯一 owner与临时 index冻结方法以该设计为准，取代“只反转 Beads 依赖即可提交”的旧假设。此次审计只补上两个已被App/Shizuku client真实调用、却漏出ledger的support文件，因此本节production scope由148行机械补正为150行；AGP `9.1.0`裁定和产品合同不变。
 
 `gl-dek` 必须整文件拥有 `plugin/packages/diagnose/build.gradle.kts` 的最终字节，并拥有 `nativeTestContractsHost` 的 plugin-owned source inputs、tools CMake／Diagnose ABI include、App plugin asset／boundary producer及 `nativeBuildAndroid` plugin总入口。它不得吸收 Allure task／bridge／报告规范，也不得吸收旧 ONDK／profile／LKM／CI／`checkAll` 清理。`gl-4on`可以复验前述 producer，但不再拥有这些前驱源码。该划分使 `gl-dek` 候选本身可构建，且避免同一未跟踪 build script 在两个提交间出现无定义中间态。
 
@@ -31,7 +31,7 @@
 
 ###### P-BACKEND-X-002/决策03/批次01：builtin Diagnose package/catalog 最小纵切（L级 exact design；production已批准；当前状态只读Beads）
 
-> 状态沿革：本节只细化决策03获认可后的第一个真实vertical。目标不是一次实现完全体，而是把现有release-visible Diagnose从same-APK静态`BackendRegistry`搬成一个由APK携带、首次启动安装到唯一catalog、经PFD传给App／Shizuku RunHost、在one-shot进程内动态加载、由插件Kotlin直接拥有JNA／private DSO的builtin `.glplugin.zip`。用户在production批准前纠正封装合同：扩展名必须明示ZIP；普通ZIP重排／改timestamp／改压缩级别不得改变plugin逻辑身份；manifest改为除自身外全部regular file共用SHA-256表并允许multidex；删除64 MiB／64 entry／128 KiB等格式级固定上限；whole-ZIP SHA-256与byteCount不再进入index、catalog或wire，ZIP CRC只负责容器意外损坏，安全完整性仍由APK认证的semantic content root与manifest逐文件SHA-256承担。该差异不引入Merkle tree、第二installer或第二identity authority，但实质改变manifest、catalog identity、wire及验收，故旧`BXP3-B1-C`结论不覆盖。作者差异自检和同一非作者critic定点复审均已完成，critic最终阻断／重要／建议／新增finding均为0；用户随后于2026-11-20明确批准本批production implementation。旧`BXP3-B1-P0`曾在Gradle 9.8.1／Kotlin 2.4.20／AGP 9.4.1的空API／最小core输入上通过，只作为当时输入的历史证据。用户于2026-11-21明确把AGP现行唯一版本固定为`9.1.0`；由于148行source已经存在，当前不删除或掏空模块重演旧实验，而是在现有工作树用同一命令复验Gradle 9.8.1／Kotlin 2.4.20／AGP 9.1.0的Android＋JVM＋App consumer与configuration-cache闭包。复验前保持`NOT_RUN`，其余产品门也不得提前记为PASS。
+> 状态沿革：本节只细化决策03获认可后的第一个真实vertical。目标不是一次实现完全体，而是把现有release-visible Diagnose从same-APK静态`BackendRegistry`搬成一个由APK携带、首次启动安装到唯一catalog、经PFD传给App／Shizuku RunHost、在one-shot进程内动态加载、由插件Kotlin直接拥有JNA／private DSO的builtin `.glplugin.zip`。用户在production批准前纠正封装合同：扩展名必须明示ZIP；普通ZIP重排／改timestamp／改压缩级别不得改变plugin逻辑身份；manifest改为除自身外全部regular file共用SHA-256表并允许multidex；删除64 MiB／64 entry／128 KiB等格式级固定上限；whole-ZIP SHA-256与byteCount不再进入index、catalog或wire，ZIP CRC只负责容器意外损坏，安全完整性仍由APK认证的semantic content root与manifest逐文件SHA-256承担。该差异不引入Merkle tree、第二installer或第二identity authority，但实质改变manifest、catalog identity、wire及验收，故旧`BXP3-B1-C`结论不覆盖。作者差异自检和同一非作者critic定点复审均已完成，critic最终阻断／重要／建议／新增finding均为0；用户随后于2026-11-20明确批准本批production implementation。旧`BXP3-B1-P0`曾在Gradle 9.8.1／Kotlin 2.4.20／AGP 9.4.1的空API／最小core输入上通过，只作为当时输入的历史证据。用户于2026-11-21明确把AGP现行唯一版本固定为`9.1.0`；由于补正后的150行source已经存在，当前不删除或掏空模块重演旧实验，而是在已恢复runtime前驱的候选树用同一命令复验Gradle 9.8.1／Kotlin 2.4.20／AGP 9.1.0的Android＋JVM＋App consumer与configuration-cache闭包。复验前保持`NOT_RUN`，其余产品门也不得提前记为PASS。
 
 ###### 19.5.68 现状与基线
 
@@ -287,6 +287,8 @@ UI不再用显示层补一个选择结果。`BackendUiCatalog.selectedEntry()`�
 | MODIFY | `app/src/main/kotlin/com/ghostlock/app/runhost/shizukushell/ShizukuShellRunHostService.kt` | 删除BackendRegistry；同一loader；authorized destroy安排进程退出；client death完全沿用`daemon(false)`合同，不另建callback-death/watchdog状态机。 |
 | MODIFY | `app/src/main/kotlin/com/ghostlock/app/data/runhost/client/AppRunHostClient.kt` | terminal/rejection后执行close→destroy→unbind→等待binder death；超时quarantine。仅internal constructor可注入默认no-op的“bind后callback前／terminal drain后close前”测试latch，production constructor不可见且不改变业务协议。 |
 | MODIFY | `app/src/main/kotlin/com/ghostlock/app/data/runhost/client/ShizukuRunHostClient.kt` | 与App同一teardown判据；不能只依赖unbind flag；复用同样仅internal、默认no-op的两个device-test latch。 |
+| MODIFY | `app/src/main/kotlin/com/ghostlock/app/data/runhost/client/RunHostClientOutcome.kt` | 定义两个client共同使用的internal、默认no-op `RunHostClientTestLatches`；不扩大production constructor或业务协议。 |
+| MODIFY | `app/src/main/kotlin/com/ghostlock/app/data/runhost/client/RunHostSnapshotPoller.kt` | 定义两个client共用的post-terminal process-death timeout常量；复用现有poller，不建立第二timeout owner。 |
 | MODIFY | `app/src/main/kotlin/com/ghostlock/app/data/runhost/client/AndroidRunHostDispatchAdapter.kt` | request lease关闭plugin archive PFD；teardown未验证不返回Completed。 |
 | MODIFY | `app/src/main/kotlin/com/ghostlock/app/runhost/README.md` | 记录catalog不进RunHost、exact object重验、plugin-owned native与one-shot kill。 |
 | MODIFY | `docs/development/full-process-uml.md` | 只在implementation切换真实owner同批把已实现链改为catalog→PFD→loader→plugin；设计阶段不先冒充现状。 |
@@ -482,7 +484,7 @@ App域workspace位于app-private目录；Shizuku域沿现有owner使用shell-own
 ### 验收定义与原边界：gl-dek
 
 <!-- migrated-source: acceptance_criteria gl-dek -->
-2026-11-20生产批准保留；scope仅§19.5.70的148行。2026-11-21用户固定AGP `9.1.0`后，旧AGP `9.4.1` P0只保留为历史证据；当前树须按下表在`9.1.0`上复验，不回退source重演空模块实验。实际状态与依赖只读Beads。不接provider/import/Custom/真实backend，不用旧240行。
+2026-11-20生产批准保留；scope仅§19.5.70补正后的150行。2026-11-21用户固定AGP `9.1.0`后，旧AGP `9.4.1` P0只保留为历史证据；当前树须按下表在`9.1.0`上复验，不回退source重演空模块实验。实际状态与依赖只读Beads。不接provider/import/Custom/真实backend，不用旧240行。
 
 <!-- source: f882e670:docs/plan/backend-root-execution-unification-plan.md:L4839-L4863 -->
 <a id="b1-validation-matrix"></a>

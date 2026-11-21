@@ -152,7 +152,7 @@ P-LOG-IO-001：日志导出（[gl-s7q设计](../../openspec/changes/logging-runt
 | P-RUN-CORE-001 | 运行结果、会话终态与内部 core 收口；有效正文在OpenSpec | [gl-k6e设计](../../openspec/changes/runtime-foundations/design.md#record-gl-k6e) |
 | E-DOC-X-002 | 开发环境、OpenSpec设计/Beads执行与CDA（旧接入沿革保留） | [OpenSpec/Beads职责](../../openspec/changes/planning-tool-responsibilities/design.md) |
 | E-BUILD-X-001 | 当前构建闭环修复；精确设计在OpenSpec，原批准保持 | [gl-4on设计](../../openspec/changes/build-closure-repair/design.md#record-gl-4on) |
-| E-BUILD-X-002 | Allure报告门薄适配及三棵提交候选的唯一hunk owner；原批准保持 | [Allure报告门设计](../../openspec/changes/allure-reporting-gates/design.md#record-allure-reporting-gates) |
+| E-BUILD-X-002 | Allure报告门薄适配、runtime source baseline恢复及四棵提交候选的唯一hunk owner；原批准保持 | [Allure报告门设计](../../openspec/changes/allure-reporting-gates/design.md#record-allure-reporting-gates) |
 | E-DOC-X-001 | 计划权威、归档与跨文档入口收口；有效正文在OpenSpec | [gl-8zk设计](../../openspec/changes/archive/2026-11-21-workflow-history/design.md#record-gl-8zk) |
 | P-LOG-IO-001 | 日志自动导出与文件 sink；有效正文在OpenSpec | [gl-s7q设计](../../openspec/changes/logging-runtime/design.md#record-gl-s7q) |
 | P-LOG-X-001 | 跨层单一日志中枢及结果归属边界；有效正文在OpenSpec | [gl-s7q设计](../../openspec/changes/logging-runtime/design.md#record-gl-s7q) |
