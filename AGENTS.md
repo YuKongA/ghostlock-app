@@ -27,7 +27,7 @@
 
 - **先设计、最小改动、适用验证**：按 [S/M/L 分级](/docs/development/engineering-standards.md#engineering-change-levels) 执行 Explore → Design → Implement → Verify；L 级先出计划并获用户认可。一批一类事，上批验过再进；同批门禁连续失败 2 次即停，回 debug。
 - **作者先自检，再交付审查**：Lead/子智能体在设计/代码正式送审、交付前或接到自检任务时，主动读取并使用 [ghostlock-author-self-check](/.agents/skills/ghostlock-author-self-check/SKILL.md)，按 [作者自检](/docs/development/design-review-principles.md#review-author-self-check) 修正原交付；不另设报告或预审，不替代独立审查、批准和门禁。
-- **改/建/执行计划**：按[工具分工](docs/development/documentation-standards.md#planning-tool-authority)使用 OpenSpec 对应 skill；proposal/design/specs 是设计、范围与验收定义的唯一正文，Beads 通过 spec_id 引用并维护任务、依赖、进度与证据。实质架构使用 [CDA](.agents/skills/constraint-driven-architecture/SKILL.md)。承诺与后续需求按[范围规则](/docs/development/design-review-principles.md#review-scope)，不因迁移扩大批准范围，不恢复旧 Markdown 计划。
+- **任务选路**：普通 S/M 不跑全套；按已批准设计实施不重开设计；新 L／实质设计差异进入 OpenSpec，涉及实质架构再用 CDA。按[工具分工](docs/development/documentation-standards.md#planning-tool-authority)直达对应 skill，作者自检照常，独立审查只按 §7。
 - **纠正立即生效**：停止受影响动作及委派，同步直接执行入口；不自行重启停止项，不把 NOT_RUN 改成 PASS。纠正、临时指令及交接按 [执行细则](/docs/development/engineering-standards.md#engineering-execution)。
 - **不空转**：每轮推进唯一交付物或具名未知；无新输入/假设不重复检查，证据足够即交付。调查、SHA 和进展报告按 [取证与汇报](/docs/development/engineering-standards.md#engineering-investigation)；结论给命令与结果，不以状态复述冒充进展。
 

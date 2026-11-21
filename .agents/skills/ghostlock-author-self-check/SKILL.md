@@ -13,7 +13,7 @@ description: 在 GhostLock 项目中，设计或代码作者正式送审、交�
 
 需要独立审查时，按 [AGENTS §7](../../../AGENTS.md#agents-review) 委派非作者，而非由作者切换身份再自审。
 
-从本批 Beads 的 spec_id 直达同一 OpenSpec proposal/design/specs，按本批阶段检查范围、合同与验收；批准、实际证据和任务状态从原 Beads 读取（`npm run --silent bd -- show <id> --json --brief-deps`）。CDA 也写同一 OpenSpec design；[字段分工](../../../docs/development/documentation-standards.md#planning-tool-authority)不产生额外报告或 Beads 设计副本，不回读旧 Markdown 计划获取当前指令。
+按[改动级别](../../../docs/development/engineering-standards.md#engineering-change-levels)选择现成输入：有设计时从具名 OpenSpec change 或 Beads spec_id 读取相关正文，批准/证据读原 Beads；普通 S/M 没有 change/spec_id 时直接检查用户请求、M 级简短说明、最终 diff 与相关合同，**不为自检补建计划、任务或报告**。新 L 或实质差异的独立审查仍按 §7，CDA 的作者分析不替代它；已批准实施不因此重开设计。[正文与证据分工](../../../docs/development/documentation-standards.md#planning-tool-authority)仍是唯一规则。
 
 ## 有具体疑点时直达
 

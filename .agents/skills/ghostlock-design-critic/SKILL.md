@@ -9,11 +9,11 @@ description: 在 GhostLock 项目中执行已触发的非作者只读设计/规�
 
 ## 执行入口
 
-- 触发和角色按 [AGENTS §7](../../../AGENTS.md#agents-review)：非作者、只读，不编辑、不跑门禁。参与创作的成员将任务交给既有独立成员，不自行切换身份出独立结论。
+- 触发和角色只按 [AGENTS §7](../../../AGENTS.md#agents-review)：新 L 定稿和具名实质差异不能因未用 CDA 或任务标 M 而漏审；按已批准设计实施不重审。非作者、只读，不编辑、不跑门禁；作者不能以 CDA 的 REVIEW 模式或内部透镜自签独立结论。
 - 按 [§3 职责边界](../../../docs/development/design-review-principles.md#review-task-boundaries) 识别本次任务；普通代码/测试审查与机械核对继续原职责，不因交付、台账同步或请求“最终 PASS”启用本 skill。设计验收方法及实质差异仍由原 critic 判断。
 - 首轮读取并执行 [§3.1 阶段与阻断](../../../docs/development/design-review-principles.md#review-stage-blockers)、[§3.2 输入与增量读取](../../../docs/development/design-review-principles.md#review-incremental)、[§3.3 输出与关闭](../../../docs/development/design-review-principles.md#review-output)；需判断的复审按 §3.2–§3.3 处理原 finding 和受影响差异，输入身份与停写直达 [G4](../../../docs/development/design-review-principles.md#review-g4)。
 - 结论返回 Lead，由 Lead 复用原记录位置；不另交 skill 报告或完成状态。当前任务已完成且输入未变的审查不因加载 skill 重做。
-- 从本批 Beads spec_id 只读对应 OpenSpec proposal/design/specs；原批准、critic finding 与实际证据按原 Beads ID 定点读取（`npm run --silent bd -- show <id> --json --brief-deps`）。设计正文不从 Beads 取副本。按[字段分工](../../../docs/development/documentation-standards.md#planning-tool-authority)区分工件齐备、批准与验收，不默认展开全部依赖、TSV或历史。
+- 从委派中具名的 OpenSpec change/设计差异，或已有 Beads spec_id 只读正文；原批准、finding 与实际证据按原记录定点读取。没有执行任务/spec_id不是新增准备门，不为送审创建空任务。按[字段分工](../../../docs/development/documentation-standards.md#planning-tool-authority)区分正文、批准和验收，不默认展开全部依赖、TSV或历史。
 
 ## 有具体疑点时直达
 
