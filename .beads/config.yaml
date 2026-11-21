@@ -72,4 +72,8 @@
 # - github.token    → use GITHUB_TOKEN env var instead
 
 sync:
-    remote: "git+https://github.com/YuKongA/ghostlock-app.git"
+    # remote: "git+https://github.com/YuKongA/ghostlock-app.git"
+backup:
+    enabled: false
+dolt:
+    auto-push: false
