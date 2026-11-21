@@ -2,7 +2,7 @@
 
 <a id="e-review-rule-003"></a>
 
-> **代号**：E-REVIEW-RULE-003（工程支撑－设计判断－规则解释）；§1–§11 为本文原则，附录 D 不指产品 D 决策。 定义入口见[工程代号入口](../plan/MASTER-PLAN.md#work-identifiers)。
+> **代号**：E-REVIEW-RULE-003（工程支撑－设计判断－规则解释）；§1–§11 为本文原则，附录 D 不指产品 D 决策。 定义入口见[工程代号入口](documentation-standards.md#work-identifiers)。
 
 > 本文的每条原则都以**软件工程理论与公认实践**为主要依据（标准、经典文献、工业实践，见附录 A），
 > 本项目的经验只作为该理论在特定约束下的**实例化证据**。

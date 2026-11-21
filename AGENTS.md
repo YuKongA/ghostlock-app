@@ -2,7 +2,7 @@
 
 <a id="e-review-rule-004"></a>
 
-> **代号**：E-REVIEW-RULE-004（工程支撑－Agent 执行纪律－规则）；§1–§12 为本文条款，编号不改变教材优先及现有层级。 定义入口见[工程代号入口](/docs/plan/MASTER-PLAN.md#work-identifiers)。
+> **代号**：E-REVIEW-RULE-004（工程支撑－Agent 执行纪律－规则）；§1–§12 为本文条款，编号不改变教材优先及现有层级。 定义入口见[工程代号入口](/docs/development/documentation-standards.md#work-identifiers)。
 
 > 项目正重构中，以用户要求为准
 
@@ -27,7 +27,7 @@
 
 - **先设计、最小改动、适用验证**：按 [S/M/L 分级](/docs/development/engineering-standards.md#engineering-change-levels) 执行 Explore → Design → Implement → Verify；L 级先出计划并获用户认可。一批一类事，上批验过再进；同批门禁连续失败 2 次即停，回 debug。
 - **作者先自检，再交付审查**：Lead/子智能体在设计/代码正式送审、交付前或接到自检任务时，主动读取并使用 [ghostlock-author-self-check](/.agents/skills/ghostlock-author-self-check/SKILL.md)，按 [作者自检](/docs/development/design-review-principles.md#review-author-self-check) 修正原交付；不另设报告或预审，不替代独立审查、批准和门禁。
-- **改/建/执行计划**：按[工具分工](docs/development/documentation-standards.md#planning-tool-authority)进入 OpenSpec 对应 skill；实质架构设计使用 [CDA](.agents/skills/constraint-driven-architecture/SKILL.md)，任务进度只写 Beads。承诺与后续需求仍按[范围规则](/docs/development/design-review-principles.md#review-scope)，不因侦查或迁移扩大批准范围。
+- **改/建/执行计划**：按[Beads 唯一入口](docs/development/documentation-standards.md#planning-tool-authority)读取/修改同一任务的设计、范围、批准与验收；实质架构设计使用 [CDA](.agents/skills/constraint-driven-architecture/SKILL.md)。承诺与后续需求仍按[范围规则](/docs/development/design-review-principles.md#review-scope)，不因侦查或迁移扩大批准范围。
 - **纠正立即生效**：停止受影响动作及委派，同步直接执行入口；不自行重启停止项，不把 NOT_RUN 改成 PASS。纠正、临时指令及交接按 [执行细则](/docs/development/engineering-standards.md#engineering-execution)。
 - **不空转**：每轮推进唯一交付物或具名未知；无新输入/假设不重复检查，证据足够即交付。调查、SHA 和进展报告按 [取证与汇报](/docs/development/engineering-standards.md#engineering-investigation)；结论给命令与结果，不以状态复述冒充进展。
 
@@ -89,7 +89,7 @@
 ## 11. 指针表（旧 → 新；旧标签 R9，非全局 R9）
 
 - 三层架构（结构/CLI/资产/组件模型/owner 白名单/根级标量/vr_guard/命名空间）⇒ `introduction.md` §一 §三；决策 `adr/0001`·`0003`·`0004`·`0006`。
-- 计划入口 ⇒ [MASTER-PLAN](/docs/plan/MASTER-PLAN.md)；排期 ⇒ [ROADMAP](/docs/plan/ROADMAP.md)；执行分层 ⇒ [P-RUN-X-001 简介](/docs/development/introduction.md#run-introduction)。
+- 计划与依赖 ⇒ `npm run --silent bd -- list` / `show <id> --json --brief-deps`；语义代号 ⇒ [工程代号入口](/docs/development/documentation-standards.md#work-identifiers)；执行分层 ⇒ [P-RUN-X-001 简介](/docs/development/introduction.md#run-introduction)。
 - 原则疑问 ⇒ [设计哲学对应主题](/docs/development/design-philosophy.md#e-review-rule-003)；全工程 R 短码 ⇒ [工程规则表](/docs/development/engineering-rules.md)，均按疑点查阅。
 
 ## 12. 通用日志

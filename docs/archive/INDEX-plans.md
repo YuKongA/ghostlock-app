@@ -258,3 +258,26 @@
 | `docs/plan/rewrite-disable-manifest.tsv` | `docs/archive/20261104-2030-rewrite-disable-manifest.tsv` | superseded overlapping execution/config/rollback authority | `docs/plan/backend-root-execution-unification-plan.md` |
 | `docs/plan/split-large-functions.md` | `docs/archive/20261104-2030-split-large-functions.md` | completed original-backend implementation plan superseded by R1 deletion closure | `docs/plan/backend-root-execution-unification-plan.md` |
 | `docs/plan/unified-execution-engine-plan.md` | `docs/archive/20261104-2030-unified-execution-engine-plan.md` | superseded overlapping execution/config/rollback authority | `docs/plan/backend-root-execution-unification-plan.md` |
+
+
+<a id="beads-plan-migration"></a>
+
+## 2026-11-21：旧计划系统与 OpenSpec 退役
+
+用户批准完整迁移设计、范围、原批准和验收至 Beads；迁移记录 `gl-ind`。现行规范/公共合同/独立审查/真机门保持；不是业务任务完成或重新批准。设计与当前状态用 `npm run --silent bd -- show <id> --json --brief-deps`，语义根见[现行代号登记](../development/documentation-standards.md#work-identifiers)。
+
+| 原路径 | 历史落点 / 保留合同 | 后继 |
+|---|---|---|
+| `docs/plan/43499-glued-product-carrier-plan.md` | [20261121-1301-43499-glued-product-carrier-plan.md](20261121-1301-43499-glued-product-carrier-plan.md) | Beads；旧号映射gl-4tt，B1 gl-dek，父设计gl-sfg |
+| `docs/plan/developer-defined-tasks.md` | [20261121-1301-developer-defined-tasks.md](20261121-1301-developer-defined-tasks.md) | Beads；旧号映射gl-4tt，B1 gl-dek，父设计gl-sfg |
+| `docs/plan/ROADMAP.md` | [20261121-1301-ROADMAP.md](20261121-1301-ROADMAP.md) | Beads；旧号映射gl-4tt，B1 gl-dek，父设计gl-sfg |
+| `docs/plan/REMAINING-PLAN.md` | [20261121-1301-REMAINING-PLAN.md](20261121-1301-REMAINING-PLAN.md) | Beads；旧号映射gl-4tt，B1 gl-dek，父设计gl-sfg |
+| `docs/plan/backend-root-execution-unification-ledger.tsv` | [20261121-1301-backend-root-execution-unification-ledger.tsv](20261121-1301-backend-root-execution-unification-ledger.tsv) | Beads；旧号映射gl-4tt，B1 gl-dek，父设计gl-sfg |
+| `docs/plan/43499-glued-product-carrier-ledger.tsv` | [20261121-1301-43499-glued-product-carrier-ledger.tsv](20261121-1301-43499-glued-product-carrier-ledger.tsv) | Beads；旧号映射gl-4tt，B1 gl-dek，父设计gl-sfg |
+| `docs/plan/backend-root-execution-plan-disposition.tsv` | [20261121-1301-backend-root-execution-plan-disposition.tsv](20261121-1301-backend-root-execution-plan-disposition.tsv) | Beads；旧号映射gl-4tt，B1 gl-dek，父设计gl-sfg |
+| `docs/plan/MASTER-PLAN.md` | [20261121-1301-MASTER-PLAN.md](20261121-1301-MASTER-PLAN.md) | Beads；旧号映射gl-4tt，B1 gl-dek，父设计gl-sfg |
+| `docs/plan/backend-root-execution-unification-plan.md` | [20261121-1301-backend-root-execution-unification-plan.md](20261121-1301-backend-root-execution-unification-plan.md) | Beads；旧号映射gl-4tt，B1 gl-dek，父设计gl-sfg |
+| `docs/plan/backend-root-execution-runhost-wire.md` | [backend-root-execution-runhost-wire.md](../development/backend-root-execution-runhost-wire.md) | 现行公共合同，B1增量gl-dek |
+| `openspec/` 与六个 `openspec-*` skills | [20261121-1301-openspec](20261121-1301-openspec/) | Beads原生字段/状态；构建exact全文gl-4on；旧接入gl-1w2仅历史 |
+
+本次只移动上列现行退役对象；此前历史归档未批量改号。TSV原行、原批准、旧锚点及当轮证据保持；被取代240行/旧plugin方案不进入当前实施范围。开发者专用清单原文保存在归档及gl-ind notes：五条未闭要求合并为gl-4uv、gl-orc、gl-gyw三个具名deferred任务；已完成命名gl-i94不重开，旧存储文件裁定由gl-zgp的typed DataStore取代。

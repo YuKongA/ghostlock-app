@@ -84,42 +84,43 @@ Windows 使用同一包清单与 `sdkmanager.bat` / `gradlew.bat`；当前 plugi
 
 ## 5. 文档与规划工具
 
-根目录执行 `npm ci`，使用项目本地 CLI，不依赖全局最新版。OpenSpec **2.1.1**、Beads **1.3.4** 由 `package.json` 与 lockfile 固定；CDA 仅安装 runtime skill、引用和许可证，上游 commit 为 `04d2e998f19b08be6ba7f697315f3a16ecdf2708`，本地入口补充项目分工；不运行上游评测 harness，不需要服务器、独立 Dolt 或额外 JDK。
+根目录执行 `npm ci`，使用项目本地 CLI，不依赖全局最新版。Beads **1.3.4** 由 `package.json` 与 lockfile 固定；CDA 仅安装 runtime skill、引用和许可证，上游 commit 为 `04d2e998f19b08be6ba7f697315f3a16ecdf2708`，本地入口补充项目分工；不运行上游评测 harness，不需要服务器、独立 Dolt 或额外 JDK。
 
-- [OpenSpec 安装/配置](https://openspec.dev/docs/installation)：设计变更工件。
-- [Beads 官方安装](https://github.com/gastownhall/beads/blob/main/docs/getting-started/installation.md)：执行任务与依赖。
+- [Beads 官方安装](https://github.com/gastownhall/beads/blob/main/docs/getting-started/installation.md)：设计正文、批准/证据、任务状态与依赖。
 - [CDA 上游](https://github.com/Liparakis/ConstraintDrivenArchitecture)：作者的约束驱动设计方法；不替代独立审查。
 
 ```sh
 npm ci
-npm run --silent openspec -- --version
 npm run --silent bd -- version
 npm run --silent bd -- bootstrap --yes
-npm run --silent openspec -- list --json
 npm run --silent bd -- ready --json
 ```
 
-`npm ci` 包含 Beads 的原生 binary 下载（对应固定版本及本机 OS/架构），不要用 `--ignore-scripts` 后宣称 bd 已安装。CDA 与项目适配后的 OpenSpec skills 已在仓库内，新 clone 不必再装 skill。命令报缺依赖时先 `npm ci`，不用会临时下载最新版的裸 `npx`。当前 OpenSpec schema 为 `ghostlock`，没有 `tasks.md`；工具分工只在[文档规范](documentation-standards.md#planning-tool-authority)维护。
+`npm ci` 包含 Beads 的原生 binary 下载（对应固定版本及本机 OS/架构），不要用 `--ignore-scripts` 后宣称 bd 已安装。CDA、作者自检和独立审查 skills 已在仓库内，新 clone 不必再装 skill。命令报缺依赖时先 `npm ci`，不用会临时下载最新版的裸 `npx`。OpenSpec 已退出计划流程，不再安装或生成其工件；工具分工只在[文档规范](documentation-standards.md#planning-tool-authority)维护。
 
 ### 日常命令
 
+只看进度用 `show <id> --short` / `list`；读取设计时用下面的 JSON 命令。`--brief-deps` 只缩短依赖对象，不裁剪本任务正文；若只要验收/notes，在 shell 中选取对应 JSON 字段再送入上下文，不先输出整份大设计。
+
 ```sh
-npm run --silent bd -- show <id> --json
+npm run --silent bd -- show <id> --json --brief-deps
 npm run --silent bd -- update <id> --claim
 npm run --silent bd -- update <id> --append-notes '<实际命令、输入、输出/退出码、NOT_RUN项>'
 npm run --silent bd -- close <id> --reason '<满足原判据的结论及证据位置>'
-npm run --silent openspec -- instructions apply --change <name> --json
+npm run --silent bd -- update <id> --design-file -  # 从 stdin 写设计，不建平行 Markdown
+npm run --silent bd -- update <id> --acceptance '<行为验收与原门禁>'
+npm run --silent bd -- dep relate <task-id> <decision-id>  # 参考，不新增阻断
 ```
 
-Beads `spec_id` 指向设计，title / `external_ref` 保留语义编号；候选需求用 `deferred`，具名条件缺失用 `blocked`。只领取获准工作，close 不会替你验证行为或批准范围。人类查进度可运行 `npm run --silent bd -- list`，不必翻旧计划历史。
+Beads `design` 保存正文，`spec_id` 可指向共享 decision 的 Beads ID；用 `show <该ID> --json --brief-deps` 按需读取，不把整份 JSONL 当日常阅读入口。title / `external_ref` 保留语义编号；候选需求用 `deferred`，具名条件缺失用 `blocked`。只领取获准工作，close 不会替你验证行为或批准范围。人类查进度可运行 `npm run --silent bd -- list`，不必翻旧计划历史。
 
 ### 保存、交接与升级
 
-- 任务的写入 authority 是 `.beads/embeddeddolt` 中的原生数据库，CLI 维护其事务历史。`.beads/issues.jsonl` 是 CLI 生成的任务交接投影，禁止手编；新 clone 的 `bootstrap` 导入该投影。它保留 issue/依赖/注释，不包含完整 Dolt 分支历史，不是跨机器并发同步。
+- 任务的写入 authority 是 `.beads/embeddeddolt` 中的原生数据库，CLI 维护其事务历史。`.beads/issues.jsonl` 是 CLI 生成的任务交接投影，禁止手编；新 clone 的 `bootstrap` 导入该投影。它保留完整 description/design/acceptance_criteria/notes、issue 状态、依赖和注释，不包含完整 Dolt 分支历史，不是跨机器并发同步。
 - 已配置自动导出，间隔为 **1ms**（上游把 `0s` 解释为默认60s，不表示关闭节流）。在交付/提交前执行一次 `npm run --silent bd -- export -o .beads/issues.jsonl`，确认最后一次更新已落盘；正常提交它和原生配置，不提交数据库文件。
 - 当前只配置本地任务协作，没有发布 Dolt remote。原生 CLI 的“无 remote”提示不证明任务丢失，也不授权 Agent 自动 push；真正跨机协作时使用官方 Dolt remote/push/pull，而不是手写 JSONL 合并器。
 - 自动 backup、auto-push、export git-add 均关闭，未安装 Git hooks。正常本地 commit 由 Agent 核对本批范围和适用验证后主动完成。fresh clone 用 **bootstrap，不重复 init**：Beads1.3.4 的 `init` 会自动提交 agent 文件，`--skip-agents --skip-hooks` 不会取消此行为。
-- 升级时精确修改 npm 版本/lockfile、CDA 来源与实际适配；不要直接运行 `openspec update` 覆盖仓库的 Beads 路由。只验证受影响的工具行为与既有门禁，不升级产品工具链。
+- 升级时精确修改 npm 版本/lockfile、CDA 来源与实际适配；保持 Beads 单一入口，不重新安装旧计划生成器。只验证受影响的工具行为与既有门禁，不升级产品工具链。
 
 ## 6. 配置验证，不混同产品验收
 

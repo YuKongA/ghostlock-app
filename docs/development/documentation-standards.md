@@ -2,7 +2,7 @@
 
 <a id="e-doc-rule-001"></a>
 
-> **代号**：E-DOC-RULE-001（工程支撑－文档－编写与编号规则）；跨端模板是本根附录，不另立规范。 定义入口见[工程代号入口](../plan/MASTER-PLAN.md#work-identifiers)。
+> **代号**：E-DOC-RULE-001（工程支撑－文档－编写与编号规则）；跨端模板是本根附录，不另立规范。 定义入口见[工程代号入口](#work-identifiers)。
 
 > 本仓库一切文档的写法。风格参照 Google Developer Documentation Style Guide：短、直接、面向读者；
 > 内容分类参照 Diátaxis。来源见文末。
@@ -24,7 +24,7 @@
 | 参考 | 字段、命令、结构 | `docs/profile/PROFILE_SCHEMA.md`、`defaults.md`、`core/src/README.md` |
 | 解释 | 为什么这样设计 | `design-philosophy.md`、`engineering-standards.md`、`docs/analysis/**`（历史） |
 | 决策记录（ADR） | 一次架构决策：背景/决策/备选/后果 | `docs/analysis/adr/NNNN-*.md` |
-| 计划 | L 级改动开始前 | 新变更用 `openspec/changes/`；既有计划保留原路径与批准，由 OpenSpec 引用；[分工](#planning-tool-authority) |
+| 计划 | L 级改动开始前 | Beads 原生任务/decision 的正文；[字段分工](#planning-tool-authority) |
 | 门禁记录 | 真机验证之后 | `docs/analysis/device-gates/`（归档，永久保留） |
 | 发布说明 | 每个版本 | `docs/release-note-*.md`（归档） |
 
@@ -32,21 +32,24 @@
 
 <a id="planning-tool-authority"></a>
 
-## 设计与任务工具：各管一件事
+## 设计与执行：Beads 唯一计划入口
 
-| 信息 / 动作 | 唯一入口 |
+| 信息 / 动作 | 唯一位置 |
 |---|---|
-| 全工程规范、批准与门禁原则 | 本套既有规范；工具模板不复制、不覆盖 |
-| 新建 / 修改设计变更 | [OpenSpec propose](../../.agents/skills/openspec-propose/SKILL.md) / [update](../../.agents/skills/openspec-update-change/SKILL.md)；`proposal` 定范围，`design` 记技术取舍，真正改变行为合同时才写 delta specs |
-| 实质架构选择 | 作者使用 [CDA](../../.agents/skills/constraint-driven-architecture/SKILL.md)，结论写同一 design；不是新岗位或审批轮次，小修不启动全套架构分析 |
-| 执行、认领、依赖、运行证据与完成状态 | [OpenSpec apply](../../.agents/skills/openspec-apply-change/SKILL.md) 读取设计后操作 **Beads**；不生成 `tasks.md` 或维护第二份 checkbox |
-| 探索 / 合同同步 / 已完成变更归档 | 按需用 [explore](../../.agents/skills/openspec-explore/SKILL.md)、[sync-specs](../../.agents/skills/openspec-sync-specs/SKILL.md)、[archive](../../.agents/skills/openspec-archive-change/SKILL.md)；不是每批必走的串行步骤 |
+| 全工程规范、公共合同与门禁原则 | 既有规范/合同文件；Beads 引用，不复制成第二套规则 |
+| 目标、当前承诺、非目标、后续需求及重访触发 | 本任务 `description`；按已有范围规则区分，不因录入而授权实现 |
+| 真实调用者、设计取舍、owner/失败语义、图及逐文件 scope | 本任务 `design`；多个任务共用的有效设计用原生 `decision` 保存一次，以 `spec_id` / `relates-to` 直达 |
+| 验收方法、预期及对应成功层级 | `acceptance_criteria`；共享矩阵只定义一次，子任务注明适用行，不复制全表 |
+| 原批准、纠正、独立审查、历史结果与本轮证据 | 同一记录 `notes` / comments；写明日期、原话/来源、适用范围、取代关系及输入身份。批准变更就地同步 description/design 的当前边界，不靠读者翻评论猜结论 |
+| 认领、执行状态与真实先决条件 | Beads 原生 status/dependencies；只连接真实依赖，不把所有排期、参考或未来需求变成 blocker |
 
-既有设计、批准、旧号映射与历史证据保留原锚点；迁移 change 只链接有效章节，不复制长计划。MASTER-PLAN 保留语义代号/设计入口，ROADMAP 保留依赖关系，不再手工同步任务状态。切换前的进度明确标为历史快照，切换后的进度由 Beads 唯一维护；Beads ID 是定位键，title / `external_ref` 保留原语义代号。其它仓库的任务只链接，不导入第二份。
+先从语义代号/当前任务定位，使用 `show <id> --json --brief-deps`；只按疑点展开共享设计和相关规范，不默认读全部任务或归档。旧号映射保存在 `gl-4tt` 的 notes；现行语义根入口见[代号登记](#work-identifiers)。其它仓库任务只链接，不导入第二份。
 
-`ready` 只表示工具依赖已满足，artifact `done` 只表示文件存在；都不是设计批准或运行 PASS。Beads 任务的验收引用原矩阵，结果写命令、输入、实际输出/退出码与证明边界；未执行仍为 NOT_RUN。关闭须区分完成、取消和取代。合理的未来需求用 `deferred`，具名条件未满足用 `blocked`；依赖只连接真实消费者/先决条件，不把所有排期箭头变成阻断。
+实质架构选择仍由作者按 [CDA](../../.agents/skills/constraint-driven-architecture/SKILL.md) 完成，结论写同一 `design`；作者自检与独立审查仍由 [AGENTS §2、§7](../../AGENTS.md#agents-review) 按原触发执行。skill 只导航职责，不另写设计、自检或审查报告。OpenSpec 与旧 Markdown 计划已退役，仅在[既有归档索引](../archive/INDEX-plans.md#beads-plan-migration)保留历史，不再生成 change、tasks 或同步旧 checkbox。
 
-工具安装与 CLI 操作仅在[开发环境 §5](development-environment.md#planning-tools)维护。Beads CLI 是任务唯一写入口；JSONL 是自动生成的交接投影，不手编、不作跨机双向同步。已触发的作者自检/独立审查仍按 [AGENTS §2、§7](../../AGENTS.md#agents-review)，工具升级或机械同步不额外触发 critic。
+`ready` 只是依赖投影，不表示获准；`closed` 不证明运行 PASS。共享 decision 的关闭表示设计记录已收录，其正文中的批准/候选/取代状态不因此改变；不是新增执行任务或批准机。执行任务只能按原验收及实际证据关闭，区分完成、取消与取代。未执行仍为 NOT_RUN；合理未来需求用 `deferred`，具名条件缺失用 `blocked`。原真机门、原批准范围、暂停/冻结与最终树复验条件保持。
+
+CLI 是唯一写入口；JSONL 是自动生成的可携带投影，不手编、不作并发双向同步。安装、字段操作、bootstrap 与提交前导出只见[开发环境 §5](development-environment.md#planning-tools)。迁移/链接/状态机械更新不额外触发 critic。
 
 ## 怎么写
 
@@ -78,7 +81,7 @@
 - **全局短码 `R<n>`**：仅指 [engineering-rules.md](engineering-rules.md) 的全工程规则，例 `R1：单一权威`；该表是 R 语义的唯一来源。全局表示适用范围，不表示最高权威：教材仍高于经验规则，教材条文继续引用具名章节，不为编号改写教材或另造“最高守则”。
 - **局部根代号 `<类别>-<主模块>-<范围>-<序号>`**：如 `P-LOG-IO-001：日志文件输出`，前三段可反推产品/工程、主责模块和主要合同领域，末段区分同一作用域的不同工作。计划和局部规范均可有根代号；对象类型、状态、版本和负责人写在正文，不再塞进代号。
 - **局部子项 `<根代号>/<类型><序号>`**：新增条目用 `/需求01`、`/决策01`、`/批次01`、`/问题01`，标题同时写中文含义；同一根的同类型连续分配，复审和另开报告不重置。问题分配先查该根的既有审核记录；在根文档的已有审核位置保留“问题号→定义锚点”链接，不另建问题台账。普通段落用 1、1.1，不给每段分配永久代号。
-- **活跃旧号迁移为语义主代号**：旧 D1/R4C 等不能仅套统一计划前缀。按条目实际主责模块与合同领域分组，使用如 `P-PAYLOAD-CORE-001/决策01`、`P-LOG-X-001/批次01`；标题同时写中文主题。一个文件可定义多个语义根，不因此拆文件/新建计划；同一合同下连续决策/批次共用根，真正不同领域使用不同根。旧号只在原计划一处映射及原证据中保留，旧锚点继续可达；不重新批准、排序或重写历史。规范的旧 A–G 等仍按自身根定位，与产品决策不混用。
+- **活跃旧号迁移为语义主代号**：旧 D1/R4C 等不能仅套统一计划前缀。按条目实际主责模块与合同领域分组，使用如 `P-PAYLOAD-CORE-001/决策01`、`P-LOG-X-001/批次01`；标题同时写中文主题。一个文件可定义多个语义根，不因此拆文件/新建计划；同一合同下连续决策/批次共用根，真正不同领域使用不同根。旧号只在 Beads 共享设计 `gl-4tt` 的映射及原证据中保留，旧锚点在归档仍可达；不重新批准、排序或重写历史。规范的旧 A–G 等仍按自身根定位，与产品决策不混用。
 
 ### 唯一短词表
 
@@ -88,6 +91,8 @@
 |---|---|---|
 | 工程类别 | P | 产品功能与其运行架构 |
 | 工程类别 | E | 构建、工具、规则和文档等工程支撑 |
+| 主模块 | UI | 跨功能的用户界面与交互组织 |
+| 主模块 | SETTINGS | 应用设置与持久化配置 |
 | 主模块 | RUN | 执行编排、会话与 RunHost 合同 |
 | 主模块 | BACKEND | Backend 描述、成员资格、私有实现与接线边界 |
 | 主模块 | DIAG | 诊断功能及其实际执行链，不表示 root/攻击能力 |
@@ -98,6 +103,7 @@
 | 主模块 | BUILD | 构建、打包与产物生成 |
 | 主模块 | REVIEW | 设计审核、规划边界与门禁规则 |
 | 主模块 | DOC | 文档组织、引用与命名 |
+| 领域/范围 | ICON | 语义图标与图标目录 |
 | 领域/范围 | UI | 用户界面与交互 |
 | 领域/范围 | CORE | 模块内部模型与编排逻辑 |
 | 领域/范围 | IO | 文件、流与持久化合同 |
@@ -106,15 +112,53 @@
 | 领域/范围 | RULE | 工作规范与验收规则 |
 | 领域/范围 | X | 由具名主模块负责的跨模块/跨层合同，正文必须列出边界，不代表“全仓任意修改” |
 
-[P-LOG-IO-001：日志导出](../plan/backend-root-execution-unification-plan.md#p-log-io-001)、[P-LOG-X-001：跨层日志中枢](../plan/backend-root-execution-unification-plan.md#p-log-x-001)、[P-RUN-IPC-001：RunHost wire](../plan/backend-root-execution-runhost-wire.md#p-run-ipc-001) 均为已有内容的实际身份；`E-BUILD-NATIVE-001` 仍仅为未分配示例。`CORE` 指模块内部合同，`IO` 指文件/流，`X` 只用于确有具名 owner 的跨层/跨模块合同，不作为不分析归属的兜底；其它影响仍列在原范围中。测试随被验证合同归属，不因 test 字样自动成为工程工具任务。
+P-LOG-IO-001：日志导出（Beads `gl-s7q`，`p-log-io-001`）、P-LOG-X-001：跨层日志中枢（Beads `gl-s7q`，`p-log-x-001`）、[P-RUN-IPC-001：RunHost wire](backend-root-execution-runhost-wire.md#p-run-ipc-001) 均为已有内容的实际身份；`E-BUILD-NATIVE-001` 仍仅为未分配示例。`CORE` 指模块内部合同，`IO` 指文件/流，`X` 只用于确有具名 owner 的跨层/跨模块合同，不作为不分析归属的兜底；其它影响仍列在原范围中。测试随被验证合同归属，不因 test 字样自动成为工程工具任务。
 
 ### 分配、定位与兼容
 
-1. **一处入口**：复用 [MASTER-PLAN.md](../plan/MASTER-PLAN.md#work-identifiers) 的代号入口：根代号、中文标题、定义链接。每个根只登记一次；文档头部声明容器身份；含多个语义主题时，在各定义标题声明主代号并保留一处映射。编号被使用才登记，不能仅为占号新建计划；单纯文件路径/章节变化不分配新根。序号从 001 起，在相同前三段内递增，超过 999 可继续增长，不回收、不按排期重排。分配前只查该前缀已有行，不扫描全部源码/归档。
+1. **一处入口**：复用[本页代号登记](#work-identifiers)：根代号、中文标题、定义链接。每个根只登记一次；文档头部声明容器身份；含多个语义主题时，在各定义标题声明主代号并保留一处映射。编号被使用才登记，不能仅为占号新建计划；单纯文件路径/章节变化不分配新根。序号从 001 起，在相同前三段内递增，超过 999 可继续增长，不回收、不按排期重排。分配前只查该前缀已有行，不扫描全部源码/归档。
 2. **先读码，后定位**：三段用于判断大致主题；需要精确条款时从入口直达根，再用完整子号/锚点定位。跨文档、聊天交接和审核结论使用完整码＋中文标题＋链接；上下文唯一的同根正文可短写。稳定引用需要锚点时只在被引用的定义处加，不全库生成锚点。
 3. **身份稳定**：目录、负责人、状态、轮次变化不改码。范围实质改变到另一个主题时分配新码，旧入口标明取代/拆分并链接新定义，不能让旧码悄悄变义；小范围调整保留码并更新正文。语义段提示主责与主要合同，不是精确文件白名单，也不代表实施授权。
 4. **归档不失联**：归档时更新既有入口的目标路径并保留原码；不把 Git 考古当日常定位入口。历史局部号仅作有来源的别名，不再赋予新含义；活跃显示迁移与机器兼容键分开，工具仍消费的字段保留原键并映射，不为文档改号改写工具判据。历史归档与旧门禁记录不批量重命名。ADR 等既有身份保留，新增引用说明对象类型，不重新分配一套同义号。
 5. **避免重复权威**：同一规范只定义一次，其余以完整码链接或明确为派生检查项；编号相似不证明语义相同，编号不同也不授权重复定义。只有歧义妨碍当前追溯/验收时才要求本批消歧，不以旧格式存在为理由阻断无关业务批次。
+
+<a id="work-identifiers"></a>
+
+### 已分配工程代号（只定位，不复制状态）
+
+使用 `npm run --silent bd -- show <id> --json --brief-deps` 直达下列设计；多任务共享的 decision 不自动展开。旧 D1/R4C 等映射仅在 `gl-4tt` 的 notes 保留，原锚点仍可从[归档索引](../archive/INDEX-plans.md#beads-plan-migration)追溯。批准和当前状态只看 Beads 的具名记录，不从代号或 decision.closed 推断。
+
+| 根代号 | 中文主题／主责范围 | 唯一定义 |
+|---|---|---|
+| P-RUN-X-001 | 统一计划容器与执行主干跨层合同；具体决策/批次按实际模块分配 | Beads `gl-4tt` |
+| P-RUN-IPC-001 | 产品执行编排的 App/Shizuku 进程通信合同；从属上项 | [RunHost typed wire 与状态机](backend-root-execution-runhost-wire.md#p-run-ipc-001) |
+| E-REVIEW-RULE-001 | 设计审核与规划规则；旧 A–G 为本根条目组 | [设计与规划审查原则](design-review-principles.md#e-review-rule-001) |
+| E-REVIEW-RULE-002 | 工程实施、批次与验证规范；章节号仅限本文 | [工程与设计规范](engineering-standards.md#e-review-rule-002) |
+| E-REVIEW-RULE-003 | 设计原则的理论依据与解释；旧 D 为操作附录 | [设计哲学](design-philosophy.md#e-review-rule-003) |
+| E-REVIEW-RULE-004 | Agent 执行纪律与门禁入口；编号不改变既有权威层级 | [AGENTS](../../AGENTS.md#e-review-rule-004) |
+| E-DOC-RULE-001 | 文档、工程代号与计划模板；跨端架构问题表为附录 | [文档编写规范](documentation-standards.md#e-doc-rule-001) |
+| E-DOC-UI-001 | 双 UI 套件的文档指南；范围为 UI，不属于某一运行批次 | [UI 生成指南](ui-ai-guide.md#e-doc-ui-001) |
+| P-PAYLOAD-CORE-001 | Payload 必需性、失败与成功语义；有效设计已迁入Beads | Beads `gl-kct` |
+| P-FINISH-CORE-001 | Finish 严重度与必执行语义；有效设计已迁入Beads | Beads `gl-7c2` |
+| P-PAYLOAD-IO-001 | Payload 接管确认与文件保留；有效设计已迁入Beads | Beads `gl-2qz` |
+| P-RUN-IO-001 | 运行输入 staging、脚本发布与产物持久化；有效设计已迁入Beads | Beads `gl-dzp` |
+| P-BACKEND-CORE-001 | BackendDefinition 组合根、BackendDescriptor 与具名BackendUi边界；BD-I3配置实现延后 | Beads `gl-7yv` |
+| P-UI-ICON-001 | Material/Miuix 全项目语义图标目录；有效设计已迁入Beads | Beads `gl-rot` |
+| P-UI-ICON-002 | Material/Miuix 当前依赖的全量图标目录需求；有效设计已迁入Beads | Beads `gl-72l` |
+| P-UI-CORE-001 | App内KMP shared Compose UI、App/plugin共用唯一KMP `I18nRegistry`与catalog schema、Compose Multiplatform非文本资源、Android/Desktop平台壳、UI feature/package与单向presentation owner收口；远期目标已记录，exact design待plugin owner稳定后重开 | Beads `gl-75t` |
+| P-BACKEND-X-001 | Backend 成员资格、删除与断开闭包；有效设计已迁入Beads | Beads `gl-5r9` |
+| P-BACKEND-X-002 | 多组件 PluginPackage、共享 API、独立输入 provider（含固定 Maven 版本的外部 Kernel Symbol Extractor consumer）、settings presentation与注册到唯一App/plugin `I18nRegistry`的authenticated bundle、thin variant 与 RunHost 安全装载 | Beads `gl-sfg` |
+| P-RUN-CORE-001 | 运行结果、会话终态与内部 core 收口；有效设计已迁入Beads | Beads `gl-k6e` |
+| E-DOC-X-002 | 开发环境、Beads设计/执行与CDA（旧接入沿革保留） | Beads `gl-ind` |
+| E-BUILD-X-001 | 当前构建闭环修复；精确设计已迁入Beads，原批准保持 | Beads `gl-4on` |
+| E-DOC-X-001 | 计划权威、归档与跨文档入口收口；有效设计已迁入Beads | Beads `gl-8zk` |
+| P-LOG-IO-001 | 日志自动导出与文件 sink；有效设计已迁入Beads | Beads `gl-s7q` |
+| P-LOG-X-001 | 跨层单一日志中枢及结果归属边界；有效设计已迁入Beads | Beads `gl-s7q` |
+| P-SETTINGS-IO-001 | 全项目持久化分类、完整 data class typed DataStore 与 run 前落盘边界；有效设计已迁入Beads | Beads `gl-zgp` |
+| P-DIAG-NATIVE-001 | Diagnose 的 native／JNA／shell 诊断纵向；有效设计已迁入Beads | Beads `gl-yhz` |
+| P-RUN-HANDOFF-001 | common 固定位置脚本 handoff 与 Diagnose 单次 native chain；有效设计已迁入Beads | Beads `gl-obq` |
+| P-BACKEND-NATIVE-001 | 43284-Glued native carrier 候选；有效设计已迁入Beads | Beads `gl-2u2` |
+| P-BACKEND-NATIVE-002 | 98260 native carrier 候选；有效设计已迁入Beads | Beads `gl-2ot` |
 
 <a id="documentation-diagrams"></a>
 
@@ -148,9 +192,9 @@
 
 ## 模板
 
-**计划（L 级改动必须）**
+**Beads 设计内容（L 级改动必须，不另建计划文件）**
 
-沿用下列八节；“目标与约束/进度”内区分本批承诺、后续需求和待裁定，具体依 [design-review-principles.md](design-review-principles.md) 的滚动细化与阶段规则。不新增独立需求台账，不改写已有专用任务清单。后续需求仅保留来源/目标、未知、owner 与重访触发，逐文件清单和详细验证矩阵只细化当前准备实施的批次；既有本批承诺移出仍须批准。
+以下八类内容写入同一 Beads 的相应字段；小修按原分级裁剪，“目标与约束/进度”内区分本批承诺、后续需求和待裁定，具体依 [design-review-principles.md](design-review-principles.md) 的滚动细化与阶段规则。不新增独立需求台账，不改写已有专用任务清单。后续需求仅保留来源/目标、未知、owner 与重访触发，逐文件清单和详细验证矩阵只细化当前准备实施的批次；既有本批承诺移出仍须批准。
 
 涉及 Kotlin/JNI/Native 跨层契约、资源 owner 或 Native transaction 时，可在下列通用八节内按需套用
 [E-DOC-RULE-001/跨端附录：架构问题清单](kotlin-jni-native-architecture-template.md#cross-platform-appendix) 的问题清单。该文件是专用附录，
@@ -166,7 +210,7 @@
 ## 兼容性与失败恢复  # 源码恢复只引用 Git/Time Machine，不准备 rollback artifact/fixture
 ## 验证矩阵          # 本批行为/前提→方法/预期→对应成功层级；保留暂缓项及原恢复触发
 ## 明确保留          # 不动的部分及理由
-## 进度              # 直达对应 Beads 任务；正文不再维护第二份 checkbox，关闭凭对应证据
+## 进度              # 只用 Beads 原生状态/依赖；不是 design 内的 checkbox
 ```
 
 **门禁记录（真机验证必须）**

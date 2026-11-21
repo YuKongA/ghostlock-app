@@ -13,7 +13,7 @@ description: 在 GhostLock 项目中，设计或代码作者正式送审、交�
 
 需要独立审查时，按 [AGENTS §7](../../../AGENTS.md#agents-review) 委派非作者，而非由作者切换身份再自审。
 
-已使用 OpenSpec/CDA 时，直接检查同一 design 及其引用的原合同；按[工具分工](../../../docs/development/documentation-standards.md#planning-tool-authority)从 Beads 取本批任务/证据，不重复生成自检、CDA 或 tasks 报告。
+从本批 Beads 的 description/design/acceptance_criteria/notes 取当前范围、批准与证据（`npm run --silent bd -- show <id> --json --brief-deps`），按疑点读取 spec_id/relates-to 指向的共享设计和现行合同。CDA 也写同一 design；[字段分工](../../../docs/development/documentation-standards.md#planning-tool-authority)不产生额外报告，不回读旧计划获取当前指令。
 
 ## 有具体疑点时直达
 

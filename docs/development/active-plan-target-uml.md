@@ -4,7 +4,7 @@
 
 > **时间视点**：当前有效活跃计划按依赖顺序全部完成后的合并目标。当前工作树事实见[当前状态全局 UML](full-process-uml.md#global-current-view)。
 >
-> **状态边界（2026-11-21）**：本页不声称这些组件均已实现、获 production 授权或通过门禁。`BXP3-B1` 是当前唯一已获 production 实施批准的 plugin vertical；data-only provider、Custom、真实攻击 backend、外部导入、额外 ABI、KMP shared UI/Desktop 和后继压力批仍须按各自真实 consumer 细化、审查、批准和验证。状态与顺序以 [P-BACKEND-X-002/决策03及后继顺序](../plan/backend-root-execution-unification-plan.md#p-backend-x-002-decision-03) 和 [ROADMAP](../plan/ROADMAP.md) 为准。
+> **状态边界（2026-11-21）**：本页不声称这些组件均已实现、获 production 授权或通过门禁。`BXP3-B1` 是当前唯一已获 production 实施批准的 plugin vertical；data-only provider、Custom、真实攻击 backend、外部导入、额外 ABI、KMP shared UI/Desktop 和后继压力批仍须按各自真实 consumer 细化、审查、批准和验证。状态与顺序以 P-BACKEND-X-002/决策03及后继顺序（Beads `gl-sfg`，`p-backend-x-002-decision-03`） 及 Beads 当前任务/依赖为准；构建优先项 `gl-4on` 的精确实施批准仍待确认。
 >
 > **未纳入的待裁定差异**：是否删除当前 Host `Flow/SequentialFlow`、将 backend-specific orchestration 完全归入 plugin run，是本轮聊天提出但尚未形成获认可计划的差异；本目标图继续按现行有效计划保留 Host runtime adapter，不预记该差异为目标事实。
 

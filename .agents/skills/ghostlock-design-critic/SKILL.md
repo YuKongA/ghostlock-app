@@ -13,7 +13,7 @@ description: 在 GhostLock 项目中执行已触发的非作者只读设计/规�
 - 按 [§3 职责边界](../../../docs/development/design-review-principles.md#review-task-boundaries) 识别本次任务；普通代码/测试审查与机械核对继续原职责，不因交付、台账同步或请求“最终 PASS”启用本 skill。设计验收方法及实质差异仍由原 critic 判断。
 - 首轮读取并执行 [§3.1 阶段与阻断](../../../docs/development/design-review-principles.md#review-stage-blockers)、[§3.2 输入与增量读取](../../../docs/development/design-review-principles.md#review-incremental)、[§3.3 输出与关闭](../../../docs/development/design-review-principles.md#review-output)；需判断的复审按 §3.2–§3.3 处理原 finding 和受影响差异，输入身份与停写直达 [G4](../../../docs/development/design-review-principles.md#review-g4)。
 - 结论返回 Lead，由 Lead 复用原记录位置；不另交 skill 报告或完成状态。当前任务已完成且输入未变的审查不因加载 skill 重做。
-- 已接入 OpenSpec 的任务只读取本 change 的 design、所引用原批准/合同及相关 Beads 证据；按[工具分工](../../../docs/development/documentation-standards.md#planning-tool-authority)区分工件齐备、批准和验收，不以工具 ready/closed 代替判断，也不默认审全库任务、TSV 或历史。
+- 只读本批 Beads 的 design、范围、验收与原批准记录（`npm run --silent bd -- show <id> --json --brief-deps`）；按需展开 spec_id/relates-to 的共享设计、现行合同及证据。按[字段分工](../../../docs/development/documentation-standards.md#planning-tool-authority)区分记录收录、批准和验收，不以 ready/closed 代替判断，不默认展开全部依赖、TSV 或历史。
 
 ## 有具体疑点时直达
 

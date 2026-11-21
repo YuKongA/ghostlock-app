@@ -2,10 +2,10 @@
 
 <a id="e-review-rule-002"></a>
 
-> **代号**：E-REVIEW-RULE-002（工程支撑－工程审查与实施－规则）；本文章节号只在此根内解释。 定义入口见[工程代号入口](../plan/MASTER-PLAN.md#work-identifiers)。
+> **代号**：E-REVIEW-RULE-002（工程支撑－工程审查与实施－规则）；本文章节号只在此根内解释。 定义入口见[工程代号入口](documentation-standards.md#work-identifiers)。
 
 > 本文维护工程任务的实施细则；通用纪律、授权与审查触发见 [AGENTS](../../AGENTS.md#agents-reading)，设计理由见 [设计哲学](design-philosophy.md)。效力服从 [AGENTS §1](../../AGENTS.md#e-review-rule-004) 的教材优先层级；必须/应当/可以分别表示 MUST/SHOULD/MAY。
-> **现行结构**只引用 [已批准执行计划](../plan/backend-root-execution-unification-plan.md#p-run-x-001) 与 [执行视图](full-process-uml.md#run-current-views)，不在本规范重定产品架构或批准状态。
+> **现行结构**只引用所属 Beads 的有效设计/批准（公共语义 `gl-4tt`，当前插件增量 `gl-dek`）与 [执行视图](full-process-uml.md#run-current-views)，不在本规范重定产品架构或批准状态。
 
 <a id="engineering-task-map"></a>
 
@@ -60,7 +60,7 @@
 - **复用与例外**：输入、文件、外部状态和待判假设均未变时，不重复扫描、轮询、评审或汇报；不以换参数/环境包装无信息结果。概率/时序验证设计要求的同构建重复试验保留；连续失败仍按 AGENTS 停批。SHA 只按 [身份规则](#engineering-identity)，不为普通文档反复计算。
 - **失败后的共同前提**：连续修复仍在同一判据失败时，停批后先用一句话指出这些修复共同依赖的假设，再选一个能区分假设成立/不成立的观察（如实际入口是否执行、等待对象是否正确、结果是否属于本轮）；根据观察修正前提或继续定位根因，不只换超时、重试次数或增加补偿机制。直接记在原排障位置，不新增表单或审批；原停批条件与门禁不变。
 - **报告与交接**：仅在实质结果、失败/依赖变化或用户询问时报告“改动、验证、结果、下一步”，带命令、结果和当前阻断；Lead 将子智能体长输出压缩为决策结论，原始证据仍保留。唯一阻断需用户裁定时，只简短询问一次并停止。
-- **不增流程动作**：批准用最短无歧义表达即可；任务只跟踪开发交付项，不跟踪 hash、状态复读或再次评审。状态唯一入口按[OpenSpec / Beads 分工](documentation-standards.md#planning-tool-authority)，不继续更新旧计划 checkbox。
+- **不增流程动作**：批准用最短无歧义表达即可；任务只跟踪开发交付项，不跟踪 hash、状态复读或再次评审。状态唯一入口按[Beads 字段分工](documentation-standards.md#planning-tool-authority)，不继续更新旧计划 checkbox。
 
 <a id="engineering-change-levels"></a>
 
@@ -111,7 +111,7 @@ L 级改动**必须**先给出设计并获得用户认可，再写代码。计�
 <details>
 <summary>历史架构快照：§2.0–§2.2（仅追溯时展开，不作为现行判据）</summary>
 
-### 2.0 目标架构（重写进行中；权威 = ADR-0001/0002/**0004**/**0006** + `docs/archive/20261007-2237-top-level-architecture-rewrite-plan.md`；历史目标模型，现行批次见 [P-RUN-X-001](../plan/backend-root-execution-unification-plan.md#p-run-x-001-batches)）
+### 2.0 目标架构（重写进行中；权威 = ADR-0001/0002/**0004**/**0006** + `docs/archive/20261007-2237-top-level-architecture-rewrite-plan.md`；历史目标模型，现行批次见 Beads 当前任务及[语义入口](documentation-standards.md#work-identifiers)）
 
 > **选择权威（2026-10-05）**：装配选择由 **token 白名单**表达（`contract::kCombinationCatalog`：token → {backend, route, steps, terminal, available}），
 > token 落在 `backend.<id>.steps`；`pipeline` 只做分派。**词汇/白名单必须导出并对拍**（native → 资源 → Kotlin agreement test），
@@ -170,7 +170,7 @@ app/src/main/cpp/ (C11 薄原语；无 CLI/无全局)   tools/extract_rs/ (Rust 
 3. **Route 类**：`prepare → execute → disarm → destroy` 固定生命周期（概念见 `route_lifecycle.hpp`），
    结果只经 `status` 汇报。`execute` 仅在 `prepare` 返回 0 时调用。
 
-本节旧模型的组件触点保留在[历史组件指南](adding-a-component.md#legacy-component-identifiers)；当前改动范围以 [P-RUN-X-001：执行统一计划](../plan/backend-root-execution-unification-plan.md#p-run-x-001) 为准，不将旧触点自动带入当前批次。
+本节旧模型的组件触点保留在[历史组件指南](adding-a-component.md#legacy-component-identifiers)；当前改动范围以所属 Beads 任务的有效设计/原批准为准，不将旧触点自动带入当前批次。
 
 </details>
 

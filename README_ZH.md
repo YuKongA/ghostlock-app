@@ -18,7 +18,7 @@
 
 ## Android 应用架构
 
-当前架构权威是[backend root-execution 统一计划](docs/plan/backend-root-execution-unification-plan.md)；唯一 Class、Sequence、State 与结果投影图位于 [full-process-uml.md](docs/development/full-process-uml.md)。
+当前架构权威是backend root-execution 统一计划（Beads `gl-4tt`）；唯一 Class、Sequence、State 与结果投影图位于 [full-process-uml.md](docs/development/full-process-uml.md)。
 
 Kotlin 应用采用中性 Clean Architecture 边界。domain 模型不包含 Android、Compose、具体 backend 或持久化类型；Android 存储与平台副作用位于 data adapter；应用组装统一由 AppContainer 持有；Screen 与 ViewModel 只消费不可变状态和 action contract。
 

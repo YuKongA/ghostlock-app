@@ -18,7 +18,7 @@ Rows explicitly marked **Shizuku required** run through a shell UserService. Sta
 
 ## Android application architecture
 
-The current architecture authority is the [backend root-execution plan](docs/plan/backend-root-execution-unification-plan.md), with the canonical Class, Sequence, State, and result-projection diagrams in [full-process-uml.md](docs/development/full-process-uml.md).
+The current architecture authority is the backend root-execution plan（Beads `gl-4tt`）, with the canonical Class, Sequence, State, and result-projection diagrams in [full-process-uml.md](docs/development/full-process-uml.md).
 
 The Kotlin application uses a neutral Clean Architecture boundary. Domain models contain no Android, Compose, concrete-backend, or persistence type. Android storage and platform effects live in data adapters; application wiring lives in AppContainer; screens and ViewModels consume immutable state plus action contracts.
 
