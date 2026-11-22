@@ -1,0 +1,349 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostlock.dev/schema/plugin-package-v2.schema.json",
+  "title": "GhostLock plugin package manifest format 2.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "package", "target", "api", "files", "payloads", "resources", "i18n", "components"],
+  "properties": {
+    "format": { "$ref": "#/$defs/format" },
+    "package": { "$ref": "#/$defs/package" },
+    "target": { "$ref": "#/$defs/target" },
+    "api": { "$ref": "#/$defs/api" },
+    "files": { "type": "array", "items": { "$ref": "#/$defs/file" }, "minItems": 1 },
+    "payloads": { "$ref": "#/$defs/payloads" },
+    "resources": { "type": "array", "items": { "$ref": "#/$defs/resource" } },
+    "i18n": { "$ref": "#/$defs/i18n" },
+    "components": { "type": "array", "items": { "$ref": "#/$defs/component" }, "minItems": 1 }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$", "maxLength": 128 },
+    "slotId": { "type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$", "maxLength": 96 },
+    "className": { "type": "string", "pattern": "^(?:[A-Za-z_$][A-Za-z0-9_$]*\\.)+[A-Za-z_$][A-Za-z0-9_$]*$", "maxLength": 240 },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "path": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*\\\\)(?!.*//)[A-Za-z0-9._+@-]+(?:/[A-Za-z0-9._+@-]+)*$", "maxLength": 1024 },
+    "version": {
+      "type": "object", "additionalProperties": false,
+      "required": ["major", "minor"],
+      "properties": {
+        "major": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+        "minor": { "type": "integer", "minimum": 0, "maximum": 2147483647 }
+      }
+    },
+    "versionRange": {
+      "type": "object", "additionalProperties": false,
+      "required": ["major", "minMinor", "maxMinor"],
+      "properties": {
+        "major": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+        "minMinor": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+        "maxMinor": { "type": "integer", "minimum": 0, "maximum": 2147483647 }
+      }
+    },
+    "format": {
+      "type": "object", "additionalProperties": false,
+      "required": ["major", "minor"],
+      "properties": { "major": { "const": 2 }, "minor": { "const": 0 } }
+    },
+    "package": {
+      "type": "object", "additionalProperties": false,
+      "required": ["publisherId", "packageId", "versionCode", "versionName", "variant"],
+      "properties": {
+        "publisherId": { "$ref": "#/$defs/id" },
+        "packageId": { "$ref": "#/$defs/id" },
+        "versionCode": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "versionName": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "variant": { "$ref": "#/$defs/id" }
+      }
+    },
+    "target": {
+      "type": "object", "additionalProperties": false,
+      "required": ["platform", "architecture", "abi", "minimumPlatformVersion", "dataOnly"],
+      "properties": {
+        "platform": { "enum": ["ANDROID", "DESKTOP_LINUX", "DESKTOP_MACOS", "DESKTOP_WINDOWS", "UNIVERSAL"] },
+        "architecture": { "enum": ["ARM64", "ARMV7", "X86", "X86_64", "UNIVERSAL"] },
+        "abi": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$" },
+        "minimumPlatformVersion": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+        "dataOnly": { "type": "boolean" }
+      }
+    },
+    "apiSide": {
+      "type": "object", "additionalProperties": false,
+      "required": ["major", "builtAgainstMinor", "minimumHostMinor"],
+      "properties": {
+        "major": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+        "builtAgainstMinor": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+        "minimumHostMinor": { "type": "integer", "minimum": 0, "maximum": 2147483647 }
+      }
+    },
+    "api": {
+      "type": "object", "additionalProperties": false,
+      "required": ["runtime", "ui"],
+      "properties": { "runtime": { "$ref": "#/$defs/apiSide" }, "ui": { "$ref": "#/$defs/apiSide" } }
+    },
+    "file": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "sha256", "size"],
+      "properties": {
+        "path": { "$ref": "#/$defs/path" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "size": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+      }
+    },
+    "codePayload": {
+      "type": "object", "additionalProperties": false,
+      "required": ["code"],
+      "properties": { "code": { "type": "array", "items": { "$ref": "#/$defs/path" }, "minItems": 1 } }
+    },
+    "nativeLibrary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "abi", "elfClass", "elfMachine", "soname", "neededLibraries"],
+      "properties": {
+        "path": { "$ref": "#/$defs/path" },
+        "abi": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "elfClass": { "enum": [32, 64] },
+        "elfMachine": { "type": "integer", "minimum": 0, "maximum": 65535 },
+        "soname": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "neededLibraries": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 255 } }
+      }
+    },
+    "runtimePayload": {
+      "type": "object", "additionalProperties": false,
+      "required": ["code", "nativeLibraries"],
+      "properties": {
+        "code": { "type": "array", "items": { "$ref": "#/$defs/path" }, "minItems": 1 },
+        "nativeLibraries": { "type": "array", "items": { "$ref": "#/$defs/nativeLibrary" } }
+      }
+    },
+    "payloads": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "ui": { "$ref": "#/$defs/codePayload" }, "runtime": { "$ref": "#/$defs/runtimePayload" } },
+      "minProperties": 0
+    },
+    "documentResource": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "path", "schemaId", "schemaVersion", "executable"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "kind": { "const": "DOCUMENT" }, "path": { "$ref": "#/$defs/path" },
+        "schemaId": { "$ref": "#/$defs/id" }, "schemaVersion": { "$ref": "#/$defs/version" }, "executable": { "const": false }
+      }
+    },
+    "artifactResource": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "path", "artifactKind", "target", "executable"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "kind": { "const": "ARTIFACT" }, "path": { "$ref": "#/$defs/path" },
+        "artifactKind": { "$ref": "#/$defs/id" }, "target": { "$ref": "#/$defs/target" }, "executable": { "const": false }
+      }
+    },
+    "webBundleResource": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "path", "entryPath", "executable"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "kind": { "const": "WEB_BUNDLE" }, "path": { "$ref": "#/$defs/path" },
+        "entryPath": { "$ref": "#/$defs/path" }, "executable": { "const": true }
+      }
+    },
+    "sourceResource": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "path", "sourceKindId", "executable"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "kind": { "const": "SOURCE" }, "path": { "$ref": "#/$defs/path" },
+        "sourceKindId": { "$ref": "#/$defs/id" }, "executable": { "const": false }
+      }
+    },
+    "passiveResource": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "path", "executable"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "kind": { "enum": ["NOTICE", "PASSIVE_DATA"] },
+        "path": { "$ref": "#/$defs/path" }, "executable": { "const": false }
+      }
+    },
+    "resource": { "oneOf": [
+      { "$ref": "#/$defs/documentResource" }, { "$ref": "#/$defs/artifactResource" },
+      { "$ref": "#/$defs/webBundleResource" }, { "$ref": "#/$defs/sourceResource" },
+      { "$ref": "#/$defs/passiveResource" }
+    ] },
+    "i18nBundle": {
+      "type": "object", "additionalProperties": false,
+      "required": ["locale", "path"],
+      "properties": {
+        "locale": { "type": "string", "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$", "maxLength": 63 },
+        "path": { "$ref": "#/$defs/path" }
+      }
+    },
+    "i18n": {
+      "type": "object", "additionalProperties": false,
+      "required": ["namespace", "defaultLocale", "bundles"],
+      "properties": {
+        "namespace": { "$ref": "#/$defs/id" },
+        "defaultLocale": { "type": "string", "minLength": 2, "maxLength": 63 },
+        "bundles": { "type": "array", "items": { "$ref": "#/$defs/i18nBundle" }, "minItems": 1 }
+      }
+    },
+    "stableComponentSelector": {
+      "type": "object", "additionalProperties": false,
+      "required": ["publisherId", "packageId", "componentId"],
+      "properties": {
+        "publisherId": { "$ref": "#/$defs/id" }, "packageId": { "$ref": "#/$defs/id" }, "componentId": { "$ref": "#/$defs/id" }
+      }
+    },
+    "dependency": {
+      "type": "object", "additionalProperties": false,
+      "required": ["slotId", "required", "cardinality", "mode", "target", "exportId", "contractId", "contractVersion"],
+      "properties": {
+        "slotId": { "$ref": "#/$defs/slotId" }, "required": { "type": "boolean" }, "cardinality": { "const": "ONE" },
+        "mode": { "enum": ["CAPABILITY", "STATIC"] },
+        "target": { "$ref": "#/$defs/stableComponentSelector" }, "exportId": { "$ref": "#/$defs/id" },
+        "contractId": { "$ref": "#/$defs/id" }, "contractVersion": { "$ref": "#/$defs/versionRange" }
+      }
+    },
+    "operation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "requestSchema", "responseSchema"],
+      "properties": { "id": { "$ref": "#/$defs/id" }, "requestSchema": { "$ref": "#/$defs/id" }, "responseSchema": { "$ref": "#/$defs/id" } }
+    },
+    "export": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "contractId", "contractVersion", "visibility", "entryClass", "operations"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "contractId": { "$ref": "#/$defs/id" }, "contractVersion": { "$ref": "#/$defs/version" },
+        "visibility": { "type": "array", "items": { "enum": ["DEPENDENCY", "CUSTOM_CALLABLE"] }, "minItems": 1, "uniqueItems": true },
+        "entryClass": { "$ref": "#/$defs/className" },
+        "operations": { "type": "array", "items": { "$ref": "#/$defs/operation" }, "minItems": 1 }
+      }
+    },
+    "staticOutput": {
+      "type": "object", "additionalProperties": false,
+      "required": ["outputId", "resourceId"],
+      "properties": { "outputId": { "$ref": "#/$defs/id" }, "resourceId": { "$ref": "#/$defs/id" } }
+    },
+    "staticExport": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "contractId", "contractVersion", "outputs"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "contractId": { "$ref": "#/$defs/id" },
+        "contractVersion": { "$ref": "#/$defs/version" },
+        "outputs": { "type": "array", "items": { "$ref": "#/$defs/staticOutput" }, "minItems": 1 }
+      }
+    },
+    "hostOperation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["slotId", "contractId", "contractVersion"],
+      "properties": { "slotId": { "$ref": "#/$defs/slotId" }, "contractId": { "$ref": "#/$defs/id" }, "contractVersion": { "$ref": "#/$defs/versionRange" } }
+    },
+    "documentIo": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "schemaId", "schemaVersion"],
+      "properties": { "id": { "$ref": "#/$defs/id" }, "kind": { "const": "DOCUMENT" }, "schemaId": { "$ref": "#/$defs/id" }, "schemaVersion": { "$ref": "#/$defs/version" } }
+    },
+    "artifactIo": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "artifactKind", "target"],
+      "properties": { "id": { "$ref": "#/$defs/id" }, "kind": { "const": "ARTIFACT" }, "artifactKind": { "$ref": "#/$defs/id" }, "target": { "$ref": "#/$defs/target" } }
+    },
+    "ioDeclaration": { "oneOf": [{ "$ref": "#/$defs/documentIo" }, { "$ref": "#/$defs/artifactIo" }] },
+    "job": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "entryClass", "inputs", "outputs"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "entryClass": { "$ref": "#/$defs/className" },
+        "inputs": { "type": "array", "items": { "$ref": "#/$defs/ioDeclaration" } },
+        "outputs": { "type": "array", "items": { "$ref": "#/$defs/ioDeclaration" }, "minItems": 1 }
+      }
+    },
+    "providerSlot": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "required", "contractId", "contractVersion"],
+      "properties": { "id": { "$ref": "#/$defs/slotId" }, "required": { "type": "boolean" }, "contractId": { "$ref": "#/$defs/id" }, "contractVersion": { "$ref": "#/$defs/versionRange" } }
+    },
+    "providerBinding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["parent", "slotId", "contractId", "contractVersion"],
+      "properties": {
+        "parent": { "$ref": "#/$defs/stableComponentSelector" }, "slotId": { "$ref": "#/$defs/slotId" },
+        "contractId": { "$ref": "#/$defs/id" }, "contractVersion": { "$ref": "#/$defs/version" },
+        "physicalStaticExportId": { "$ref": "#/$defs/id" }
+      }
+    },
+    "componentBase": {
+      "type": "object",
+      "required": ["kind", "id", "resources", "dependencies", "exports", "hostOperations"],
+      "properties": {
+        "kind": { "type": "string" }, "id": { "$ref": "#/$defs/id" },
+        "uiEntryClass": { "$ref": "#/$defs/className" }, "runtimeEntryClass": { "$ref": "#/$defs/className" },
+        "resources": { "type": "array", "items": { "$ref": "#/$defs/id" }, "uniqueItems": true },
+        "dependencies": { "type": "array", "items": { "$ref": "#/$defs/dependency" } },
+        "exports": { "type": "array", "items": { "$ref": "#/$defs/export" } },
+        "hostOperations": { "type": "array", "items": { "$ref": "#/$defs/hostOperation" } }
+      }
+    },
+    "backend": {
+      "allOf": [
+        { "$ref": "#/$defs/componentBase" },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "id", "uiEntryClass", "runtimeEntryClass", "resources", "dependencies", "exports", "hostOperations", "backendKey", "selectionPolicy", "executionDomains", "abortPolicy", "providerSlots"],
+          "properties": {
+            "kind": { "const": "BACKEND" }, "id": { "$ref": "#/$defs/id" }, "uiEntryClass": { "$ref": "#/$defs/className" }, "runtimeEntryClass": { "$ref": "#/$defs/className" },
+            "resources": { "type": "array", "items": { "$ref": "#/$defs/id" }, "uniqueItems": true },
+            "dependencies": { "type": "array", "items": { "$ref": "#/$defs/dependency" } }, "exports": { "type": "array", "items": { "$ref": "#/$defs/export" } }, "hostOperations": { "type": "array", "items": { "$ref": "#/$defs/hostOperation" } },
+            "backendKey": { "$ref": "#/$defs/id" }, "selectionPolicy": { "enum": ["SELECTABLE", "HIDDEN"] },
+            "executionDomains": { "type": "array", "items": { "enum": ["APP", "SHIZUKU_SHELL"] }, "minItems": 1, "uniqueItems": true },
+            "abortPolicy": { "enum": ["BEFORE_EXECUTE_ONLY", "COOPERATIVE"] },
+            "providerSlots": { "type": "array", "items": { "$ref": "#/$defs/providerSlot" } }
+          }
+        }
+      ]
+    },
+    "provider": {
+      "allOf": [
+        { "$ref": "#/$defs/componentBase" },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "id", "resources", "dependencies", "exports", "staticExports", "hostOperations", "providerBinding", "jobs"],
+          "properties": {
+            "kind": { "const": "BACKEND_PROVIDER" }, "id": { "$ref": "#/$defs/id" }, "uiEntryClass": { "$ref": "#/$defs/className" }, "runtimeEntryClass": { "$ref": "#/$defs/className" },
+            "resources": { "type": "array", "items": { "$ref": "#/$defs/id" }, "uniqueItems": true },
+            "dependencies": { "type": "array", "items": { "$ref": "#/$defs/dependency" } }, "exports": { "type": "array", "items": { "$ref": "#/$defs/export" } }, "hostOperations": { "type": "array", "items": { "$ref": "#/$defs/hostOperation" } },
+            "staticExports": { "type": "array", "items": { "$ref": "#/$defs/staticExport" } },
+            "providerBinding": { "$ref": "#/$defs/providerBinding" }, "jobs": { "type": "array", "items": { "$ref": "#/$defs/job" } }
+          }
+        }
+      ]
+    },
+    "tool": {
+      "allOf": [
+        { "$ref": "#/$defs/componentBase" },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "id", "resources", "dependencies", "exports", "staticExports", "hostOperations", "jobs"],
+          "properties": {
+            "kind": { "const": "TOOL" }, "id": { "$ref": "#/$defs/id" }, "uiEntryClass": { "$ref": "#/$defs/className" }, "runtimeEntryClass": { "$ref": "#/$defs/className" },
+            "resources": { "type": "array", "items": { "$ref": "#/$defs/id" }, "uniqueItems": true },
+            "dependencies": { "type": "array", "items": { "$ref": "#/$defs/dependency" } }, "exports": { "type": "array", "items": { "$ref": "#/$defs/export" } }, "hostOperations": { "type": "array", "items": { "$ref": "#/$defs/hostOperation" } },
+            "staticExports": { "type": "array", "items": { "$ref": "#/$defs/staticExport" } },
+            "jobs": { "type": "array", "items": { "$ref": "#/$defs/job" } }
+          }
+        }
+      ]
+    },
+    "customExecutor": {
+      "allOf": [
+        { "$ref": "#/$defs/componentBase" },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "id", "uiEntryClass", "runtimeEntryClass", "resources", "dependencies", "exports", "hostOperations", "languages", "webUiSupport"],
+          "properties": {
+            "kind": { "const": "CUSTOM_EXECUTOR" }, "id": { "$ref": "#/$defs/id" }, "uiEntryClass": { "$ref": "#/$defs/className" }, "runtimeEntryClass": { "$ref": "#/$defs/className" },
+            "resources": { "type": "array", "items": { "$ref": "#/$defs/id" }, "uniqueItems": true },
+            "dependencies": { "type": "array", "items": { "$ref": "#/$defs/dependency" } }, "exports": { "type": "array", "items": { "$ref": "#/$defs/export" } }, "hostOperations": { "type": "array", "items": { "$ref": "#/$defs/hostOperation" } },
+            "languages": { "type": "array", "items": { "$ref": "#/$defs/id" }, "minItems": 1, "uniqueItems": true },
+            "webUiSupport": { "type": "boolean" }
+          }
+        }
+      ]
+    },
+    "component": { "oneOf": [{ "$ref": "#/$defs/backend" }, { "$ref": "#/$defs/provider" }, { "$ref": "#/$defs/tool" }, { "$ref": "#/$defs/customExecutor" }] }
+  }
+}
