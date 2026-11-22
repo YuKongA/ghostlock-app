@@ -8,7 +8,7 @@ use regex::Regex;
 use crate::btf::Btf;
 use crate::disasm::{
     add_sp_immediates, cmp_immediates, disassemble_range, first_sp_frame, has_direct_call,
-    is_mov_w0_wzr, is_mov_x1, materialized_address, validate_frame_live_at,
+    is_mov_w0_wzr, is_mov_x1, materialized_address, split_line, validate_frame_live_at,
 };
 use crate::error::{ExtractError, Result};
 use crate::kallsyms::unique_or_err;
@@ -82,16 +82,152 @@ pub fn ensure_rtmutex_43499_unpatched(
         return Ok(start);
     }
     Err(ExtractError::already_fixed(format!(
-        "remove_waiter()@{start:#x} never reads current (no mrs sp_el0); \
-         rtmutex UAF fix is present"
+        "remove_waiter()@{start:#x} clears waiter->task->pi_blocked_on, not \
+         current->pi_blocked_on; rtmutex UAF fix is present"
     )))
 }
 
-/// True when `remove_waiter()` still operates on `current` (vulnerable):
-/// the fixed variant no longer contains `mrs xN, sp_el0`.
+/// True when `remove_waiter()` still clears `current->pi_blocked_on`
+/// (vulnerable). The fix clears `waiter->task->pi_blocked_on` instead, via a
+/// task register loaded from the waiter; `mrs sp_el0` alone is NOT a reliable
+/// signal because the patched variant still reads `current` for the
+/// preempt_count increment. Detect the zero-store (`str xzr`) at a large offset
+/// (the `pi_blocked_on` field) whose base register provably still holds
+/// `current` at that instruction.
+///
+/// Single-pass register provenance: `mrs Xn, sp_el0` marks `Xn` as `current`,
+/// a register-register `mov` copies the mark, and any other write to a register
+/// (load destinations, arithmetic/logic results, writeback base updates, …)
+/// clears it. Plain stores, compares and branches do not clobber. A store whose
+/// base cannot be proven to hold `current` is rejected, so a patched kernel is
+/// never accepted on an unproven sequence (conservative direction).
 pub fn remove_waiter_uses_current(dis: &[String]) -> bool {
-    let mrs_current = Regex::new(r"(?i)\bmrs\s+x\d+,\s*s3_0_c4_c1_0\b").unwrap();
-    dis.iter().any(|line| mrs_current.is_match(line))
+    // yaxpeax renders sp_el0 as the raw sysreg `s3_0_c4_c1_0`; objdump may use
+    // the architectural name. Accept both spellings.
+    let mrs_current =
+        Regex::new(r"(?i)^mrs\s+(x\d+),\s*(?:s3_0_c4_c1_0|sp_el0)\b").unwrap();
+    let mov_copy = Regex::new(r"(?i)^mov\s+(x\d+),\s*(x\d+)\s*$").unwrap();
+    let clear = Regex::new(
+        r"(?i)^str\s+xzr,\s*\[(x\d+)(?:,\s*#(0x[0-9a-f]+|[0-9]+))?\s*\]",
+    )
+    .unwrap();
+    let mut current: BTreeSet<u8> = BTreeSet::new();
+    for raw in dis {
+        let line = strip_disasm_addr(raw);
+        if let Some(caps) = mrs_current.captures(line) {
+            if let Some(reg) = gpr_num(&caps[1]) {
+                current.insert(reg);
+            }
+            continue;
+        }
+        if let Some(caps) = mov_copy.captures(line) {
+            if let (Some(dst), Some(src)) = (gpr_num(&caps[1]), gpr_num(&caps[2])) {
+                if current.contains(&src) {
+                    current.insert(dst);
+                } else {
+                    current.remove(&dst);
+                }
+            }
+            continue;
+        }
+        if let Some(caps) = clear.captures(line) {
+            let off = caps
+                .get(2)
+                .map(|m| {
+                    let s = m.as_str();
+                    match s.strip_prefix("0x") {
+                        Some(hex) => u64::from_str_radix(hex, 16).unwrap_or(0),
+                        None => s.parse::<u64>().unwrap_or(0),
+                    }
+                })
+                .unwrap_or(0);
+            // pi_blocked_on sits far into task_struct; exclude small fields such
+            // as preempt_count (which the patched form still writes via current).
+            if gpr_num(&caps[1]).is_some_and(|base| current.contains(&base) && off >= 0x100) {
+                return true;
+            }
+            // A plain store does not clobber its base; writeback is handled below.
+        }
+        for reg in written_gprs(line) {
+            current.remove(&reg);
+        }
+    }
+    false
+}
+
+/// Drop an optional leading `<hex>:` address prefix (objdump / test fixtures);
+/// the yaxpeax adapter emits bare instruction text.
+fn strip_disasm_addr(line: &str) -> &str {
+    let trimmed = line.trim();
+    if let Some(colon) = trimmed.find(':') {
+        let prefix = &trimmed[..colon];
+        if !prefix.is_empty() && prefix.chars().all(|c| c.is_ascii_hexdigit()) {
+            return trimmed[colon + 1..].trim_start();
+        }
+    }
+    trimmed
+}
+
+/// Map a GPR token to its register number (x0..x30 / w0..w30). The zero
+/// register and sp can never hold `current`. A write to the 32-bit `wN` alias
+/// zero-extends into `xN`, so it clobbers the same provenance slot.
+fn gpr_num(token: &str) -> Option<u8> {
+    let t = token.trim().to_ascii_lowercase();
+    if t == "xzr" || t == "wzr" || t == "sp" {
+        return None;
+    }
+    let digits = t.strip_prefix('x').or_else(|| t.strip_prefix('w'))?;
+    digits.parse::<u8>().ok().filter(|n| *n <= 30)
+}
+
+fn is_branch_mnemonic(m: &str) -> bool {
+    matches!(
+        m,
+        "b" | "bl" | "br" | "blr" | "ret" | "cbz" | "cbnz" | "tbz" | "tbnz" | "eret"
+    ) || m.starts_with("b.")
+}
+
+/// The base register updated by a pre-index (`[Xn, #imm]!`) or post-index
+/// (`[Xn], #imm`) addressing mode; absent for plain unsigned/register offsets.
+fn writeback_base(operands: &str) -> Option<u8> {
+    if !operands.contains("]!") && !operands.contains("],") {
+        return None;
+    }
+    let open = operands.find('[')?;
+    let rest = &operands[open + 1..];
+    let base = rest
+        .split(|c: char| c == ',' || c == ']' || c.is_whitespace())
+        .next()?;
+    gpr_num(base)
+}
+
+/// GPRs written by one instruction, used to clear `current` provenance. Stores
+/// write no GPR destination (only a writeback base); compares write flags and
+/// branches write PC, so neither clobbers a tracked register. For loads and
+/// data-processing the leading register operand(s) are the destination(s).
+fn written_gprs(instr: &str) -> Vec<u8> {
+    let (mnemonic, operands) = split_line(instr);
+    let m = mnemonic.to_ascii_lowercase();
+    let mut out: Vec<u8> = Vec::new();
+    if is_branch_mnemonic(&m) || matches!(m.as_str(), "cmp" | "cmn" | "tst") {
+        return out;
+    }
+    if !m.starts_with("st") {
+        let two_dest = matches!(m.as_str(), "ldp" | "ldnp" | "ldxp" | "ldaxp" | "ldlxp");
+        let take = if two_dest { 2 } else { 1 };
+        for op in operands.split(',').map(str::trim).take(take) {
+            if op.starts_with('[') {
+                break;
+            }
+            if let Some(reg) = gpr_num(op) {
+                out.push(reg);
+            }
+        }
+    }
+    if let Some(base) = writeback_base(&operands) {
+        out.push(base);
+    }
+    out
 }
 
 /// Some Android kernels inline `tcp_zerocopy_receive()` into the TCP option
@@ -333,6 +469,93 @@ mod tests {
             "01068e30: str xzr, [x20, #0x938]".to_string(),
         ];
         assert!(remove_waiter_uses_current(&dis));
+    }
+
+    #[test]
+    fn patched_remove_waiter_with_preempt_count_current_read() {
+        // vivo g6a42d5ffa908: still reads current (sp_el0) for preempt_count,
+        // but clears pi_blocked_on via waiter->task (x20), not current (x25).
+        let dis = vec![
+            "1781a34: ldr x20, [x23, #48]".to_string(),
+            "1781a3c: mrs x25, s3_0_c4_c1_0".to_string(),
+            "1781a48: add x22, x20, #0x884".to_string(),
+            "1781a50: str w8, [x25, #16]".to_string(),
+            "1781ac0: str xzr, [x20, #2224]".to_string(),
+        ];
+        assert!(!remove_waiter_uses_current(&dis));
+    }
+
+    #[test]
+    fn vulnerable_remove_waiter_decimal_offset() {
+        // current kernel g7d37760ec777: objdump decimal offset form.
+        let dis = vec![
+            "01068de0: mrs x25, s3_0_c4_c1_0".to_string(),
+            "01068e30: str xzr, [x25, #2224]".to_string(),
+        ];
+        assert!(remove_waiter_uses_current(&dis));
+    }
+
+    #[test]
+    fn patched_remove_waiter_reuses_current_register_for_waiter_task() {
+        // The register that read current is overwritten with waiter->task
+        // before the clear, so the store no longer targets current. Provenance
+        // must be clobbered by the ldr, not remembered from the mrs.
+        let dis = vec![
+            "1781a3c: mrs x25, s3_0_c4_c1_0".to_string(),
+            "1781a40: ldr x25, [x23, #48]".to_string(),
+            "1781ac0: str xzr, [x25, #2224]".to_string(),
+        ];
+        assert!(!remove_waiter_uses_current(&dis));
+    }
+
+    #[test]
+    fn vulnerable_remove_waiter_copies_current_to_another_register() {
+        // current is copied via mov; the clear rides the copy. Provenance must
+        // propagate through the register-register mov.
+        let dis = vec![
+            "01068de0: mrs x25, s3_0_c4_c1_0".to_string(),
+            "01068de4: mov x9, x25".to_string(),
+            "01068e30: str xzr, [x9, #2224]".to_string(),
+        ];
+        assert!(remove_waiter_uses_current(&dis));
+    }
+
+    #[test]
+    fn patched_remove_waiter_clobbers_the_current_copy_before_the_clear() {
+        // The copy of current is itself overwritten before the store, so the
+        // clear cannot be proven to target current.
+        let dis = vec![
+            "01068de0: mrs x25, s3_0_c4_c1_0".to_string(),
+            "01068de4: mov x9, x25".to_string(),
+            "01068de8: ldr x9, [x23, #48]".to_string(),
+            "01068e30: str xzr, [x9, #2224]".to_string(),
+        ];
+        assert!(!remove_waiter_uses_current(&dis));
+    }
+
+    #[test]
+    fn provenance_tracks_real_disassembler_output() {
+        // End-to-end over the yaxpeax adapter (not hand-written text): confirm
+        // the sysreg spelling it emits and that mov/ldr provenance is tracked.
+        // mrs x25, sp_el0 ; mov x9, x25 ; str xzr, [x9, #2224]
+        let vulnerable: [u8; 12] = [
+            0x19, 0x41, 0x38, 0xd5, // mrs x25, sp_el0
+            0xe9, 0x03, 0x19, 0xaa, // mov x9, x25
+            0x3f, 0x59, 0x04, 0xf9, // str xzr, [x9, #2224]
+        ];
+        let dis = crate::disasm::disassemble_range(&vulnerable, 0, vulnerable.len()).unwrap();
+        assert!(dis[0].contains("mrs x25, s3_0_c4_c1_0"), "got: {}", dis[0]);
+        assert!(remove_waiter_uses_current(&dis));
+
+        // Insert `ldr x9, [x23, #48]` before the store to clobber the copy.
+        let patched: [u8; 16] = [
+            0x19, 0x41, 0x38, 0xd5, // mrs x25, sp_el0
+            0xe9, 0x03, 0x19, 0xaa, // mov x9, x25
+            0xe9, 0x1a, 0x40, 0xf9, // ldr x9, [x23, #48]
+            0x3f, 0x59, 0x04, 0xf9, // str xzr, [x9, #2224]
+        ];
+        let dis = crate::disasm::disassemble_range(&patched, 0, patched.len()).unwrap();
+        assert!(!remove_waiter_uses_current(&dis));
     }
 
     #[test]
