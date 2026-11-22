@@ -130,6 +130,8 @@ fun BackendPageMaterial(
 ) {
     val selected = state.selectedIndex
     val titles = state.options.map { it.title }
+    val selectedOption = selected?.let(state.options::getOrNull)
+    val noBackendLabel = stringResource(R.string.backend_run_no_backend)
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
 
     ExpressiveScaffold(
@@ -156,11 +158,12 @@ fun BackendPageMaterial(
             SegmentedColumn(modifier = Modifier.fillMaxWidth()) {
                 item {
                     SegmentedDropdownItem(
-                        icon = state.options.getOrNull(selected)?.icon?.material
+                        icon = selectedOption?.icon?.material
                             ?: ProjectIcons.Filled.Memory.material,
                         title = stringResource(R.string.backend_label),
-                        summary = titles.getOrElse(selected) { "" },
+                        summary = selectedOption?.title ?: noBackendLabel,
                         items = titles,
+                        enabled = titles.isNotEmpty(),
                         selectedIndex = selected,
                         itemEnabled = { state.options.getOrNull(it)?.selectable == true },
                         onItemSelected = { index ->
@@ -171,8 +174,15 @@ fun BackendPageMaterial(
             }
             PayloadCardMaterial(payloadState, actions.onOpenPayload)
             FinishSettingsCardMaterial(finishSettingsState, actions.onOpenFinishSettings)
-            TonalCard {
-                backendUiCatalog.entry(state.selectedKey)?.let { entry ->
+            state.catalogFailureReason?.let { reason ->
+                TonalCard(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = stringResource(R.string.backend_catalog_failed, reason),
+                        modifier = Modifier.padding(16.dp),
+                    )
+                }
+            } ?: backendUiCatalog.entry(state.selectedKey)?.let { entry ->
+                TonalCard(modifier = Modifier.fillMaxWidth()) {
                     entry.ui.Content(backendUiCatalog.availabilityFor(entry.descriptor.key))
                 }
             }
@@ -190,6 +200,7 @@ fun BackendPageMiuix(
     bottomInnerPadding: Dp,
 ) {
     val selected = state.selectedIndex
+    val selectedOption = selected?.let(state.options::getOrNull)
     val backendEntry = DropdownEntry(
         items = state.options.mapIndexed { index, option ->
             DropdownItem(
@@ -200,7 +211,7 @@ fun BackendPageMiuix(
             )
         },
     )
-    val selectedTitle = state.options.getOrNull(selected)?.title.orEmpty()
+    val selectedTitle = selectedOption?.title ?: stringResource(R.string.backend_run_no_backend)
     val scrollBehavior = MiuixScrollBehavior()
 
     MiuixScaffold(
@@ -227,7 +238,7 @@ fun BackendPageMiuix(
                 OverlayDropdownPreference(
                     startAction = {
                         androidx.compose.material3.Icon(
-                            imageVector = state.options.getOrNull(selected)?.icon?.miuix
+                            imageVector = selectedOption?.icon?.miuix
                                 ?: ProjectIcons.Filled.Memory.miuix,
                             contentDescription = null,
                             tint = MiuixTheme.colorScheme.onBackground,
@@ -240,12 +251,18 @@ fun BackendPageMiuix(
             }
             PayloadCardMiuix(payloadState, actions.onOpenPayload)
             FinishSettingsCardMiuix(finishSettingsState, actions.onOpenFinishSettings)
-            Card(modifier = Modifier.fillMaxWidth()) {
-                backendUiCatalog.entry(state.selectedKey)?.let { entry ->
+            state.catalogFailureReason?.let { reason ->
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    MiuixText(
+                        text = stringResource(R.string.backend_catalog_failed, reason),
+                        modifier = Modifier.padding(16.dp),
+                    )
+                }
+            } ?: backendUiCatalog.entry(state.selectedKey)?.let { entry ->
+                Card(modifier = Modifier.fillMaxWidth()) {
                     entry.ui.Content(backendUiCatalog.availabilityFor(entry.descriptor.key))
                 }
             }
-
         }
     }
 }

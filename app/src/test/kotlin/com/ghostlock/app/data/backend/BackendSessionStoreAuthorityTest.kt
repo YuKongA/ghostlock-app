@@ -7,6 +7,7 @@ import com.ghostlock.app.domain.backend.ExecutionDomain
 import com.ghostlock.app.domain.run.RunCapability
 import com.ghostlock.app.domain.settings.AppSelection
 import com.ghostlock.app.domain.settings.AppSelectionPort
+import com.ghostlock.app.domain.settings.BackendSelectionState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,20 +21,31 @@ import org.junit.Test
 
 /** Process-local stable-key selection authority. */
 class BackendSessionStoreAuthorityTest {
-    /** Restore chooses the first selectable entry and returns null when none exists. */
+    /** A fresh install uses only the authenticated explicit default, never list order. */
     @Test
-    fun restoreUsesDeterministicSelectableFallback() = runTest {
-        val store = BackendSessionStore(FakeSelectionPort())
-        assertEquals("ready-a", store.restore(specs())?.key)
-        assertEquals("ready-a", store.selectedKey)
-        assertNull(BackendSessionStore(FakeSelectionPort()).restore(listOf(spec("disabled", false))))
+    fun restoreUsesOnlyExplicitDefaultForFreshSelection() = runTest {
+        val port = FakeSelectionPort()
+        val store = BackendSessionStore(port)
+        assertEquals(
+            "ready-b",
+            store.restore(specs(), "ready-b", compatibleBackendKeys = readyKeys())?.key,
+        )
+        assertEquals("ready-b", store.selectedKey)
+        assertEquals(BackendSelectionState.SELECTED, port.selection.value.backendSelectionState)
+        assertEquals("ready-b", port.selection.value.selectedBackendKey)
+
+        val absentPort = FakeSelectionPort()
+        val absent = BackendSessionStore(absentPort)
+        assertNull(absent.restore(specs(), "missing", compatibleBackendKeys = readyKeys()))
+        assertNull(absent.selectedKey)
+        assertEquals(BackendSelectionState.NEEDS_USER_CHOICE, absentPort.selection.value.backendSelectionState)
     }
 
     /** Disabled declarations cannot replace the selected key. */
     @Test
     fun disabledSelectionIsRejected() = runTest {
         val store = BackendSessionStore(FakeSelectionPort())
-        store.restore(specs())
+        store.restore(specs(), "ready-a", compatibleBackendKeys = readyKeys())
         assertFalse(store.select(spec("disabled", false)))
         assertEquals("ready-a", store.selectedKey)
     }
@@ -47,7 +59,25 @@ class BackendSessionStoreAuthorityTest {
         assertEquals("ready-b", store.selectedKey)
     }
 
+    @Test
+    fun incompatibleExplicitDefaultRequiresUserChoiceWithoutFallback() = runTest {
+        val port = FakeSelectionPort()
+        val store = BackendSessionStore(port)
+
+        assertNull(
+            store.restore(
+                specs(),
+                defaultBackendKey = "ready-a",
+                compatibleBackendKeys = setOf("ready-b"),
+            ),
+        )
+        assertEquals(BackendSelectionState.NEEDS_USER_CHOICE, port.selection.value.backendSelectionState)
+        assertNull(store.selectedKey)
+    }
+
     private fun specs(): List<BackendDescriptor> = listOf(spec("ready-a"), spec("ready-b"), spec("disabled", false))
+
+    private fun readyKeys(): Set<String> = setOf("ready-a", "ready-b")
 
     private fun spec(key: String, selectable: Boolean = true): BackendDescriptor = BackendDescriptor(
         key = key,

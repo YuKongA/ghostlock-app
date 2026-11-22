@@ -43,9 +43,10 @@ class PathViewModel(
 
     /** @return Current renderer contract without Android, registry, or storage dependencies. */
     private fun buildState(): BackendPageUiState {
+        val entries = backendUiCatalog.entriesSnapshot
         val selected = backendUiCatalog.selectedEntry()
         return BackendPageUiState(
-            options = backendUiCatalog.entries.map { entry ->
+            options = entries.map { entry ->
                 BackendOptionUiState(
                     key = entry.descriptor.key,
                     title = backendUiCatalog.displayName(entry),
@@ -53,7 +54,8 @@ class PathViewModel(
                     icon = entry.ui.icon,
                 )
             },
-            selectedKey = selected?.descriptor?.key.orEmpty(),
+            selectedKey = selected?.descriptor?.key,
+            catalogFailureReason = backendUiCatalog.failureReason(),
         )
     }
 }

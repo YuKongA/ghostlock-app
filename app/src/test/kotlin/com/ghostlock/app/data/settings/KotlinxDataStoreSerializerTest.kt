@@ -6,6 +6,7 @@ import com.ghostlock.app.domain.finish.defaultFinishDefinition
 import com.ghostlock.app.domain.payload.PayloadDefinition
 import com.ghostlock.app.domain.privilege.AttackExecutorKind
 import com.ghostlock.app.domain.settings.AppSelection
+import com.ghostlock.app.domain.settings.BackendSelectionState
 import com.ghostlock.app.domain.settings.OperationalPreferences
 import com.ghostlock.app.domain.settings.TerminalLogLevel
 import com.ghostlock.app.domain.settings.UiPreferences
@@ -41,7 +42,11 @@ class KotlinxDataStoreSerializerTest {
         roundTrip(
             AppSelection.serializer(),
             AppSelection(),
-            AppSelection(AttackExecutorKind.SHIZUKU, "DIAGNOSE"),
+            AppSelection(
+                selectedExecutor = AttackExecutorKind.SHIZUKU,
+                backendSelectionState = BackendSelectionState.SELECTED,
+                selectedBackendKey = "DIAGNOSE",
+            ),
         )
         roundTrip(PayloadDefinition.serializer(), PayloadDefinition(), PayloadDefinition(safeMode = true))
         roundTrip(FinishDefinition.serializer(), defaultFinishDefinition(), defaultFinishDefinition())

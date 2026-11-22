@@ -6,7 +6,10 @@ import com.ghostlock.app.domain.backend.BackendAvailability
 import com.ghostlock.app.domain.backend.BackendDescriptor
 import com.ghostlock.app.ui.icon.IconPair
 
-/** Android presentation contract for one built-in backend. */
+/**
+ * Host-owned Android presentation selected only for an existing authenticated catalog member.
+ * Plugin-defined types never cross this interface.
+ */
 interface BackendUi {
     /** Localized category or vulnerability label resource. */
     @get:StringRes
@@ -22,14 +25,16 @@ interface BackendUi {
     /**
      * Renders this backend's named information or settings surface.
      *
-     * @param availability Current dynamic readiness supplied by the runtime projection.
+     * @param availability Resource-free Host catalog/compatibility projection; rendering must not
+     * load, instantiate, execute, or probe plugin code.
      */
     @Composable
     fun Content(availability: BackendAvailability)
 }
 
 /**
- * UI-layer projection derived from one outer backend definition.
+ * Pairs a descriptor from one READY catalog view with a Host-owned presentation adapter.
+ * This entry cannot create backend membership or a plugin runtime.
  *
  * @property descriptor Stable selection and identity facts.
  * @property ui Named Android presentation implementation.

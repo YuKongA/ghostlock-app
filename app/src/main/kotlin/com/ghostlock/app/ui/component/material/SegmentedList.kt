@@ -430,7 +430,7 @@ fun SegmentedDropdownItem(
     /** Returns whether the row at an index can be selected. */
     itemEnabled: (Int) -> Boolean = { true },
     onClick: (() -> Unit)? = null,
-    selectedIndex: Int,
+    selectedIndex: Int?,
     onItemSelected: (Int) -> Unit,
 ) {
     val haptic = LocalHapticFeedback.current
@@ -450,11 +450,7 @@ fun SegmentedDropdownItem(
     var anchorOffset by remember { mutableStateOf(IntOffset.Zero) }
 
     val hasItems = items.isNotEmpty()
-    val safeIndex = if (hasItems) {
-        selectedIndex.coerceIn(0, items.lastIndex)
-    } else {
-        -1
-    }
+    val safeIndex = selectedIndex?.takeIf { it in items.indices }
 
     Box(modifier = Modifier.trackPressPosition { anchorOffset = it.round() }) {
         SegmentedListItem(
@@ -474,7 +470,7 @@ fun SegmentedDropdownItem(
                 /* 单行显示选中值，不再按 30% 宽度折行（2026-10-19 用户裁定）：
                  * CVE 编号这类值必须完整一行；超长值用省略号收尾。 */
                 Text(
-                    text = if (hasItems && safeIndex >= 0) items[safeIndex] else "",
+                    text = safeIndex?.let(items::get).orEmpty(),
                     textAlign = TextAlign.End,
                     maxLines = 1,
                     softWrap = false,
@@ -494,7 +490,7 @@ fun SegmentedDropdownItem(
                     text = {
                         Text(text = text)
                     },
-                    selected = index == safeIndex,
+                    selected = safeIndex != null && index == safeIndex,
                     enabled = itemEnabled(index),
                     colors = dropdownItemColors,
                     onClick = {
@@ -506,7 +502,7 @@ fun SegmentedDropdownItem(
                     },
                     shapes = MenuDefaults.itemShape(index = index, count = items.size),
                     /* 用户裁定：选中对勾放右侧（2026-10-18）。 */
-                    trailingContent = if (index == safeIndex) {
+                    trailingContent = if (safeIndex != null && index == safeIndex) {
                         {
                             Icon(
                                 ProjectIcons.Filled.Check.material,

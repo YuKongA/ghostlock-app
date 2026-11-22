@@ -1,6 +1,9 @@
 package com.ghostlock.app.core.run
 
 import com.ghostlock.app.core.log.LogHub
+import com.ghostlock.app.composition.backend.BackendCatalogView
+import com.ghostlock.app.composition.backend.PluginObjectRef
+import com.ghostlock.app.composition.backend.ResolvedBackendProjection
 import com.ghostlock.app.core.runhost.RunHostIdentity
 import com.ghostlock.app.domain.backend.AbortPolicy
 import com.ghostlock.app.domain.backend.BackendAvailability
@@ -8,7 +11,10 @@ import com.ghostlock.app.domain.backend.BackendDescriptor
 import com.ghostlock.app.domain.backend.BackendSelectionPolicy
 import com.ghostlock.app.domain.backend.ExecutionDomain
 import com.ghostlock.app.domain.finish.FinishDefinition
+import com.ghostlock.app.domain.finish.FinishItemDefinition
+import com.ghostlock.app.domain.finish.FinishKind
 import com.ghostlock.app.domain.finish.FinishRepository
+import com.ghostlock.app.domain.finish.FinishSeverity
 import com.ghostlock.app.domain.payload.PayloadDefinition
 import com.ghostlock.app.domain.payload.PayloadRepository
 import com.ghostlock.app.domain.privilege.AttackExecutorKind
@@ -51,6 +57,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
+import com.ghostlock.plugin.core.PluginContentSha256
+import com.ghostlock.plugin.core.PluginPackageIdentity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -63,7 +71,18 @@ class RunSessionCoordinatorTest {
     @Test
     fun actorCutoffsAndExecutorTargetDoNotDrift() = runBlocking {
         val payload = FakePayloadRepository(PayloadDefinition(safeMode = true))
-        val finish = FakeFinishRepository(FinishDefinition())
+        val initialFinish = FinishDefinition(
+            items = listOf(
+                FinishItemDefinition(
+                    id = "before-cutoff",
+                    kind = FinishKind.Command,
+                    severity = FinishSeverity.Normal,
+                    alwaysRun = true,
+                    args = listOf("echo", "before-cutoff"),
+                ),
+            ),
+        )
+        val finish = FakeFinishRepository(initialFinish)
         val preferences = FakeOperationalPreferencesPort()
         val preferenceGate = CompletableDeferred<OperationalPreferences>()
         preferences.nextSnapshot = preferenceGate
@@ -88,7 +107,7 @@ class RunSessionCoordinatorTest {
         assertFalse(accepted.await())
         assertEquals(AttackExecutorKind.SHIZUKU, capturedTarget)
         assertEquals(true, capturedPayload?.safeMode)
-        assertEquals(FinishDefinition(), capturedFinish)
+        assertEquals(initialFinish, capturedFinish)
     }
 
     /** Both explicit Android preparation stages preserve their stable blocked-reason prefixes. */
@@ -249,7 +268,12 @@ class RunSessionCoordinatorTest {
         applicationScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     ): Fixture {
         val coordinator = RunSessionCoordinator(
-            registryEntries = listOf(SPEC),
+            catalogView = {
+                BackendCatalogView(
+                    revision = 1L,
+                    projections = listOf(ResolvedBackendProjection(SPEC, PLUGIN_OBJECT)),
+                )
+            },
             availability = { BackendAvailability.Ready() },
             backendLabel = { "Fixture" },
             selectedKey = { SPEC.key },
@@ -447,6 +471,12 @@ class RunSessionCoordinatorTest {
             abortPolicy = AbortPolicy.SAFE_DURING_RUN,
             executionDomain = ExecutionDomain.APP_OR_SHIZUKU,
             runCapability = RunCapability.PRODUCT_ROOT,
+        )
+        val PLUGIN_OBJECT = PluginObjectRef(
+            packageIdentity = PluginPackageIdentity("com.ghostlock.firstparty", "fixture"),
+            variant = "android-arm64-v8a",
+            versionCode = 1L,
+            pluginContentSha256 = PluginContentSha256("a".repeat(64)),
         )
 
         fun diagnosticReportStatic(): RunReport = RunReport(

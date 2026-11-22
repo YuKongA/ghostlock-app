@@ -44,6 +44,7 @@ class RunHostSharedWireTest {
         runId = "0".repeat(32),
         generation = 1L,
         backendKey = "DIAGNOSE",
+        pluginContentSha256 = "a".repeat(64),
         profileArtifactId = "profile",
         payloadItems = emptyList(),
         finishItems = emptyList(),

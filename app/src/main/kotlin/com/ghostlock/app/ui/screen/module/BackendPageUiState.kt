@@ -16,11 +16,12 @@ data class BackendOptionUiState(
 @Immutable
 data class BackendPageUiState(
     val options: List<BackendOptionUiState>,
-    val selectedKey: String,
+    val selectedKey: String?,
+    val catalogFailureReason: String? = null,
 ) {
-    /** @return Current selected index with a deterministic first-entry fallback. */
-    val selectedIndex: Int
-        get() = options.indexOfFirst { it.key == selectedKey }.takeIf { it >= 0 } ?: 0
+    /** @return Exact selected index, or null without coercing an absent choice to the first row. */
+    val selectedIndex: Int?
+        get() = options.indexOfFirst { it.key == selectedKey }.takeIf { it >= 0 }
 }
 
 /** Shared path-page actions; skin renderers do not own persistence or global page state. */

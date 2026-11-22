@@ -1,6 +1,7 @@
 package com.ghostlock.app.data.runhost.host
 
 import android.system.Os
+import android.os.ParcelFileDescriptor
 import com.ghostlock.app.core.flow.Flow
 import com.ghostlock.app.core.flow.FlowReportContext
 import com.ghostlock.app.core.runhost.RunHostCandidateResult
@@ -15,18 +16,13 @@ import com.ghostlock.app.data.rootscript.RootScriptArtifactPublisher
 import com.ghostlock.app.data.run.AndroidRunWorkspace
 import com.ghostlock.app.data.run.OpenedRunInputArtifact
 import com.ghostlock.app.data.run.RootArtifactStagingAdapter
-import com.ghostlock.app.domain.backend.BackendAvailability
-import com.ghostlock.app.domain.backend.BackendDescriptor
 import com.ghostlock.app.domain.backend.ExecutionDomain
 import com.ghostlock.app.domain.run.ProfileSnapshot
 import com.ghostlock.app.domain.run.RunCapability
-
-/** Resource-free runtime projection supplied directly by one framework entry. */
-internal data class AndroidRunHostRuntime(
-    val descriptor: BackendDescriptor,
-    val availability: () -> BackendAvailability,
-    val createFlow: () -> Flow,
-)
+import com.ghostlock.app.data.runhost.plugin.PluginLoadResult
+import com.ghostlock.app.data.runhost.plugin.RunHostPluginLoader
+import com.ghostlock.app.data.runhost.wire.OwnedRunHostRequestDescriptors
+import java.io.IOException
 
 /** Live platform facts and the role-specific physical workspace constructor. */
 internal data class AndroidRunHostEnvironment(
@@ -38,7 +34,6 @@ internal data class AndroidRunHostEnvironment(
 internal class AndroidRunHostPreparationAdapter(
     private val role: RunHostRole,
     private val hostEnvironment: () -> AndroidRunHostEnvironment?,
-    private val resolveRuntime: (String) -> AndroidRunHostRuntime?,
     private val processMatches: (ExecutionDomain, RunHostRole, Int) -> Boolean =
         { expected, actualRole, applicationUid ->
             ExecutionDomainVerifier.currentProcessMatches(expected, actualRole, applicationUid)
@@ -47,93 +42,122 @@ internal class AndroidRunHostPreparationAdapter(
     private val rootScriptPublisher: RootScriptArtifactPublisher = RootScriptArtifactPublisher(),
     private val productPreparer: ProductRunPreparer =
         ProductRunPreparer(staging, publisher = rootScriptPublisher),
+    private val loadPlugin: (
+        RunHostRequestModel,
+        RunHostRole,
+        AndroidRunWorkspace,
+        ParcelFileDescriptor,
+        (ExecutionDomain) -> Boolean,
+    ) -> PluginLoadResult = { model, hostRole, workspace, archive, domainMatches ->
+        RunHostPluginLoader().load(model, hostRole, workspace, archive, domainMatches)
+    },
 ) {
     /** Resolves runtime/platform facts, transfers PFDs, and returns a fully owned candidate without throwing. */
     fun materialize(
         model: RunHostRequestModel,
         identity: RunHostIdentity,
-        duplicateDescriptors: () -> List<OpenedRunInputArtifact>,
+        duplicateDescriptors: () -> OwnedRunHostRequestDescriptors,
     ): RunHostCandidateResult {
-        val runtime = runCatching { resolveRuntime(model.backendKey) }
-            .getOrElse {
-                return RunHostCandidateResult.Rejected(RunHostCode.INTERNAL_CONTRACT_FAILURE)
-            }
-            ?: return RunHostCandidateResult.Rejected(RunHostCode.UNKNOWN_BACKEND)
-        if (runtime.descriptor.key != model.backendKey) {
-            return RunHostCandidateResult.Rejected(RunHostCode.INTERNAL_CONTRACT_FAILURE)
-        }
-        val shape = runCatching {
-            RunHostRequestValidator.validateCapability(model, runtime.descriptor.runCapability)
-        }.getOrElse {
-            return RunHostCandidateResult.Rejected(RunHostCode.INTERNAL_CONTRACT_FAILURE)
-        }
-        when (shape) {
-            RunHostRequestValidation.Valid -> Unit
-            is RunHostRequestValidation.Invalid -> return RunHostCandidateResult.Rejected(shape.code)
-        }
         val environment = runCatching(hostEnvironment)
             .getOrElse {
                 return RunHostCandidateResult.Rejected(RunHostCode.INTERNAL_CONTRACT_FAILURE)
             }
             ?: return RunHostCandidateResult.Rejected(RunHostCode.NOT_READY)
-        val domainMatches = runCatching {
-            processMatches(runtime.descriptor.executionDomain, role, environment.applicationUid)
-        }.getOrDefault(false)
-        if (!domainMatches) {
-            return RunHostCandidateResult.Rejected(RunHostCode.EXECUTION_DOMAIN_MISMATCH)
-        }
-        val availability = runCatching(runtime.availability)
-            .getOrElse {
-                return RunHostCandidateResult.Rejected(RunHostCode.INTERNAL_CONTRACT_FAILURE)
-            }
-        if (availability is BackendAvailability.NotReady) {
-            return RunHostCandidateResult.Rejected(RunHostCode.NOT_READY)
-        }
 
-        val ownedDescriptors = runCatching(duplicateDescriptors)
-            .getOrElse { return RunHostCandidateResult.Rejected(RunHostCode.ARTIFACT_INVALID) }
+        val ownedDescriptors = try {
+            duplicateDescriptors()
+        } catch (_: IllegalArgumentException) {
+            return RunHostCandidateResult.Rejected(RunHostCode.INVALID_REQUEST)
+        } catch (_: IOException) {
+            return RunHostCandidateResult.Rejected(RunHostCode.IO_FAILURE)
+        } catch (_: Throwable) {
+            return RunHostCandidateResult.Rejected(RunHostCode.INTERNAL_CONTRACT_FAILURE)
+        }
         val workspace = try {
-            environment.createWorkspace(identity, runtime.descriptor.key)
+            environment.createWorkspace(identity, model.backendKey)
         } catch (problem: IllegalArgumentException) {
-            closeOwnedDescriptors(ownedDescriptors)
+            ownedDescriptors.close()
             return RunHostCandidateResult.Rejected(RunHostCode.INTERNAL_CONTRACT_FAILURE)
         } catch (problem: Throwable) {
-            closeOwnedDescriptors(ownedDescriptors)
+            ownedDescriptors.close()
             return RunHostCandidateResult.Rejected(RunHostCode.IO_FAILURE)
         }
 
+        val artifacts = try {
+            ownedDescriptors.takeArtifacts()
+        } catch (_: Throwable) {
+            ownedDescriptors.close()
+            workspace.deleteAfterTerminal()
+            return RunHostCandidateResult.Rejected(RunHostCode.INTERNAL_CONTRACT_FAILURE)
+        }
         val staged = try {
-            staging.stage(workspace, ownedDescriptors)
+            staging.stage(workspace, artifacts)
         } catch (problem: IllegalArgumentException) {
+            ownedDescriptors.close()
             workspace.deleteAfterTerminal()
             return RunHostCandidateResult.Rejected(RunHostCode.ARTIFACT_INVALID)
         } catch (problem: Throwable) {
+            ownedDescriptors.close()
             workspace.deleteAfterTerminal()
             return RunHostCandidateResult.Rejected(RunHostCode.IO_FAILURE)
         }
 
-        val materialized = when (runtime.descriptor.runCapability) {
+        val archive = try {
+            ownedDescriptors.takePluginArchive()
+        } catch (_: Throwable) {
+            ownedDescriptors.close()
+            workspace.deleteAfterTerminal()
+            return RunHostCandidateResult.Rejected(RunHostCode.INTERNAL_CONTRACT_FAILURE)
+        }
+        val loaded = try {
+            loadPlugin(
+                model,
+                role,
+                workspace,
+                archive,
+                { domain ->
+                    processMatches(domain, role, environment.applicationUid)
+                },
+            )
+        } catch (_: Throwable) {
+            workspace.deleteAfterTerminal()
+            return RunHostCandidateResult.Rejected(RunHostCode.INTERNAL_CONTRACT_FAILURE)
+        } finally {
+            ownedDescriptors.close()
+        }
+        if (loaded is PluginLoadResult.Rejected) {
+            workspace.deleteAfterTerminal()
+            return RunHostCandidateResult.Rejected(loaded.code, loaded.pluginTainted)
+        }
+        val backend = (loaded as PluginLoadResult.Ready).backend
+        if (backend.descriptor.key != model.backendKey) {
+            backend.resources.close()
+            workspace.deleteAfterTerminal()
+            return RunHostCandidateResult.Rejected(
+                RunHostCode.INTERNAL_CONTRACT_FAILURE,
+                pluginTainted = true,
+            )
+        }
+
+        val materialized = when (backend.descriptor.runCapability) {
             RunCapability.PRODUCT_ROOT -> prepareProduct(workspace, identity, model, staged)
             RunCapability.DIAGNOSTIC_ONLY -> prepareDiagnostic(workspace, identity, model, staged)
             RunCapability.UNRESOLVED -> PreparedParts.Rejected(RunHostCode.INTERNAL_CONTRACT_FAILURE)
         }
         if (materialized is PreparedParts.Rejected) {
+            backend.resources.close()
             workspace.deleteAfterTerminal()
-            return RunHostCandidateResult.Rejected(materialized.code)
+            return RunHostCandidateResult.Rejected(materialized.code, pluginTainted = true)
         }
 
         val parts = materialized as PreparedParts.Ready
-        val flow = runCatching(runtime.createFlow)
-            .getOrElse {
-                workspace.deleteAfterTerminal()
-                return RunHostCandidateResult.Rejected(RunHostCode.IO_FAILURE)
-            }
         return runCatching {
             RunHostCandidateResult.Prepared(
                 RunHostPreparedCandidate(
                     identity = identity,
-                    abortPolicy = runtime.descriptor.abortPolicy,
-                    flow = flow,
+                    abortPolicy = backend.descriptor.abortPolicy,
+                    flow = backend.flow,
+                    executionLease = backend.resources,
                     workspace = AndroidWorkspaceLease(workspace),
                     rootScript = parts.rootScript,
                     profile = parts.profile,
@@ -143,8 +167,12 @@ internal class AndroidRunHostPreparationAdapter(
                 ),
             )
         }.getOrElse {
+            backend.resources.close()
             workspace.deleteAfterTerminal()
-            RunHostCandidateResult.Rejected(RunHostCode.INTERNAL_CONTRACT_FAILURE)
+            RunHostCandidateResult.Rejected(
+                RunHostCode.INTERNAL_CONTRACT_FAILURE,
+                pluginTainted = true,
+            )
         }
     }
 
@@ -204,11 +232,6 @@ internal class AndroidRunHostPreparationAdapter(
                 productResultReader = null,
             ),
         )
-    }
-
-    /** Closes only descriptors still owned by the adapter before staging takes the whole batch. */
-    private fun closeOwnedDescriptors(inputs: List<OpenedRunInputArtifact>) {
-        inputs.forEach { input -> runCatching { input.descriptor.close() } }
     }
 
     /** Private Android wrapper that keeps File and Os dependencies outside the controller. */

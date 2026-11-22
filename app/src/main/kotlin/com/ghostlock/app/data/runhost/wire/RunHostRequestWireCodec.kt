@@ -1,6 +1,9 @@
 package com.ghostlock.app.data.runhost.wire
 
 import android.os.ParcelFileDescriptor
+import android.system.ErrnoException
+import android.system.Os
+import android.system.OsConstants
 import com.ghostlock.app.core.runhost.RunHostArtifactKind
 import com.ghostlock.app.core.runhost.RunHostArtifactRequest
 import com.ghostlock.app.core.runhost.RunHostFinishItemRequest
@@ -21,6 +24,40 @@ import com.ghostlock.app.run.PayloadItemParcel
 import com.ghostlock.app.run.RunHostRequest
 import com.ghostlock.app.run.RunInputArtifactParcel
 
+/** RunHost-owned descriptor batch whose untransferred remainder closes in reverse acquisition order. */
+internal class OwnedRunHostRequestDescriptors(
+    pluginArchive: ParcelFileDescriptor,
+    artifacts: List<OpenedRunInputArtifact>,
+) : AutoCloseable {
+    private var pluginArchive: ParcelFileDescriptor? = pluginArchive
+    private var artifacts: List<OpenedRunInputArtifact>? = artifacts.toList()
+
+    /** Transfers the archive descriptor exactly once to the plugin loader. */
+    @Synchronized
+    fun takePluginArchive(): ParcelFileDescriptor =
+        checkNotNull(pluginArchive) { "plugin archive descriptor was already transferred or closed" }
+            .also { pluginArchive = null }
+
+    /** Transfers the ordinary descriptors exactly once to the staging adapter. */
+    @Synchronized
+    fun takeArtifacts(): List<OpenedRunInputArtifact> =
+        checkNotNull(artifacts) { "artifact descriptors were already transferred or closed" }
+            .also { artifacts = null }
+
+    /** Closes only descriptors that have not already moved to their single consumer. */
+    @Synchronized
+    override fun close() {
+        val remainingArtifacts = artifacts
+        artifacts = null
+        remainingArtifacts.orEmpty().asReversed().forEach { artifact ->
+            runCatching { artifact.descriptor.close() }
+        }
+        val remainingPlugin = pluginArchive
+        pluginArchive = null
+        runCatching { remainingPlugin?.close() }
+    }
+}
+
 /**
  * Builds the generated typed request from one neutral frozen input.
  *
@@ -29,11 +66,14 @@ import com.ghostlock.app.run.RunInputArtifactParcel
  * @throws Throwable After closing every descriptor duplicated before a mapping failure.
  */
 internal fun FrozenRunInput.toWireRequest(
+    duplicatePluginSource: (String) -> ParcelFileDescriptor,
     duplicateSource: (String) -> ParcelFileDescriptor,
 ): RunHostRequest {
     val invocationByItemId = artifactInvocations.associateBy { invocation -> invocation.itemId }
+    var openedPlugin: ParcelFileDescriptor? = null
     val openedArtifacts = mutableListOf<RunInputArtifactParcel>()
     try {
+        openedPlugin = duplicatePluginSource(pluginSourceToken)
         inputArtifacts.forEach { artifact ->
             openedArtifacts += RunInputArtifactParcel().also { parcel ->
                 parcel.logicalId = artifact.logicalId
@@ -47,6 +87,8 @@ internal fun FrozenRunInput.toWireRequest(
             request.runId = runId
             request.generation = generation
             request.backendKey = backendKey
+            request.pluginArchiveFd = openedPlugin
+            request.pluginContentSha256 = pluginContentSha256
             request.profileArtifactId = profile.artifactId
             request.artifacts = openedArtifacts
             request.payloadItems = payload.enabledItems().map { item ->
@@ -100,7 +142,8 @@ internal fun FrozenRunInput.toWireRequest(
             }
         }
     } catch (problem: Throwable) {
-        openedArtifacts.forEach { artifact -> runCatching { artifact.fd.close() } }
+        openedArtifacts.asReversed().forEach { artifact -> runCatching { artifact.fd.close() } }
+        runCatching { openedPlugin?.close() }
         throw problem
     }
 }
@@ -115,6 +158,7 @@ internal fun RunHostRequest.toModel(): RunHostRequestModel = RunHostRequestModel
     runId = runId,
     generation = generation,
     backendKey = backendKey,
+    pluginContentSha256 = pluginContentSha256,
     profileArtifactId = profileArtifactId,
     payloadItems = payloadItems.map(PayloadItemParcel::toModel),
     finishItems = finishItems.map(FinishItemParcel::toModel),
@@ -130,18 +174,63 @@ internal fun RunHostRequest.toModel(): RunHostRequestModel = RunHostRequestModel
  */
 internal fun RunHostRequest.duplicateDescriptors(
     model: RunHostRequestModel,
-): List<OpenedRunInputArtifact> {
+): OwnedRunHostRequestDescriptors {
     require(artifacts.size == model.artifacts.size) { "artifact count changed during decode" }
+    var plugin: ParcelFileDescriptor? = null
     val owned = mutableListOf<OpenedRunInputArtifact>()
     try {
+        val pluginSource = requireNotNull(pluginArchiveFd) { "plugin archive descriptor is null" }
+        pluginSource.requireReadOnlyRegularPluginArchive()
+        plugin = ParcelFileDescriptor.dup(pluginSource.fileDescriptor)
         artifacts.zip(model.artifacts).forEach { (wire, metadata) ->
             val source = requireNotNull(wire.fd) { "artifact descriptor is null" }
             owned += OpenedRunInputArtifact(metadata, ParcelFileDescriptor.dup(source.fileDescriptor))
         }
-        return owned
+        return OwnedRunHostRequestDescriptors(requireNotNull(plugin), owned)
     } catch (problem: Throwable) {
-        owned.forEach { artifact -> runCatching { artifact.descriptor.close() } }
+        owned.asReversed().forEach { artifact -> runCatching { artifact.descriptor.close() } }
+        runCatching { plugin?.close() }
         throw problem
+    }
+}
+
+/** Closes the Binder-decoded descriptors on every endpoint exit without touching validated duplicates. */
+internal fun RunHostRequest.closeDecodedDescriptors() {
+    artifacts.orEmpty().asReversed().forEach { artifact ->
+        runCatching {
+            val descriptor = artifact.fd
+            artifact.fd = null
+            descriptor?.close()
+        }
+    }
+    runCatching {
+        val archive = pluginArchiveFd
+        pluginArchiveFd = null
+        archive?.close()
+    }
+}
+
+/** Validates archive PFD facts that must fail before any RunHost workspace is created. */
+private fun ParcelFileDescriptor.requireReadOnlyRegularPluginArchive() {
+    try {
+        val flags = Os.fcntlInt(fileDescriptor, OsConstants.F_GETFL, 0)
+        val stat = Os.fstat(fileDescriptor)
+        requireReadOnlyRegularPluginArchiveFacts(flags, stat.st_mode)
+    } catch (problem: IllegalArgumentException) {
+        throw problem
+    } catch (problem: ErrnoException) {
+        throw IllegalArgumentException("plugin archive descriptor cannot be inspected", problem)
+    }
+}
+
+/** Pure kernel-fact assertion shared by the live PFD preflight and host-side unit coverage. */
+internal fun requireReadOnlyRegularPluginArchiveFacts(flags: Int, mode: Int) {
+    require(flags and OsConstants.O_ACCMODE == OsConstants.O_RDONLY) {
+        "plugin archive descriptor is writable"
+    }
+    require(flags and LINUX_O_PATH == 0) { "plugin archive descriptor is O_PATH" }
+    require(mode and OsConstants.S_IFMT == OsConstants.S_IFREG) {
+        "plugin archive descriptor is not a regular file"
     }
 }
 
@@ -153,6 +242,9 @@ private fun RunInputArtifactParcel.toModel(): RunHostArtifactRequest = RunHostAr
     byteCount = byteCount,
     sha256 = sha256,
 )
+
+// Stable Linux UAPI flag absent from some Android SDK OsConstants stubs.
+private const val LINUX_O_PATH = 0x200000
 
 /** Decodes one Payload item and rejects unknown kind or acceptance values. */
 private fun PayloadItemParcel.toModel(): RunHostPayloadItemRequest = RunHostPayloadItemRequest(

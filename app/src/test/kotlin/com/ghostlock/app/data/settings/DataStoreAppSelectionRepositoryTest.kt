@@ -3,6 +3,9 @@ package com.ghostlock.app.data.settings
 import androidx.datastore.core.DataStoreFactory
 import com.ghostlock.app.domain.privilege.AttackExecutorKind
 import com.ghostlock.app.domain.settings.AppSelection
+import com.ghostlock.app.domain.settings.BackendSelectionState
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,7 +30,12 @@ class DataStoreAppSelectionRepositoryTest {
         val fixture = fixture(file)
         fixture.repository.awaitInitial()
         val executor = fixture.repository.submit { it.copy(selectedExecutor = AttackExecutorKind.SHIZUKU) }
-        val backend = fixture.repository.submit { it.copy(selectedBackendKey = "DIAGNOSE") }
+        val backend = fixture.repository.submit {
+            it.copy(
+                backendSelectionState = BackendSelectionState.SELECTED,
+                selectedBackendKey = "DIAGNOSE",
+            )
+        }
         executor.await()
         val result = backend.await()
         assertEquals(AttackExecutorKind.SHIZUKU, result.selectedExecutor)
@@ -41,11 +49,36 @@ class DataStoreAppSelectionRepositoryTest {
         reopened.close()
     }
 
+    /** Historical files without state migrate once from null/key semantics into the explicit state. */
+    @Test
+    fun legacyMissingStateMigratesToExplicitSelectionState() = runTest {
+        val serializer = AppSelectionSerializer(AppSelection())
+        val selected = serializer.readFrom(
+            ByteArrayInputStream(
+                """{"selectedExecutor":"APP","selectedBackendKey":"DIAGNOSE"}""".encodeToByteArray(),
+            ),
+        )
+        assertEquals(BackendSelectionState.SELECTED, selected.backendSelectionState)
+        assertEquals("DIAGNOSE", selected.selectedBackendKey)
+
+        val fresh = serializer.readFrom(
+            ByteArrayInputStream(
+                """{"selectedExecutor":"SHIZUKU","selectedBackendKey":null}""".encodeToByteArray(),
+            ),
+        )
+        assertEquals(BackendSelectionState.FRESH_UNINITIALIZED, fresh.backendSelectionState)
+        assertEquals(null, fresh.selectedBackendKey)
+
+        val output = ByteArrayOutputStream()
+        serializer.writeTo(selected, output)
+        assertEquals(selected, serializer.readFrom(ByteArrayInputStream(output.toByteArray())))
+    }
+
     /** Creates one isolated selection store whose actor lifetime is explicit in the test. */
     private fun fixture(file: File): Fixture {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val store = DataStoreFactory.create(
-            serializer = KotlinxDataStoreSerializer(AppSelection.serializer(), AppSelection()),
+            serializer = AppSelectionSerializer(AppSelection()),
             scope = scope,
             produceFile = { file },
         )

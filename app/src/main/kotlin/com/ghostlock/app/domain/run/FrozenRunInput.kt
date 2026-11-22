@@ -70,6 +70,8 @@ data class ProfileSnapshot(
  * @property runId Exactly 32 lowercase hexadecimal characters.
  * @property generation Positive process-monotonic generation.
  * @property backendKey Stable immutable-registry key.
+ * @property pluginContentSha256 Semantic content root of the exact package object.
+ * @property pluginSourceToken Opaque application-side token for the opened package descriptor.
  * @property profile Canonical profile snapshot.
  * @property payload Ordered product target definition.
  * @property finish Ordered post-Payload definition.
@@ -80,9 +82,20 @@ data class FrozenRunInput(
     val runId: String,
     val generation: Long,
     val backendKey: String,
+    val pluginContentSha256: String,
+    val pluginSourceToken: String,
     val profile: ProfileSnapshot,
     val payload: PayloadDefinition,
     val finish: FinishDefinition,
     val inputArtifacts: List<RunInputArtifact>,
     val artifactInvocations: List<FrozenArtifactInvocation> = emptyList(),
-)
+) {
+    init {
+        require(pluginContentSha256.matches(Regex("[0-9a-f]{64}"))) {
+            "plugin semantic content root must be 64 lowercase hexadecimal characters"
+        }
+        require(pluginSourceToken.matches(Regex("[0-9a-f]{32}"))) {
+            "plugin source token must be 32 lowercase hexadecimal characters"
+        }
+    }
+}

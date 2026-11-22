@@ -2,6 +2,7 @@ package com.ghostlock.app.data.backend
 
 import com.ghostlock.app.domain.backend.BackendDescriptor
 import com.ghostlock.app.domain.settings.AppSelectionPort
+import com.ghostlock.app.domain.settings.BackendSelectionState
 
 /**
  * Application-scoped selected-backend session over immutable registry keys.
@@ -20,21 +21,55 @@ class BackendSessionStore(
         get() = synchronized(lock) { currentKey }
 
     /**
-     * Establishes a deterministic selectable fallback for this application process.
+     * Restores only an exact durable choice, except for the index default on a genuinely fresh install.
      *
-     * @param specs Immutable captured registry membership.
-     * @return Selected spec, or null when no selectable backend exists.
+     * @param specs Immutable captured catalog membership.
+     * @param defaultBackendKey Explicit authenticated builtin default; list order is never a fallback.
+     * @return Selected spec, or null when user choice is required.
      */
-    suspend fun restore(specs: List<BackendDescriptor>): BackendDescriptor? {
-        val requestedKey = selectionPort.selection.value.selectedBackendKey
-        val selected = specs.firstOrNull { spec -> spec.selectable && spec.key == requestedKey }
-            ?: specs.firstOrNull(BackendDescriptor::selectable)
-        val selectedKey = selected?.key
-        if (selectedKey != requestedKey) {
-            selectionPort.submit { current -> current.copy(selectedBackendKey = selectedKey) }.await()
+    suspend fun restore(
+        specs: List<BackendDescriptor>,
+        defaultBackendKey: String,
+        compatibleBackendKeys: Set<String>,
+    ): BackendDescriptor? {
+        val current = selectionPort.selection.value
+        val selected = when (current.backendSelectionState) {
+            BackendSelectionState.FRESH_UNINITIALIZED -> specs.firstOrNull { spec ->
+                spec.selectable && spec.key in compatibleBackendKeys && spec.key == defaultBackendKey
+            }
+            BackendSelectionState.SELECTED -> specs.firstOrNull { spec ->
+                spec.selectable && spec.key in compatibleBackendKeys && spec.key == current.selectedBackendKey
+            }
+            BackendSelectionState.NEEDS_USER_CHOICE -> null
         }
-        synchronized(lock) { currentKey = selectedKey }
+        val next = when {
+            selected != null && current.backendSelectionState == BackendSelectionState.FRESH_UNINITIALIZED ->
+                current.copy(
+                    backendSelectionState = BackendSelectionState.SELECTED,
+                    selectedBackendKey = selected.key,
+                )
+            selected == null && current.backendSelectionState != BackendSelectionState.NEEDS_USER_CHOICE ->
+                current.copy(
+                    backendSelectionState = BackendSelectionState.NEEDS_USER_CHOICE,
+                    selectedBackendKey = null,
+                )
+            else -> current
+        }
+        if (next != current) {
+            selectionPort.submit { committed ->
+                committed.copy(
+                    backendSelectionState = next.backendSelectionState,
+                    selectedBackendKey = next.selectedBackendKey,
+                )
+            }.await()
+        }
+        synchronized(lock) { currentKey = selected?.key }
         return selected
+    }
+
+    /** Clears only the process projection when catalog initialization failed; durable intent is preserved. */
+    fun clearProcessSelection() {
+        synchronized(lock) { currentKey = null }
     }
 
     /**
@@ -45,7 +80,12 @@ class BackendSessionStore(
      */
     suspend fun select(spec: BackendDescriptor): Boolean {
         if (!spec.selectable) return false
-        selectionPort.submit { current -> current.copy(selectedBackendKey = spec.key) }.await()
+        selectionPort.submit { current ->
+            current.copy(
+                backendSelectionState = BackendSelectionState.SELECTED,
+                selectedBackendKey = spec.key,
+            )
+        }.await()
         synchronized(lock) { currentKey = spec.key }
         return true
     }

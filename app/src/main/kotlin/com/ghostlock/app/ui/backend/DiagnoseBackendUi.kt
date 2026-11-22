@@ -9,13 +9,13 @@ import com.ghostlock.app.ui.icon.Icons
 import com.ghostlock.app.ui.kit.ConfigItem
 import com.ghostlock.app.ui.kit.LocalUiKit
 
-/** Named Android information surface for the built-in Diagnose backend. */
+/** Host-owned Diagnose presentation selected only for a catalog-projected `DIAGNOSE` member. */
 internal object DiagnoseBackendUi : BackendUi {
     override val categoryLabelRes: Int = R.string.backend_diagnose_category
     override val displayNameRes: Int = R.string.backend_diagnose_name
     override val icon: IconPair = Icons.Filled.BugReport
 
-    /** Renders current diagnostic-chain facts without creating a configuration authority. */
+    /** Renders catalog-projected readiness without loading, instantiating, or probing plugin code. */
     @Composable
     override fun Content(availability: BackendAvailability) {
         val statusTitle = stringResource(R.string.backend_runtime_status)

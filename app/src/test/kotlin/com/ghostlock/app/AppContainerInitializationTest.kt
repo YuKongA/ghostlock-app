@@ -7,6 +7,7 @@ import androidx.lifecycle.viewmodel.CreationExtras
 import com.ghostlock.app.data.settings.KotlinxDataStoreSerializer
 import com.ghostlock.app.domain.privilege.AttackExecutorKind
 import com.ghostlock.app.domain.settings.AppSelection
+import com.ghostlock.app.domain.settings.BackendSelectionState
 import com.ghostlock.app.domain.settings.OperationalPreferences
 import com.ghostlock.app.domain.settings.TerminalLogLevel
 import com.ghostlock.app.domain.settings.UiPreferences
@@ -37,6 +38,7 @@ class AppContainerInitializationTest {
     @Before
     fun clearTypedStores() {
         application = RuntimeEnvironment.getApplication()
+        application.noBackupFilesDir.resolve("plugin-catalog").deleteRecursively()
         STORE_NAMES.forEach { name ->
             application.dataStoreFile(name).deleteRecursively()
         }
@@ -66,7 +68,11 @@ class AppContainerInitializationTest {
             "app-selection.json",
             AppSelection.serializer(),
             AppSelection(),
-            AppSelection(AttackExecutorKind.APP, "DIAGNOSE"),
+            AppSelection(
+                selectedExecutor = AttackExecutorKind.APP,
+                backendSelectionState = BackendSelectionState.SELECTED,
+                selectedBackendKey = "DIAGNOSE",
+            ),
         )
 
         val container = AppContainer(application)
@@ -82,7 +88,12 @@ class AppContainerInitializationTest {
         assertEquals(ui.pageScale, settings.uiState.value.pageScale)
         assertEquals(TerminalLogLevel.entries.indexOf(operational.logLevel), settings.uiState.value.selectedLogLevelIndex)
         assertTrue(settings.uiState.value.showLogTimestamp)
-        assertEquals("DIAGNOSE", container.backendUiCatalog.selectedEntry()?.descriptor?.key)
+        assertEquals(
+            "failure=${container.backendUiCatalog.failureReason()} " +
+                "entries=${container.backendUiCatalog.entriesSnapshot.map { it.descriptor.key }}",
+            "DIAGNOSE",
+            container.backendUiCatalog.selectedEntry()?.descriptor?.key,
+        )
     }
 
     /** A non-corruption storage failure terminates every waiter with the same lazy failure state. */

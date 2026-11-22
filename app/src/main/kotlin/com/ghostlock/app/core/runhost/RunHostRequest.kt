@@ -75,6 +75,7 @@ data class RunHostRequestModel(
     val runId: String,
     val generation: Long,
     val backendKey: String,
+    val pluginContentSha256: String,
     val profileArtifactId: String,
     val payloadItems: List<RunHostPayloadItemRequest>,
     val finishItems: List<RunHostFinishItemRequest>,
@@ -106,6 +107,9 @@ object RunHostRequestValidator {
             return invalid("invalid run identity")
         }
         if (!RunHostProtocol.isBackendKey(request.backendKey)) return invalid("invalid backend key")
+        if (!request.pluginContentSha256.matches(PLUGIN_CONTENT_SHA256)) {
+            return invalid("invalid plugin semantic content root")
+        }
         if (!RunHostProtocol.isLogicalId(request.profileArtifactId)) return invalid("invalid profile artifact id")
         if (request.artifacts.size > RunHostProtocol.MAX_ARTIFACTS) return limit("too many artifacts")
         if (request.payloadItems.size > RunHostProtocol.MAX_PAYLOAD_ITEMS) return limit("too many Payload items")
@@ -243,6 +247,7 @@ internal fun RunHostRequestModel.semanticFingerprint(): String {
         append(runId).append('\n')
         append(generation).append('\n')
         append(backendKey).append('\n')
+        append(pluginContentSha256).append('\n')
         append(profileArtifactId).append('\n')
         artifacts.forEach { value ->
             append("a|").append(value.logicalId).append('|').append(value.kind.wireValue)
@@ -267,3 +272,5 @@ internal fun RunHostRequestModel.semanticFingerprint(): String {
             (byte.toInt() and 0xff).toString(16).padStart(2, '0')
         }
 }
+
+private val PLUGIN_CONTENT_SHA256 = Regex("[0-9a-f]{64}")

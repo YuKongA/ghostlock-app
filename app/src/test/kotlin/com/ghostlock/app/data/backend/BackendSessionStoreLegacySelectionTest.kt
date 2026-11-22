@@ -7,6 +7,7 @@ import com.ghostlock.app.domain.backend.ExecutionDomain
 import com.ghostlock.app.domain.run.RunCapability
 import com.ghostlock.app.domain.settings.AppSelection
 import com.ghostlock.app.domain.settings.AppSelectionPort
+import com.ghostlock.app.domain.settings.BackendSelectionState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,18 +25,21 @@ class BackendSessionStoreLegacySelectionTest {
         val second = spec("beta")
         val store = BackendSessionStore(FakeSelectionPort())
         store.select(second)
-        assertEquals(second, store.restore(listOf(first, second)))
-        assertEquals(second, store.restore(listOf(second, first)))
+        assertEquals(second, store.restore(listOf(first, second), "alpha", setOf("alpha", "beta")))
+        assertEquals(second, store.restore(listOf(second, first), "alpha", setOf("alpha", "beta")))
         assertEquals("beta", store.selectedKey)
     }
 
-    /** A removed key falls back to the first selectable current declaration. */
+    /** A removed key requires an explicit new choice and never falls back by list order. */
     @Test
-    fun missingStableKeyFallsBackWithoutLegacyMatching() = runTest {
-        val store = BackendSessionStore(FakeSelectionPort())
+    fun missingStableKeyRequiresUserChoiceWithoutLegacyMatching() = runTest {
+        val port = FakeSelectionPort()
+        val store = BackendSessionStore(port)
         store.select(spec("removed"))
-        assertEquals("current", store.restore(listOf(spec("current")))?.key)
-        assertEquals("current", store.selectedKey)
+        assertEquals(null, store.restore(listOf(spec("current")), "current", setOf("current")))
+        assertEquals(null, store.selectedKey)
+        assertEquals(BackendSelectionState.NEEDS_USER_CHOICE, port.selection.value.backendSelectionState)
+        assertEquals(null, port.selection.value.selectedBackendKey)
     }
 
     private fun spec(key: String): BackendDescriptor = BackendDescriptor(

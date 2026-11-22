@@ -66,3 +66,6 @@ private const val SNAPSHOT_POLL_INTERVAL_MS: Long = 250L
 
 /** Sole post-terminal client deadline for receiving and draining the independent RunHost log marker. */
 internal const val RUNHOST_LOG_DELIVERY_TIMEOUT_MS: Long = 5_000L
+
+/** Maximum time a normal/rejected run may wait for one-shot RunHost binder death. */
+internal const val RUNHOST_PROCESS_DEATH_TIMEOUT_MS: Long = 5_000L

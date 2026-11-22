@@ -537,7 +537,7 @@ setup → W1（SELinux）→ W2（凭据）→ W3（seccomp）→ handoff（root
 | 对象 | 命令 / 证据 |
 |---|---|
 | 普通改动的 host 测试 | `./gradlew nativeTestHost --console=plain`：current-tree host CTest 聚合 |
-| 普通改动的 Android native 构建 | `./gradlew nativeBuildAndroid --console=plain`：debug/release 双 variant 与 JNA distribution |
+| 普通改动的 Android native 构建 | `./gradlew nativeBuildAndroid --console=plain`：验证唯一 Diagnose `.glplugin.zip` 及 debug/release APK 的 plugin boundary；证明该静态package／APK边界和依赖构建，不证明 RunHost DCL、App／Shizuku进程行为、真机加载或攻击成功 |
 | Kotlin 单测 | `./gradlew :app:testDebugUnitTest`；全量结果门沿用 `:app:verifyDebugUnitTestXml` / `:app:verifyReleaseUnitTestXml`（名称兼容，统计与报告由 Allure 负责） |
 | Rust 测试 | `cargo test --release` |
 | 攻击路径诊断 / 真机 | [§8.2 可选形状诊断](#engineering-diagnostic) / [§8.3 必要设备证据](#engineering-device-gate)，两者不互相替代 |

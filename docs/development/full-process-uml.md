@@ -4,13 +4,13 @@
 
 > **时间视点**：当前工作树；只描述源码中已经存在的结构与行为。活跃计划完成后的目标见[活跃计划最终目标全局 UML](active-plan-target-uml.md#global-active-plan-target-view)。两份图回答不同问题，不互相替代。
 >
-> **当前截面（2026-11-21）**：P-RUN-CORE-001/批次02、P-RUN-X-001/批次03与批次04的runtime完成态已进入本树；`RunSessionCoordinator`、shared `RunHostController`及两个execution-domain leaf package均已存在。`BXP3-B1` plugin source尚未进入本树，因此下图仍是same-APK backend registry、JNA与native topology；provider、外部导入、真实攻击backend、额外ABI、Desktop与统一KMP i18n均未实现。
+> **当前截面（2026-11-21）**：`BXP3-B1` production source 已进入工作树，但完整 V1、AVD 与具名 ARM64 真机门尚未全部关闭；下图因此表示“已存在但仍在验证中的实现”，不表示 BXP3-B1 已完成。当前唯一 backend package 是 APK builtin、ARM64、单 component 的 `DIAGNOSE`；provider、外部导入、Custom、真实攻击 backend、额外 ABI、Desktop 与统一 KMP i18n 尚未实现。
 >
 > **本页优先级**：§0 是当前全局 authority。后续 A0–A6、旧 D7 及历次局部图继续保留沿革和子系统细节；其中旧标题即使含“current authority”，也不得覆盖 §0 的 2026-11-21 当前截面。
 
 <a id="run-current-views"></a>
 
-> **代号与旧视图入口**：本页后续内容混合历次结构，A0–A6 与 §11.10 的旧 D7 属各自历史计划；Mermaid 内 D1/R1 等仅为节点变量。旧视图按主计划语义映射（[gl-4tt设计](../../openspec/changes/runtime-foundations/design.md#record-gl-4tt)，`plan-semantic-identifiers`）定位：[P-RUN-IO-001/批次01：脚本](#run-view-r2)、[P-RUN-X-001/批次01：执行主干](#run-view-r3)、[P-LOG-X-001/批次01：日志中枢](#run-view-r4c)、[P-BACKEND-X-001/来源S1：既有 common source](#run-view-r5)。原历史、状态和取代关系不变，来源S1不授权接回carrier；wire字段仍见[P-RUN-IPC-001](../../openspec/specs/runhost-wire/spec.md#p-run-ipc-001)。
+> **代号与旧视图入口**：本页后续内容混合历次结构，A0–A6 与 §11.10 的旧 D7 属各自历史计划；Mermaid 内 D1/R1 等仅为节点变量。旧视图按主计划语义映射（[gl-4tt设计](../../openspec/changes/runtime-foundations/design.md#record-gl-4tt)，`plan-semantic-identifiers`）定位：[P-RUN-IO-001/批次01：脚本](#run-view-r2)、[P-RUN-X-001/批次01：执行主干](#run-view-r3)、[P-LOG-X-001/批次01：日志中枢](#run-view-r4c)、[P-BACKEND-X-001/来源S1：既有 common source](#run-view-r5)。原历史、状态和取代关系不变，来源S1不授权接回 carrier；wire 字段仍见 [P-RUN-IPC-001](../../openspec/specs/runhost-wire/spec.md#p-run-ipc-001)。
 
 > 2026-10-23 JNI v4 已获用户“按照计划”批准：§11 取代旧的 route/JNI handle/Flow/Finish 局部图。
 
@@ -23,18 +23,20 @@
 
 ```mermaid
 flowchart TB
-  subgraph BUILD[Gradle 与 same-APK producer]
+  subgraph BUILD[Gradle 与 package producer]
     direction LR
-    APP[":app Kotlin + JNA runtime"]
-    NATIVE["app/src/main/cpp/common\n+ backends/diagnose"]
-    APK["debug / release APK\nDiagnose DSO in APK lib/"]
+    API[":plugin:api\nJava diagnostic-v1 ABI"]
+    CORE[":plugin:core\nKMP manifest / index / catalog model"]
+    DIAG[":plugin:packages:diagnose\nKotlin + JNA + private native source"]
+    ZIP["verified builtin\n.glplugin.zip\nARM64 / one BACKEND component"]
     HOST_GATE["nativeTestHost\ncurrent-run Allure aggregate"]
-    ANDROID_GATE["nativeBuildAndroid\ndebug + release build"]
+    ANDROID_GATE["nativeBuildAndroid\nverified plugin ZIP + debug/release APK boundary"]
     DEBUG_GATE["verifyDebugUnitTestXml\ncurrent-run Allure"]
     RELEASE_GATE["verifyReleaseUnitTestXml\nindependent current-run Allure"]
     CHECK_ALL["legacy checkAll aggregate"]
-    NATIVE --> APP --> APK
-    ANDROID_GATE --> APK
+    DIAG --> ZIP
+    API -. compileOnly ABI .-> DIAG
+    ANDROID_GATE --> ZIP
     HOST_GATE --> CHECK_ALL
     ANDROID_GATE --> CHECK_ALL
     DEBUG_GATE --> CHECK_ALL
@@ -42,71 +44,91 @@ flowchart TB
 
   subgraph MAIN[Android main process]
     direction LR
-    REG["BackendRegistry\none immutable definition list"]
-    UI["BackendUiCatalog\nprojection from same registry"]
+    ASSET["APK generated asset\nbuiltin index + archive"]
+    SEED["BuiltinPluginSeeder"]
+    STORE["AndroidPluginCatalogStore\nimmutable objects + catalog"]
+    COORD["PluginCatalogCoordinator\nINITIALIZING / READY / FAILED"]
+    PROJ["BackendCatalogProjection\nBackendDescriptor + PluginObjectRef"]
+    UI["BackendPresentationRegistry\nDiagnose Host UI adapter"]
     SELECT["AppSelection / BackendSessionStore"]
     SESSION["RunSessionCoordinator\nadmission + cutoff"]
-    FREEZE["AndroidRunInputFreezer\nprofile / root inputs"]
-    DISPATCH["AndroidRunHostDispatchAdapter\nfixed App or Shizuku target"]
-    HUB["LogHub + presentation adapter"]
+    FREEZE["AndroidRunInputFreezer\narchive PFD + root inputs"]
 
-    REG --> UI
-    REG --> SESSION
+    ASSET --> SEED --> STORE --> COORD --> PROJ
+    PROJ --> UI
+    PROJ --> SESSION
     SELECT --> SESSION
-    SESSION --> FREEZE --> DISPATCH
-    SESSION --> HUB
+    SESSION --> FREEZE
   end
 
-  subgraph HOST["App-UID 或 Shizuku-shell RunHost process"]
+  subgraph HOST["一次性 App 或 Shizuku RunHost process"]
     direction LR
-    ENTRY["AppUidRunHostService\nor ShizukuShellRunHostService"]
-    ENDPOINT["RunHostBinderEndpoint\nParcel / callback wire"]
+    ENDPOINT["Binder endpoint\nfinally close decoded PFDs"]
     CONTROLLER["RunHostController\nlifecycle / terminal / quiescence"]
-    PREP["AndroidRunHostPreparationAdapter\ndomain / workspace / staging"]
-    RUNTIME["BackendRegistry.runtime(key)\nnarrow runtime projection"]
-    FLOW["fresh DiagnoseFlow\nSequentialFlow orchestration"]
-    BINDING["DiagnoseNativeBinding\nJNA load / call"]
-    DSO["same-APK libghostlock_diagnose.so\n+ JNA libjnidispatch.so"]
+    WIRE["RunHostRequestWireCodec\nPFD basics + validated duplicates"]
+    PREP["AndroidRunHostPreparationAdapter\none-shot descriptor transfer"]
+    STAGE["RootArtifactStagingAdapter\nconsume + close ordinary PFDs"]
+    LOADER["RunHostPluginLoader\nconsume + close archive PFD\ncopy / verify / extract / DCL"]
+    ADAPTER["PluginBackendFlow\nplugin result → Host facts"]
+    ENTRY["DiagnoseEntryPoint"]
+    RUN["DiagnoseRun\nplugin-owned Kotlin orchestration"]
+    BINDING["DiagnoseNativeBinding\nplugin-owned JNA load/call/close"]
+    DSO["private libghostlock_diagnose.so\n+ plugin-private libjnidispatch.so"]
     LOG["KotlinLogConnector / LogHub wire"]
     REPORT["typed RunReport / terminal snapshot"]
 
-    ENTRY --> ENDPOINT
     ENDPOINT --> CONTROLLER
-    ENDPOINT --> PREP
-    ENTRY --> RUNTIME --> PREP
-    PREP --> FLOW --> BINDING --> DSO
-    CONTROLLER --> FLOW
+    ENDPOINT --> WIRE --> PREP
+    PREP --> STAGE
+    PREP --> LOADER
+    LOADER --> ENTRY --> RUN
+    LOADER --> ADAPTER
+    CONTROLLER --> ADAPTER
+    ADAPTER --> RUN --> BINDING --> DSO
+    ADAPTER --> REPORT
     CONTROLLER --> LOG
     CONTROLLER --> REPORT
   end
 
-  APK --> REG
-  DISPATCH -->|"typed request + read-only PFDs"| ENTRY
-  REPORT -->|"terminal snapshot"| DISPATCH
-  LOG -->|"callback records"| HUB
+  ZIP --> ASSET
+  CORE -. typed metadata and catalog model .-> SEED
+  CORE -. typed manifest verification model .-> LOADER
+  API -. parent-classloader runtime ABI .-> LOADER
+  FREEZE -->|"PFD + semantic content root + typed Host inputs"| ENDPOINT
+  HOST -->|"terminal snapshot / log callback"| MAIN
 ```
 
 当前不变量：
 
-- `BackendRegistry`是same-APK membership唯一authority；descriptor、runtime与UI都从同一immutable definition list投影。`DIAGNOSE`是`DIAGNOSTIC_ONLY`，`CUSTOM`保持disabled，selectable `PRODUCT_ROOT`数量为0。
-- `RunSessionCoordinator`独占admission/cutoff，`RunHostController`独占lifecycle/candidate/callback/snapshot/quiescence；Binder endpoint只拥有transport，preparation adapter只拥有domain/workspace/staging/materialization。
-- 两个leaf package只保留framework差异、各一次runtime投影、六个endpoint delegate和entry-local destroy；不建立第二份host orchestration。
-- Diagnose Kotlin、JNA binding与native DSO仍由`:app`同版发布并在目标RunHost进程加载；本树没有plugin archive、catalog object、PFD plugin handoff、DCL或plugin-owned native组件。
+- main process 不加载 Diagnose/JNA DSO，也不执行插件代码；它只拥有 catalog、selection、UI projection 与 run cutoff。
+- manifest/catalog 是 backend membership 与精确对象来源；`BackendPresentationRegistry` 不能创造 membership。
+- Binder endpoint在所有prepare出口逆序关闭decode PFD；validated duplicate由同一holder一次性转移，ordinary artifacts只由staging关闭，archive只由loader关闭。
+- RunHost 先重验 archive、manifest、API/ABI/domain，再加载 entry；插件 Kotlin 独占 JNA/native load、call、close。
+- 当前 `PluginBackendFlow` 仍是 Host `Flow` 适配器；是否让旧 Host `Flow/SequentialFlow` 退出是尚未批准的设计差异，不在本当前图中预先实施。
 
-### 0.2 一次 RunHost lifecycle
+### 0.2 catalog 与一次运行状态
 
 ```mermaid
 stateDiagram-v2
-  [*] --> NEW
-  NEW --> PREPARED: request validated and candidate atomically committed
-  NEW --> TERMINAL: cancel before prepare
-  NEW --> DESTROYED: requestClose after rejection or no candidate
-  PREPARED --> RUNNING: start accepted
-  PREPARED --> TERMINAL: cancel before start
-  PREPARED --> DESTROYED: requestClose before start
-  RUNNING --> TERMINAL: sole worker terminal claim
-  TERMINAL --> DESTROYED: quiescence then workspace cleanup
-  DESTROYED --> [*]: framework destroy authorized
+  state "main catalog" as Catalog {
+    [*] --> INITIALIZING
+    INITIALIZING --> READY: builtin reconcile + verify + atomic catalog publish
+    INITIALIZING --> FAILED: index / archive / identity / I/O failure
+    READY --> [*]: one terminal generation for this process
+    FAILED --> [*]: bounded reason; selection/run disabled
+  }
+
+  state "one RunHost process" as RunHost {
+    [*] --> NEW
+    NEW --> PREPARED: request + PFD verified and materialized
+    NEW --> REJECTED: prepare fail closed
+    PREPARED --> RUNNING: execute accepted
+    RUNNING --> TERMINAL: plugin facts + cleanup + log drain
+    PREPARED --> TERMINAL: close before start
+    REJECTED --> DESTROYED: plugin-tainted or authorized close
+    TERMINAL --> DESTROYED: execution lease close, workspace cleanup, physical process exit
+    DESTROYED --> [*]
+  }
 ```
 
 ### 0.3 一次 Diagnose 运行 Sequence
@@ -115,43 +137,42 @@ stateDiagram-v2
 sequenceDiagram
   participant UI as Android UI
   participant Main as RunSessionCoordinator
-  participant Registry as BackendRegistry
+  participant Catalog as READY BackendCatalogView
   participant Freeze as AndroidRunInputFreezer
-  participant Client as App/Shizuku RunHost client
-  participant Entry as execution-domain leaf service
-  participant Endpoint as Binder endpoint
-  participant Controller as RunHostController
-  participant Prep as AndroidRunHostPreparationAdapter
-  participant Flow as fresh DiagnoseFlow
-  participant Native as JNA binding / same-APK DSO
+  participant Host as App/Shizuku RunHost
+  participant Stage as RootArtifactStagingAdapter
+  participant Loader as RunHostPluginLoader
+  participant Adapter as PluginBackendFlow
+  participant Plugin as DiagnoseRun
+  participant Native as DiagnoseNativeBinding/DSO
 
   UI->>Main: start(selected backend key)
-  Main->>Registry: resolve descriptor + current availability
-  Registry-->>Main: DIAGNOSE / DIAGNOSTIC_ONLY
-  Main->>Freeze: freeze Operational / Payload / Finish + inputs
-  Freeze-->>Main: typed request lease with read-only PFDs
-  Main->>Client: prepare on fixed App or Shizuku target
-  Client->>Entry: typed Binder request
-  Entry->>Registry: runtime(key) exact narrow projection
-  Entry->>Endpoint: six business delegates
-  Endpoint->>Controller: structure / identity / lifecycle preflight
-  Controller->>Prep: materialize outside controller mutex
-  Prep->>Prep: domain gate, dup/stage PFDs, create workspace
-  Prep->>Flow: create one fresh Flow
-  Prep-->>Controller: complete candidate
-  Controller->>Controller: atomic PREPARED commit
-  Main->>Client: start
-  Client->>Endpoint: start(runId, generation)
-  Controller->>Flow: run(BackendFlowInput)
-  Flow->>Native: one diagnose native chain
-  Native-->>Flow: primitive / dispatch / cleanup + logs
-  Flow-->>Controller: BackendRunFacts
-  Controller-->>Client: durable terminal snapshot + callback marker
-  Client-->>Main: normalized terminal outcome
-  Client->>Endpoint: requestClose after log drain
-  Controller->>Controller: await quiescence, delete workspace, DESTROYED
-  Client->>Entry: App unbind or Shizuku remove
-  Main-->>UI: terminal state
+  Main->>Catalog: resolve same-generation descriptor + PluginObjectRef
+  Catalog-->>Main: DIAGNOSE + exact content root
+  Main->>Freeze: freeze object, preferences, Payload/Finish cutoff
+  Freeze-->>Main: archive PFD + typed request lease
+  Main->>Host: prepare(request, PFD)
+  Host->>Host: structure/fingerprint → PFD basics → validated dup holder
+  Host->>Stage: transfer ordinary PFDs; stage and close
+  Host->>Loader: transfer archive PFD; copy and close
+  Note over Host,Loader: endpoint finally closes only Binder decode PFDs
+  Loader->>Loader: verify, extract, validate domain/API/ABI
+  Loader->>Plugin: construct entry and instantiate one run
+  Loader-->>Host: prepared PluginBackendFlow + execution lease
+  Main->>Host: execute
+  Host->>Adapter: run(Host BackendFlowInput)
+  Adapter->>Plugin: execute(narrow DiagnosticRunContext)
+  Plugin->>Native: runChain / logs / handoff
+  Native-->>Plugin: native and shell facts
+  Plugin-->>Adapter: DiagnosticRunResult
+  Adapter->>Plugin: close through resource owner
+  Adapter-->>Host: BackendRunFacts → RunReport
+  Host-->>Main: terminal snapshot + drained logs
+  Main->>Host: requestClose
+  Host->>Host: close execution lease, then delete workspace
+  Main->>Host: destroy, then unbind/remove service
+  Host--xMain: business binder death / physical PID exit
+  Main-->>UI: accepted terminal, or transport failure on death timeout
 ```
 
 ## 1. IPO（端到端，数据级）
@@ -1224,32 +1245,33 @@ Shizuku 路由被选定后，prepare/start/连接失败不会启动第二个 App
 43284Glued 的 `exp.c`/`elf_parser.c` 通过共享 `gl_common` 输出：ProcessBuilder 合并 stdout/stderr，由 launcher collector 写入本次 `run.log`，并同步输出 logcat。DFRoot `bootstrap.c` 是 system-root 独立进程，logger 只写 logcat；它的 stdout 不属于 App/Shizuku `run.log`。既有 `/dev/dfm*` markers 仍是控制信号，日志不替代 marker 状态。
 Shizuku `remove=true` 后，客户端等待 binder-disconnected 回调及其所在主线程队列轮次退出，再允许同 tag 的下一次 bind；该等待只串行化 UserService 销毁，不改变 launcher 选择规则。
 
-### 11.8 Real-attack native build disconnection
+### 11.8 Diagnose plugin package build and legacy attack disconnection
 
-2026-11-05 用户裁定先断开全部真攻击 backend。根 `app/src/main/cpp/CMakeLists.txt` 仍只做 project/标准设置与两个 `include()` 组装：`include(common/)`、`include(backends/)`；其中 `common/CMakeLists.txt` 声明 **OBJECT** target `gl_common`，`backends/CMakeLists.txt` 只接入非攻击的 Diagnose DSO，不接入 43499-Glued、43284-Glued、98260 的历史 chunk。这些 chunk 继续作为 source-only candidate 保留，不进入 AGP externalNativeBuild target graph，也不会以攻击 ELF 进入 APK。Gradle 同时删除对应 backend properties、M0 source staging/build task 与 marker wiring，因此没有 build property 旁路可以重新接回这些 chunk。
+当前 Android native owner 是 `:plugin:packages:diagnose`，不是 App。该 module 的 package-owned CMake 从 `plugin/native-source/common` 编译私有 Diagnose DSO；release AAR、release runtime closure 与 JNA AAR 由唯一 `packageGlPlugin` producer 组合为 ARM64 `.glplugin.zip`，App 只通过 generated-assets consumer 把同一 archive 放入 debug/release APK。43499-Glued、43284-Glued、98260 的历史 native chunk 继续作为 source-only candidate 保留，不进入 Diagnose package 或 App production graph。
 
-2026-11-06 用户进一步裁定删除 `verifyDebugNativeArtifacts`、`verifyReleaseNativeArtifacts` 和仅供其消费的 CMake target manifest。2026-11-08 用户又删除不必要的 `verifyJnaDistribution`；当前 root `nativeBuildAndroid` 只依赖 debug/release 双 variant 的 `assemble`。它证明两版 APK 可构建，不再声明 JNA distribution、merged ELF、ABI 或 JNI 精确核验。历史 verifier 的通过和失败只保留在当批证据中，不作为当前图的组件。
+root `nativeBuildAndroid` 依赖唯一 Diagnose `.glplugin.zip` verifier与debug/release两个APK boundary task；后两者通过AGP APK artifact edge拉起对应variant构建。它证明该静态plugin package／APK隔离边界及其依赖构建，不证明RunHost DCL、App／Shizuku进程行为、真机加载或攻击成功。
 
 ```mermaid
 flowchart LR
-  GRADLE[":app:externalNativeBuildDebug / assembleDebug"] --> ROOT["cpp/CMakeLists.txt：project/标准 + include()"]
-  ROOT --> COMMON["common/CMakeLists.txt → OBJECT gl_common (.o)"]
-  ROOT --> BACKENDS["backends/CMakeLists.txt：disconnection boundary"]
-  BACKENDS --> DIAGNOSE["Diagnose DSO only"]
-  BACKENDS --> NONE["no real-attack target"]
-  SRC["43499glued / 43284glued / 98260 source-only"] -. not included .-> BACKENDS
-  GRADLE --> DEBUG["assembleDebug"]
-  GRADLE --> RELEASE["assembleRelease"]
-  DEBUG --> ROOT_GATE
-  RELEASE --> ROOT_GATE
-  NONE --> APK["APK contains no project real-attack ELF"]
+  API[":plugin:api<br/>compileOnly"] -. ABI .-> PACKAGE[":plugin:packages:diagnose"]
+  COMMON["plugin/native-source/common<br/>OBJECT source"] --> CMAKE["package-owned CMake"]
+  PACKAGE --> CMAKE --> DSO["libghostlock_diagnose.so"]
+  DSO --> AAR["AGP release AAR provider"]
+  PACKAGE --> AAR
+  AAR --> PRODUCER["packageGlPlugin"]
+  JNA["release runtime closure<br/>JNA AAR"] --> PRODUCER
+  PRODUCER --> ZIP["ARM64 .glplugin.zip"]
+  ZIP --> ASSETS["App generateBuiltinPluginAssets"]
+  ASSETS --> DEBUG["assembleDebug"]
+  ASSETS --> RELEASE["assembleRelease"]
+  LEGACY["43499glued / 43284glued / 98260<br/>source-only"] -. no production edge .-> PACKAGE
 ```
 
-Host CTest 不复用上述 Android production CMake。backend/module 自己拥有最小 TU/stub mapping，root 只做组合；`native-test-disposition.tsv` 同时约束所有 test/probe 的处置，不能把 excluded row 当成测试 PASS。
+Host CTest 不复用 Android production CMake。root 只组合具名 module；`nativeTestContractsHost` 直接编译当前 common/Diagnose production source，`native-test-disposition.tsv` 约束所有已扫描 test/probe 的处置。excluded row 不是测试 PASS，inventory 尚未扫描 plugin 树的欠账也不由本图冒充关闭。
 
 ```mermaid
 flowchart LR
-  SOURCE["app/src/main/cpp + tools<br/>suffix/prefix test + named probe"] --> INVENTORY["verifyNativeTestInventory<br/>36 candidates exact-set"]
+  SOURCE["app legacy test/probe candidates + tools tests"] --> INVENTORY["verifyNativeTestInventory"]
   TSV["native-test-disposition.tsv<br/>machine authority"] --> INVENTORY
   TSV --> C43499["43499glued/tests/CMakeLists.txt<br/>registration drift guard"]
   TSV --> CCONTRACT["tools/tests/CMakeLists.txt<br/>registration drift guard"]
@@ -1257,18 +1279,20 @@ flowchart LR
   C43499 --> T43499
   INVENTORY --> TCONTRACT["nativeTestContractsHost<br/>configure → build → CTest → module Allure"]
   CCONTRACT --> TCONTRACT
+  PCOMMON["plugin/native-source/common"] --> TCONTRACT
+  PDIAG["plugin/packages/diagnose/src/main/cpp"] --> TCONTRACT
   INVENTORY --> TAVB["avbcheck typed task<br/>configure → build → CTest → module Allure"]
   T43499 --> HOST_GATE["root nativeTestHost<br/>current-run module set → Allure aggregate"]
   TCONTRACT --> HOST_GATE
   TAVB --> HOST_GATE
   HOST_GATE --> CHECK_ALL["root checkAll"]
-  ANDROID_GATE["nativeBuildAndroid<br/>debug + release build"] --> CHECK_ALL
+  ANDROID_GATE["nativeBuildAndroid<br/>verified plugin ZIP + debug/release APK boundary"] --> CHECK_ALL
   TEST_DEBUG["testDebugUnitTest"] --> XML_DEBUG["verifyDebugUnitTestXml<br/>current full run → Allure"]
   TEST_RELEASE["testReleaseUnitTest"] --> XML_RELEASE["verifyReleaseUnitTestXml<br/>current full run → Allure"]
   XML_DEBUG --> CHECK_ALL
 ```
 
-Allure只读取本轮Test／CTest结构化结果并生成报告；runner退出状态、producer完整性与全量范围仍由Gradle持有，图中不预写实际PASS数量。此时点仍保留legacy App native topology、只构建debug/release的`nativeBuildAndroid`和`checkAll`；`checkAll`仍只聚合debug结果门，release结果门独立调用。Host CTest仍可把保留source作为测试输入，但它不是APK production graph或registry接线。这张图只表达source/build ownership；本轮没有运行Gradle、CTest、AVD或真机门，因此断开后的构建结果保持`NOT_RUN`，且不宣称任何漏洞ELF可运行。
+Allure只读取本轮Test／CTest结构化结果并生成报告；runner退出状态、producer完整性与全量范围仍由Gradle持有，图中不预写实际PASS数量。此T-B时点已经由plugin package拥有Diagnose/JNA/native producer，`nativeBuildAndroid`验证唯一plugin ZIP与debug/release APK boundary；旧`checkAll`仍聚合host、Android build与debug结果门，release结果门独立调用，待后继T-C删除。Host CTest 对 production source 的编译不使 App 重新成为 native owner，也不证明任何漏洞 ELF 可运行。
 
 ### 11.9 2026-11-02：新进程 Flow 通道（历史；由 §11.12 typed RunHost 取代）
 

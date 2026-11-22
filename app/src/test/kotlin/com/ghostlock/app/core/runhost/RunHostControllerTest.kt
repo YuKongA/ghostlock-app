@@ -22,6 +22,7 @@ import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,7 +39,9 @@ class RunHostControllerTest {
     @Test
     fun prepareStartTerminalAndCloseUseOneCandidate() {
         val controller = RunHostController()
-        val workspace = RecordingWorkspace()
+        val releaseOrder = Collections.synchronizedList(mutableListOf<String>())
+        val workspace = RecordingWorkspace { releaseOrder += "workspace" }
+        val execution = RecordingExecutionLease(releaseOrder)
         val terminal = CountDownLatch(1)
         val logs = Collections.synchronizedList(mutableListOf<LogDraft>())
         val sink = RecordingSink(logs = logs, terminal = terminal)
@@ -46,7 +49,9 @@ class RunHostControllerTest {
         assertEquals(RunHostCode.OK, controller.setCallback(identity, sink))
         assertEquals(
             RunHostCode.OK,
-            controller.prepare(request()) { _, _ -> prepared(workspace, successfulFlow(emitLog = true)) },
+            controller.prepare(request()) { _, _ ->
+                prepared(workspace, successfulFlow(emitLog = true), executionLease = execution)
+            },
         )
         assertEquals(RunHostCode.OK, controller.start(identity))
         assertTrue(terminal.await(5L, TimeUnit.SECONDS))
@@ -57,8 +62,10 @@ class RunHostControllerTest {
         assertEquals(1L, snapshot?.logSequence)
         assertEquals(1, workspace.activations.get())
         assertEquals(listOf("controller-log"), logs.map(LogDraft::message))
+        assertEquals(1, execution.terminations.get())
         assertEquals(RunHostCode.OK, controller.requestClose(identity))
         assertEquals(1, workspace.deletions.get())
+        assertEquals(listOf("lease", "workspace"), releaseOrder)
         assertTrue(controller.frameworkDestroyAuthorized())
         assertEquals(RunHostCode.ALREADY_APPLIED, controller.requestClose(identity))
     }
@@ -76,9 +83,30 @@ class RunHostControllerTest {
     }
 
     @Test
+    fun taintedMaterializeFailureAllowsCloseButRejectsProcessReuse() {
+        val controller = RunHostController()
+        assertEquals(RunHostCode.OK, controller.setCallback(identity, RecordingSink()))
+        assertEquals(
+            RunHostCode.ARTIFACT_INVALID,
+            controller.prepare(request()) { _, _ ->
+                RunHostCandidateResult.Rejected(
+                    RunHostCode.ARTIFACT_INVALID,
+                    pluginTainted = true,
+                )
+            },
+        )
+
+        assertEquals(RunHostCode.HOST_DIED, controller.prepare(request()) { _, _ -> error("must not retry") })
+        assertEquals(RunHostCode.HOST_DIED, controller.start(identity))
+        assertEquals(RunHostCode.OK, controller.requestClose(identity))
+        assertTrue(controller.frameworkDestroyAuthorized())
+    }
+
+    @Test
     fun preparedCancelPublishesCancelledThenCloseDeletesTheWorkspace() {
         val controller = RunHostController()
         val workspace = RecordingWorkspace()
+        val execution = RecordingExecutionLease()
         val terminal = CountDownLatch(1)
         val stopCalls = AtomicInteger(0)
         val flow = RecordingFlow(
@@ -86,7 +114,10 @@ class RunHostControllerTest {
             stopAction = { stopCalls.incrementAndGet() },
         )
         controller.setCallback(identity, RecordingSink(terminal = terminal))
-        assertEquals(RunHostCode.OK, controller.prepare(request()) { _, _ -> prepared(workspace, flow) })
+        assertEquals(
+            RunHostCode.OK,
+            controller.prepare(request()) { _, _ -> prepared(workspace, flow, executionLease = execution) },
+        )
 
         assertEquals(RunHostCode.OK, controller.cancel(identity))
         assertTrue(terminal.await(5L, TimeUnit.SECONDS))
@@ -94,6 +125,7 @@ class RunHostControllerTest {
         assertEquals(RunHostState.TERMINAL, snapshot?.state)
         assertEquals(RunTerminal.CANCELLED, snapshot?.terminal)
         assertEquals(0, stopCalls.get())
+        assertEquals(1, execution.terminations.get())
 
         assertEquals(RunHostCode.OK, controller.requestClose(identity))
         assertEquals(1, workspace.deletions.get())
@@ -103,16 +135,27 @@ class RunHostControllerTest {
     @Test
     fun candidateIdentityMismatchCleansWorkspaceAndLeavesControllerQuiescent() {
         val controller = RunHostController()
-        val workspace = RecordingWorkspace { error("cleanup residue") }
+        val releaseOrder = Collections.synchronizedList(mutableListOf<String>())
+        val workspace = RecordingWorkspace {
+            releaseOrder += "workspace"
+            error("cleanup residue")
+        }
+        val execution = RecordingExecutionLease(releaseOrder)
         controller.setCallback(identity, RecordingSink())
         val wrongIdentity = RunHostIdentity("f".repeat(32), identity.generation)
         val result = controller.prepare(request()) { _, _ ->
-            val candidate = (prepared(workspace, successfulFlow()) as RunHostCandidateResult.Prepared).candidate
+            val candidate = (
+                prepared(workspace, successfulFlow(), executionLease = execution) as
+                    RunHostCandidateResult.Prepared
+                ).candidate
             RunHostCandidateResult.Prepared(candidate.copy(identity = wrongIdentity))
         }
         assertEquals(RunHostCode.INTERNAL_CONTRACT_FAILURE, result)
         assertEquals(1, workspace.deletions.get())
-        assertEquals(RunHostState.NEW, controller.snapshot(identity).snapshot?.state)
+        assertEquals(1, execution.terminations.get())
+        assertEquals(listOf("lease", "workspace"), releaseOrder)
+        assertEquals(RunHostCode.HOST_DIED, controller.snapshot(identity).code)
+        assertEquals(null, controller.snapshot(identity).snapshot)
         assertEquals(RunHostCode.OK, controller.requestClose(identity))
         assertTrue(controller.frameworkDestroyAuthorized())
     }
@@ -412,17 +455,22 @@ class RunHostControllerTest {
     fun retainingTerminalReleasesCandidateWithoutDeletingWorkspace() {
         val controller = RunHostController()
         val workspace = RecordingWorkspace()
+        val execution = RecordingExecutionLease()
         val terminal = CountDownLatch(1)
         val flow = RecordingFlow(runAction = { input ->
             input.complete(successfulFacts().copy(diagnosticOutcome = DiagnosticOutcome.UNKNOWN))
         })
         controller.setCallback(identity, RecordingSink(terminal = terminal))
-        assertEquals(RunHostCode.OK, controller.prepare(request()) { _, _ -> prepared(workspace, flow) })
+        assertEquals(
+            RunHostCode.OK,
+            controller.prepare(request()) { _, _ -> prepared(workspace, flow, executionLease = execution) },
+        )
         assertEquals(RunHostCode.OK, controller.start(identity))
         assertTrue(terminal.await(5L, TimeUnit.SECONDS))
         assertEquals(RunTerminal.UNKNOWN, controller.snapshot(identity).snapshot?.terminal)
 
         assertEquals(RunHostCode.OK, controller.requestClose(identity))
+        assertEquals(1, execution.terminations.get())
         assertEquals(0, workspace.deletions.get())
         assertTrue(controller.frameworkDestroyAuthorized())
     }
@@ -568,14 +616,18 @@ class RunHostControllerTest {
         val job = SupervisorJob().also { it.cancel() }
         val controller = RunHostController(CoroutineScope(job + Dispatchers.Default))
         val workspace = RecordingWorkspace()
+        val execution = RecordingExecutionLease()
         controller.setCallback(identity, RecordingSink())
         assertEquals(
             RunHostCode.OK,
-            controller.prepare(request()) { _, _ -> prepared(workspace, successfulFlow()) },
+            controller.prepare(request()) { _, _ ->
+                prepared(workspace, successfulFlow(), executionLease = execution)
+            },
         )
         assertEquals(RunHostCode.OK, controller.start(identity))
         waitUntil { controller.snapshot(identity).snapshot?.state == RunHostState.TERMINAL }
         assertEquals(RunTerminal.UNKNOWN, controller.snapshot(identity).snapshot?.terminal)
+        assertEquals(1, execution.terminations.get())
         assertEquals(RunHostCode.OK, controller.requestClose(identity))
         assertEquals(0, workspace.deletions.get())
         assertTrue(controller.frameworkDestroyAuthorized())
@@ -585,11 +637,13 @@ class RunHostControllerTest {
         workspace: RecordingWorkspace,
         flow: Flow,
         abortPolicy: AbortPolicy = AbortPolicy.BEFORE_START_ONLY,
+        executionLease: RunHostExecutionLease = RecordingExecutionLease(),
     ): RunHostCandidateResult = RunHostCandidateResult.Prepared(
         RunHostPreparedCandidate(
             identity = identity,
             abortPolicy = abortPolicy,
             flow = flow,
+            executionLease = executionLease,
             workspace = workspace,
             rootScript = rootScript(),
             profile = ProfileSnapshot("profile", ProfileSnapshot.CURRENT_SCHEMA_VERSION, "0".repeat(64)),
@@ -616,6 +670,7 @@ class RunHostControllerTest {
         runId = identity.runId,
         generation = identity.generation,
         backendKey = "diagnose",
+        pluginContentSha256 = "a".repeat(64),
         profileArtifactId = "profile",
         payloadItems = emptyList(),
         finishItems = emptyList(),
@@ -670,6 +725,19 @@ class RunHostControllerTest {
             deletions.incrementAndGet()
             deleteAction()
             return true
+        }
+    }
+
+    private class RecordingExecutionLease(
+        private val releaseOrder: MutableList<String>? = null,
+    ) : RunHostExecutionLease {
+        private val closed = AtomicBoolean(false)
+        val terminations = AtomicInteger(0)
+
+        override fun close() {
+            if (!closed.compareAndSet(false, true)) return
+            terminations.incrementAndGet()
+            releaseOrder?.add("lease")
         }
     }
 

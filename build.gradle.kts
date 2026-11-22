@@ -2,8 +2,10 @@ import java.nio.file.Files
 import java.util.Properties
 
 plugins {
-    id("com.android.application") version "9.4.1" apply false
-    id("com.android.library") version "9.4.1" apply false
+    id("com.android.application") version "9.1.0" apply false
+    id("com.android.library") version "9.1.0" apply false
+    id("com.android.kotlin.multiplatform.library") version "9.1.0" apply false
+    id("org.jetbrains.kotlin.multiplatform") version "2.4.20" apply false
     id("org.jetbrains.kotlin.plugin.serialization") version "2.4.20" apply false
     id("org.jetbrains.kotlin.plugin.compose") version "2.4.20" apply false
     id("org.jetbrains.kotlin.jvm") version "2.4.20" apply false
@@ -552,11 +554,11 @@ val nativeTestContractsHost = tasks.register<NativeHostCmakeTestTask>("nativeTes
         fileTree("tools/tests") {
             include("**/*.c", "**/*.cc", "**/*.cpp", "**/*.h", "**/*.hpp", "CMakeLists.txt", "*.tsv")
         },
-        fileTree("app/src/main/cpp/common") {
+        fileTree("plugin/native-source/common/common") {
             include("gl_log.c", "gl_log.h", "run_handoff.c", "run_handoff.h")
         },
-        fileTree("app/src/main/cpp/backends/diagnose") {
-            include("**/*.cpp", "**/*.h", "CMakeLists.txt")
+        fileTree("plugin/packages/diagnose/src/main/cpp") {
+            include("diagnose.cpp", "api/diagnose_api.h", "CMakeLists.txt")
         },
     )
     cmakeExecutable.set(glCmake)
@@ -581,8 +583,12 @@ tasks.register<NativeTestHostSummaryTask>("nativeTestHost") {
 
 tasks.register("nativeBuildAndroid") {
     group = "verification"
-    description = "Builds both Android variants."
-    dependsOn(":app:assembleDebug", ":app:assembleRelease")
+    description = "Verifies the Diagnose package and both plugin-isolated App variants."
+    dependsOn(
+        ":plugin:packages:diagnose:verifyGlPluginZip",
+        ":app:verifyDebugBuiltinPluginBoundary",
+        ":app:verifyReleaseBuiltinPluginBoundary",
+    )
 }
 
 tasks.register("checkAll") {

@@ -176,7 +176,7 @@ UI不再用显示层补一个选择结果。`BackendUiCatalog.selectedEntry()`�
 
 ###### 19.5.70 改动清单
 
-本节是`BXP3-B1`唯一source ledger；旧`backend-root-execution-unification-ledger.tsv`中的240行P-BACKEND-X-002旧批次记录继续只作历史，不得作为本批实现清单。本批production文件动作如下；未列文件不因相邻目录被授权修改：
+本节是`BXP3-B1`唯一source ledger；旧`backend-root-execution-unification-ledger.tsv`中的240行P-BACKEND-X-002旧批次记录继续只作历史，不得作为本批实现清单。本批production文件动作如下；未列文件不因相邻目录被授权修改。`ADD/MODIFY/DELETE/MOVE_REWRITE`的path-state以T-B固定parent `488d02e1c153b7281c37204f82021b03fd6765c5`判断；后来为四候选提交拆分增加的Beads／OpenSpec／current-build文档投影按[E-BUILD-X-002唯一hunk owner](../allure-reporting-gates/design.md#record-allure-reporting-gates)处理，不增加第151个production ledger动作：
 
 | action | path | exact change／reason |
 |---|---|---|
@@ -293,7 +293,7 @@ UI不再用显示层补一个选择结果。`BackendUiCatalog.selectedEntry()`�
 | MODIFY | `app/src/main/kotlin/com/ghostlock/app/runhost/README.md` | 记录catalog不进RunHost、exact object重验、plugin-owned native与one-shot kill。 |
 | MODIFY | `docs/development/full-process-uml.md` | 只在implementation切换真实owner同批把已实现链改为catalog→PFD→loader→plugin；设计阶段不先冒充现状。 |
 | MODIFY | `docs/development/introduction.md` | implementation验收后把current authority从static definition／App-owned JNA/native更新为catalog／plugin-owned chain，保留原Diagnose历史证据的当时边界。 |
-| MODIFY | `openspec/changes/builtin-diagnose-plugin/specs/runhost-wire/spec.md` | 旧`docs/plan/backend-root-execution-runhost-wire.md`已随计划系统迁移退出当前authority；本批只在所属change的现行delta spec同步archive PFD＋semantic content root两个字段、PFD owner／fingerprint和不变的profile/business method边界，不提前同步主规范或新建平行wire文档。 |
+| MODIFY | `openspec/changes/builtin-diagnose-plugin/specs/runhost-wire/spec.md` | 把既有设计正文中的PFD owner／失败逆序close，以及semantic content root进入request fingerprint、retry改变root→`RUN_MISMATCH`且不引入FD／ZIP size／ZIP byte hash，落成可验收scenario；不改现有business method或profile shape。 |
 | MODIFY | `docs/development/engineering-standards.md` | 实现同批只更新`nativeBuildAndroid`现行命令的owner／产物说明：入口仍唯一，Diagnose native/package改由plugin叶模块产生，不改门禁强度或PASS判据。 |
 | MODIFY | `README.md`; `README_ZH.md` | implementation验收同批把same-APK `BackendRegistry`、CUSTOM placeholder及App-owned Diagnose Flow/JNA/DSO的现状说明改为catalog＋builtin package＋plugin-owned native；不先写后继provider/import为已实现。 |
 
@@ -333,8 +333,8 @@ UI不再用显示层补一个选择结果。`BackendUiCatalog.selectedEntry()`�
 | MODIFY | `app/src/androidTest/kotlin/com/ghostlock/app/ui/backend/BackendUiTest.kt` | membership改从catalog projection读取；删除Custom placeholder/runtime断言，并核双skin下无选择不标中首项、catalog FAILED reason可见。 |
 | MODIFY | `app/src/androidTest/kotlin/com/ghostlock/app/architecture/UiBaselineFixtures.kt` | 用catalog-backed Diagnose presentation构造READY、无选择与FAILED fixture，删除对static `BackendRegistry`与Custom placeholder的compile-time依赖；不重写未触及页面。 |
 | MODIFY | `tools/kotlin_architecture_d0.py` | 核Host零Diagnose/JNA/native owner、唯一catalog caller、API namespace与module dependency direction。 |
-| MODIFY | `tools/tests/test_kotlin_architecture_d0.py` | 对应guard正负fixture。 |
-| MODIFY | `app/src/test/resources/architecture/kotlin-file-actions-v1.tsv` | 只追加本批实际Kotlin action；不得复制旧240行插件ledger。 |
+| ADD | `tools/tests/test_kotlin_architecture_d0.py` | 对应guard正负fixture；T-B固定parent中不存在该文件。 |
+| MODIFY | `app/src/test/resources/architecture/kotlin-file-actions-v1.tsv`; `app/src/test/resources/architecture/component-api-v1.tsv` | 前者只追加本批实际Kotlin action，不得复制旧240行插件ledger；后者只同步`SegmentedList.kt` nullable `selectedIndex`直接产生的file SHA、`SegmentedDropdownItem`签名及后三项source line共5行机械变化，不放宽其它冻结API。 |
 
 ###### 19.5.71 数据流／控制流差异
 

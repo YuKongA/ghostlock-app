@@ -43,6 +43,7 @@ ARCHITECTURE_RULES = (
     "old-aidl-transaction",
     "manual-jni-object-marshalling",
     "diagnose-native-boundary",
+    "plugin-owner-boundary",
     "superseded-settings-authority",
     "core-outer-dependency",
     "retired-run-owner",
@@ -876,6 +877,123 @@ RUNHOST_DEDUP_MODIFY_TARGETS = {
     "app/src/main/kotlin/com/ghostlock/app/runhost/shizukushell/ShizukuShellRunHostService.kt",
 }
 
+BXP3_B1_BATCH = "P-BACKEND-X-002/BXP3-B1"
+
+BXP3_B1_FILE_MOVES = {
+    "app/src/test/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseFlowTest.kt":
+        "plugin/packages/diagnose/src/test/kotlin/com/ghostlock/plugin/diagnose/DiagnoseRunTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/composition/backend/BackendDefinitionTest.kt":
+        "app/src/test/kotlin/com/ghostlock/app/composition/backend/BackendCatalogProjectionTest.kt",
+}
+
+BXP3_B1_FILE_DELETES = {
+    "app/src/main/kotlin/com/ghostlock/app/ui/backend/CustomBackendUi.kt",
+    "app/src/main/kotlin/com/ghostlock/app/composition/backend/BackendDefinition.kt",
+    "app/src/main/kotlin/com/ghostlock/app/composition/backend/BackendRegistry.kt",
+    "app/src/main/kotlin/com/ghostlock/app/composition/backend/DiagnoseBackendDefinition.kt",
+    "app/src/main/kotlin/com/ghostlock/app/composition/backend/CustomBackendDefinition.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/declarations/BackendRuntime.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/lua/CustomBackendRuntime.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseBackendRuntime.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseFlow.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/jna/DiagnoseJnaLibrary.kt",
+    "app/src/main/kotlin/com/ghostlock/app/backend/backends/diagnose/jna/DiagnoseNativeBinding.kt",
+}
+
+BXP3_B1_ADD_TARGETS = {
+    "app/src/main/kotlin/com/ghostlock/app/core/plugin/PluginCatalogState.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/plugin/AndroidPluginArchiveVerifier.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/plugin/AndroidPluginCatalogStore.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/plugin/BuiltinPluginSeeder.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/plugin/PluginObjectSource.kt",
+    "app/src/main/kotlin/com/ghostlock/app/composition/plugin/PluginCatalogCoordinator.kt",
+    "app/src/main/kotlin/com/ghostlock/app/composition/backend/BackendCatalogProjection.kt",
+    "app/src/main/kotlin/com/ghostlock/app/ui/backend/BackendPresentationRegistry.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/runhost/plugin/PluginApiParentClassLoader.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/runhost/plugin/RunHostPluginLoader.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/runhost/plugin/PluginRunResourceOwner.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/runhost/plugin/PluginBackendFlow.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/plugin/AndroidPluginArchiveVerifierTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/plugin/AndroidPluginCatalogStoreTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/plugin/BuiltinPluginSeederTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/ui/viewmodel/PathViewModelTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/ui/viewmodel/HomeViewModelTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/runhost/plugin/PluginBackendFlowTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/data/run/AndroidRunWorkspaceTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/data/plugin/BuiltinPluginBootstrapTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/data/runhost/PluginRunHostProcessLifecycleTest.kt",
+}
+
+BXP3_B1_MODIFY_TARGETS = {
+    "app/src/main/kotlin/com/ghostlock/app/ui/backend/BackendUi.kt",
+    "app/src/main/kotlin/com/ghostlock/app/ui/backend/BackendUiCatalog.kt",
+    "app/src/main/kotlin/com/ghostlock/app/ui/backend/DiagnoseBackendUi.kt",
+    "app/src/main/kotlin/com/ghostlock/app/ui/screen/module/BackendPageUiState.kt",
+    "app/src/main/kotlin/com/ghostlock/app/ui/viewmodel/PathViewModel.kt",
+    "app/src/main/kotlin/com/ghostlock/app/ui/screen/module/BackendPage.kt",
+    "app/src/main/kotlin/com/ghostlock/app/ui/component/material/SegmentedList.kt",
+    "app/src/main/kotlin/com/ghostlock/app/ui/viewmodel/HomeViewModel.kt",
+    "app/src/main/res/values/strings.xml",
+    "app/src/main/res/values-zh-rCN/strings.xml",
+    "app/src/main/kotlin/com/ghostlock/app/domain/backend/BackendDescriptor.kt",
+    "app/src/main/kotlin/com/ghostlock/app/domain/backend/BackendAvailability.kt",
+    "app/src/main/kotlin/com/ghostlock/app/domain/settings/AppSelection.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/settings/DataStoreAppSelectionRepository.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/backend/BackendSessionStore.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/backend/BackendSelectionAdapter.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/run/RunInputCutoff.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/run/RunSessionCoordinator.kt",
+    "app/src/main/kotlin/com/ghostlock/app/AppContainer.kt",
+    "app/src/main/aidl/com/ghostlock/app/run/RunHostRequest.aidl",
+    "app/src/main/kotlin/com/ghostlock/app/core/runhost/RunHostRequest.kt",
+    "app/src/main/kotlin/com/ghostlock/app/domain/run/FrozenRunInput.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/run/AndroidFrozenRunInputLease.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/run/AndroidRunInputFreezer.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/runhost/wire/RunHostRequestWireCodec.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/runhost/wire/RunHostBinderEndpoint.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/run/AndroidRunWorkspace.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/runhost/host/AndroidRunHostPreparationAdapter.kt",
+    "app/src/main/kotlin/com/ghostlock/app/core/runhost/RunHostController.kt",
+    "app/src/main/kotlin/com/ghostlock/app/runhost/appuid/AppUidRunHostService.kt",
+    "app/src/main/kotlin/com/ghostlock/app/runhost/shizukushell/ShizukuShellRunHostService.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/runhost/client/AppRunHostClient.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/runhost/client/ShizukuRunHostClient.kt",
+    "app/src/main/kotlin/com/ghostlock/app/data/runhost/client/AndroidRunHostDispatchAdapter.kt",
+    "app/src/test/kotlin/com/ghostlock/app/AppContainerInitializationTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/run/RunSessionCoordinatorTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/settings/DataStoreAppSelectionRepositoryTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/settings/KotlinxDataStoreSerializerTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/backend/BackendSessionStoreAuthorityTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/backend/BackendSessionStoreLegacySelectionTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/ui/backend/BackendUiCatalogTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/run/AndroidRunInputFreezerTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/run/AndroidFrozenRunInputLeaseTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/data/run/AndroidFrozenRunInputLeaseDeviceTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/runhost/wire/RunHostRequestWireCodecTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/runhost/RunHostRequestValidationTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/runhost/wire/RunHostSharedWireTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/runhost/wire/RunHostBinderEndpointTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/runhost/ProductRootScriptPlanMapperTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/runhost/host/ProductRunPreparerTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/data/runhost/host/AndroidRunHostPreparationAdapterTest.kt",
+    "app/src/test/kotlin/com/ghostlock/app/core/runhost/RunHostControllerTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/backend/backends/diagnose/DiagnoseJnaSmokeTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/data/runhost/RunHostTestFixtures.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/data/runhost/AppRunHostSmokeTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/data/runhost/ShizukuRunHostSmokeTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/data/runhost/RunHostHostDeathTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/ui/backend/BackendUiTest.kt",
+    "app/src/androidTest/kotlin/com/ghostlock/app/architecture/UiBaselineFixtures.kt",
+}
+
+BXP3_B1_SUPERSEDED_PATHS = (
+    set(BXP3_B1_FILE_MOVES)
+    | set(BXP3_B1_FILE_MOVES.values())
+    | BXP3_B1_FILE_DELETES
+    | BXP3_B1_ADD_TARGETS
+    | BXP3_B1_MODIFY_TARGETS
+)
+
 D7_FILE_MOVES = {
     "app/src/main/kotlin/com/ghostlock/app/ui/backend/Backend43284ConfigCard.kt":
         "app/src/main/kotlin/com/ghostlock/app/ui/backend/BackendToggleConfigCard.kt",
@@ -1484,6 +1602,10 @@ def kotlin_source_paths(repo: Path) -> list[Path]:
 
 def is_reflection_forbidden_scope(relative_path: str) -> bool:
     """Return whether one source belongs to the typed backend execution spine."""
+    if relative_path == (
+        "app/src/main/kotlin/com/ghostlock/app/data/runhost/plugin/RunHostPluginLoader.kt"
+    ):
+        return False
     return relative_path in REFLECTION_FORBIDDEN_FILES or relative_path.startswith(
         REFLECTION_FORBIDDEN_PREFIXES
     )
@@ -1494,15 +1616,30 @@ def architecture_violations(repo: Path) -> list[str]:
     source_prefix = "app/src/main/kotlin/com/ghostlock/app/"
     icon_authority = source_prefix + "ui/icon/Icons.kt"
     composition_prefix = "com.ghostlock.app.composition.backend."
-    registry_import = composition_prefix + "BackendRegistry"
-    registry_import_allowlist = {
-        source_prefix + "AppContainer.kt",
-        source_prefix + "runhost/appuid/AppUidRunHostService.kt",
-        source_prefix + "runhost/shizukushell/ShizukuShellRunHostService.kt",
-    }
-    runtime_only_registry_callers = {
-        source_prefix + "runhost/appuid/AppUidRunHostService.kt",
-        source_prefix + "runhost/shizukushell/ShizukuShellRunHostService.kt",
+    catalog_projection_imports = {
+        source_prefix + "composition/plugin/PluginCatalogCoordinator.kt": {
+            composition_prefix + "BackendCatalogProjection",
+            composition_prefix + "BackendCatalogView",
+        },
+        source_prefix + "core/run/RunInputCutoff.kt": {
+            composition_prefix + "PluginObjectRef",
+        },
+        source_prefix + "core/run/RunSessionCoordinator.kt": {
+            composition_prefix + "BackendCatalogView",
+            composition_prefix + "ResolvedBackendProjection",
+        },
+        source_prefix + "data/backend/BackendSelectionAdapter.kt": {
+            composition_prefix + "BackendCatalogView",
+        },
+        source_prefix + "data/plugin/PluginObjectSource.kt": {
+            composition_prefix + "PluginObjectRef",
+        },
+        source_prefix + "data/run/AndroidRunInputFreezer.kt": {
+            composition_prefix + "PluginObjectRef",
+        },
+        source_prefix + "ui/backend/BackendPresentationRegistry.kt": {
+            composition_prefix + "BackendCatalogView",
+        },
     }
     import_pattern = re.compile(r"(?m)^\s*import\s+([A-Za-z_][A-Za-z0-9_.]*)")
     violations: list[str] = []
@@ -1638,9 +1775,10 @@ def architecture_violations(repo: Path) -> list[str]:
         for match in import_pattern.finditer(stripped):
             imported = match.group(1)
             line = stripped.count("\n", 0, match.start()) + 1
-            import_line_end = stripped.find("\n", match.start())
+            import_line_start = stripped.rfind("\n", 0, match.start()) + 1
+            import_line_end = stripped.find("\n", match.end())
             import_line = stripped[
-                match.start():len(stripped) if import_line_end < 0 else import_line_end
+                import_line_start:len(stripped) if import_line_end < 0 else import_line_end
             ].strip()
             rule = ""
             if imported.startswith((
@@ -1675,9 +1813,8 @@ def architecture_violations(repo: Path) -> list[str]:
             elif reflection_forbidden and imported.startswith(("java.lang.reflect.", "kotlin.reflect.")):
                 rule = "runtime-reflection"
             elif imported.startswith(composition_prefix) and (
-                rel not in registry_import_allowlist
-                or imported != registry_import
-                or import_line != "import " + registry_import
+                imported not in catalog_projection_imports.get(rel, set())
+                or import_line != "import " + imported
             ):
                 rule = "backend-composition-boundary"
             elif rel != icon_authority and (
@@ -1768,15 +1905,11 @@ def architecture_violations(repo: Path) -> list[str]:
             violations.append(
                 f"backend-composition-boundary|{rel}:{line}|fully-qualified-composition-reference"
             )
-        if rel in runtime_only_registry_callers:
-            direct_runtime_call = re.compile(r"BackendRegistry\s*\.\s*runtime\s*\(")
-            for match in re.finditer(r"\bBackendRegistry\b", body_without_imports):
-                if direct_runtime_call.match(body_without_imports, match.start()):
-                    continue
-                line = body_without_imports.count("\n", 0, match.start()) + 1
-                violations.append(
-                    f"backend-composition-boundary|{rel}:{line}|non-direct-BackendRegistry-runtime-call"
-                )
+        for match in re.finditer(r"\b(?:BackendRegistry|BackendDefinition|BackendRuntime)\b", stripped):
+            line = stripped.count("\n", 0, match.start()) + 1
+            violations.append(
+                f"backend-composition-boundary|{rel}:{line}|retired-static-{match.group(0)}"
+            )
 
         if layer == "ui":
             for token, pattern in (
@@ -1958,6 +2091,96 @@ def architecture_violations(repo: Path) -> list[str]:
                 + str(len(exact_loads))
             )
 
+    # BXP3-B1 keeps code/native ownership in the Diagnose package and leaves the Host with
+    # only catalog, presentation, verification and RunHost loading infrastructure.
+    retired_host_paths = (
+        source_prefix + "composition/backend/BackendDefinition.kt",
+        source_prefix + "composition/backend/BackendRegistry.kt",
+        source_prefix + "composition/backend/DiagnoseBackendDefinition.kt",
+        source_prefix + "composition/backend/CustomBackendDefinition.kt",
+        source_prefix + "backend/declarations/BackendRuntime.kt",
+        source_prefix + "backend/backends/diagnose/DiagnoseBackendRuntime.kt",
+        source_prefix + "backend/backends/diagnose/DiagnoseFlow.kt",
+        source_prefix + "backend/backends/diagnose/jna/DiagnoseJnaLibrary.kt",
+        source_prefix + "backend/backends/diagnose/jna/DiagnoseNativeBinding.kt",
+    )
+    for rel in retired_host_paths:
+        if (repo / rel).exists():
+            violations.append(f"plugin-owner-boundary|{rel}:1|retired-host-plugin-owner")
+
+    for rel in (
+        "app/src/main/cpp/CMakeLists.txt",
+        "app/src/main/cpp/backends/CMakeLists.txt",
+        "app/src/main/cpp/backends/diagnose",
+        "app/src/main/cpp/common/CMakeLists.txt",
+    ):
+        if (repo / rel).exists():
+            violations.append(f"plugin-owner-boundary|{rel}:1|host-native-build-owner")
+
+    app_build = repo / "app/build.gradle.kts"
+    if app_build.is_file():
+        app_build_text = app_build.read_text(encoding="utf-8")
+        for token, pattern in (
+            (
+                "host-jna-dependency",
+                r"\b(?:api|implementation|runtimeOnly|compileOnly)\s*\(\s*(?:"
+                r"[\"']net\.java\.dev\.jna:[^\"']+[\"']|jnaCoordinate\b)",
+            ),
+            ("host-native-build", r"\bexternalNativeBuild\s*\{"),
+            (
+                "diagnose-implementation-dependency",
+                r"(?:api|implementation|runtimeOnly)\s*\(\s*project\s*\(\s*"
+                r"[\"']:\s*plugin:packages:diagnose[\"']",
+            ),
+        ):
+            match = re.search(pattern, app_build_text)
+            if match:
+                line = app_build_text.count("\n", 0, match.start()) + 1
+                violations.append(f"plugin-owner-boundary|app/build.gradle.kts:{line}|{token}")
+
+    api_build = repo / "plugin/api/build.gradle.kts"
+    if api_build.is_file():
+        api_build_text = api_build.read_text(encoding="utf-8")
+        match = re.search(
+            r"org\.jetbrains\.kotlin|com\.android|net\.java\.dev\.jna|"
+            r"\b(?:api|implementation|runtimeOnly|compileOnly)\s*\(",
+            api_build_text,
+        )
+        if match:
+            line = api_build_text.count("\n", 0, match.start()) + 1
+            violations.append(
+                f"plugin-owner-boundary|plugin/api/build.gradle.kts:{line}|api-runtime-dependency"
+            )
+
+    plugin_source_root = repo / "plugin"
+    if plugin_source_root.is_dir():
+        for path in sorted(plugin_source_root.rglob("*")):
+            if not path.is_file() or "build" in path.parts or ".cxx" in path.parts:
+                continue
+            if path.suffix not in {".kt", ".java", ".c", ".cc", ".cpp", ".h", ".hpp"}:
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+            match = re.search(r"\bcom\.ghostlock\.app(?:\.|\b)", strip_kotlin(text))
+            if match:
+                rel = relative(path, repo)
+                line = text.count("\n", 0, match.start()) + 1
+                violations.append(f"plugin-owner-boundary|{rel}:{line}|plugin-to-host-edge")
+
+    required_plugin_owners = {
+        source_prefix + "data/plugin/AndroidPluginCatalogStore.kt": r"\bclass\s+AndroidPluginCatalogStore\b",
+        source_prefix + "composition/backend/BackendCatalogProjection.kt": r"\bobject\s+BackendCatalogProjection\b",
+        source_prefix + "data/runhost/plugin/RunHostPluginLoader.kt": r"\bclass\s+RunHostPluginLoader\b",
+    }
+    for rel, pattern in required_plugin_owners.items():
+        path = repo / rel
+        count = 0 if not path.is_file() else len(
+            re.findall(pattern, strip_kotlin(path.read_text(encoding="utf-8")))
+        )
+        if count != 1:
+            violations.append(
+                f"plugin-owner-boundary|{rel}:1|required-owner-declaration-count={count}"
+            )
+
     runhost_paths = {
         "controller": source_prefix + "core/runhost/RunHostController.kt",
         "preparation": source_prefix + "data/runhost/host/AndroidRunHostPreparationAdapter.kt",
@@ -2065,7 +2288,7 @@ def architecture_violations(repo: Path) -> list[str]:
     business_methods = ("setCallback", "prepare", "start", "getSnapshot", "cancel", "requestClose")
     for owner in ("app_entry", "shizuku_entry"):
         entry_text = runhost_texts.get(owner, "")
-        require_exact(owner, r"\bBackendRegistry\s*\.\s*runtime\s*\(", 1, "direct-runtime-projection")
+        require_exact(owner, r"\bBackendRegistry\b", 0, "retired-static-registry")
         require_exact(owner, r"\bRunHostController\s*\(\s*\)", 1, "controller-composition")
         require_exact(
             owner,
@@ -2078,7 +2301,7 @@ def architecture_violations(repo: Path) -> list[str]:
             require_exact(owner, rf"\bendpoint\s*\.\s*{method}\s*\(", 1, f"delegate-{method}")
         match = re.search(
             r"\b(?:RunHostStateMachine|BackendFlowInput|KotlinLogConnector|"
-            r"RunHostPreparedCandidate|CoroutineScope|synchronized|Atomic\w*)\b",
+            r"RunHostPreparedCandidate|CoroutineScope)\b",
             entry_text,
         )
         if match:
@@ -2092,7 +2315,15 @@ def architecture_violations(repo: Path) -> list[str]:
             1,
             "entry-local-destroy-gate",
         )
+        require_exact(owner, r"\bAtomicBoolean\s*\(\s*false\s*\)", 1, "one-shot-exit-gate")
     require_exact("app_entry", r"\bstopSelf\s*\(\s*\)", 1, "app-stop-self")
+    require_exact(
+        "app_entry",
+        r"\bProcess\s*\.\s*killProcess\s*\(\s*Process\s*\.\s*myPid\s*\(\s*\)\s*\)",
+        1,
+        "app-physical-process-exit",
+    )
+    require_exact("app_entry", r"\bIBinder\s*\.\s*DeathRecipient\s*\(", 1, "app-callback-death")
     require_exact("shizuku_entry", r"\bSystem\s*\.\s*exit\s*\(\s*0\s*\)", 1, "shizuku-exit")
     require_exact("shizuku_entry", r"@Volatile", 1, "live-context-volatility")
     if "context?.let" not in runhost_texts.get("shizuku_entry", ""):
@@ -2115,8 +2346,7 @@ def architecture_violations(repo: Path) -> list[str]:
         candidate_declarations.extend(
             [rel] * len(re.findall(r"\bdata\s+class\s+RunHostPreparedCandidate\b", text))
         )
-    expected_entries = sorted([runhost_paths["app_entry"], runhost_paths["shizuku_entry"]])
-    if sorted(runtime_callers) != expected_entries:
+    if runtime_callers:
         violations.append(
             "runhost-owner-boundary|app/src/main/kotlin:1|runtime-callers="
             + ",".join(runtime_callers)
@@ -2195,6 +2425,15 @@ def file_action_rows(repo: Path) -> list[dict[str, object]]:
     paths += [
         repo / rel
         for rel in sorted(
+            set(BXP3_B1_FILE_MOVES.values())
+            | BXP3_B1_ADD_TARGETS
+            | BXP3_B1_MODIFY_TARGETS
+        )
+        if rel.startswith("app/") and (repo / rel).is_file()
+    ]
+    paths += [
+        repo / rel
+        for rel in sorted(
             SETTINGS_ADD_TARGETS
             | SETTINGS_MODIFY_TARGETS
             | set(SETTINGS_FILE_MOVES.values())
@@ -2252,6 +2491,7 @@ def file_action_rows(repo: Path) -> list[dict[str, object]]:
     settings_move_targets = set(SETTINGS_FILE_MOVES.values())
     runhost_owner_move_targets = set(RUNHOST_OWNER_FILE_MOVES.values())
     run_core_move_targets = set(RUN_CORE_FILE_MOVES.values())
+    bxp3_b1_move_targets = set(BXP3_B1_FILE_MOVES.values())
     for path in sorted(set(paths)):
         rel = relative(path, repo)
         text = path.read_text(encoding="utf-8", errors="replace")
@@ -2259,7 +2499,25 @@ def file_action_rows(repo: Path) -> list[dict[str, object]]:
         target = rel
         batch = "FROZEN"
         evidence = "existing-unlisted-path"
-        if rel in RUNHOST_DEDUP_MODIFY_TARGETS:
+        if rel in BXP3_B1_FILE_MOVES:
+            action = "move-source-1to1"
+            target = BXP3_B1_FILE_MOVES[rel]
+            batch = BXP3_B1_BATCH
+            evidence = "retired-builtin-backend-owner"
+        elif rel in BXP3_B1_FILE_DELETES:
+            action = "delete"
+            target = "ABSENT"
+            batch = BXP3_B1_BATCH
+            evidence = "removed-static-backend-owner"
+        elif rel in BXP3_B1_MODIFY_TARGETS:
+            action = "modify-in-place"
+            batch = BXP3_B1_BATCH
+            evidence = "builtin-plugin-integration-boundary"
+        elif rel in BXP3_B1_ADD_TARGETS or rel in bxp3_b1_move_targets:
+            action = "move-target-1to1" if rel in bxp3_b1_move_targets else "added-approved"
+            batch = BXP3_B1_BATCH
+            evidence = "builtin-plugin-target"
+        elif rel in RUNHOST_DEDUP_MODIFY_TARGETS:
             action = "modify-in-place"
             batch = RUNHOST_DEDUP_BATCH
             evidence = "approved-runhost-dedup-boundary"
@@ -2395,6 +2653,32 @@ def file_action_rows(repo: Path) -> list[dict[str, object]]:
             "source_state": "PRESENT",
         })
     current_paths = {str(row["path"]) for row in rows}
+    for rel, target in sorted(BXP3_B1_FILE_MOVES.items()):
+        if rel in current_paths:
+            continue
+        rows.append({
+            "path": rel,
+            "symbol_resource": "file",
+            "current_owner": "ABSENT",
+            "action": "move-source-1to1",
+            "target": target,
+            "batch": BXP3_B1_BATCH,
+            "evidence": "retired-builtin-backend-owner",
+            "source_state": "ABSENT",
+        })
+    for rel in sorted(BXP3_B1_FILE_DELETES):
+        if rel in current_paths:
+            continue
+        rows.append({
+            "path": rel,
+            "symbol_resource": "file",
+            "current_owner": "ABSENT",
+            "action": "delete",
+            "target": "ABSENT",
+            "batch": BXP3_B1_BATCH,
+            "evidence": "removed-static-backend-owner",
+            "source_state": "ABSENT",
+        })
     for rel, target in sorted(RUN_CORE_FILE_MOVES.items()):
         if rel in current_paths:
             continue
@@ -2605,7 +2889,7 @@ def file_action_rows(repo: Path) -> list[dict[str, object]]:
             "evidence": "retired-r4-caller-zero-residue",
             "source_state": "ABSENT",
         })
-    return rows
+    return sorted(rows, key=lambda row: str(row["path"]))
 
 
 def textual_hits(path: Path) -> list[tuple[int, str, str]]:
@@ -2869,6 +3153,62 @@ def verify_inventory(repo: Path, fixtures: Path | None = None, section: str = "a
         if unclassified:
             raise ValueError("unclassified Kotlin: " + ",".join(sorted(unclassified)))
         by_path = {row["path"]: row for row in rows}
+        for source, target in BXP3_B1_FILE_MOVES.items():
+            source_row = by_path.get(source)
+            target_row = by_path.get(target)
+            if (repo / source).exists():
+                raise ValueError("stale BXP3-B1 move source: " + source)
+            if not (repo / target).is_file():
+                raise ValueError("missing BXP3-B1 move target: " + target)
+            if (
+                source_row is None
+                or source_row.get("source_state") != "ABSENT"
+                or source_row.get("action") != "move-source-1to1"
+                or source_row.get("target") != target
+                or source_row.get("batch") != BXP3_B1_BATCH
+            ):
+                raise ValueError("invalid BXP3-B1 move source row: " + source)
+            if target.startswith("app/") and (
+                target_row is None
+                or target_row.get("source_state") != "PRESENT"
+                or target_row.get("action") != "move-target-1to1"
+                or target_row.get("batch") != BXP3_B1_BATCH
+            ):
+                raise ValueError("invalid BXP3-B1 move target row: " + target)
+        for deleted in BXP3_B1_FILE_DELETES:
+            deleted_row = by_path.get(deleted)
+            if (repo / deleted).exists():
+                raise ValueError("stale BXP3-B1 static backend owner: " + deleted)
+            if (
+                deleted_row is None
+                or deleted_row.get("source_state") != "ABSENT"
+                or deleted_row.get("action") != "delete"
+                or deleted_row.get("target") != "ABSENT"
+                or deleted_row.get("batch") != BXP3_B1_BATCH
+            ):
+                raise ValueError("invalid BXP3-B1 delete row: " + deleted)
+        for added in BXP3_B1_ADD_TARGETS:
+            added_row = by_path.get(added)
+            if not (repo / added).is_file():
+                raise ValueError("missing BXP3-B1 added target: " + added)
+            if (
+                added_row is None
+                or added_row.get("source_state") != "PRESENT"
+                or added_row.get("action") != "added-approved"
+                or added_row.get("batch") != BXP3_B1_BATCH
+            ):
+                raise ValueError("invalid BXP3-B1 added row: " + added)
+        for modified in BXP3_B1_MODIFY_TARGETS:
+            modified_row = by_path.get(modified)
+            if not (repo / modified).is_file():
+                raise ValueError("missing BXP3-B1 modified target: " + modified)
+            if (
+                modified_row is None
+                or modified_row.get("source_state") != "PRESENT"
+                or modified_row.get("action") != "modify-in-place"
+                or modified_row.get("batch") != BXP3_B1_BATCH
+            ):
+                raise ValueError("invalid BXP3-B1 modified row: " + modified)
         for source, target in RUN_CORE_FILE_MOVES.items():
             source_row = by_path.get(source)
             target_row = by_path.get(target)
@@ -2882,14 +3222,14 @@ def verify_inventory(repo: Path, fixtures: Path | None = None, section: str = "a
                 or source_row.get("batch") != RUN_CORE_BATCH
             ):
                 raise ValueError("invalid run core move source row: " + source)
-            if (
+            if target not in BXP3_B1_SUPERSEDED_PATHS and (
                 target_row is None
                 or target_row.get("source_state") != "PRESENT"
                 or target_row.get("action") != "move-target-1to1"
                 or target_row.get("batch") != RUN_CORE_BATCH
             ):
                 raise ValueError("invalid run core move target row: " + target)
-        for deleted in RUN_CORE_FILE_DELETES:
+        for deleted in RUN_CORE_FILE_DELETES - BXP3_B1_SUPERSEDED_PATHS:
             deleted_row = by_path.get(deleted)
             if (repo / deleted).exists():
                 raise ValueError("stale run core deleted owner: " + deleted)
@@ -2901,7 +3241,7 @@ def verify_inventory(repo: Path, fixtures: Path | None = None, section: str = "a
                 or deleted_row.get("batch") != RUN_CORE_BATCH
             ):
                 raise ValueError("invalid run core delete row: " + deleted)
-        for added in RUN_CORE_ADD_TARGETS:
+        for added in RUN_CORE_ADD_TARGETS - BXP3_B1_SUPERSEDED_PATHS:
             added_row = by_path.get(added)
             if (
                 added_row is None
@@ -2910,7 +3250,11 @@ def verify_inventory(repo: Path, fixtures: Path | None = None, section: str = "a
                 or added_row.get("batch") != RUN_CORE_BATCH
             ):
                 raise ValueError("invalid run core added row: " + added)
-        for modified in RUN_CORE_MODIFY_TARGETS - RUNHOST_DEDUP_MODIFY_TARGETS:
+        for modified in (
+            RUN_CORE_MODIFY_TARGETS
+            - RUNHOST_DEDUP_MODIFY_TARGETS
+            - BXP3_B1_SUPERSEDED_PATHS
+        ):
             modified_row = by_path.get(modified)
             if (
                 modified_row is None
@@ -2919,7 +3263,7 @@ def verify_inventory(repo: Path, fixtures: Path | None = None, section: str = "a
                 or modified_row.get("batch") != RUN_CORE_BATCH
             ):
                 raise ValueError("invalid run core modified row: " + modified)
-        for frozen in RUN_CORE_FROZEN_TARGETS:
+        for frozen in RUN_CORE_FROZEN_TARGETS - BXP3_B1_SUPERSEDED_PATHS:
             frozen_row = by_path.get(frozen)
             if (
                 frozen_row is None
@@ -2928,7 +3272,7 @@ def verify_inventory(repo: Path, fixtures: Path | None = None, section: str = "a
                 or frozen_row.get("batch") != RUN_CORE_BATCH
             ):
                 raise ValueError("invalid run core frozen row: " + frozen)
-        for added in RUNHOST_DEDUP_ADD_TARGETS:
+        for added in RUNHOST_DEDUP_ADD_TARGETS - BXP3_B1_SUPERSEDED_PATHS:
             added_row = by_path.get(added)
             if (
                 added_row is None
@@ -2937,7 +3281,7 @@ def verify_inventory(repo: Path, fixtures: Path | None = None, section: str = "a
                 or added_row.get("batch") != RUNHOST_DEDUP_BATCH
             ):
                 raise ValueError("invalid runhost dedup added row: " + added)
-        for modified in RUNHOST_DEDUP_MODIFY_TARGETS:
+        for modified in RUNHOST_DEDUP_MODIFY_TARGETS - BXP3_B1_SUPERSEDED_PATHS:
             modified_row = by_path.get(modified)
             if (
                 modified_row is None
@@ -2959,7 +3303,9 @@ def verify_inventory(repo: Path, fixtures: Path | None = None, section: str = "a
                 or source_row.get("batch") != SETTINGS_BATCH
             ):
                 raise ValueError("invalid settings move source row: " + source)
-            if target in RUN_CORE_FILE_MOVES:
+            if target in BXP3_B1_SUPERSEDED_PATHS:
+                pass
+            elif target in RUN_CORE_FILE_MOVES:
                 if (
                     target_row is None
                     or target_row.get("source_state") != "ABSENT"
@@ -2975,7 +3321,7 @@ def verify_inventory(repo: Path, fixtures: Path | None = None, section: str = "a
                 or target_row.get("batch") != SETTINGS_BATCH
             ):
                 raise ValueError("invalid settings move target row: " + target)
-        for deleted in SETTINGS_FILE_DELETES:
+        for deleted in SETTINGS_FILE_DELETES - BXP3_B1_SUPERSEDED_PATHS:
             deleted_row = by_path.get(deleted)
             if (repo / deleted).exists():
                 raise ValueError("stale settings authority: " + deleted)
@@ -2996,7 +3342,9 @@ def verify_inventory(repo: Path, fixtures: Path | None = None, section: str = "a
                 raise ValueError("missing retired D7 source row: " + source)
             if source_row.get("action") != "move-source-1to1" or source_row.get("target") != target:
                 raise ValueError("invalid D7 source mapping: " + source)
-            if target in BACKEND_CORE_FILE_DELETES:
+            if target in BXP3_B1_SUPERSEDED_PATHS:
+                pass
+            elif target in BACKEND_CORE_FILE_DELETES:
                 if (
                     target_row is None
                     or target_row.get("source_state") != "ABSENT"
@@ -3009,7 +3357,7 @@ def verify_inventory(repo: Path, fixtures: Path | None = None, section: str = "a
                     raise ValueError("missing D7 move target: " + target)
                 if target_row.get("action") != "move-target-1to1":
                     raise ValueError("invalid D7 target action: " + target)
-        for deleted in D7_FILE_DELETES:
+        for deleted in D7_FILE_DELETES - BXP3_B1_SUPERSEDED_PATHS:
             deleted_row = by_path.get(deleted)
             if (repo / deleted).exists():
                 raise ValueError("stale D7 deleted source: " + deleted)
@@ -3029,7 +3377,9 @@ def verify_inventory(repo: Path, fixtures: Path | None = None, section: str = "a
                 raise ValueError("missing retired R6 source row: " + source)
             if source_row.get("action") != "move-source-1to1" or source_row.get("target") != target:
                 raise ValueError("invalid R6 source mapping: " + source)
-            if target in RUN_CORE_FILE_MOVES:
+            if target in BXP3_B1_SUPERSEDED_PATHS:
+                pass
+            elif target in RUN_CORE_FILE_MOVES:
                 if (
                     target_row is None
                     or target_row.get("source_state") != "ABSENT"
@@ -3060,7 +3410,9 @@ def verify_inventory(repo: Path, fixtures: Path | None = None, section: str = "a
                 raise ValueError("missing retired log v3 source row: " + source)
             if source_row.get("action") != "move-source-1to1" or source_row.get("target") != target:
                 raise ValueError("invalid log v3 source mapping: " + source)
-            if target in RUN_CORE_MODIFY_TARGETS:
+            if target in BXP3_B1_SUPERSEDED_PATHS:
+                pass
+            elif target in RUN_CORE_MODIFY_TARGETS:
                 if (
                     target_row is None
                     or target_row.get("source_state") != "PRESENT"
@@ -3086,14 +3438,15 @@ def verify_inventory(repo: Path, fixtures: Path | None = None, section: str = "a
                 or source_row.get("batch") != BACKEND_CORE_BATCH
             ):
                 raise ValueError("invalid backend core source mapping: " + source)
-            if target_row is None or target_row.get("source_state") != "PRESENT":
-                raise ValueError("missing backend core move target: " + target)
-            if (
-                target_row.get("action") != "move-target-1to1"
-                or target_row.get("batch") != BACKEND_CORE_BATCH
-            ):
-                raise ValueError("invalid backend core target action: " + target)
-        for deleted in BACKEND_CORE_FILE_DELETES:
+            if target not in BXP3_B1_SUPERSEDED_PATHS:
+                if target_row is None or target_row.get("source_state") != "PRESENT":
+                    raise ValueError("missing backend core move target: " + target)
+                if (
+                    target_row.get("action") != "move-target-1to1"
+                    or target_row.get("batch") != BACKEND_CORE_BATCH
+                ):
+                    raise ValueError("invalid backend core target action: " + target)
+        for deleted in BACKEND_CORE_FILE_DELETES - BXP3_B1_SUPERSEDED_PATHS:
             deleted_row = by_path.get(deleted)
             if (repo / deleted).exists():
                 raise ValueError("stale backend core deleted source: " + deleted)
@@ -3105,7 +3458,7 @@ def verify_inventory(repo: Path, fixtures: Path | None = None, section: str = "a
                 or deleted_row.get("batch") != BACKEND_CORE_BATCH
             ):
                 raise ValueError("invalid backend core delete row: " + deleted)
-        for deleted in R6_FILE_DELETES:
+        for deleted in R6_FILE_DELETES - BXP3_B1_SUPERSEDED_PATHS:
             deleted_row = by_path.get(deleted)
             if (repo / deleted).exists():
                 raise ValueError("stale R6 deleted source: " + deleted)
@@ -3117,7 +3470,7 @@ def verify_inventory(repo: Path, fixtures: Path | None = None, section: str = "a
                 or deleted_row.get("batch") != "R6"
             ):
                 raise ValueError("invalid R6 delete row: " + deleted)
-        for deleted in R3_FILE_DELETES:
+        for deleted in R3_FILE_DELETES - BXP3_B1_SUPERSEDED_PATHS:
             deleted_row = by_path.get(deleted)
             if (repo / deleted).exists():
                 raise ValueError("stale R3 execution-spine source: " + deleted)
@@ -3129,7 +3482,7 @@ def verify_inventory(repo: Path, fixtures: Path | None = None, section: str = "a
                 or deleted_row.get("batch") != "R3"
             ):
                 raise ValueError("invalid R3 delete row: " + deleted)
-        for deleted in R4_FILE_DELETES:
+        for deleted in R4_FILE_DELETES - BXP3_B1_SUPERSEDED_PATHS:
             deleted_row = by_path.get(deleted)
             if (repo / deleted).exists():
                 raise ValueError("stale R4 residue: " + deleted)

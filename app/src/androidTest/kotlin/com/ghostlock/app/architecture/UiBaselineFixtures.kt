@@ -18,8 +18,17 @@ import com.ghostlock.app.R
 import com.ghostlock.app.ui.LocalMainPagerState
 import com.ghostlock.app.ui.LocalUiMode
 import com.ghostlock.app.ui.UiMode
-import com.ghostlock.app.composition.backend.BackendRegistry
+import com.ghostlock.app.composition.backend.BackendCatalogView
+import com.ghostlock.app.composition.backend.PluginObjectRef
+import com.ghostlock.app.composition.backend.ResolvedBackendProjection
+import com.ghostlock.app.domain.backend.AbortPolicy
+import com.ghostlock.app.domain.backend.BackendAvailability
+import com.ghostlock.app.domain.backend.BackendDescriptor
+import com.ghostlock.app.domain.backend.BackendSelectionPolicy
+import com.ghostlock.app.domain.backend.ExecutionDomain
+import com.ghostlock.app.domain.run.RunCapability
 import com.ghostlock.app.ui.backend.BackendUiCatalog
+import com.ghostlock.app.ui.backend.BackendPresentationRegistry
 import com.ghostlock.app.ui.component.bottombar.rememberMainPagerState
 import com.ghostlock.app.ui.component.dialog.ContentDialogMaterial
 import com.ghostlock.app.ui.component.dialog.ContentDialogMiuix
@@ -75,6 +84,8 @@ import com.ghostlock.app.domain.payload.PayloadEditorState
 import androidx.test.platform.app.InstrumentationRegistry
 import com.materialkolor.PaletteStyle
 import com.materialkolor.dynamiccolor.ColorSpec
+import com.ghostlock.plugin.core.PluginContentSha256
+import com.ghostlock.plugin.core.PluginPackageIdentity
 
 /**
  * Describes one approved D0 production-composable baseline member.
@@ -299,9 +310,12 @@ internal object UiBaselineFixtures {
                 HomePagerMaterial(homeState(), homeActions(), 0.dp)
             }
 
-            "backend" -> if (miuix) {
+            "backend", "backend_failed" -> if (miuix) {
                 BackendPageMiuix(
-                    state = backendState(),
+                    state = backendState(
+                        failureReason = "synthetic catalog failure"
+                            .takeIf { fixture.surface == "backend_failed" },
+                    ),
                     actions = backendActions(),
                     payloadState = payloadState(),
                     finishSettingsState = FinishSettingsUiState(),
@@ -310,7 +324,10 @@ internal object UiBaselineFixtures {
                 )
             } else {
                 BackendPageMaterial(
-                    state = backendState(),
+                    state = backendState(
+                        failureReason = "synthetic catalog failure"
+                            .takeIf { fixture.surface == "backend_failed" },
+                    ),
                     actions = backendActions(),
                     payloadState = payloadState(),
                     finishSettingsState = FinishSettingsUiState(),
@@ -388,11 +405,38 @@ internal object UiBaselineFixtures {
 
     private val backendUiCatalog: BackendUiCatalog by lazy {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val catalogView = BackendCatalogView(
+            revision = 1,
+            projections = listOf(
+                ResolvedBackendProjection(
+                    descriptor = BackendDescriptor(
+                        key = DIAGNOSE_KEY,
+                        selectionPolicy = BackendSelectionPolicy.SELECTABLE,
+                        abortPolicy = AbortPolicy.BEFORE_START_ONLY,
+                        executionDomain = ExecutionDomain.APP_OR_SHIZUKU,
+                        runCapability = RunCapability.DIAGNOSTIC_ONLY,
+                    ),
+                    objectRef = PluginObjectRef(
+                        packageIdentity = PluginPackageIdentity(
+                            publisherId = "com.ghostlock.firstparty",
+                            packageId = "com.ghostlock.diagnose",
+                        ),
+                        variant = "android-arm64-v8a",
+                        versionCode = 1,
+                        pluginContentSha256 = PluginContentSha256("0".repeat(64)),
+                    ),
+                ),
+            ),
+        )
         BackendUiCatalog(
-            entries = BackendRegistry.uiEntries,
+            entries = { BackendPresentationRegistry.builtin().entries(catalogView) },
             selectedKey = { DIAGNOSE_KEY },
-            availability = BackendRegistry::availability,
+            catalogFailureReason = { null },
+            availability = { key ->
+                catalogView.resolve(key)?.let { BackendAvailability.Ready() }
+            },
             text = context::getString,
+            catalogFailureText = { reason -> context.getString(R.string.backend_catalog_failed, reason) },
         )
     }
 
@@ -424,12 +468,12 @@ internal object UiBaselineFixtures {
     )
 
     /** @return Stable selector state for both production path-page skins. */
-    private fun backendState(): BackendPageUiState = BackendPageUiState(
+    private fun backendState(failureReason: String? = null): BackendPageUiState = BackendPageUiState(
         options = listOf(
             BackendOptionUiState(DIAGNOSE_KEY, "Diagnose", true, ProjectIcons.Filled.BugReport),
-            BackendOptionUiState(CUSTOM_KEY, "Lua operation flow", false, ProjectIcons.Filled.Extension),
         ),
-        selectedKey = DIAGNOSE_KEY,
+        selectedKey = null,
+        catalogFailureReason = failureReason,
     )
 
     /** @return Empty deterministic finish-editor state for path-page summary rendering. */

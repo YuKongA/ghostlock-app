@@ -25,7 +25,7 @@ import kotlinx.coroutines.coroutineScope
  * @param appClient Typed app-process RunHost client.
  * @param shizukuClient Optional typed Shizuku client used only when admission fixed that target.
  */
-class AndroidRunHostDispatchAdapter(
+internal class AndroidRunHostDispatchAdapter(
     private val freezer: AndroidRunInputFreezer,
     private val appClient: AppRunHostClient,
     private val shizukuClient: ShizukuRunHostClient?,
@@ -48,7 +48,10 @@ class AndroidRunHostDispatchAdapter(
             )
         }
         val request = try {
-            inputLease.input.toWireRequest(inputLease::duplicate)
+            inputLease.input.toWireRequest(
+                duplicatePluginSource = inputLease::duplicatePluginArchive,
+                duplicateSource = inputLease::duplicate,
+            )
         } catch (problem: Throwable) {
             inputLease.close()
             return RunDispatchPreparation.Failed(
@@ -62,6 +65,7 @@ class AndroidRunHostDispatchAdapter(
                 AndroidRunDispatchLease(request, target, appClient, shizukuClient),
             )
         } catch (problem: Throwable) {
+            runCatching { request.pluginArchiveFd.close() }
             request.artifacts.forEach { artifact -> runCatching { artifact.fd.close() } }
             RunDispatchPreparation.Failed(
                 RunDispatchFailureStage.REQUEST_ASSEMBLY,
@@ -110,6 +114,7 @@ class AndroidRunHostDispatchAdapter(
         /** Closes request duplicates once; client request ownership semantics remain unchanged. */
         override fun close() {
             if (!closed.compareAndSet(false, true)) return
+            runCatching { request.pluginArchiveFd.close() }
             request.artifacts.forEach { artifact -> runCatching { artifact.fd.close() } }
         }
 

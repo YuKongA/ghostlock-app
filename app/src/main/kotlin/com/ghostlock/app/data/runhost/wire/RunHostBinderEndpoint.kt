@@ -29,18 +29,22 @@ internal class RunHostBinderEndpoint(
     }
 
     fun prepare(request: RunHostRequest): Int {
-        val parcelBytes = runCatching { request.parcelDataSize() }
-            .getOrElse { return RunHostCode.INVALID_REQUEST.wireValue }
-        if (parcelBytes > RunHostProtocol.MAX_REQUEST_PARCEL_BYTES) {
-            return RunHostCode.LIMIT_EXCEEDED.wireValue
-        }
-        val model = runCatching { request.toModel() }
-            .getOrElse { return RunHostCode.INVALID_REQUEST.wireValue }
-        return controller.prepare(model) { normalized, identity ->
-            preparation.materialize(normalized, identity) {
-                request.duplicateDescriptors(normalized)
+        return try {
+            val parcelBytes = runCatching { request.parcelDataSize() }
+                .getOrElse { return RunHostCode.INVALID_REQUEST.wireValue }
+            if (parcelBytes > RunHostProtocol.MAX_REQUEST_PARCEL_BYTES) {
+                return RunHostCode.LIMIT_EXCEEDED.wireValue
             }
-        }.wireValue
+            val model = runCatching { request.toModel() }
+                .getOrElse { return RunHostCode.INVALID_REQUEST.wireValue }
+            controller.prepare(model) { normalized, identity ->
+                preparation.materialize(normalized, identity) {
+                    request.duplicateDescriptors(normalized)
+                }
+            }.wireValue
+        } finally {
+            request.closeDecodedDescriptors()
+        }
     }
 
     fun start(runId: String, generation: Long): Int {

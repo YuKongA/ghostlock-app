@@ -40,6 +40,7 @@
     <string name="backend_readiness_cve43499_inputs">Physical inputs (payload/addresses/frame) have no Kotlin computation source yet</string>
     <string name="backend_readiness_custom_script">Custom Lua script is not selected (runtime not wired)</string>
     <string name="backend_run_no_backend">No backend selected</string>
+    <string name="backend_catalog_failed">Plugin catalog failed: %1$s</string>
     <string name="backend_run_no_flow_entry">This backend has no Flow run entry (Finish/LKM relay only)</string>
     <string name="backend_run_backend_disabled">This backend is disabled and cannot be selected</string>
     <string name="backend_run_in_progress">A backend run is already in progress</string>

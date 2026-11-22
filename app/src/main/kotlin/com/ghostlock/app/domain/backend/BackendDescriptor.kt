@@ -3,14 +3,15 @@ package com.ghostlock.app.domain.backend
 import com.ghostlock.app.domain.run.RunCapability
 
 /**
- * Minimal immutable domain description of one same-APK backend.
+ * Minimal immutable domain description projected from an authenticated plugin catalog record.
  *
- * @property key Stable registry, selection, profile, and wire identity.
+ * @property key Stable catalog membership, selection, profile, and wire identity.
  * @property selectionPolicy Product selection exposure.
  * @property abortPolicy Safe-cancellation policy.
  * @property executionDomain Required execution process and privilege domain.
  * @property runCapability Product-root or diagnostic-only behavior.
- * @note Presentation, configuration, Flow factories, JNA objects, and mutable state belong to other owners.
+ * @note Presentation remains Host-owned. Plugin implementation, classloader, JNA objects, native
+ * handles, configuration, Flow factories, and mutable runtime state belong to other owners.
  */
 data class BackendDescriptor(
     val key: String,
@@ -22,7 +23,7 @@ data class BackendDescriptor(
     init {
         require(key.matches(KEY_PATTERN)) { "invalid backend key: $key" }
         require(runCapability != RunCapability.UNRESOLVED) {
-            "registry backend capability must be resolved: $key"
+            "catalog backend capability must be resolved: $key"
         }
     }
 

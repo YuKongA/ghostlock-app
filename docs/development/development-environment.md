@@ -39,20 +39,18 @@
 1. 安装 JDK25 与 JDK21。daemon criteria 已声明平台对应的 JDK25 下载地址；这不代表 JDK21 编译工具链也自动准备好。macOS 用 `/usr/libexec/java_home -V` 检查；Linux/Windows 使用所装 JDK 的官方配置方法。不要为本项目改掉其它项目的 Java 默认值。
 2. 安装 Android Studio，或官方 Android CLI / Command-Line Tools。SDK 路径写入未跟踪的 `local.properties`；保留该文件已有其它配置。
 3. 用 SDK Manager 安装 API **37 minor 2**、Build Tools37.0.0、NDK30.0.16248370、CMake3.22.1；需要设备任务再安装 platform-tools、emulator 与对应 system image。本机核验包名为 `platforms;android-37.2`；其它机器先通过包列表确认，不把基础 API37 当成 minor2。
-4. 当前 plugin 在 Gradle **配置期**读取 `ndk.dir` 或 `ANDROID_NDK_HOME`，仅配置 `sdk.dir` 不够。`ANDROID_NDK_ROOT` / `ONDK_HOME` 也不被这条 plugin 读取路径接受。
+4. Android module 通过 DSL `ndkVersion` 选择 SDK side-by-side NDK；`local.properties` 只保留 `sdk.dir`。不要写已弃用且会触发 AGP `CXX5106` 的 `ndk.dir`；AGP 9.1 也不再用 `ANDROID_NDK_HOME` 代替该选择。
 
 示例（替换为本机真实绝对路径，合并而非覆盖已有 `local.properties`）：
 
 ```properties
 sdk.dir=/absolute/path/to/android-sdk
-ndk.dir=/absolute/path/to/android-sdk/ndk/30.0.16248370
 ```
 
 已有 Command-Line Tools 的 macOS/Linux 可使用以下兼容命令。Google 当前推荐 Android CLI 的 `android sdk`；选择一种包管理入口，不再叠加 bootstrap 脚本。
 
 ```sh
 export ANDROID_HOME=/absolute/path/to/android-sdk
-export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/30.0.16248370"
 export PATH="$ANDROID_HOME/platform-tools:$PATH"
 "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --list
 "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
@@ -61,7 +59,7 @@ export PATH="$ANDROID_HOME/platform-tools:$PATH"
 "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
 ```
 
-Windows 使用同一包清单与 `sdkmanager.bat` / `gradlew.bat`；当前 plugin 打包仍有 macOS 路径假设，见下节，不声明 Windows/Linux 全链路已跑通。正式签名密钥仅在授权发布时配置；普通本地编译不需要团队密钥。
+Windows 使用同一包清单与 `sdkmanager.bat` / `gradlew.bat`；plugin producer 按 host 选择 SDK/NDK 工具文件名，但 Windows/Linux 全链路在实际 CI 或对应 host 运行前仍为 `NOT_RUN`。正式签名密钥仅在授权发布时配置；普通本地编译不需要团队密钥。
 
 <a id="optional-tools"></a>
 

@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ghostlock.app.core.runhost.RunHostIdentity
 import com.ghostlock.app.data.runhost.client.RunHostClientOutcome
+import com.ghostlock.app.data.runhost.client.RunHostClientTestLatches
 import com.ghostlock.app.data.runhost.client.RunHostLogConnector
 import com.ghostlock.app.data.runhost.client.ShizukuRunHostClient
 import com.ghostlock.app.domain.run.DiagnosticOutcome
@@ -12,6 +13,7 @@ import com.ghostlock.app.domain.run.LogConnectorEnd
 import com.ghostlock.app.domain.run.LogDraft
 import com.ghostlock.app.domain.run.LogOrigin
 import com.ghostlock.app.domain.run.StageState
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
@@ -43,14 +45,33 @@ class ShizukuRunHostSmokeTest {
         assumeTrue(shizukuReadinessDescription(), ready)
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         RunHostTestFixture.create(context).use { fixture ->
+            val mapsEvidence = AtomicReference<RunHostMapsEvidence?>()
+            val mapsFailure = AtomicReference<Throwable?>()
             val logs = mutableListOf<LogDraft>()
             val connector = RunHostLogConnector(
                 RunHostIdentity(fixture.request.runId, fixture.request.generation),
             )
             val collection = async { connector.collect { record -> logs += record } }
-            val outcome = ShizukuRunHostClient(context).run(fixture.request, connector)
+            val client = ShizukuRunHostClient(
+                context,
+                RunHostClientTestLatches(
+                    afterTerminalDrainBeforeClose = {
+                        runCatching {
+                            RunHostProcessMapsProbe.captureShizuku(context, fixture.request)
+                        }.onSuccess(mapsEvidence::set).onFailure(mapsFailure::set)
+                    },
+                ),
+            )
+            val outcome = client.run(fixture.request, connector)
             assertTrue(collection.await() == LogConnectorEnd.Drained)
             assertTrue(outcome is RunHostClientOutcome.Terminal)
+            mapsFailure.get()?.let { problem ->
+                throw AssertionError("Shizuku RunHost maps probe failed", problem)
+            }
+            val observedMaps = requireNotNull(mapsEvidence.get()) {
+                "Shizuku RunHost maps latch did not run"
+            }
+            assertTrue(RunHostProcessMapsProbe.awaitShizukuProcessGone(observedMaps.pid))
             val report = (outcome as RunHostClientOutcome.Terminal).snapshot.toRunReport()
             assertTrue(report.diagnosticOutcome == DiagnosticOutcome.PASS)
             assertTrue(report.backendPrimitive.state == StageState.SUCCESS)

@@ -5,7 +5,7 @@
  *       the real common locator/spawn implementation.
  */
 
-#include "backends/diagnose/api/diagnose_api.h"
+#include "api/diagnose_api.h"
 #include "common/gl_log.h"
 #include "common/run_handoff.h"
 

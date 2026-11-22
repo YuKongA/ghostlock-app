@@ -2,6 +2,7 @@ package com.ghostlock.app.data.run
 
 import android.content.Context
 import com.ghostlock.app.core.run.RunInputCutoff
+import com.ghostlock.app.composition.backend.PluginObjectRef
 import com.ghostlock.app.domain.backend.BackendDescriptor
 import com.ghostlock.app.domain.finish.FinishKind
 import com.ghostlock.app.domain.payload.PayloadKind
@@ -10,6 +11,7 @@ import com.ghostlock.app.domain.run.FrozenRunInput
 import com.ghostlock.app.domain.run.ProfileSnapshot
 import com.ghostlock.app.domain.run.RunCapability
 import com.ghostlock.app.domain.run.RunInputArtifactKind
+import com.ghostlock.app.data.plugin.PluginObjectPfdLease
 import java.io.File
 import java.util.UUID
 
@@ -20,9 +22,10 @@ import java.util.UUID
  * @param rootManagerResolver Installed manager executable and exact argv resolver.
  * @note Product carriers are supplied only by a concrete backend artifact design; no global carrier wrapper exists.
  */
-class AndroidRunInputFreezer(
+internal class AndroidRunInputFreezer(
     context: Context,
     private val rootManagerResolver: RootManagerArtifactResolver,
+    private val openPluginObject: (PluginObjectRef) -> PluginObjectPfdLease,
 ) {
     private val lock = Any()
     private val sourceDirectory = File(context.applicationContext.noBackupFilesDir, "run-input")
@@ -40,6 +43,13 @@ class AndroidRunInputFreezer(
         val identity = nextIdentity()
         val profileFile = publishProfileFixture(identity.first, spec)
         val sources = mutableListOf<OpenedRunInputSource>()
+        val pluginObject = try {
+            openPluginObject(cutoff.pluginObjectRef)
+        } catch (problem: Throwable) {
+            runCatching { if (profileFile.exists()) check(profileFile.delete()) }
+            throw problem
+        }
+        val pluginSourceToken = UUID.randomUUID().toString().replace("-", "")
         try {
             val payload = cutoff.payload.await()
             val finish = cutoff.finish.await()
@@ -78,6 +88,8 @@ class AndroidRunInputFreezer(
                 runId = identity.first,
                 generation = identity.second,
                 backendKey = spec.key,
+                pluginContentSha256 = pluginObject.pluginContentSha256.value,
+                pluginSourceToken = pluginSourceToken,
                 profile = ProfileSnapshot(
                     artifactId = PROFILE_ARTIFACT_ID,
                     schemaVersion = ProfileSnapshot.CURRENT_SCHEMA_VERSION,
@@ -88,9 +100,15 @@ class AndroidRunInputFreezer(
                 inputArtifacts = sources.map(OpenedRunInputSource::artifact),
                 artifactInvocations = invocations,
             )
-            return AndroidFrozenRunInputLease(input, sources)
+            return AndroidFrozenRunInputLease(
+                input = input,
+                sources = sources,
+                pluginObject = pluginObject,
+                pluginSourceToken = pluginSourceToken,
+            )
         } catch (problem: Throwable) {
             sources.forEach { source -> runCatching { source.master.close() } }
+            runCatching { pluginObject.close() }
             runCatching { if (profileFile.exists()) profileFile.delete() }
             throw problem
         }

@@ -11,16 +11,19 @@ import com.ghostlock.app.ui.icon.IconPair
 import com.ghostlock.app.ui.icon.Icons
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** UI projection behavior without a second backend registry or presentation DTO. */
 class BackendUiCatalogTest {
-    /** A disabled first entry falls back to the first selectable entry. */
+    /** Disabled, missing and absent keys remain unselected instead of falling back by list order. */
     @Test
-    fun selectedEntryUsesSelectableFallback() {
+    fun selectedEntryRequiresExactSelectableKey() {
         val catalog = catalog(selectedKey = { "CUSTOM" })
-        assertEquals("DIAGNOSE", catalog.selectedEntry()?.descriptor?.key)
+        assertNull(catalog.selectedEntry())
+        assertNull(catalog(selectedKey = { "missing" }).selectedEntry())
+        assertNull(catalog(selectedKey = { null }).selectedEntry())
     }
 
     /** Exact selected keys preserve UI identity, localization, icons, and readiness callbacks. */
@@ -36,11 +39,12 @@ class BackendUiCatalogTest {
     }
 
     private fun catalog(selectedKey: () -> String?): BackendUiCatalog = BackendUiCatalog(
-        entries = listOf(
+        entries = { listOf(
             entry("CUSTOM", BackendSelectionPolicy.DISABLED),
             entry("DIAGNOSE", BackendSelectionPolicy.SELECTABLE),
-        ),
+        ) },
         selectedKey = selectedKey,
+        catalogFailureReason = { null },
         availability = { key ->
             if (key == "DIAGNOSE") BackendAvailability.Ready()
             else BackendAvailability.NotReady(
@@ -48,6 +52,7 @@ class BackendUiCatalogTest {
             )
         },
         text = { resource -> "text-$resource" },
+        catalogFailureText = { reason -> "catalog-failed: $reason" },
     )
 
     private fun entry(key: String, selection: BackendSelectionPolicy): BackendUiEntry = BackendUiEntry(

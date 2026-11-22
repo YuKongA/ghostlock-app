@@ -22,7 +22,11 @@ data class BackendAvailabilityReason(
     }
 }
 
-/** Dynamic readiness result provided by one backend-owned `BackendRuntime`. */
+/**
+ * Resource-free readiness projected by the Host from authenticated catalog metadata and
+ * compatibility facts. Constructing this value must never load, instantiate, execute, or probe
+ * plugin code.
+ */
 sealed interface BackendAvailability {
     /** The backend may be prepared; notes are non-blocking diagnostic facts. */
     data class Ready(val notes: List<BackendAvailabilityReason> = emptyList()) : BackendAvailability
@@ -34,7 +38,7 @@ sealed interface BackendAvailability {
         }
     }
 
-    /** True only when the dynamic probe returned [Ready]. */
+    /** True only when the catalog/compatibility projection is [Ready]. */
     val isReady: Boolean
         get() = this is Ready
 

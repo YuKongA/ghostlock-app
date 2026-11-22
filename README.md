@@ -18,17 +18,17 @@ Rows explicitly marked **Shizuku required** run through a shell UserService. Sta
 
 ## Android application architecture
 
-The current architecture authority is the backend root-execution plan（[gl-4tt设计](openspec/changes/runtime-foundations/design.md#record-gl-4tt)）, with the canonical Class, Sequence, State, and result-projection diagrams in [full-process-uml.md](docs/development/full-process-uml.md).
+The current architecture authority is the shared runtime design ([gl-4tt design](openspec/changes/runtime-foundations/design.md#record-gl-4tt)) plus the active builtin-plugin increment ([gl-dek design](openspec/changes/builtin-diagnose-plugin/design.md#record-gl-dek)). The canonical current-state diagrams are in [full-process-uml.md](docs/development/full-process-uml.md).
 
 The Kotlin application uses a neutral Clean Architecture boundary. Domain models contain no Android, Compose, concrete-backend, or persistence type. Android storage and platform effects live in data adapters; application wiring lives in AppContainer; screens and ViewModels consume immutable state plus action contracts.
 
-BackendRegistry is the immutable same-APK membership authority. A public BackendSpec contains only neutral identity, configuration schema, parameter requirements, execution domain, abort policy, and capability. The internal BackendPlugin adds resource-free readiness and a fresh one-shot Flow factory; it never crosses UI, profile, persistence, or AIDL boundaries.
+The authenticated plugin catalog is the membership authority. At startup the app verifies the APK-carried builtin package, installs its immutable content-addressed object, and publishes one terminal `READY` or `FAILED` catalog generation. `BackendCatalogProjection` derives each neutral `BackendDescriptor` and exact `PluginObjectRef` from that generation; the Android presentation registry supplies UI only and cannot create membership.
 
-App-process and Shizuku-shell execution use the same typed RunHost request, event, snapshot, and lifecycle contract. RunInputFreezer captures the selected backend, profile-v3 snapshot, Payload, and Finish once. The host owns staging, workspace, script publication, Flow lifetime, terminal snapshot, and cleanup. Product status comes from the typed six-layer RunReport; raw uid 0, process exit 0, stdout, and diagnostic logs cannot upgrade a run to product success.
+App-process and Shizuku-shell execution use the same typed RunHost request, event, snapshot, and lifecycle contract. `RunInputFreezer` captures the selected catalog object, opens its archive as a read-only PFD, and freezes the profile-v3, Payload, and Finish inputs once. A one-shot RunHost copies and re-verifies the archive, extracts read-only DEX/native files, loads the plugin entry, and owns execution, terminal state, cleanup, and physical process teardown. Product status still comes only from the typed six-layer `RunReport`; raw uid 0, process exit 0, stdout, and diagnostic logs cannot upgrade a run to product success.
 
 Payload and Finish are independent version-3 documents. The common renderer publishes one root script; a concrete backend is responsible only for reaching its root execution point, dispatching that exact artifact, and reporting backend-private cleanup facts. R4 removed the caller-zero legacy SessionPhase. Automatic log export is a product capability, not dead residue: removing the capability together with its old object was the mistake. The current LogHub uses unlimited raw and processed channels with one processor and one nonblocking dispatcher. UI, private-file, and optional MediaStore sinks own independent queues; file workers buffer rows rather than flushing each row. The GLLOG2 formatter encodes each committed row once, and manual/diagnostic export copies an exact flushed private-file prefix instead of building a whole-document byte array. Explicit diagnostic-report creation, manual sharing, and automatic export remain diagnostic sinks and never become run-result authorities.
 
-Current membership deliberately contains no selectable production-root backend. CUSTOM is disabled until an approved operation catalog exists; DIAGNOSE is selectable in both debug and release builds but remains diagnostic-only. DIAGNOSE is the first real JNA/shared-library vertical: RunHost prepare constructs its Flow and loads `libghostlock_diagnose.so` by a constant name, then one `diagnose-native-chain` step calls the unversioned `gl_diagnose_run` symbol. That same native call emits the Native record and synchronously dispatches the host-published fixed-location handoff script before returning two typed phase facts. The retained 43284-Glued, 43499-Glued, and 98260 native trees remain disconnected carrier candidates, not registered support.
+Current membership deliberately contains no selectable production-root backend. The only installed package is the APK builtin, ARM64 `DIAGNOSE` plugin, which remains `DIAGNOSTIC_ONLY` in both build types. Its Kotlin entry, JNA classes, `libjnidispatch.so`, and `libghostlock_diagnose.so` are package-owned and are loaded only inside the selected one-shot RunHost; the host keeps only the shared API, verifier/loader, and generic Flow adapter. CUSTOM, providers, external import, additional ABIs, and real attack backends are not implemented. The retained 43284-Glued, 43499-Glued, and 98260 native trees remain disconnected source candidates, not registered support.
 
 ## Quick Start
 
@@ -38,7 +38,7 @@ A real product-root backend becomes selectable only through its own approved car
 
 ## Command-Line Debugging
 
-The retired core CLI and its load-prebuilt-profile, attack-selection, and JNI bridge flags are no longer current entry points. Production execution is initiated through the Android application and the typed RunHost contract; backend choice is an immutable registry/profile decision, never an ad-hoc command-line override.
+The retired core CLI and its load-prebuilt-profile, attack-selection, and JNI bridge flags are no longer current entry points. Production execution is initiated through the Android application and the typed RunHost contract; backend choice comes from the authenticated catalog plus persisted selection, never an ad-hoc command-line override.
 
 The retained native executable trees are frozen carrier candidates and are not a supported public CLI. Use Diagnose for in-app transport diagnostics. A future desktop extractor may expose its own CLI, but that interface is independent of backend execution and root-product success.
 
@@ -136,7 +136,9 @@ The exact field list lives in [PROFILE_SCHEMA.md](docs/profile/PROFILE_SCHEMA.md
 
 ## Plugins
 
-Plugins: to be developed.
+The current package format is an ordinary, user-inspectable `.glplugin.zip`. Its typed manifest lists every regular payload file and SHA-256; a normalized semantic content root identifies the package independently of ZIP entry order, timestamps, or compression choices. ZIP CRC remains a container corruption check, not the security identity.
+
+The APK carries one builtin Diagnose package and index. On first startup the app sends it through the same verified object store, catalog, PFD handoff, and RunHost loader used by the runtime; there is no same-APK backend registry or static execution bypass. Builtin versus future imported packages differs only at admission and policy. External import/update, provider packages, multi-package dependency resolution, Custom/raw-memory components, and non-ARM64 variants remain future work and are not implied by the current loader.
 
 ## Credits & License
 

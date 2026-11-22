@@ -50,6 +50,7 @@ class ProductRootScriptPlanMapperTest {
         runId = IDENTITY.runId,
         generation = IDENTITY.generation,
         backendKey = "fixture",
+        pluginContentSha256 = "a".repeat(64),
         profileArtifactId = "profile",
         payloadItems = listOf(
             RunHostPayloadItemRequest(

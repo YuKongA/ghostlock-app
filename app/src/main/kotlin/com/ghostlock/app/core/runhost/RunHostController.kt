@@ -49,11 +49,17 @@ internal interface RunHostWorkspaceLease {
     fun deleteAfterTerminal(): Boolean
 }
 
+/** Idempotent plugin execution owner that must end before its workspace can be removed. */
+internal fun interface RunHostExecutionLease : AutoCloseable {
+    override fun close()
+}
+
 /** Fully materialized candidate whose physical resources have transferred to the controller. */
 internal data class RunHostPreparedCandidate(
     val identity: RunHostIdentity,
     val abortPolicy: AbortPolicy,
     val flow: Flow,
+    val executionLease: RunHostExecutionLease,
     val workspace: RunHostWorkspaceLease,
     val rootScript: RootScriptArtifact,
     val profile: ProfileSnapshot,
@@ -66,7 +72,10 @@ internal data class RunHostPreparedCandidate(
 internal sealed interface RunHostCandidateResult {
     data class Prepared(val candidate: RunHostPreparedCandidate) : RunHostCandidateResult
 
-    data class Rejected(val code: RunHostCode) : RunHostCandidateResult {
+    data class Rejected(
+        val code: RunHostCode,
+        val pluginTainted: Boolean = false,
+    ) : RunHostCandidateResult {
         init {
             require(code != RunHostCode.OK && code != RunHostCode.ALREADY_APPLIED) {
                 "materialization rejection must be a failure code"
@@ -99,11 +108,13 @@ internal class RunHostController(
     private var eventSink: RunHostEventSink? = null
     private var prepared: RunHostPreparedCandidate? = null
     private var snapshot: RunHostSnapshotModel? = null
+    private var rejectedPluginTainted: Boolean = false
     private var inFlightPhysicalOperations: Int = 0
     private var currentEpochCompletion: CompletableFuture<Unit>? = null
 
     /** Replaces the callback only when the stable lifecycle contract accepts the identity. */
     fun setCallback(identity: RunHostIdentity, sink: RunHostEventSink): RunHostCode = synchronized(lock) {
+        if (rejectedPluginTainted) return@synchronized RunHostCode.HOST_DIED
         lifecycle.setCallback(identity).also { code ->
             if (code == RunHostCode.OK) eventSink = sink
         }
@@ -117,6 +128,7 @@ internal class RunHostController(
         lateinit var identity: RunHostIdentity
         lateinit var fingerprint: String
         val preflight = synchronized(lock) {
+            if (rejectedPluginTainted) return@synchronized RunHostCode.HOST_DIED
             when (val structural = RunHostRequestValidator.validateStructure(model)) {
                 RunHostRequestValidation.Valid -> Unit
                 is RunHostRequestValidation.Invalid -> return@synchronized structural.code
@@ -133,6 +145,7 @@ internal class RunHostController(
         val result = runCatching { materialize(model, identity) }
             .getOrElse { RunHostCandidateResult.Rejected(RunHostCode.INTERNAL_CONTRACT_FAILURE) }
         if (result is RunHostCandidateResult.Rejected) {
+            if (result.pluginTainted) synchronized(lock) { rejectedPluginTainted = true }
             finishInFlight()
             return result.code
         }
@@ -140,7 +153,8 @@ internal class RunHostController(
         val candidate = (result as RunHostCandidateResult.Prepared).candidate
         if (!candidateMatches(candidate, identity)) {
             try {
-                releaseWorkspace(candidate.workspace)
+                synchronized(lock) { rejectedPluginTainted = true }
+                releaseCandidate(candidate, deleteWorkspace = true)
             } finally {
                 finishInFlight()
             }
@@ -156,7 +170,7 @@ internal class RunHostController(
             }
         }
         try {
-            if (code != RunHostCode.OK) releaseWorkspace(candidate.workspace)
+            if (code != RunHostCode.OK) releaseCandidate(candidate, deleteWorkspace = true)
         } finally {
             finishInFlight()
         }
@@ -167,6 +181,7 @@ internal class RunHostController(
     fun start(identity: RunHostIdentity): RunHostCode {
         var candidate: RunHostPreparedCandidate? = null
         val code = synchronized(lock) {
+            if (rejectedPluginTainted) return@synchronized RunHostCode.HOST_DIED
             if (lifecycle.state() == RunHostState.PREPARED && prepared == null) {
                 return@synchronized RunHostCode.INTERNAL_CONTRACT_FAILURE
             }
@@ -199,6 +214,9 @@ internal class RunHostController(
 
     /** Returns the immutable current snapshot without exposing transport types. */
     fun snapshot(identity: RunHostIdentity): RunHostSnapshotResult = synchronized(lock) {
+        if (rejectedPluginTainted) {
+            return@synchronized RunHostSnapshotResult(RunHostCode.HOST_DIED, null)
+        }
         val code = lifecycle.snapshotCode(identity)
         val model = if (code == RunHostCode.OK) snapshot ?: unresolvedSnapshot(identity) else null
         RunHostSnapshotResult(code, model)
@@ -210,7 +228,9 @@ internal class RunHostController(
         var waitFor: CompletableFuture<Unit>? = null
         var terminal: RunHostSnapshotModel? = null
         var sink: RunHostEventSink? = null
+        var executionToClose: RunHostPreparedCandidate? = null
         val code = synchronized(lock) {
+            if (rejectedPluginTainted) return@synchronized RunHostCode.HOST_DIED
             val before = lifecycle.state()
             val current = prepared
             val runningCancellationSafe = current?.abortPolicy == AbortPolicy.SAFE_DURING_RUN
@@ -222,6 +242,10 @@ internal class RunHostController(
                         beginInFlightLocked()
                         flowToStop = running.flow
                     } else {
+                        if (current != null) {
+                            beginInFlightLocked()
+                            executionToClose = current
+                        }
                         terminal = cancelledSnapshot(identity, current, before)
                         snapshot = terminal
                         sink = eventSink
@@ -233,6 +257,13 @@ internal class RunHostController(
             }
         }
 
+        executionToClose?.let { candidate ->
+            try {
+                releaseExecution(candidate.executionLease)
+            } finally {
+                finishInFlight()
+            }
+        }
         flowToStop?.let { flow ->
             try {
                 runCatching { flow.stop() }
@@ -249,7 +280,8 @@ internal class RunHostController(
     fun requestClose(identity: RunHostIdentity): RunHostCode {
         while (true) {
             var waitFor: CompletableFuture<Unit>? = null
-            var workspaceToDelete: RunHostWorkspaceLease? = null
+            var candidateToRelease: RunHostPreparedCandidate? = null
+            var deleteWorkspace = false
             var immediate: RunHostCode? = null
             synchronized(lock) {
                 val state = lifecycle.state()
@@ -277,9 +309,10 @@ internal class RunHostController(
                             prepared = null
                             eventSink = null
                             snapshot = snapshot?.copy(state = RunHostState.DESTROYED, lastCode = code)
-                            if (current != null && !retain) {
+                            if (current != null) {
                                 beginInFlightLocked()
-                                workspaceToDelete = current.workspace
+                                candidateToRelease = current
+                                deleteWorkspace = !retain
                             }
                         } else {
                             updateLastCodeLocked(code)
@@ -292,9 +325,9 @@ internal class RunHostController(
                 waitFor.join()
                 continue
             }
-            if (workspaceToDelete != null) {
+            if (candidateToRelease != null) {
                 try {
-                    releaseWorkspace(workspaceToDelete)
+                    releaseCandidate(checkNotNull(candidateToRelease), deleteWorkspace)
                 } finally {
                     finishInFlight()
                 }
@@ -384,10 +417,15 @@ internal class RunHostController(
         var completion: CompletableFuture<Unit>? = null
         var ownerFinished = false
         try {
-            val resolvedReport = report ?: internalFailureReport(
-                current.reportContext.runCapability,
-                cancellation.get(),
-            )
+            val executionReleased = releaseExecution(current.executionLease)
+            val resolvedReport = if (executionReleased) {
+                report ?: internalFailureReport(
+                    current.reportContext.runCapability,
+                    cancellation.get(),
+                )
+            } else {
+                internalFailureReport(current.reportContext.runCapability, cancellation.get())
+            }
             val resolvedSnapshot = runCatching {
                 terminalSnapshot(current.identity, resolvedReport)
             }.getOrElse {
@@ -492,9 +530,17 @@ internal class RunHostController(
         }
     }
 
-    /** Ends one workspace owner without retrying or allowing cleanup exceptions to strand quiescence. */
-    private fun releaseWorkspace(workspace: RunHostWorkspaceLease) {
-        runCatching { workspace.deleteAfterTerminal() }
+    /** Ends one execution owner; false retains the workspace rather than deleting beneath a live owner. */
+    private fun releaseExecution(executionLease: RunHostExecutionLease): Boolean =
+        runCatching {
+            executionLease.close()
+            true
+        }.getOrDefault(false)
+
+    /** Ends one candidate in the only legal order: execution first, then optional workspace deletion. */
+    private fun releaseCandidate(candidate: RunHostPreparedCandidate, deleteWorkspace: Boolean) {
+        if (!releaseExecution(candidate.executionLease) || !deleteWorkspace) return
+        runCatching { candidate.workspace.deleteAfterTerminal() }
     }
 
     /** Checks candidate identity and capability without creating a second capability authority. */

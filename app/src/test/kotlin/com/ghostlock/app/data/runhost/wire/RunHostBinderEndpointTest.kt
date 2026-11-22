@@ -1,5 +1,6 @@
 package com.ghostlock.app.data.runhost.wire
 
+import android.os.ParcelFileDescriptor
 import com.ghostlock.app.core.flow.BackendFlowInput
 import com.ghostlock.app.core.flow.BackendRunFacts
 import com.ghostlock.app.core.flow.Flow
@@ -39,10 +40,13 @@ import com.ghostlock.app.run.RunHostLogRecord
 import com.ghostlock.app.run.RunHostRequest
 import com.ghostlock.app.run.RunHostSnapshot
 import com.ghostlock.app.run.RunInputArtifactParcel
+import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -72,39 +76,46 @@ class RunHostBinderEndpointTest {
 
     @Test
     fun actualRequestParcelBudgetRejectsBeforeModelOrPreparation() {
-        val request = RunHostRequest().also { wire ->
-            wire.runId = identity.runId
-            wire.generation = identity.generation
-            wire.backendKey = "x".repeat(300_000)
-            wire.profileArtifactId = "profile"
-            wire.artifacts = emptyList()
-            wire.payloadItems = emptyList()
-            wire.finishItems = emptyList()
-        }
+        val fixture = wireRequest()
+        val request = fixture.request.also { wire -> wire.backendKey = "x".repeat(300_000) }
         assertTrue(request.parcelDataSize() > com.ghostlock.app.core.runhost.RunHostProtocol.MAX_REQUEST_PARCEL_BYTES)
         assertEquals(RunHostCode.LIMIT_EXCEEDED.wireValue, endpoint(RunHostController()).prepare(request))
+        assertDecodedDescriptorsClosed(fixture)
     }
 
     @Test
     fun malformedGeneratedModelMapsInvalidRequestWithoutDuplicatingDescriptors() {
-        val request = RunHostRequest().also { wire ->
-            wire.runId = identity.runId
-            wire.generation = identity.generation
-            wire.backendKey = "diagnose"
-            wire.profileArtifactId = "profile"
-            wire.artifacts = listOf(
-                RunInputArtifactParcel().also { artifact ->
-                    artifact.logicalId = "profile"
-                    artifact.kind = Int.MAX_VALUE
-                    artifact.byteCount = 0L
-                    artifact.sha256 = "0".repeat(64)
-                    artifact.fd = null
-                },
-            )
-            wire.payloadItems = emptyList()
-            wire.finishItems = emptyList()
-        }
-        assertEquals(RunHostCode.INVALID_REQUEST.wireValue, endpoint(RunHostController()).prepare(request))
+        val fixture = wireRequest()
+        fixture.request.artifacts.single().kind = Int.MAX_VALUE
+
+        assertEquals(
+            RunHostCode.INVALID_REQUEST.wireValue,
+            endpoint(RunHostController()).prepare(fixture.request),
+        )
+        assertDecodedDescriptorsClosed(fixture)
+    }
+
+    @Test
+    fun structuralRejectionClosesEveryDecodedDescriptor() {
+        val fixture = wireRequest()
+        fixture.request.pluginContentSha256 = "not-a-content-root"
+
+        assertEquals(
+            RunHostCode.INVALID_REQUEST.wireValue,
+            endpoint(RunHostController()).prepare(fixture.request),
+        )
+        assertDecodedDescriptorsClosed(fixture)
+    }
+
+    @Test
+    fun materializeRejectionStillClosesEveryDecodedDescriptor() {
+        val fixture = wireRequest()
+
+        assertEquals(
+            RunHostCode.NOT_READY.wireValue,
+            endpoint(RunHostController()).prepare(fixture.request),
+        )
+        assertDecodedDescriptorsClosed(fixture)
     }
 
     @Test
@@ -233,7 +244,6 @@ class RunHostBinderEndpointTest {
         preparation = AndroidRunHostPreparationAdapter(
             role = RunHostRole.APP,
             hostEnvironment = { null },
-            resolveRuntime = { null },
             processMatches = { _, _, _ -> true },
         ),
     )
@@ -246,6 +256,46 @@ class RunHostBinderEndpointTest {
 
         override fun onTerminal(snapshot: RunHostSnapshot) = onTerminal.invoke(snapshot)
     }
+
+    private fun wireRequest(): WireRequestFixture {
+        val pluginPath = Files.writeString(Files.createTempFile("endpoint-plugin", ".zip"), "plugin")
+        val artifactPath = Files.writeString(Files.createTempFile("endpoint-artifact", ".bin"), "{}")
+        val plugin = ParcelFileDescriptor.open(pluginPath.toFile(), ParcelFileDescriptor.MODE_READ_ONLY)
+        val artifact = ParcelFileDescriptor.open(artifactPath.toFile(), ParcelFileDescriptor.MODE_READ_ONLY)
+        val request = RunHostRequest().also { wire ->
+            wire.runId = identity.runId
+            wire.generation = identity.generation
+            wire.backendKey = "diagnose"
+            wire.pluginArchiveFd = plugin
+            wire.pluginContentSha256 = "a".repeat(64)
+            wire.profileArtifactId = "profile"
+            wire.artifacts = listOf(
+                RunInputArtifactParcel().also { item ->
+                    item.logicalId = "profile"
+                    item.kind = RunHostArtifactKind.PROFILE.wireValue
+                    item.byteCount = 2L
+                    item.sha256 = "0".repeat(64)
+                    item.fd = artifact
+                },
+            )
+            wire.payloadItems = emptyList()
+            wire.finishItems = emptyList()
+        }
+        return WireRequestFixture(request, plugin, artifact)
+    }
+
+    private fun assertDecodedDescriptorsClosed(fixture: WireRequestFixture) {
+        assertFalse(fixture.plugin.fileDescriptor.valid())
+        assertFalse(fixture.artifact.fileDescriptor.valid())
+        assertNull(fixture.request.pluginArchiveFd)
+        assertNull(fixture.request.artifacts.single().fd)
+    }
+
+    private data class WireRequestFixture(
+        val request: RunHostRequest,
+        val plugin: ParcelFileDescriptor,
+        val artifact: ParcelFileDescriptor,
+    )
 
     private fun preparedCandidate(
         logMessage: String? = "endpoint-log",
@@ -275,6 +325,7 @@ class RunHostBinderEndpointTest {
 
                     override fun stop() = Unit
                 },
+                executionLease = com.ghostlock.app.core.runhost.RunHostExecutionLease {},
                 workspace = object : RunHostWorkspaceLease {
                     override fun activateExecutionEnvironment() = Unit
 
@@ -292,6 +343,7 @@ class RunHostBinderEndpointTest {
         runId = identity.runId,
         generation = identity.generation,
         backendKey = "diagnose",
+        pluginContentSha256 = "a".repeat(64),
         profileArtifactId = "profile",
         payloadItems = emptyList(),
         finishItems = emptyList(),

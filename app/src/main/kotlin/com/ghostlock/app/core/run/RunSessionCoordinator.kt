@@ -1,6 +1,8 @@
 package com.ghostlock.app.core.run
 
 import com.ghostlock.app.core.log.LogHub
+import com.ghostlock.app.composition.backend.BackendCatalogView
+import com.ghostlock.app.composition.backend.ResolvedBackendProjection
 import com.ghostlock.app.domain.backend.AbortPolicy
 import com.ghostlock.app.domain.backend.BackendAvailability
 import com.ghostlock.app.domain.backend.BackendAvailabilityReason
@@ -32,7 +34,7 @@ import kotlinx.coroutines.flow.StateFlow
 /**
  * Application-scoped owner of admission, actor cutoffs, LogHub acceptance, and dispatch-lease transfer.
  *
- * @param registryEntries Immutable descriptor projection from the sole backend registry.
+ * @param catalogView One terminal READY catalog generation, or null before/after failed bootstrap.
  * @param availability Dynamic resource-free readiness resolver by stable backend key.
  * @param backendLabel Presentation-owned localized label resolver.
  * @param selectedKey Current selected stable backend key.
@@ -47,7 +49,7 @@ import kotlinx.coroutines.flow.StateFlow
  * @param observePrivilege Sole privilege state observer.
  */
 class RunSessionCoordinator(
-    registryEntries: List<BackendDescriptor>,
+    private val catalogView: () -> BackendCatalogView?,
     private val availability: (String) -> BackendAvailability?,
     private val backendLabel: (String) -> String?,
     private val selectedKey: () -> String?,
@@ -61,7 +63,6 @@ class RunSessionCoordinator(
     private val applicationScope: CoroutineScope,
     observePrivilege: ObservePrivilegeUseCase,
 ) : RunSessionPort {
-    private val entries = registryEntries.toList()
     private val operationalPreferences = operationalPreferencesPort.preferences
     private val privilege = observePrivilege()
 
@@ -69,7 +70,7 @@ class RunSessionCoordinator(
 
     /** Refreshes the idle projection from one current privilege and settings snapshot. */
     override fun refresh() {
-        val spec = currentSpec()
+        val spec = currentProjection()?.descriptor
         val executor = privilege.value.attackExecutor()
         logHub.updateContext(buildContext(spec, decision(spec, executor)))
     }
@@ -81,16 +82,15 @@ class RunSessionCoordinator(
      * @return Deferred acceptance result; true only after LogHub commits the run.
      */
     override fun start(command: RunCommand): Deferred<Boolean> {
-        val spec = entries.firstOrNull { candidate ->
-            candidate.key == command.backendKey && candidate.selectable
+        val readyView = catalogView()
+        val selected = selectedKey()
+        val projection = readyView?.resolve(selected)?.takeIf { candidate ->
+            candidate.descriptor.selectable && candidate.descriptor.key == command.backendKey
         } ?: run {
             refresh()
             return CompletableDeferred(false)
         }
-        if (currentSpec()?.key != spec.key) {
-            refresh()
-            return CompletableDeferred(false)
-        }
+        val spec = projection.descriptor
         val executor = privilege.value.attackExecutor()
         val admission = decision(spec, executor)
         if (!admission.allowed) {
@@ -99,7 +99,7 @@ class RunSessionCoordinator(
         }
 
         val preferenceCutoff = operationalPreferencesPort.snapshot()
-        val inputCutoff = captureInputCutoff(spec)
+        val inputCutoff = captureInputCutoff(projection)
         return applicationScope.async(start = CoroutineStart.UNDISPATCHED) {
             val preferences = runCatching { preferenceCutoff.await() }.getOrElse { problem ->
                 logHub.updateContext(
@@ -176,27 +176,32 @@ class RunSessionCoordinator(
     }
 
     /** Captures exact actor transactions synchronously before any host preparation begins. */
-    private fun captureInputCutoff(spec: BackendDescriptor): RunInputCutoff = when (spec.runCapability) {
+    private fun captureInputCutoff(projection: ResolvedBackendProjection): RunInputCutoff {
+        val spec = projection.descriptor
+        return when (spec.runCapability) {
         RunCapability.PRODUCT_ROOT -> RunInputCutoff(
             backendKey = spec.key,
+            pluginObjectRef = projection.objectRef,
             payload = payloadRepository.snapshot(),
             finish = finishRepository.snapshot(),
         )
 
         RunCapability.DIAGNOSTIC_ONLY -> RunInputCutoff(
             backendKey = spec.key,
+            pluginObjectRef = projection.objectRef,
             payload = CompletableDeferred(PayloadDefinition(items = emptyList())),
             finish = CompletableDeferred(FinishDefinition()),
         )
 
         RunCapability.UNRESOLVED -> error("registry backend capability is unresolved")
+        }
     }
 
-    /** Returns the current selectable descriptor or the existing first-selectable fallback. */
-    private fun currentSpec(): BackendDescriptor? {
+    /** Resolves only the exact current selectable projection from one READY generation. */
+    private fun currentProjection(): ResolvedBackendProjection? {
+        val view = catalogView()
         val key = selectedKey()
-        return entries.firstOrNull { spec -> spec.selectable && spec.key == key }
-            ?: entries.firstOrNull(BackendDescriptor::selectable)
+        return view?.resolve(key)?.takeIf { projection -> projection.descriptor.selectable }
     }
 
     /** Computes one fail-closed decision from the same executor snapshot used for dispatch. */

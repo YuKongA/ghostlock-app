@@ -119,9 +119,16 @@ class HomeViewModel(
 
     /** @return Current selected-backend readiness projected without waiting for device I/O. */
     private fun selectedBackendState(): SelectedBackendUiState {
+        backendUiCatalog.failureStatus()?.let { failure ->
+            return SelectedBackendUiState(
+                cveLabel = "",
+                statusText = failure,
+                isReady = false,
+            )
+        }
         val selectedBackend = backendUiCatalog.selectedEntry() ?: return SelectedBackendUiState(
             cveLabel = "",
-            statusText = "No backend is available.",
+            statusText = backendUiCatalog.noBackendStatus(),
             isReady = false,
         )
         val descriptor = selectedBackend.descriptor

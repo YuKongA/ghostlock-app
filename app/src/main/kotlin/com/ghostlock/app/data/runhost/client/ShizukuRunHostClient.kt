@@ -18,6 +18,7 @@ import com.ghostlock.app.run.RunHostSnapshot
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,22 +29,35 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import rikka.shizuku.Shizuku
 
-/**
- * Shizuku shell-UID execution-domain typed client.
- *
- * @param binding Shizuku lifecycle adapter kept outside the typed business protocol.
- */
+/** Shizuku shell-UID client with the same close/destroy/death acceptance rule as the App client. */
 class ShizukuRunHostClient internal constructor(
     private val binding: ShizukuRunHostBinding,
+    private val testLatches: RunHostClientTestLatches,
 ) {
-    /** Creates the production Shizuku binding adapter for one application process. */
-    constructor(context: Context) : this(AndroidShizukuRunHostBinding(context))
+    internal constructor(binding: ShizukuRunHostBinding) : this(binding, RunHostClientTestLatches())
 
-    /** Runs one request through the shared typed wire. */
+    internal constructor(
+        context: Context,
+        testLatches: RunHostClientTestLatches,
+    ) : this(
+        AndroidShizukuRunHostBinding(context),
+        testLatches,
+    )
+
+    constructor(context: Context) : this(context, RunHostClientTestLatches())
+
+    private val lock = Any()
+    private var quarantinedBinder: IBinder? = null
+
+    /** Runs one request and withholds terminal/rejection until the unique UserService binder dies. */
     internal suspend fun run(
         request: RunHostRequest,
         logs: RunHostLogConnector,
     ): RunHostClientOutcome {
+        if (quarantineBlocksRun()) {
+            logs.finishIncomplete("shizuku-runhost-process-quarantined")
+            return RunHostClientOutcome.TransportFailure(RunHostCode.INTERNAL_CONTRACT_FAILURE)
+        }
         val identity = runCatching { RunHostIdentity(request.runId, request.generation) }
             .getOrElse {
                 logs.finishIncomplete("shizuku-runhost-invalid-request")
@@ -57,54 +71,95 @@ class ShizukuRunHostClient internal constructor(
         return suspendCancellableCoroutine { continuation ->
             val finishing = AtomicBoolean(false)
             val completed = AtomicBoolean(false)
+            val expectedClosing = AtomicBoolean(false)
+            val bindingReleased = AtomicBoolean(false)
+            val deathObserved = CompletableDeferred<Unit>()
             val completionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
             var snapshotJob: Job? = null
-            var deathRecipient: IBinder.DeathRecipient? = null
-            fun finish(outcome: RunHostClientOutcome) {
+            val binder = host.asBinder()
+
+            fun releaseBinding() {
+                if (bindingReleased.compareAndSet(false, true)) runCatching { binding.close(host) }
+            }
+
+            fun finish(initial: RunHostClientOutcome) {
                 if (!finishing.compareAndSet(false, true)) return
                 snapshotJob?.cancel()
                 completionScope.launch {
-                    if (outcome is RunHostClientOutcome.Terminal) {
-                        val deliveryFinished = withTimeoutOrNull(RUNHOST_LOG_DELIVERY_TIMEOUT_MS) {
+                    var outcome = initial
+                    if (initial is RunHostClientOutcome.Terminal) {
+                        val drained = withTimeoutOrNull(RUNHOST_LOG_DELIVERY_TIMEOUT_MS) {
                             logs.terminalMarker.await()
                             logs.end.await()
                             true
                         } == true
-                        if (!deliveryFinished) {
+                        if (!drained) {
                             logs.finishIncomplete("shizuku-runhost-terminal-marker-timeout")
                             logs.end.await()
                         }
                     } else {
-                        logs.finishIncomplete("shizuku-runhost-" + outcome.shizukuLogFailureName())
+                        logs.finishIncomplete("shizuku-runhost-" + initial.shizukuLogFailureName())
                         logs.end.await()
                     }
-                    deathRecipient?.let { recipient ->
-                        runCatching { host.asBinder().unlinkToDeath(recipient, 0) }
-                    }
-                    if (outcome !is RunHostClientOutcome.TransportFailure ||
-                        outcome.code != RunHostCode.HOST_DIED
-                    ) {
+
+                    val hostAlreadyDied = initial is RunHostClientOutcome.TransportFailure &&
+                        initial.code == RunHostCode.HOST_DIED
+                    if (!hostAlreadyDied) {
+                        runCatching(testLatches.afterTerminalDrainBeforeClose)
+                            .onFailure {
+                                outcome = RunHostClientOutcome.TransportFailure(
+                                    RunHostCode.INTERNAL_CONTRACT_FAILURE,
+                                )
+                            }
                         val closeCode = runCatching {
                             RunHostCode.fromWireValue(host.requestClose(identity.runId, identity.generation))
                         }.getOrDefault(RunHostCode.HOST_DIED)
-                        if (closeCode == RunHostCode.OK || closeCode == RunHostCode.ALREADY_APPLIED) {
-                            runCatching { binding.close(host) }
+                        if (closeCode != RunHostCode.OK && closeCode != RunHostCode.ALREADY_APPLIED) {
+                            outcome = RunHostClientOutcome.TransportFailure(
+                                RunHostCode.INTERNAL_CONTRACT_FAILURE,
+                            )
+                        }
+                        expectedClosing.set(true)
+                        if (runCatching { host.destroy() }.isFailure) {
+                            outcome = RunHostClientOutcome.TransportFailure(
+                                RunHostCode.INTERNAL_CONTRACT_FAILURE,
+                            )
+                        }
+                        releaseBinding()
+                        val died = withTimeoutOrNull(RUNHOST_PROCESS_DEATH_TIMEOUT_MS) {
+                            deathObserved.await()
+                            true
+                        } == true
+                        if (!died) {
+                            quarantine(binder)
+                            outcome = RunHostClientOutcome.TransportFailure(
+                                RunHostCode.INTERNAL_CONTRACT_FAILURE,
+                            )
                         }
                     } else {
-                        runCatching { binding.close(host) }
+                        releaseBinding()
                     }
                     completed.set(true)
                     if (continuation.isActive) continuation.resume(outcome)
                 }
             }
-            deathRecipient = IBinder.DeathRecipient {
-                finish(RunHostClientOutcome.TransportFailure(RunHostCode.HOST_DIED))
-            }
-            runCatching { host.asBinder().linkToDeath(requireNotNull(deathRecipient), 0) }
-                .onFailure {
+
+            val deathRecipient = IBinder.DeathRecipient {
+                clearQuarantine(binder)
+                deathObserved.complete(Unit)
+                if (!expectedClosing.get()) {
                     finish(RunHostClientOutcome.TransportFailure(RunHostCode.HOST_DIED))
-                    return@suspendCancellableCoroutine
                 }
+            }
+            if (runCatching { binder.linkToDeath(deathRecipient, 0) }.isFailure) {
+                finish(RunHostClientOutcome.TransportFailure(RunHostCode.HOST_DIED))
+                return@suspendCancellableCoroutine
+            }
+            if (runCatching(testLatches.afterBindBeforeCallback).isFailure) {
+                finish(RunHostClientOutcome.TransportFailure(RunHostCode.INTERNAL_CONTRACT_FAILURE))
+                return@suspendCancellableCoroutine
+            }
+            if (finishing.get()) return@suspendCancellableCoroutine
             val callback = object : IRunHostCallback.Stub() {
                 override fun onLog(record: RunHostLogRecord) {
                     if (!completed.get()) logs.receive(record)
@@ -119,7 +174,9 @@ class ShizukuRunHostClient internal constructor(
                             RunHostClientOutcome.Terminal(decoded)
                         }.getOrElse {
                             logs.finishIncomplete("shizuku-runhost-terminal-invalid")
-                            RunHostClientOutcome.TransportFailure(RunHostCode.INTERNAL_CONTRACT_FAILURE)
+                            RunHostClientOutcome.TransportFailure(
+                                RunHostCode.INTERNAL_CONTRACT_FAILURE,
+                            )
                         },
                     )
                 }
@@ -127,6 +184,7 @@ class ShizukuRunHostClient internal constructor(
             continuation.invokeOnCancellation {
                 logs.finishIncomplete("shizuku-runhost-client-cancelled")
                 runCatching { host.cancel(identity.runId, identity.generation) }
+                finish(RunHostClientOutcome.TransportFailure(RunHostCode.INTERNAL_CONTRACT_FAILURE))
             }
             val callbackCode = runCatching {
                 RunHostCode.fromWireValue(host.setCallback(identity.runId, identity.generation, callback))
@@ -158,9 +216,27 @@ class ShizukuRunHostClient internal constructor(
                 return@suspendCancellableCoroutine
             }
             snapshotJob = CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-                pollRunHostTerminal(host, identity, completed) { outcome -> finish(outcome) }
+                pollRunHostTerminal(host, identity, completed, ::finish)
             }
         }
+    }
+
+    private fun quarantineBlocksRun(): Boolean = synchronized(lock) {
+        val binder = quarantinedBinder ?: return@synchronized false
+        if (binder.isBinderAlive) {
+            true
+        } else {
+            quarantinedBinder = null
+            false
+        }
+    }
+
+    private fun quarantine(binder: IBinder) = synchronized(lock) {
+        if (binder.isBinderAlive) quarantinedBinder = binder
+    }
+
+    private fun clearQuarantine(binder: IBinder) = synchronized(lock) {
+        if (quarantinedBinder === binder) quarantinedBinder = null
     }
 }
 
@@ -186,7 +262,6 @@ private class AndroidShizukuRunHostBinding(context: Context) : ShizukuRunHostBin
     private val lock = Any()
     private val active = mutableMapOf<IBinder, BoundService>()
 
-    /** Performs preflight and awaits one typed UserService binder. */
     override suspend fun bind(): IRunHost {
         require(Shizuku.pingBinder()) { "Shizuku binder is unavailable" }
         require(Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
@@ -199,13 +274,11 @@ private class AndroidShizukuRunHostBinding(context: Context) : ShizukuRunHostBin
         return withTimeout(BIND_TIMEOUT_MS) { awaitBinding() }
     }
 
-    /** Unbinds and removes one exact UserService instance. */
     override fun close(host: IRunHost) {
         val bound = synchronized(lock) { active.remove(host.asBinder()) } ?: return
         runCatching { Shizuku.unbindUserService(bound.args, bound.connection, true) }
     }
 
-    /** Suspends until one unique UserService connection yields a non-null typed binder. */
     private suspend fun awaitBinding(): IRunHost = suspendCancellableCoroutine { continuation ->
         val token = System.nanoTime().toString(36)
         val args = Shizuku.UserServiceArgs(
@@ -226,7 +299,7 @@ private class AndroidShizukuRunHostBinding(context: Context) : ShizukuRunHostBin
 
         connection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-                val host = service?.let { binder -> IRunHost.Stub.asInterface(binder) }
+                val host = service?.let(IRunHost.Stub::asInterface)
                 if (host == null) {
                     fail("Shizuku RunHost returned a null binding")
                     return
@@ -236,11 +309,7 @@ private class AndroidShizukuRunHostBinding(context: Context) : ShizukuRunHostBin
                     return
                 }
                 synchronized(lock) { active[host.asBinder()] = BoundService(args, this) }
-                if (continuation.isActive) {
-                    continuation.resume(host)
-                } else {
-                    close(host)
-                }
+                if (continuation.isActive) continuation.resume(host) else close(host)
             }
 
             override fun onServiceDisconnected(name: ComponentName?) = fail("Shizuku RunHost disconnected")
@@ -258,14 +327,14 @@ private class AndroidShizukuRunHostBinding(context: Context) : ShizukuRunHostBin
             .onFailure { problem -> fail("Shizuku RunHost bind failed: " + problem::class.java.simpleName) }
     }
 
-    /** One exact args/connection pair owned until [close]. */
     private data class BoundService(
         val args: Shizuku.UserServiceArgs,
         val connection: ServiceConnection,
     )
 
     private companion object {
-        const val SERVICE_CLASS: String = "com.ghostlock.app.runhost.shizukushell.ShizukuShellRunHostService"
+        const val SERVICE_CLASS: String =
+            "com.ghostlock.app.runhost.shizukushell.ShizukuShellRunHostService"
         const val SHELL_UID: Int = 2000
         const val SHELL_DOMAIN: String = "u:r:shell:s0"
         const val BIND_TIMEOUT_MS: Long = 10_000L

@@ -1,25 +1,24 @@
 package com.ghostlock.app.data.backend
 
-import com.ghostlock.app.domain.backend.BackendDescriptor
+import com.ghostlock.app.composition.backend.BackendCatalogView
 import com.ghostlock.app.domain.backend.BackendSelectionPort
 
 /**
  * Persists backend selection while hiding registry indices and Android storage from presentation.
  *
- * @param registryEntries Immutable descriptor projection from the sole definition registry.
+ * @param catalogView Reads the one terminal READY catalog generation without copying membership.
  * @param sessionStore Application-scoped stable-key selection owner.
  */
 class BackendSelectionAdapter(
-    registryEntries: List<BackendDescriptor>,
+    private val catalogView: () -> BackendCatalogView?,
     private val sessionStore: BackendSessionStore,
 ) : BackendSelectionPort {
-    private val entries = registryEntries.toList()
-
-    /** @return True only when the requested captured entry is selectable and becomes current. */
+    /** @return True only when the requested READY-catalog entry is selectable and becomes current. */
     override suspend fun select(key: String): Boolean {
-        val index = entries.indexOfFirst { it.key == key && it.selectable }
-        if (index < 0) return false
-        sessionStore.select(entries[index])
+        val projection = catalogView()?.resolve(key)
+            ?.takeIf { it.descriptor.selectable && it.availability.isReady }
+            ?: return false
+        sessionStore.select(projection.descriptor)
         return sessionStore.selectedKey == key
     }
 }

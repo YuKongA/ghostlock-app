@@ -28,20 +28,20 @@
     {
       "path": "CMakeLists.txt",
       "pristineSha256": "772b21c8858936aa734e7f0c5cc63223fb9893b535e556896d948ad33c68b7cf",
-      "adaptedSha256": "cd2f8650783e395b9dfa8354d9d90ea2cee2173d35a09b96f8cf19e0bb248de9",
-      "change": "Link production executable and bootstrap targets to gl_common; M0 fixture branch remains isolated."
+      "adaptedSha256": "e56cb34bb409a51dce74fbfeda0dc021659a787d510bcf51688cda9b8298924a",
+      "change": "Consume the migrated common logger source directly in this source-only candidate; M0 fixture branch remains isolated."
     }
   ],
   "logger": {
-    "target": "gl_common",
+    "target": "per-target source inclusion",
     "source": {
-      "path": "app/src/main/cpp/common/gl_log.c",
-      "sha256": "40ae26e3e64050dfb36c8abc8f1f75a8e63c567a993cc3cfe1873af61d21b54d",
+      "path": "plugin/native-source/common/common/gl_log.c",
+      "sha256": "7948930c706e043905e836a10d031537178a3b8600f2fad352533f0ea919dc94",
       "baselineSha256": "0e96159b2c2d248479d782adfa1b9aecf848675811e758f41a91045a2c3045f0"
     },
     "callsiteAudit": "../../../../../docs/analysis/dfroot-log-callsite-audit-20261029.tsv",
     "header": {
-      "path": "app/src/main/cpp/common/gl_log.h",
+      "path": "plugin/native-source/common/common/gl_log.h",
       "sha256": "ba62afbb21829f345100e205d4918a3d4775cfda3a64c16bb766052256f4e777",
       "baselineSha256": "14fd4b71617f571b21effc178bd07dee4f56c2c16fc5303100471513a7b4a84f"
     },

@@ -7,6 +7,7 @@ import android.system.OsConstants
 import com.ghostlock.app.domain.run.FrozenRunInput
 import com.ghostlock.app.domain.run.RunInputArtifact
 import com.ghostlock.app.domain.run.RunInputArtifactKind
+import com.ghostlock.app.data.plugin.PluginObjectPfdLease
 import java.io.File
 import java.io.FileInputStream
 import java.nio.file.Files
@@ -106,9 +107,11 @@ data class OpenedRunInputSource(
  * @property input Immutable neutral run facts; source tokens are opaque lookup keys, never paths.
  * @note Closing the lease closes every master first and then deletes only explicitly owned app-private files.
  */
-class AndroidFrozenRunInputLease(
+internal class AndroidFrozenRunInputLease(
     val input: FrozenRunInput,
     sources: List<OpenedRunInputSource>,
+    private val pluginObject: PluginObjectPfdLease,
+    private val pluginSourceToken: String,
 ) : AutoCloseable {
     private val lock = Any()
     private val masters = sources.associate { source -> source.artifact.sourceToken to source.master }
@@ -120,6 +123,19 @@ class AndroidFrozenRunInputLease(
         require(input.inputArtifacts.map(RunInputArtifact::sourceToken).toSet() == masters.keys) {
             "frozen input and source lease disagree"
         }
+        require(input.pluginSourceToken == pluginSourceToken) {
+            "frozen input and plugin source lease disagree"
+        }
+        require(input.pluginContentSha256 == pluginObject.pluginContentSha256.value) {
+            "frozen input and plugin content root disagree"
+        }
+    }
+
+    /** Duplicates the exact package object fixed by the accepted catalog cutoff. */
+    fun duplicatePluginArchive(sourceToken: String): ParcelFileDescriptor = synchronized(lock) {
+        check(!closed) { "run input lease is closed" }
+        require(sourceToken == pluginSourceToken) { "unknown plugin source token" }
+        pluginObject.duplicate()
     }
 
     /**
@@ -141,6 +157,7 @@ class AndroidFrozenRunInputLease(
             closed = true
             masters.values.toList()
         }
+        runCatching { pluginObject.close() }
         closeTargets.forEach { descriptor -> runCatching { descriptor.close() } }
         ownedSources.forEach { file -> runCatching { if (file.exists()) check(file.delete()) } }
     }

@@ -21,7 +21,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 enable_testing()
 
 get_filename_component(GL_REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
-set(GL_COMMON_ROOT "${GL_REPO_ROOT}/app/src/main/cpp")
+set(GL_COMMON_ROOT "${GL_REPO_ROOT}/plugin/native-source/common")
+set(GL_DIAGNOSE_ROOT
+    "${GL_REPO_ROOT}/plugin/packages/diagnose/src/main/cpp")
 set(GL_DISPOSITION
     "${CMAKE_CURRENT_LIST_DIR}/native-test-disposition.tsv")
 set(GL_HOST_WARNINGS
@@ -83,13 +85,16 @@ add_test(NAME run_handoff_test COMMAND run_handoff_test)
 list(APPEND GL_REGISTERED_CONTRACT_SOURCES tools/tests/run_handoff_test.cpp)
 
 # The direct call-contract test links the exact production Diagnose implementation
-# and logger on the host; Android logcat linkage remains exclusive to the app-native target.
+# and logger on the host; Android logcat linkage remains exclusive to the plugin-native target.
 add_executable(diagnose_abi_test
     "${GL_REPO_ROOT}/tools/tests/diagnose_abi_test.cpp"
-    "${GL_COMMON_ROOT}/backends/diagnose/diagnose.cpp"
+    "${GL_DIAGNOSE_ROOT}/diagnose.cpp"
     "${GL_COMMON_ROOT}/common/gl_log.c"
 )
-target_include_directories(diagnose_abi_test PRIVATE "${GL_COMMON_ROOT}")
+target_include_directories(diagnose_abi_test PRIVATE
+    "${GL_DIAGNOSE_ROOT}"
+    "${GL_COMMON_ROOT}"
+)
 target_compile_options(diagnose_abi_test PRIVATE ${GL_HOST_WARNINGS})
 add_test(NAME diagnose_abi_test COMMAND diagnose_abi_test)
 list(APPEND GL_REGISTERED_CONTRACT_SOURCES tools/tests/diagnose_abi_test.cpp)

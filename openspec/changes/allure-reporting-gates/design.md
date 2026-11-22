@@ -90,6 +90,8 @@ flowchart LR
 
 `gl-4on` 原设计中把 `prepareAllure` 判据、Diagnose package producer 修复和 moved native source 接线列为自己的实施 hunk；本表以职责重分配取代这些**源码 owner**，但不删除其“clean 后闭环必须验证这些前置”的验收责任。最终工作树行为不变，变化的是哪个独立提交首先引入相应字节。
 
+本表中的Beads／OpenSpec／`development-environment.md`等current-build投影是四候选提交边界的事实同步，不计入B1 §19.5.70的150个production ledger动作；它们仍必须按本表逐hunk且只能由一个候选拥有。§19.5.70中的`tools/tests/test_kotlin_architecture_d0.py`以T-B固定parent `488d02e1…`判断为`ADD`，不是对不存在路径的`MODIFY`。`runhost-wire`在parent只有archive PFD／semantic content root、重打包等价和双域设备门的骨架，仍缺设计正文已批准的PFD owner／失败逆序close与request fingerprint／`RUN_MISMATCH` scenario，故保留`MODIFY`；architecture fixture ledger行再纳入`SegmentedList` nullable签名直接要求的`component-api-v1.tsv`。补正后仍是150行，但唯一物理路径为173个；这些机械纠正不增加功能、产品合同或设备判据。
+
 当前态文档必须随每棵候选保持真实，不能只在最终 `T-C` 一次修正：
 
 - `T-A` 的 current UML 只投影 Allure/current-run与去固定计数；因为该树尚无plugin modules，必须继续画HEAD的legacy native topology、裸debug/release `nativeBuildAndroid`与仍存在的`checkAll`。

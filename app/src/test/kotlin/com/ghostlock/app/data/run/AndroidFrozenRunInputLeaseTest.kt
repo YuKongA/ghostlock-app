@@ -1,12 +1,14 @@
 package com.ghostlock.app.data.run
 
 import android.os.ParcelFileDescriptor
+import com.ghostlock.app.data.plugin.PluginObjectPfdLease
 import com.ghostlock.app.domain.finish.FinishDefinition
 import com.ghostlock.app.domain.payload.PayloadDefinition
 import com.ghostlock.app.domain.run.FrozenRunInput
 import com.ghostlock.app.domain.run.ProfileSnapshot
 import com.ghostlock.app.domain.run.RunInputArtifactKind
 import java.nio.file.Files
+import com.ghostlock.plugin.core.PluginContentSha256
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Test
@@ -54,16 +56,28 @@ class AndroidFrozenRunInputLeaseTest {
         assertFalse(source.exists())
     }
 
-    private fun lease(source: OpenedRunInputSource): AndroidFrozenRunInputLease = AndroidFrozenRunInputLease(
-        input = FrozenRunInput(
+    private fun lease(source: OpenedRunInputSource): AndroidFrozenRunInputLease {
+        val pluginFile = Files.writeString(Files.createTempFile("frozen-plugin", ".zip"), "plugin")
+        val pluginRoot = PluginContentSha256("a".repeat(64))
+        val pluginToken = "f".repeat(32)
+        return AndroidFrozenRunInputLease(
+            input = FrozenRunInput(
             runId = "0123456789abcdef0123456789abcdef",
             generation = 1L,
             backendKey = "fixture",
+            pluginContentSha256 = pluginRoot.value,
+            pluginSourceToken = pluginToken,
             profile = ProfileSnapshot("profile", 3, source.artifact.sha256),
             payload = PayloadDefinition(items = emptyList()),
             finish = FinishDefinition(),
             inputArtifacts = listOf(source.artifact),
-        ),
-        sources = listOf(source),
-    )
+            ),
+            sources = listOf(source),
+            pluginObject = PluginObjectPfdLease(
+                pluginRoot,
+                ParcelFileDescriptor.open(pluginFile.toFile(), ParcelFileDescriptor.MODE_READ_ONLY),
+            ),
+            pluginSourceToken = pluginToken,
+        )
+    }
 }

@@ -14,3 +14,9 @@ sealed interface RunHostClientOutcome {
     /** Binder died or the typed wire violated its invariant. */
     data class TransportFailure(val code: RunHostCode) : RunHostClientOutcome
 }
+
+/** Internal-only device-test pauses; production constructors always use the no-op instance. */
+internal data class RunHostClientTestLatches(
+    val afterBindBeforeCallback: () -> Unit = {},
+    val afterTerminalDrainBeforeClose: () -> Unit = {},
+)

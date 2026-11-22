@@ -18,17 +18,17 @@
 
 ## Android 应用架构
 
-当前架构权威是backend root-execution 统一计划（[gl-4tt设计](openspec/changes/runtime-foundations/design.md#record-gl-4tt)）；唯一 Class、Sequence、State 与结果投影图位于 [full-process-uml.md](docs/development/full-process-uml.md)。
+当前架构权威由公共运行设计（[gl-4tt 设计](openspec/changes/runtime-foundations/design.md#record-gl-4tt)）和正在实施的内置插件增量（[gl-dek 设计](openspec/changes/builtin-diagnose-plugin/design.md#record-gl-dek)）共同确定；当前状态的唯一全局图位于 [full-process-uml.md](docs/development/full-process-uml.md)。
 
 Kotlin 应用采用中性 Clean Architecture 边界。domain 模型不包含 Android、Compose、具体 backend 或持久化类型；Android 存储与平台副作用位于 data adapter；应用组装统一由 AppContainer 持有；Screen 与 ViewModel 只消费不可变状态和 action contract。
 
-BackendRegistry 是 same-APK immutable membership 的唯一权威。公开的 BackendSpec 只包含中性的身份、配置 schema、参数要求、执行域、取消策略和 capability。内部 BackendPlugin 再组合无资源 readiness 与每次新建的 one-shot Flow factory；它不会跨越 UI、profile、persistence 或 AIDL 边界。
+authenticated plugin catalog 是 backend membership 的唯一权威。应用启动时验证 APK 携带的内置 package，把它安装为按内容寻址的 immutable object，再发布唯一终态 `READY` 或 `FAILED` catalog generation。`BackendCatalogProjection` 从同一 generation 投影 neutral `BackendDescriptor` 和 exact `PluginObjectRef`；Android presentation registry 只提供 UI，不能创造 membership。
 
-App 进程与 Shizuku shell 使用同一套 typed RunHost request、event、snapshot 和生命周期合同。RunInputFreezer 一次冻结所选 backend、profile-v3 snapshot、Payload 与 Finish；host 独占 staging、workspace、脚本发布、Flow 生命周期、terminal snapshot 与 cleanup。产品状态只来自 typed 六层 RunReport；raw uid 0、进程 exit 0、stdout 与诊断日志都不能把结果升级为产品成功。
+App 进程与 Shizuku shell 使用同一套 typed RunHost request、event、snapshot 和生命周期合同。`RunInputFreezer` 一次冻结所选 catalog object，以只读 PFD 打开其 archive，并同时冻结 profile-v3、Payload 与 Finish。一次性 RunHost 复制并重验 archive，提取只读 DEX/native 文件，装载插件 entry，再独占执行、terminal、cleanup 与物理进程终结。产品状态仍只来自 typed 六层 `RunReport`；raw uid 0、进程 exit 0、stdout 与诊断日志都不能把结果升级为产品成功。
 
 Payload 与 Finish 是两份独立的 version-3 document。公共 renderer 只发布一份 root script；具体 backend 只负责到达自己的 root execution point、派发该 exact artifact，并回报 backend-private cleanup facts。R4 已删除 caller-zero 的旧 SessionPhase。自动日志导出是产品能力，不是 dead residue：错误在于把能力与旧 object 一起清零。当前LogHub使用unlimited raw与processed双流、单processor和非阻塞dispatcher；UI、private-file与可选MediaStore各自拥有独立队列，文件worker缓冲写入而不逐行flush。GLLOG2 formatter对每条已提交日志只编码一次；手动分享与诊断导出复制私有文件已flush的精确前缀，不构建完整文档ByteArray。显式诊断报告、手动分享与自动导出都只是 diagnostic sink，均不成为 run 结果权威。
 
-当前 membership 刻意没有可选择的 production-root backend。CUSTOM 在获得批准的 operation catalog 前保持 disabled；DIAGNOSE 在 debug 与 release 中均可选择，但 capability 始终是 DIAGNOSTIC_ONLY。DIAGNOSE 是首个真实 JNA/shared-library 纵向：RunHost prepare 构造 Flow 并按常量名加载 `libghostlock_diagnose.so`，随后唯一的 `diagnose-native-chain` step 调用不带版本号的 `gl_diagnose_run`。同一次 native call 先写 Native record，再同步派发 host 已发布的固定位置 handoff 脚本，返回后一次交付两项 typed phase fact。保留的 43284-Glued、43499-Glued 与 98260 native tree 仍是断开的 carrier candidate，不是已注册支持。
+当前 membership 刻意没有可选择的 production-root backend。唯一已安装的 package 是 APK 内置、仅 ARM64 的 `DIAGNOSE` 插件；它在两个 build type 中始终是 `DIAGNOSTIC_ONLY`。其 Kotlin entry、JNA class、`libjnidispatch.so` 与 `libghostlock_diagnose.so` 都归 package 所有，只在所选的一次性 RunHost 中加载；Host 只保留共享 API、verifier/loader 与通用 Flow adapter。CUSTOM、provider、外部导入、额外 ABI 和真实攻击 backend 均未实现。保留的 43284-Glued、43499-Glued 与 98260 native tree 仍是断开的 source candidate，不是已注册支持。
 
 ## 快速开始
 
@@ -38,7 +38,7 @@ Payload 与 Finish 是两份独立的 version-3 document。公共 renderer 只�
 
 ## 命令行调试
 
-旧 core CLI 及其 load-prebuilt-profile、攻击选择和 JNI bridge 参数已经退出 current entry point。production execution 统一从 Android 应用进入 typed RunHost；backend 选择来自 immutable registry 与 profile，不允许用临时命令行参数旁路。
+旧 core CLI 及其 load-prebuilt-profile、攻击选择和 JNI bridge 参数已经退出 current entry point。production execution 统一从 Android 应用进入 typed RunHost；backend 选择来自 authenticated catalog 与持久化 selection，不允许用临时命令行参数旁路。
 
 保留的 native executable tree 只是冻结的 carrier candidate，不是受支持的 public CLI。应用内 transport 诊断统一使用 Diagnose。未来桌面 extractor 可以拥有自己的 CLI，但它与 backend execution 和 root 产品成功相互独立。
 
@@ -121,7 +121,9 @@ ghostlock {
 
 ## 插件
 
-插件：待开发。
+当前插件封装是普通、方便用户检查的 `.glplugin.zip`。typed manifest 用 SHA-256 列出每个 regular payload file；normalized semantic content root 独立于 ZIP entry 顺序、timestamp 和压缩方式标识 package。ZIP CRC 只检查容器意外损坏，不承担安全身份。
+
+APK 当前携带一份内置 Diagnose package 和 index。首次启动时，应用让它经过与运行期相同的 verified object store、catalog、PFD handoff 与 RunHost loader，不保留 same-APK backend registry 或静态执行旁路。内置与未来外部导入的区别只应出现在 admission/policy。外部导入与更新、provider package、多 package 依赖解析、Custom/raw-memory component 以及非 ARM64 variant 仍是后续工作，不能从当前 loader 推断已经支持。
 
 ## 来源与许可证
 

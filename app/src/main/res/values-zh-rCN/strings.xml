@@ -39,6 +39,7 @@
     <string name="backend_readiness_cve43499_inputs">物理输入（payload/地址/frame）尚无 Kotlin 计算来源</string>
     <string name="backend_readiness_custom_script">未选择自定义 Lua 脚本（运行时未接线）</string>
     <string name="backend_run_no_backend">未选择后端</string>
+    <string name="backend_catalog_failed">插件目录加载失败：%1$s</string>
     <string name="backend_run_no_flow_entry">该后端没有 Flow 运行入口（仅 Finish/LKM relay）</string>
     <string name="backend_run_backend_disabled">该后端已禁用，不能选择或运行</string>
     <string name="backend_run_in_progress">已有 backend 运行在执行中</string>

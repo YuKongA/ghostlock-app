@@ -1,0 +1,37 @@
+{
+  "formatMajor": 1,
+  "formatMinor": 0,
+  "publisherId": "com.ghostlock.firstparty",
+  "packageId": "com.ghostlock.diagnose",
+  "versionCode": 1,
+  "versionName": "Diagnose 1",
+  "variant": "android-arm64-v8a",
+  "minAndroidSdk": 31,
+  "hostApiMajor": 1,
+  "minHostApiMinor": 0,
+  "nativeLibraries": [
+    {
+      "path": "lib/arm64-v8a/libghostlock_diagnose.so",
+      "abi": "arm64-v8a",
+      "logicalLoadName": "ghostlock_diagnose"
+    },
+    {
+      "path": "lib/arm64-v8a/libjnidispatch.so",
+      "abi": "arm64-v8a",
+      "logicalLoadName": "jnidispatch"
+    }
+  ],
+  "components": [
+    {
+      "kind": "BACKEND",
+      "id": "diagnose.backend",
+      "backendKey": "DIAGNOSE",
+      "entryContract": "diagnostic-v1",
+      "entryClass": "com.ghostlock.plugin.diagnose.DiagnoseEntryPoint",
+      "selectionPolicy": "SELECTABLE",
+      "abortPolicy": "BEFORE_START_ONLY",
+      "executionDomains": ["APP", "SHIZUKU_SHELL"],
+      "runCapability": "DIAGNOSTIC_ONLY"
+    }
+  ]
+}

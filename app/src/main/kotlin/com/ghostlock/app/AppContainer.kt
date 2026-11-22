@@ -2,12 +2,16 @@ package com.ghostlock.app
 
 import android.app.Application
 import android.content.Context
+import android.os.Build
+import android.os.Process
+import android.system.Os
 import androidx.lifecycle.ViewModelProvider
 import com.ghostlock.app.data.runhost.client.AppRunHostClient
 import com.ghostlock.app.data.runhost.client.AndroidRunHostDispatchAdapter
 import com.ghostlock.app.data.runhost.client.ShizukuRunHostClient
-import com.ghostlock.app.composition.backend.BackendRegistry
+import com.ghostlock.app.composition.plugin.PluginCatalogCoordinator
 import com.ghostlock.app.core.log.LogHub
+import com.ghostlock.app.core.plugin.PluginCatalogState
 import com.ghostlock.app.core.run.RunSessionCoordinator
 import com.ghostlock.app.data.backend.BackendSelectionAdapter
 import com.ghostlock.app.data.backend.BackendSessionStore
@@ -15,6 +19,10 @@ import com.ghostlock.app.data.device.AndroidDeviceStatusAdapter
 import com.ghostlock.app.data.diagnostics.AndroidDiagnosticReportBuilder
 import com.ghostlock.app.data.finish.DataStoreFinishRepository
 import com.ghostlock.app.data.payload.DataStorePayloadRepository
+import com.ghostlock.app.data.plugin.AndroidBuiltinPluginAssets
+import com.ghostlock.app.data.plugin.AndroidPluginCatalogStore
+import com.ghostlock.app.data.plugin.BuiltinPluginSeeder
+import com.ghostlock.app.data.plugin.PluginObjectSource
 import com.ghostlock.app.data.privilege.AndroidPrivilegeAdapter
 import com.ghostlock.app.data.rootscript.PreviewRootScriptPublisher
 import com.ghostlock.app.data.rootscript.RootScriptArtifactPublisher
@@ -27,6 +35,7 @@ import com.ghostlock.app.data.settings.DataStoreOperationalPreferencesRepository
 import com.ghostlock.app.data.settings.DataStoreUiPreferencesRepository
 import com.ghostlock.app.data.update.DisabledAppUpdateAdapter
 import com.ghostlock.app.domain.backend.SelectBackendUseCase
+import com.ghostlock.app.domain.backend.BackendAvailability
 import com.ghostlock.app.domain.run.RunBackendUseCase
 import com.ghostlock.app.domain.device.ReadDeviceStatusUseCase
 import com.ghostlock.app.domain.diagnostics.CreateDiagnosticReportUseCase
@@ -49,6 +58,7 @@ import com.ghostlock.app.domain.settings.SelectLogExportDirectoryUseCase
 import com.ghostlock.app.domain.settings.SetNavigationRailExpandedUseCase
 import com.ghostlock.app.domain.update.CheckAppUpdateUseCase
 import com.ghostlock.app.ui.backend.BackendUiCatalog
+import com.ghostlock.app.ui.backend.BackendPresentationRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -66,23 +76,51 @@ import kotlinx.coroutines.async
 class AppContainer(context: Context) {
     private val applicationContext = context.applicationContext
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val robolectricHost = Build.FINGERPRINT == "robolectric"
     init {
         check(Application.getProcessName() == applicationContext.packageName) {
             "AppContainer is restricted to the main application process"
         }
     }
-    private val backendDescriptors = BackendRegistry.descriptors.toList()
+    private val pluginCatalogStore = AndroidPluginCatalogStore(
+        java.io.File(applicationContext.noBackupFilesDir, "plugin-catalog"),
+    )
+    private val pluginCatalogCoordinator = PluginCatalogCoordinator(
+        BuiltinPluginSeeder(
+            assets = AndroidBuiltinPluginAssets(applicationContext.assets),
+            store = pluginCatalogStore,
+            apkVersionCode = BuildConfig.VERSION_CODE.toLong(),
+        ),
+        sdkInt = Build.VERSION.SDK_INT,
+        processIs64Bit = if (robolectricHost) true else Process.is64Bit(),
+        machine = if (robolectricHost) "aarch64" else requireNotNull(Os.uname()).machine,
+    )
+    private val pluginObjectSource = PluginObjectSource(pluginCatalogStore)
+    private val backendPresentationRegistry = BackendPresentationRegistry.builtin()
     private val appSelectionRepository = DataStoreAppSelectionRepository.create(
         applicationContext,
         applicationScope,
     )
     private val backendSessionStore = BackendSessionStore(appSelectionRepository)
-    /** Sole UI-owned projection of the immutable built-in definition snapshot. */
+    private val backendAvailability: (String) -> BackendAvailability? = { key ->
+        pluginCatalogCoordinator.readyBackendView()?.resolve(key)?.availability
+    }
+    /** Sole UI-owned projection of the terminal authenticated plugin catalog generation. */
     val backendUiCatalog = BackendUiCatalog(
-        entries = BackendRegistry.uiEntries,
+        entries = {
+            pluginCatalogCoordinator.readyBackendView()
+                ?.let(backendPresentationRegistry::entries)
+                .orEmpty()
+        },
         selectedKey = { backendSessionStore.selectedKey },
-        availability = BackendRegistry::availability,
+        catalogFailureReason = {
+            (pluginCatalogCoordinator.state.value as? PluginCatalogState.Failed)?.reason
+        },
+        availability = backendAvailability,
         text = applicationContext::getString,
+        catalogFailureText = { reason ->
+            applicationContext.getString(R.string.backend_catalog_failed, reason)
+        },
     )
     private val uiPreferencesRepository = DataStoreUiPreferencesRepository.create(
         applicationContext,
@@ -113,7 +151,7 @@ class AppContainer(context: Context) {
     private val readDeviceStatus = ReadDeviceStatusUseCase(deviceStatusAdapter)
     private val checkAppUpdate = CheckAppUpdateUseCase(DisabledAppUpdateAdapter())
     private val selectBackend = SelectBackendUseCase(
-        BackendSelectionAdapter(backendDescriptors, backendSessionStore),
+        BackendSelectionAdapter(pluginCatalogCoordinator::readyBackendView, backendSessionStore),
     )
     private val payloadRepository = DataStorePayloadRepository.create(applicationContext, applicationScope)
     private val finishRepository = DataStoreFinishRepository.create(applicationContext, applicationScope)
@@ -121,6 +159,7 @@ class AppContainer(context: Context) {
     private val runInputFreezer = AndroidRunInputFreezer(
         context = context,
         rootManagerResolver = rootManagerArtifactResolver,
+        openPluginObject = pluginObjectSource::open,
     )
     private val logDocumentFormatter = LogDocumentFormatter()
     private val logHub = LogHub(logDocumentFormatter)
@@ -135,8 +174,8 @@ class AppContainer(context: Context) {
         shizukuClient = ShizukuRunHostClient(context),
     )
     private val runSession = RunSessionCoordinator(
-        registryEntries = backendDescriptors,
-        availability = BackendRegistry::availability,
+        catalogView = pluginCatalogCoordinator::readyBackendView,
+        availability = backendAvailability,
         backendLabel = { key ->
             backendUiCatalog.entry(key)?.let(backendUiCatalog::displayName)
         },
@@ -176,10 +215,24 @@ class AppContainer(context: Context) {
     val createDiagnosticReport = CreateDiagnosticReportUseCase(diagnosticReportAdapter)
 
     private val initialization = applicationScope.async(start = CoroutineStart.LAZY) {
+        val catalogState = pluginCatalogCoordinator.initialize()
         uiPreferencesRepository.awaitInitial()
         operationalPreferencesAdapter.awaitInitial()
         appSelectionRepository.awaitInitial()
-        backendSessionStore.restore(backendDescriptors)
+        when (catalogState) {
+            is PluginCatalogState.Ready -> {
+                val view = requireNotNull(pluginCatalogCoordinator.readyBackendView())
+                backendSessionStore.restore(
+                    specs = view.descriptors,
+                    defaultBackendKey = requireNotNull(pluginCatalogCoordinator.readyDefaultBackendKey()),
+                    compatibleBackendKeys = view.projections
+                        .filter { it.availability.isReady }
+                        .mapTo(mutableSetOf()) { it.descriptor.key },
+                )
+            }
+            is PluginCatalogState.Failed -> backendSessionStore.clearProcessSelection()
+            PluginCatalogState.Initializing -> error("plugin catalog initialization did not terminate")
+        }
         privilegeAdapter.refresh()
     }
 

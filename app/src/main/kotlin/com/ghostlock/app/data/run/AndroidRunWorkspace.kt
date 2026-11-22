@@ -3,14 +3,12 @@ package com.ghostlock.app.data.run
 import android.content.Context
 import android.os.Process
 import android.system.Os
+import android.system.OsConstants
 import com.ghostlock.app.core.runhost.RunHostIdentity
 import java.io.File
-import java.nio.file.FileVisitResult
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
-import java.nio.file.SimpleFileVisitor
-import java.nio.file.attribute.BasicFileAttributes
 
 /**
  * Host-owned ordinary-file workspace for one one-shot RunHost instance.
@@ -19,6 +17,7 @@ import java.nio.file.attribute.BasicFileAttributes
  * @property stagedInputs Directory containing copied request artifacts.
  * @property executables Directory containing host-published executable copies.
  * @property rootScript Directory containing the published script and result object.
+ * @property pluginPackages Directory containing verified per-package code/native trees.
  * @property persistentStateDirectory Stable backend-private directory outside the per-run deletion tree.
  */
 data class AndroidRunWorkspace(
@@ -26,7 +25,11 @@ data class AndroidRunWorkspace(
     val stagedInputs: File,
     val executables: File,
     val rootScript: File,
+    val pluginPackages: File,
     val persistentStateDirectory: File,
+    private val rootDevice: Long,
+    private val rootInode: Long,
+    private val rootUid: Int,
 ) {
     /**
      * Removes the workspace only after a terminal retention decision.
@@ -34,28 +37,69 @@ data class AndroidRunWorkspace(
      * @return True when no path remains; false preserves evidence for caller handling.
      */
     fun deleteAfterTerminal(): Boolean = runCatching {
-        val entries = mutableListOf<Path>()
-        Files.walkFileTree(root.toPath(), object : SimpleFileVisitor<Path>() {
-            override fun preVisitDirectory(
-                directory: Path,
-                attributes: BasicFileAttributes,
-            ): FileVisitResult {
-                check(!Files.isSymbolicLink(directory)) { "workspace contains a linked directory" }
-                entries.add(directory)
-                return FileVisitResult.CONTINUE
-            }
-
-            override fun visitFile(file: Path, attributes: BasicFileAttributes): FileVisitResult {
-                check(!attributes.isSymbolicLink) { "workspace contains a symbolic link" }
-                entries.add(file)
-                return FileVisitResult.CONTINUE
-            }
-        })
+        val rootPath = root.toPath()
+        val initialRoot = verifiedEntry(rootPath, expectDirectory = true)
+        check(initialRoot.device == rootDevice && initialRoot.inode == rootInode && initialRoot.uid == rootUid) {
+            "run workspace root identity changed"
+        }
+        val entries = mutableListOf<WorkspaceEntryIdentity>()
+        collectForDeletion(rootPath, entries)
         entries.asReversed().forEach { entry ->
-            check(Files.deleteIfExists(entry)) { "cannot delete run workspace entry: " + entry.fileName }
+            val current = verifiedEntry(entry.path, expectDirectory = entry.directory)
+            check(current == entry) { "run workspace entry identity changed: " + entry.path.fileName }
+            Files.delete(entry.path)
         }
         !root.exists()
     }.getOrDefault(false)
+
+    /** Captures one no-follow tree after making only traversed directories owner-readable. */
+    private fun collectForDeletion(
+        path: Path,
+        entries: MutableList<WorkspaceEntryIdentity>,
+    ) {
+        val directory = verifiedEntry(path, expectDirectory = true)
+        entries += directory
+        Os.chmod(path.toString(), OWNER_DIRECTORY_MODE)
+        Files.newDirectoryStream(path).use { children ->
+            children.toList().sortedBy { child -> child.fileName.toString() }.forEach { child ->
+                val stat = Os.lstat(child.toString())
+                check(stat.st_uid == rootUid && stat.st_dev == rootDevice) {
+                    "run workspace entry owner or device changed: " + child.fileName
+                }
+                val type = stat.st_mode and OsConstants.S_IFMT
+                when (type) {
+                    OsConstants.S_IFDIR -> collectForDeletion(child, entries)
+                    OsConstants.S_IFREG -> entries += WorkspaceEntryIdentity(
+                        path = child,
+                        device = stat.st_dev,
+                        inode = stat.st_ino,
+                        uid = stat.st_uid,
+                        directory = false,
+                    )
+                    else -> error("run workspace contains a non-ordinary entry: " + child.fileName)
+                }
+            }
+        }
+    }
+
+    /** Revalidates one exact ordinary entry without following a final symlink. */
+    private fun verifiedEntry(path: Path, expectDirectory: Boolean): WorkspaceEntryIdentity {
+        val stat = Os.lstat(path.toString())
+        val expectedType = if (expectDirectory) OsConstants.S_IFDIR else OsConstants.S_IFREG
+        check(stat.st_mode and OsConstants.S_IFMT == expectedType) {
+            "run workspace entry type changed: " + path.fileName
+        }
+        check(stat.st_uid == rootUid && stat.st_dev == rootDevice) {
+            "run workspace entry owner or device changed: " + path.fileName
+        }
+        return WorkspaceEntryIdentity(
+            path = path,
+            device = stat.st_dev,
+            inode = stat.st_ino,
+            uid = stat.st_uid,
+            directory = expectDirectory,
+        )
+    }
 
     companion object {
         /**
@@ -114,18 +158,29 @@ data class AndroidRunWorkspace(
                 val staged = File(root, "input")
                 val executables = File(root, "executable")
                 val script = File(root, "root-script")
-                check(staged.mkdir() && executables.mkdir() && script.mkdir()) {
+                val plugins = File(root, "plugin")
+                check(staged.mkdir() && executables.mkdir() && script.mkdir() && plugins.mkdir()) {
                     "cannot create run workspace children"
                 }
                 Os.chmod(staged.absolutePath, 0b111000000)
                 Os.chmod(executables.absolutePath, 0b111000000)
                 Os.chmod(script.absolutePath, 0b111000000)
+                Os.chmod(plugins.absolutePath, OWNER_DIRECTORY_MODE)
+                val rootStat = Os.lstat(root.absolutePath)
+                check(rootStat.st_mode and OsConstants.S_IFMT == OsConstants.S_IFDIR) {
+                    "run workspace root is not an ordinary directory"
+                }
+                check(rootStat.st_uid == Process.myUid()) { "run workspace root owner mismatch" }
                 return AndroidRunWorkspace(
                     root = root,
                     stagedInputs = staged,
                     executables = executables,
                     rootScript = script,
+                    pluginPackages = plugins,
                     persistentStateDirectory = persistentState,
+                    rootDevice = rootStat.st_dev,
+                    rootInode = rootStat.st_ino,
+                    rootUid = rootStat.st_uid,
                 )
             } catch (problem: Throwable) {
                 runCatching {
@@ -153,5 +208,15 @@ data class AndroidRunWorkspace(
         private val PACKAGE_PATTERN: Regex = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")
         private val BACKEND_KEY_PATTERN: Regex = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
         private const val SHELL_WORKSPACE_PARENT: String = "/data/local/tmp"
+        private const val OWNER_DIRECTORY_MODE: Int = 0b111000000
     }
 }
+
+/** No-follow identity captured before reverse deletion. */
+private data class WorkspaceEntryIdentity(
+    val path: Path,
+    val device: Long,
+    val inode: Long,
+    val uid: Int,
+    val directory: Boolean,
+)

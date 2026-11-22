@@ -40,7 +40,11 @@ class ProductRunPreparerTest {
             stagedInputs = root.resolve("input").apply { mkdir() },
             executables = root.resolve("executable").apply { mkdir() },
             rootScript = root.resolve("root-script").apply { mkdir() },
+            pluginPackages = root.resolve("plugin").apply { mkdir() },
             persistentStateDirectory = root.resolve("state").apply { mkdir() },
+            rootDevice = 1L,
+            rootInode = 1L,
+            rootUid = android.os.Process.myUid(),
         )
         val profile = staged(workspace.stagedInputs.resolve("profile.bin"), "profile", RunHostArtifactKind.PROFILE, "{}")
         val manager = staged(
@@ -54,6 +58,7 @@ class ProductRunPreparerTest {
             runId = identity.runId,
             generation = identity.generation,
             backendKey = "fixture",
+            pluginContentSha256 = "a".repeat(64),
             profileArtifactId = "profile",
             payloadItems = listOf(
                 RunHostPayloadItemRequest(

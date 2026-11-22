@@ -8,9 +8,9 @@ include_guard(GLOBAL)
 # the arm64 splicehelper import; pristine/adapter source hashes live in SOURCE-MANIFEST.json.
 # Output: lib43284Glued.so plus libbootstrap.so in AGP's native output directory.
 # Failure: the NDK compile/link or helper generation fails the variant build.
-# Preconditions: included by backends/CMakeLists.txt when GHOSTLOCK_BACKEND_43284_GLUED=ON;
-# the Android C/ASM toolchains, AGP output dir, embedded KO files and helper exist.
-# Phase: application native build; payload executables are not run by CMake.
+# Preconditions: a future 43284 plugin package includes this source-only candidate; the Android
+# C/ASM toolchains, output dir, embedded KO files, helper and migrated common logger source exist.
+# Phase: future plugin native build; this frozen candidate is not in the current product graph.
 # Note: included via include(), so every path is anchored at ${CMAKE_CURRENT_LIST_DIR}.
 
 #TODO(m0-marker-20261029): isolate the approved marker-only device fixture; remove this
@@ -60,6 +60,13 @@ endif()
 
 set(DFROOT_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(DFROOT_SPLICEHELPER "${DFROOT_SOURCE_DIR}/splicehelper")
+set(GHOSTLOCK_COMMON_SOURCE_DIR
+    "${CMAKE_CURRENT_LIST_DIR}/../../../../../../plugin/native-source/common/common"
+)
+if(NOT EXISTS "${GHOSTLOCK_COMMON_SOURCE_DIR}/gl_log.c" OR
+   NOT EXISTS "${GHOSTLOCK_COMMON_SOURCE_DIR}/gl_log.h")
+    message(FATAL_ERROR "migrated GhostLock common logger source is missing")
+endif()
 
 set(DFROOT_KO_FILES
     "${DFROOT_SOURCE_DIR}/ko/dfroot-android12-5.10.ko"
@@ -76,8 +83,12 @@ add_executable(glued43284_exec
     ${DFROOT_SOURCE_DIR}/exp.c
     ${DFROOT_SOURCE_DIR}/libcxx.S
     ${DFROOT_SOURCE_DIR}/elf_parser.c
+    ${GHOSTLOCK_COMMON_SOURCE_DIR}/gl_log.c
 )
-target_include_directories(glued43284_exec PRIVATE "${DFROOT_SOURCE_DIR}")
+target_include_directories(glued43284_exec PRIVATE
+    "${DFROOT_SOURCE_DIR}"
+    "${GHOSTLOCK_COMMON_SOURCE_DIR}"
+)
 target_compile_options(glued43284_exec PRIVATE
     -Wall
     -Wextra
@@ -85,7 +96,7 @@ target_compile_options(glued43284_exec PRIVATE
     -fomit-frame-pointer
     "-Wa,-I${DFROOT_SOURCE_DIR}"
 )
-target_link_libraries(glued43284_exec PRIVATE gl_common log)
+target_link_libraries(glued43284_exec PRIVATE log)
 target_link_options(glued43284_exec PRIVATE
     -fPIE
     -pie
@@ -102,14 +113,18 @@ set_source_files_properties("${DFROOT_SOURCE_DIR}/exp.c" PROPERTIES
     OBJECT_DEPENDS "${DFROOT_KO_FILES};${DFROOT_SPLICEHELPER}"
 )
 
-add_executable(glued43284_bootstrap ${DFROOT_SOURCE_DIR}/bootstrap.c)
+add_executable(glued43284_bootstrap
+    ${DFROOT_SOURCE_DIR}/bootstrap.c
+    ${GHOSTLOCK_COMMON_SOURCE_DIR}/gl_log.c
+)
+target_include_directories(glued43284_bootstrap PRIVATE "${GHOSTLOCK_COMMON_SOURCE_DIR}")
 target_compile_options(glued43284_bootstrap PRIVATE -Wall -Wextra)
 target_link_options(glued43284_bootstrap PRIVATE
     -fPIE
     -pie
     -Wl,-z,max-page-size=16384
 )
-target_link_libraries(glued43284_bootstrap PRIVATE gl_common log)
+target_link_libraries(glued43284_bootstrap PRIVATE log)
 set_target_properties(glued43284_bootstrap PROPERTIES
     PREFIX "lib"
     SUFFIX ".so"
