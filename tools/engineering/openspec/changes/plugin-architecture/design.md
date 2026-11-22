@@ -1,213 +1,491 @@
-# 插件决策03共享架构
+# P-BACKEND-X-002/决策04：完整插件系统架构与 SDK 先行门
 
-## Context and scope
-
-完整迁入的有效设计/范围与验收正文；不是新增实施批。原批准/历史结果按原Beads记录，工具工件齐备不代表实现或门禁通过。
-
-来源：`043fdf6a:tools/engineering/.beads/issues.jsonl`；保留语义代号和原锚点。本文中的历史进度/门结果文字仅是其具名输入的沿革，当前状态从proposal列出的Beads读取。旧机制由正文已注明的后继差异取代；基线不重新授权实施。
-
-## Decisions
-
+<a id="record-plugin-sdk-v2"></a>
 <a id="record-gl-sfg"></a>
-
-## P-BACKEND-X-002/决策03：分平面插件与真实消费者
-
-<!-- migrated-source: 043fdf6a Beads gl-sfg description -->
-2026-11-21迁入的共享设计记录，不是新的执行任务。closed仅表示该记录收录完毕，不表示业务实现、新批准或门禁通过。
-父设计独立审查和用户认可完成，不代表所有后继production获准。旧决策01/02、69/240行方案已取代；B1是独立获批exact增量。
-
-<!-- migrated-source: design gl-sfg -->
-<!-- source: f882e670:docs/plan/backend-root-execution-unification-plan.md:L4225-L4407 -->
 <a id="p-backend-x-002-decision-03"></a>
 
-###### P-BACKEND-X-002/决策03：分平面插件体系、普通依赖视图与特权 Custom 能力目录（L级替代设计；独立审查及用户认可完成）
+> `record-gl-sfg` 与 `p-backend-x-002-decision-03` 是历史链接兼容锚点；所指决策03已被本决策04取代，不代表仍沿用其 Host 声明式 UI 或 consumer-first 顺序。
 
-> 状态（2026-11-20）：本节响应用户对“完全体仍然过度设计”的复核，以及Custom必须能够枚举并调用任意已加载插件公开能力、直接管理native内存或向指定地址写入的新增硬需求。它在production实施前整体取代决策02、旧资源准备候选和旧批次01 exact design；保留`.glplugin.zip`组包、独立provider、plugin-owned native、builtin/imported同路、thin variant、KMP、统一i18n与declarative settings等已确认目标，但不继承旧的通用`ComponentContext`、Diagnose自用service registry、Custom filtered dependency或240行实施账本。本节只冻结职责、调用方向、危险边界与后继设计入口，不冻结public method、manifest字段、wire、class名、storage schema、进程数或逐文件scope；作者自检与非作者critic均已完成，critic总判可进入用户认可gate且阻断／重要／建议均为0。用户已在该结论后明确回复“认可”，故`BXP3-D3`关闭并开放首个vertical的exact design；该认可仍不等于production批准，实施和全部产品门均未完成或`NOT_RUN`。2026-11-20的封装纠正只把当前格式明确为普通ZIP可编辑载体，不改变决策03职责平面。
+## 0. 状态、取代关系与 CDA 口径
 
-###### 19.5.58 需求基线与本次优化判据
+本文是决策04的完整有效设计，以 **CDA EVOLUTION** 模式作者重做。它整体取代本目录中决策03的现行正文；决策03及 `gl-sfg` 只作沿革，不再是当前架构 authority。已实现 BXP3-B1 仍是当前代码事实，但其 `diagnostic-v1` 只是待替换的 transitional vertical，不是需要维持的发布合同。
 
-本次不再从“一个万能registry能否容纳所有未来功能”反推框架，而从已经具名的consumer反推最小稳定边界。下列需求是决策03的硬输入：
+本设计完成、OpenSpec strict 通过、作者自检与 critic 关闭，仍只表示可进入用户认可 gate；不是 production 实施批准、编译 PASS 或真机证据。
 
-| 需求／痛点 | 决策03必须保留的结果 | 不再接受的替代 |
+### 0.1 证据分类
+
+| 分类 | 本设计依据 |
+|---|---|
+| VERIFIED | 当前 `plugin/api` 只有 `DiagnosticBackend*`；manifest 1.0 限制一个 BACKEND；loader 硬编码 Diagnose/arm64/`diagnostic-v1`；Host 内置 `BackendPresentationRegistry`；`:plugin:core` 已是 Android/JVM KMP；App 仍是 Android application module；Diagnose 的 DSO/JNA 已由 plugin Kotlin 拥有。第 0.2 节已用独立 Desktop JAR 与 Android DEX 关闭最小 Compose entry/session 跨 classloader 可行性。 |
+| USER-STATED | plugin UI 必须可用 Compose；43499 的 provider 和 backend 各自拥有 UI；provider 严格属于一个 backend，并由父 backend UI 嵌入；Custom 是一个运行 Lua/JavaScript/WebUI 的执行插件；Custom 可调用其它已加载插件公开能力及 raw memory/指定地址写；Host 不拥有 native；必须先完成长期接口再做正式插件。 |
+| DERIVED | UI 与 runtime 需要不同 entry/lifecycle；受验证包会在 UI process 运行 Compose code，在 RunHost 运行 backend/native code；Host 必须传递通用 readiness/cutoff/result 事实，但不得解释领域字段。 |
+| ASSUMED | Android 与 Desktop 首版均是 JVM 宿主；plugin UI 与 Host 用同一 GhostLock UI SDK/Compose runtime，plugin 不私带另一份 Compose/Kotlin runtime。 |
+| UNKNOWN | Desktop WebUI 容器的最终库；JavaScript engine 的最终库。它们在对应 Custom Executor 批以真实 consumer 选型，不提前写入 SDK。完整 SDK 的 ABI/schema/state machine 仍由第 9 节 exact design gate 关闭。 |
+
+Android 官方明确 DCL 代码与 Host 共享应用权限，且 target 34+ 要求动态加载文件为只读。因此本设计不把 classloader、UI/runtime 入口或 WebView 宣称为恶意 plugin 沙箱；它们是一致性、namespace 和 lifecycle 边界。
+
+### 0.2 Compose 跨 classloader feasibility（2026-11-22）
+
+用户认可 gate 前的隔离 proof 使用本设计拟保留的最小 `BackendUiEntryPoint -> BackendUiSession(Content/freeze/close)`、`BackendUiContext(strings/status)` 子集；同一份 contract/plugin Kotlin source 分别独立编译为 Desktop JAR 与 Android DEX，Host 的 runtime classpath/APK 不链接 plugin implementation。Desktop 使用 parent-first `URLClassLoader`，Android 使用 `DelegateLastClassLoader` 且 DEX 仅定义 `com.example.proof.*`；`com.ghostlock.plugin.ui.*`、Kotlin 与 Compose 都由 parent 提供。
+
+- Desktop：`./gradlew -p build/cda-ui-proof :desktop-host:test --tests com.ghostlock.proof.DesktopPluginComposeProofTest`，1 test PASS。独立 plugin JAR SHA-256 `f3f5f5f55163d0bc19fad4e46c175a437c01e551859740affb87fb3eca419ad8`；真实 Compose semantics 观察到 `proof-en:1`，随后 `freeze()` 得到同值，`close()` 发布 `CLOSED`。
+- Android：AGP 9.1.0/Kotlin 2.4.20/Compose 1.12.1/Pixel_5 AVD API 33；先由 D8 36.1.0 将独立 plugin `classes.jar` 转成只含 implementation 的 DEX，再以 `ANDROID_SERIAL=emulator-5554 ./gradlew -p build/cda-ui-proof :android-host:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ghostlock.proof.host.AndroidPluginComposeProofTest` 执行，1 test、0 failure。DEX SHA-256 `dbbe2d52ddc75fae5a0a81cddc2d1c53ab65d08cdaaba97975d9492ae5c91e9d`；logcat 记录 `snapshot=proof-en:1 close=CLOSED`。
+- Host APK/test APK SHA-256 分别为 `add32c2890486973010a75778a1a32d58e32198095510af0cc8ab5bd031e8384` 与 `cd971e407910451713675d2dc2b270fd3df2a98ad51a04c4e1bdfcb00fcda791`。proof 只关闭“这种调用形态在目标工具链可运行”的 UNKNOWN，不代表完整 SDK ABI、恶意代码隔离、Host-v2 或真实 backend 已验证；隔离 proof workspace 在记录证据后删除，避免成为第二套产品 source。
+
+## 1. 需求基线与最简 baseline
+
+### 1.1 不可丢失的产品行为
+
+1. profile/config/KO 可独立于 APK/backend 更新，也可由用户导入或 extractor/toolchain 生成。
+2. backend package 包含自己的 Kotlin/Java、Compose UI、C/C++ 源码与构建后 DSO；Host/App 不持有 backend native 实现。
+3. 43499 类 backend 的物理配置来自它的专属 provider，执行配置（CPU、尝试次数、route、retry、timeout）由 backend 自己管理。
+4. provider 的 Compose UI 由父 backend UI 选择、加载和嵌入；Host 不知道它应出现在哪个卡片或页面。
+5. generic extractor/toolchain 是 backend-neutral Tool；backend-bound Provider 依赖 Tool，将 Tool 输出投影成父 backend 能消费的 physical Document/Artifact。
+6. Custom 只有一个活动 Custom Executor component。脚本、WebUI assets 和用户程序是其 input artifact，不是新 plugin/component。
+7. Host 维护 plugin registry，依赖调用与 Custom 能力发现均从此唯一 authority 投影；不允许第二张 builtin 表或 UI 表制造 membership。
+8. builtin/imported 共用 runtime path；多 ABI 使用 thin archive；App/plugin i18n 共用同一 locale/message engine；KMP 支持 Android/Desktop 共享 UI。
+
+### 1.2 最简可行 baseline
+
+最简 baseline 不是“Host 渲染 plugin 描述的字段”，而是：
+
+```text
+verified package catalog
+  -> Host 按 component 声明创建 UI/runtime loader
+  -> Backend plugin 自己绘制 Compose UI
+  -> Backend UI 通过受限 provider directory 嵌入专属 Provider UI
+  -> Backend UI 冻结 execution config，并引用 exact provider bindings
+  -> RunHost 装载同一 backend 的 runtime entry 及已绑定依赖
+  -> Backend runtime 自行编排 native/Host operation
+  -> Host 组合 transport/lifecycle 事实和 plugin domain result
+```
+
+它只需一个 package 模型、一个 catalog、两个装载面（UI/RunHost）、四种有真实调用差异的 component role。不需要 Host UI DSL、通用 reactive pipeline、五张 registry 或“每个 action 一种 component”。
+
+## 2. CDA 候选方案与裁决
+
+| 候选 | 结果 | 理由 |
 |---|---|---|
-| 上游只更新设备profile／配置而不更新攻击代码时，用户不应重装APK | profile／配置作为可独立安装、更新、回滚的data provider输出；backend消费canonical Document | 配置继续编进APK或backend私有parser；只为数据更新重发backend／App |
-| 43284需要预建KO，用户也可能导入自定义KO | 预建、导入或toolchain build均产生同一typed Artifact；来源和provenance保留 | KO固定塞进backend源码树；backend自行扫描文件或provider实现 |
-| extractor、toolchain、importer、exporter需跨backend／PC复用 | 它们是provider package执行的有限job，输入显式source／参数，输出immutable Document／Artifact | 为每种动作增加新的安装系统、component kind或常驻service |
-| backend实现及其任何私有组件／动态库可以独立分发 | code-bearing package包含Kotlin／Java、C/C++源码构建产物、私有依赖和数据；插件Kotlin拥有DSO load／call／close | Host持有backend native、JNA mapping、handle或按symbol替backend调用 |
-| 一个分发文件可同时包含backend和紧耦合provider | `.glplugin.zip`是明确可由普通ZIP工具编辑的原子签名／版本／安装单位，内部可有多个component | 隐藏ZIP载体、再叠加`PluginGroup`或要求一component一archive |
-| builtin与外部导入行为一致 | 同一verifier／installer／catalog／resolver／RunHost loader；只在provenance、trust admission、seed和update policy上有差异 | builtin静态registry旁路、外部包另一套runtime |
-| Android ARM64、ARMv7、x86及以后PC不能让单个安装包无限膨胀 | 同一逻辑release发布按实际RunHost ABI划分的thin archive；纯数据可universal | 把所有ABI DSO和所有KMI KO无条件塞入每台设备 |
-| App与plugin在Android／Desktop共用UI与语言资源逻辑 | KMP shared UI、唯一locale／catalog resolver与Host declarative renderer | Android `R.string`成为跨平台／plugin ABI，或执行plugin自带`@Composable` |
-| 普通backend只应得到已声明依赖，但Custom要调用任意已加载插件的公开能力 | 普通依赖视图与Custom能力目录分开；二者来自同一authenticated catalog／export声明 | 把Custom伪装成普通filtered consumer，或让普通backend枚举全局对象 |
-| Custom需深入到底层管理native内存、指定绝对地址读写 | plugin可显式导出Custom-callable raw-memory／operation contract；Custom可枚举并调用 | 任意JVM反射、`Class<?>`／constructor、JNA `Pointer`／`Native.invoke`或私有对象泄漏 |
+| A. 逐步扩展 `DiagnosticBackend*`/manifest 1.x | 拒绝 | 公开类名、两个固定 stage 和 `DIAGNOSTIC_ONLY` 都是 Diagnose 专用；为它续命会产生双轨 ABI 和假兼容。 |
+| B. Host 声明式 UI renderer + provider 返回 fields | 拒绝 | 无法低成本表达 backend-specific 交互、provider 嵌套、动态选项和 Custom WebUI；最终会演变为 GhostLock 自建 UI framework。 |
+| C. plugin-owned Compose UI + generic Host lifecycle（选择） | 选择 | 直接使用已有 Compose 能力；保留 Host 的安装/冻结/执行责任，领域组合回到 plugin owner。 |
+| D. 每个 plugin 独立 APK/Binder | 暂不选 | 增加 Android-only 安装、签名、UID、Binder DTO 和 Desktop 差异；对当前可编辑 ZIP/thin variant 不是最短路径。只有将来需要真正 OS 权限隔离时重开。 |
+| E. 所有 UI 都改为 WebUI | 拒绝 | 为 backend/provider 普通设置增加 Web 运行时与 bridge；WebUI 只是 Custom Executor 的明确用例。 |
 
-“公开能力”指插件作者在authenticated metadata与shared API中明确导出的稳定contract，不指该classloader内所有public JVM member。插件native与Custom本来就运行在高权限执行域；registry用于身份、兼容性、发现、调用与生命周期治理，不宣称能把同进程恶意code变成安全沙箱。
+设计的失效条件：如果最终 SDK 的独立编译 Compose conformance fixture 在 Android 和 Desktop 无法在单一版本化 SDK/runtime 上稳定运行，或 UI plugin 必须具有不同 OS UID，则重开 C/D 选型；不以局部 adapter 暗中改变架构。
 
-###### 19.5.59 一个目录权威、五个职责平面、三种执行context
+## 3. 总体结构与 owner
 
-决策03保留一个Host维护的plugin catalog作为installed membership／exact object／provenance／enabled状态的唯一权威；“五个平面”只是对同一事实在不同生命周期的职责投影，不是五个Gradle module、五个数据库、五个进程或五套registry：
+```mermaid
+flowchart TB
+  SOURCE["BUILTIN_SEED / USER_IMPORT"] --> INSTALL["one verifier + immutable installer"]
+  INSTALL --> CATALOG["one catalog / registry authority"]
+  CATALOG --> UIL["UI loader<br/>Host process / Desktop UI"]
+  CATALOG --> RESOLVE["dependency + cutoff resolver"]
+  RESOLVE --> RUN["fresh App / Shizuku / Desktop RunHost"]
+  subgraph PACKAGE["one .glplugin.zip may contain several components"]
+    B["BACKEND<br/>Compose UI + runtime orchestration"]
+    P["BACKEND_PROVIDER<br/>parent-bound UI + prepare jobs/data"]
+    T["TOOL<br/>backend-neutral jobs + optional UI"]
+    C["CUSTOM_EXECUTOR<br/>one active Lua/JS/WebUI executor"]
+  end
+  UIL --> B
+  B -->|"selects and embeds"| P
+  P -->|"declared dependency"| T
+  UIL --> C
+  RUN --> B
+  RUN --> P
+  RUN --> T
+  RUN --> C
+  C -->|"enumerates CUSTOM_CALLABLE"| DIR["frozen capability directory"]
+  B -->|"non-enumerable declared lookup"| DEP["ordinary dependency view"]
+```
 
-1. **package／catalog plane**：验证、immutable install、builtin seed、版本／variant选择、声明索引和exact identity；不执行plugin code。
-2. **presentation／i18n plane**：读取authenticated declarative settings／information tree与语言catalog，由Host KMP UI渲染；不执行plugin Compose或以UI对象传依赖。
-3. **preparation／artifact plane**：Host拥有revisioned draft与调度，provider执行有限job并发布immutable Document／Artifact；不建立可枚举live service registry。
-4. **ordinary backend run plane**：backend消费本次run冻结输入及自己声明的少量跨package依赖；同package私有实现直接调用，不为证明框架而注册。
-5. **privileged Custom plane**：专用、可丢弃RunHost在session开始时建立可枚举目录，暴露该session已加载package明确标为Custom-callable的公开能力。
+### 3.1 Host 拥有
 
-~~~mermaid
-flowchart LR
-  PKG["Authenticated package catalog<br/>唯一身份／安装权威"]
-  UI["Presentation + I18n<br/>Host只读声明并渲染"]
-  PREP["Preparation jobs<br/>Document／Artifact"]
-  RUN["Ordinary backend run<br/>frozen input + declared lookup"]
-  CUSTOM["Dedicated Custom session<br/>enumerable public capability directory"]
-  OUT["Run result／published artifact"]
+- source-specific admission，ZIP path/type/hash 验证，immutable install，builtin seed，catalog generation 和 active variant。
+- manifest/API/target 兼容性，component index，依赖闭包、cycle/missing/ambiguity 拒绝，UI/runtime classloader 创建。
+- UI session 的技术生命周期、通用 status 搬运、opaque snapshot 存储、content-addressed Document/Artifact store，但不解释内容。
+- preparation job 调度、取消、workspace 和原子发布；run cutoff、PFD/handle 交接、process owner、log/terminal/cleanup 与 product-level 结果组合。
+- 一个 registry authority 的两种运行投影：ordinary declared dependency view 与 Custom enumerable capability directory。
 
-  PKG --> UI
-  PKG --> PREP
-  PKG --> RUN
-  PKG --> CUSTOM
-  PREP -->|immutable identity + digest| RUN
-  RUN --> OUT
-  CUSTOM --> OUT
-~~~
+### 3.2 Backend 拥有
 
-真正传给plugin code的公开执行context只按三种生命周期设计，取消旧批次把所有职责塞入一个`ComponentContext`的做法：
+- backend 显示、执行配置、自身 UI 结构、provider slot 的选择与嵌套位置。
+- 只把 backend-owned execution configuration 冻结为自己的 configuration Document；provider selection、physical Document/Artifact、provider identity 与 revision 只存在于 exact provider bindings，不复制进 backend Document。
+- runtime orchestration（原 Host `Flow` 的 backend-specific 部分）、本包 helper/native 直调、已声明 capability 调用、backend domain result。
 
-| context概念 | Host提供 | 明确不提供 |
+### 3.3 Backend Provider 拥有
+
+- 一个 parent backend 某个 slot 的 physical configuration/Artifact 意义，以及自己的 Compose UI。
+- import/extract/adapt/build 的 provider-specific job 与领域验证；可调用已声明 Tool，但不枚举全局 registry。
+- 输出父 backend contract 要求的 immutable Document/Artifact，不返回 Host UI field schema。
+
+### 3.4 Tool 与 Custom Executor 拥有
+
+- Tool 拥有 backend-neutral 有限 job，如任意源文件 + 构建参数的 toolchain、extractor、Document serializer/deserializer；可有被 consumer UI 嵌入的 Compose UI。
+- 单一 Custom Executor 拥有 Lua/JavaScript engine、editor/runtime UI、script artifact、capability bridge 与 WebUI host。Host 只注入冻结 capability directory，不解析脚本业务。
+
+## 4. package/manifest v2
+
+### 4.1 分发与文件身份
+
+- 扩展名固定为 `.glplugin.zip`；它是普通 ZIP，允许用户用普通 ZIP 工具修改后重新生成 manifest/hash list。
+- `manifest.json` 外的每个普通文件都在 `files[]` 中有 path + SHA-256。ZIP 整体字节、压缩大小、payload 大小不另作身份；ZIP CRC 只是容器层校验，不代替 manifest SHA-256。
+- 不设人为的 64 MiB/64 entry/128 KiB/32 MiB/96 MiB 上限。安装仍必须拒绝 path traversal、重复 path、symlink/special entry、缺失/多出 hash 和不符合实际平台资源的包。
+- 一个 logical release 可发布 `android-arm64-v8a`、`android-armeabi-v7a`、`android-x86`、`android-x86_64`、`desktop-<os>-<arch>` 等 thin archive；纯数据包可为 `universal`。安装只选当前 UI/runtime target 需要的 variant。
+
+### 4.2 v2 逻辑 manifest
+
+下例冻结顶层身份、双 payload、多 component 和文件 hash 的必要形状，不是假装完整 JSON Schema；全部字段 domain、required/optional、错误码和兼容规则由 SDK-v2 exact design gate 补齐。
+
+```json
+{
+  "formatMajor": 2,
+  "formatMinor": 0,
+  "publisherId": "com.example",
+  "packageId": "com.example.backend43499",
+  "versionCode": 12,
+  "versionName": "12.0",
+  "variant": "android-arm64-v8a",
+  "hostApi": { "major": 2, "minMinor": 0 },
+  "uiApi": { "major": 2, "minMinor": 0 },
+  "files": [{ "path": "...", "sha256": "..." }],
+  "payloads": {
+    "ui": { "code": ["ui/classes.dex", "ui/classes2.dex"] },
+    "runtime": {
+      "code": ["runtime/classes.dex"],
+      "nativeLibraries": [{ "path": "lib/arm64-v8a/libbackend.so", "logicalLoadName": "backend" }]
+    }
+  },
+  "i18nBundles": [{ "namespace": "backend43499", "path": "i18n/messages.json" }],
+  "components": []
+}
+```
+
+`payloads.ui` 和 `payloads.runtime` 是同一已验证包内的两个装载集，不是两个安装包。multidex 通过有序 `code[]` 直接表达。UI loader 的 native search path 为空；RunHost runtime loader 才获得本 package verified native directory。这是误用防护与 owner 表达，不是恶意代码沙箱。
+
+### 4.3 四种 component
+
+| kind | 必需声明 | 可选声明 |
 |---|---|---|
-| preparation job context | 已批准input handle／参数、取消、日志、临时workspace与原子output publisher | backend run状态、全局registry枚举、其它plugin私有对象、长期singleton |
-| ordinary backend run context | frozen Document／Artifact、run metadata、cancellation／log／result adapter、manifest已绑定的dependency lookup | provider选择、动态UI draft、全局枚举、运行中换版／换artifact |
-| Custom execution context | frozen session facts、Host基础服务和可枚举Custom capability directory | main UI process对象、任意reflection／classloader入口、未声明私有export、跨session活动handle |
+| `BACKEND` | stable `backendKey`、runtime entry、UI entry、execution domains、abort policy、provider slots | ordinary dependencies、capability exports |
+| `BACKEND_PROVIDER` | runtime/data entry（二者至少一个）、UI entry（有交互时必需）、`parentBackendRef`、`slotId`、`contractVersion` | Tool dependencies、static Documents/Artifacts |
+| `TOOL` | job exports（或纯 data export） | Compose UI entry、ordinary/Custom capability exports |
+| `CUSTOM_EXECUTOR` | runtime entry、Compose UI entry、script languages | WebUI support、自身 Tool dependencies |
 
-这些名称描述职责而非冻结API类名；exact batch可以在不混合三种生命周期的前提下合并纯DTO或拆分platform adapter。Host不是“只搬运”：它拥有身份验证、依赖解析、draft revision、调度、输入输出边界、freeze、取消与终态；Host也不解释某个profile字段、KO构建规则或native地址的领域含义，这些由对应plugin contract负责。
+同一 catalog generation 最多有一个 active `CUSTOM_EXECUTOR`；无或多个时 Custom 入口显式 `NOT_READY`，不按顺序暗选。package 可包含多个 component，包内调用不强制绕 registry；跨 package 必须经 manifest 声明和 registry 投影。
 
-###### 19.5.60 package、component、export与可见性
+component 公共字段为 `kind/id/uiEntryClass?/runtimeEntryClass?/dependencies[]/exports[]`。`BACKEND` 再加 `backendKey/selectionPolicy/executionDomains/abortPolicy/providerSlots[]`；`BACKEND_PROVIDER` 再加 `parentBackendRef/slotId/contractVersion/jobs[]/staticExports[]`；`TOOL` 再加 `jobs[]/staticExports[]`；`CUSTOM_EXECUTOR` 再加 `languages[]/webUiSupport`。entry class 必须是对应 payload 定义的 public final/concrete class，具有 public zero-argument constructor，并实现 kind 对应的 SDK interface。
 
-安装模型仍只有`PluginPackage`。一个package可以原子包含多个component；决策03只保留三个有真实调用差异的角色：
+### 4.4 provider 与父 backend 双向绑定
 
-- `BACKEND`：一次run的产品／诊断编排根，消费冻结输入并产生typed result；
-- `PROVIDER`：供应数据或执行import／extract／build／export等准备工作；静态数据provider可以没有entry code；
-- `CUSTOM`：用户自定义程序／脚本的执行根，使用特权能力目录；它不是拥有特殊安装规则的第二包格式。
+Backend slot 声明 `slotId + contractId + accepted major/minor range + required/optional`。Provider 声明 `parent publisherId/packageId/componentId + slotId + contractId + provided major/minor`。只有两边同时匹配才进入该 backend UI 的 provider directory。绑定针对 stable component identity 和 contract version，不钉死某个 ZIP digest，因而同一父 backend 的 provider 可独立更新。43499 provider 不会出现在 98260/43284 目录；Host 只执行比较，不推测“看起来兼容”。
 
-`SUPPLY`、`IMPORT`、`EXTRACT`、`BUILD`、`EXPORT`是provider job语义，不再作为component kind。跨component输出按生命周期只分三类；exact type名和method留后继批：
+## 5. SDK-v2 exact design 的输入边界
 
-| export类别 | 形态 | 典型例子 | 生命周期 |
-|---|---|---|---|
-| value | immutable Document／Artifact／bounded metadata | profile、解析后的配置、预建KO、build产物、动态选项数据 | content identity决定；可跨process／跨run引用 |
-| job | 显式输入→有限执行→一次发布或失败 | conf/json导入、extract、toolchain build、Document反向序列化 | 单次preparation operation；不作为常驻对象 |
-| service | typed live capability／factory | 跨package shared primitive、Custom raw-memory／operation capability | ordinary run或Custom session内；不得跨session缓存 |
+本决策冻结 component 角色、owner、调用方向、生命周期骨架和必须存在的最小方法面；它**不是**可直接发布的完整 ABI/schema。下一批是独立的 **SDK-v2 exact design gate**：必须补齐可编译的全部声明、manifest JSON schema、DTO/value domain、错误码、生命周期/并发/取消/关闭状态机、`abortPolicy` 映射、`HostOperations`、dependency/capability/raw-memory、UI context/handle/snapshot/preparation/WebUI bridge，并再次完成作者自检、独立 critic 与用户认可。该 gate 关闭前不得开始 production SDK source。
 
-每个export再有一个正交可见性：
+### 5.1 module 与源码层次
 
-- `PRIVATE`：只供同package实现直接调用，不进入Host runtime directory；例如Diagnose backend直接构造同包Kotlin binding。
-- `DEPENDENCY`：只向manifest已解析并绑定该slot的ordinary consumer开放；不可枚举全局能力。
-- `CUSTOM_CALLABLE`：进入特权Custom session目录，可由Custom枚举和调用；是否也可作ordinary dependency由声明分别决定，不能从一种可见性暗推另一种。
+```text
+plugin/
+  api/                 :plugin:api          JVM/Java runtime binary contracts
+  ui-api/              :plugin:ui-api       KMP Compose UI contracts
+  core/                :plugin:core         KMP manifest/catalog/value identities
+  testkit/             :plugin:testkit      SDK conformance helpers and fixtures
+  packages/
+    diagnose/          one plugin source/build/test module
+    backend-43499/     future plugin source/build/test module
+    provider-43499-*/  future independently distributable provider modules
+    custom-executor/   future single Custom Executor module
 
-同一catalog声明、exact package identity和shared contract是三种可见性的共同来源；Host不会维护“普通插件表”“Custom operation表”“builtin静态表”三份membership。package内私有调用无需绕registry，跨package依赖和Custom公开调用则必须通过各自受限视图，避免一张`Map<String,Any>`同时承担安装、服务定位和脚本反射。
+app/
+  shared/              :app:shared          KMP Compose shell and shared state
+  android/             :app:android         GhostLockAndroidApplication + Android adapters
+  desktop/             :app:desktop         Desktop shell/adapters
+```
 
-###### 19.5.61 preparation／Document／动态选项
+每个 package module 有自己的 build script、unit/conformance/integration tests 和 `.glplugin.zip` 产物。源码目录存 C/C++ 源码；`.so`/DEX/源码构建 `.ko`/`.glplugin.zip` 只在 `build/`。不保留 Host-owned/common native DSO 模块；若多包需要同一 C/C++ 源码，必须作为可追溯的 source dependency 编译进各自包，owner 仍是该 plugin。
 
-资源准备固定为“Host编排状态，provider执行领域job，backend只消费结果”。它与ordinary run registry脱钩，流程为：
+### 5.2 runtime API（Java ABI）
 
-1. Host从authenticated声明建立backend requirement、兼容provider候选及declarative presentation；没有选择或存在歧义时保持`NOT_READY`，不按catalog顺序静默选第一个。
-2. 用户选择源文件、自定义KO、目标设备或构建参数后，Host生成新draft revision与输入fingerprint；presentation字段属于draft数据，不成为另一类plugin/component。
-3. Host在适当的preparation execution domain调用provider job。provider可以使用本package私有Kotlin／native／toolchain，但只能取得该job获准的input handle与参数，不能扫描全局registry再自行拼pipeline。
-4. importer可把硬盘conf/json直接反序列化为canonical Document；extractor也可直接产出Document，不要求先生成中转配置文件；toolchain产出Artifact；exporter从Document生成用户选择的外部格式。
-5. Host校验output envelope、size／identity／digest／provenance并原子发布immutable结果。旧revision迟到结果丢弃；依赖输入变化只使受影响下游结果失效。
-6. 用户提交run时，Host只把accepted revision中的exact provider／variant／Document／Artifact identity冻结进run input；accepted run不轮询registry、不热换provider、option或artifact。
+下列是 v2 必须实现的公开角色，名称与方法语义在 SDK 批中冻结；不再发布 `DiagnosticBackendEntryPoint/Run/Context/Result`：
 
-动态选项不需要把“UI配置项”提升成provider管线中间component。backend／provider声明稳定field key、类型、依赖和文案；Host拥有当前value、validation、visibility和revision。若候选值必须通过探测、extract或toolchain计算，provider job返回bounded纯数据，Host将其应用到同一draft并产生新revision；不把provider JVM对象、callback或Compose节点注入UI。简单显示规则由声明求值，复杂领域求值等真实consumer出现时再冻结DTO，不预建通用reactive workflow engine。
+```java
+public interface BackendEntryPoint {
+    BackendRun createRun(BackendRunContext context) throws PluginException;
+}
+public interface BackendRun extends AutoCloseable {
+    BackendRunReport execute() throws PluginException;
+    void requestStop();
+    void close() throws PluginException;
+}
+public interface PreparationEntryPoint {
+    PreparationJob createJob(PreparationJobContext context) throws PluginException;
+}
+public interface PreparationJob extends AutoCloseable {
+    PreparationResult execute() throws PluginException;
+    void requestStop();
+    void close() throws PluginException;
+}
+public interface CustomExecutorEntryPoint {
+    CustomExecution createExecution(CustomExecutionContext context) throws PluginException;
+}
+public interface CustomExecution extends AutoCloseable {
+    CustomExecutionReport execute(ScriptArtifact script) throws PluginException;
+    void requestStop();
+    void close() throws PluginException;
+}
+```
 
-provider之间若确有输入输出关系，由Host依据signed value／job requirement形成有限DAG并传递immutable结果；provider不得互相枚举或轮询。首版只需要直接依赖、cycle／missing／ambiguity拒绝和用户pin，不引入SAT solver、全局最优版本求解或隐式fallback。
+Context 是按生命周期分开的不可变 view：
 
-###### 19.5.62 ordinary backend run与plugin-owned native
+- `BackendRunContext`：run identity、opaque backend configuration Document、exact provider bindings、non-enumerable `DependencyView`、Host operations、cancellation、log sink。
+- `PreparationJobContext`：job identity、declared input handles/parameters、non-enumerable Tool dependency view、workspace/output publisher、cancellation、log sink。
+- `CustomExecutionContext`：session identity、script inputs、Host operations、read-only enumerable `CapabilityDirectory`、cancellation、log sink。
 
-ordinary backend run只处理已经准备并冻结的事实：
+Context 不暴露 `ClassLoader`、Host DI/container、Compose object、JNA `Pointer/Library/Memory`、native symbol lookup 或任意 JVM reflection。这不限制 raw-memory 能力；raw memory 由显式标准 capability contract 提供。
 
-1. Host按selected backend、execution domain、RunHost ABI、exact package digest与input identities构造run plan；main UI process不加载plugin code。
-2. 目标RunHost装载backend package。backend从ordinary run context取得immutable value和已声明的跨package dependency；不能枚举未绑定plugin，也不能在运行中发起安装、换版或资源准备。
-3. 同package的helper、binding、native primitive和flow step直接由backend实现调用。只有出现真实跨package consumer时，才把某能力声明为`DEPENDENCY` service；不再以“Diagnose把自己的`DiagnoseNativeBinding`注册后再查回来”证明registry纵向。
-4. 任何DSO都由所属plugin的Kotlin／Java entry在自己的classloader／native namespace中load、call、close；Host只建立RunHost与受控文件／FD边界，不声明native method、不持有JNA mapping／pointer／handle，也不按symbol替plugin调用。
-5. 正常终态按backend私有对象和实际跨package service lease的逆依赖顺序关闭。通用registry不替真实攻击primitive宣称安全回滚；一旦primitive可能改变kernel／外部状态，成功、取消、失败与process death都必须保留真实held-state／unknown-state语义。
+Context 方法面不使用隐式 service locator，依次冻结为：
 
-Host可在shared API中提供log、cancel、artifact access、typed result等稳定基础服务，Custom也可调用公开的Host operation；但current Host-owned `Flow`／`SequentialFlow`和plugin-private `NativeBinding`实现类都不直接跨classloader注册。需要被Custom复用的“flow调用能力”应提升为带稳定输入／输出／取消语义的public operation contract，由原owner提供adapter；需要被Custom复用的native能力由plugin导出semantic primitive，native owner仍不转移给Host。
+```java
+public interface BackendRunContext {
+    PluginRunIdentity identity();
+    PluginDocumentHandle configuration();
+    ProviderBindingView providers();
+    DependencyView dependencies();
+    HostOperations hostOperations();
+    PluginCancellation cancellation();
+    PluginLogSink logs();
+}
+public interface PreparationJobContext {
+    PluginJobIdentity identity();
+    PreparationInputs inputs();
+    DependencyView tools();
+    PreparationOutputPublisher outputs();
+    PluginCancellation cancellation();
+    PluginLogSink logs();
+}
+public interface CustomExecutionContext {
+    PluginSessionIdentity identity();
+    HostOperations hostOperations();
+    CapabilityDirectory capabilities();
+    PluginCancellation cancellation();
+    PluginLogSink logs();
+}
+```
 
-###### 19.5.63 privileged Custom能力目录与raw memory边界
+### 5.3 value/artifact 与 capability API
 
-Custom不再是带一组预声明filtered dependency的普通backend。每次Custom执行建立独立、可丢弃的RunHost process和冻结session：Host先从当前enabled、trusted、平台兼容且允许进入该execution domain的对象中确定本session exact package集合，解析每个公开export自身声明的依赖闭包，再装载其中声明为`CUSTOM_CALLABLE`的export并向Custom提供只读可枚举目录；“可枚举”不会让provider跳过它自己的required dependency。目录至少能返回export identity、provider package／component、contract与API version、target／scope、操作描述及创建typed handle的入口；Custom可以调用该session中任意匹配公开contract的能力，不必在自己的manifest逐项列dependency。不是所有installed package都必须无条件装入一个session；exact选择policy留Custom批根据启动成本与真实UI决定。安装／启用／升级plugin或改变package集合只影响下一session，不在活动session中热插拔。
+SDK 只提供三种跨 component 形态：
 
-“一步深入最底层”通过明确的raw-memory与operation contract实现，而不是反射Host／plugin私有对象。决策03冻结以下语义能力，exact接口与数值边界留真实Custom批：
+1. `PluginDocumentHandle`：schema identity/version、document id、content SHA-256、provenance，每次 `openStream()` 返回 caller-close 的新 stream。
+2. `PluginArtifactHandle`：artifact kind/target identity/content SHA-256/provenance 与 caller-close stream/PFD adapter。
+3. `PluginCapabilityHandle`：descriptor + lifecycle-bound `invoke(operationId, PluginValue)` + `close()`。
 
-- 指定address space与target identity，按绝对address执行bounded read／write；支持用户明确给出要写入的地址和bytes／scalar。
-- 分配、查询和释放由该capability创建的owned native region；owned allocation与外部／kernel任意地址必须是不同handle／result语义，禁止把“能写”误写成“Host拥有并可回收”。
-- 暴露必要的protection、alignment、endianness、width、partial transfer与native error事实，不让Host猜测底层ABI或吞掉provider结果。
-- plugin Kotlin／private DSO拥有真实process／device／kernel handle、mapping和cleanup；Custom持有shared contract handle，Host只管理session引用与终结顺序，不接管native实现。
-- compiled Custom使用typed shared contracts；Lua或以后其它脚本只经Host维护的descriptor/codec bridge调用同一operations，不获得JNA `Pointer`、`Memory`、`Library`、`Native.invoke`、任意class name／constructor或JVM object conversion。
+`PluginValue` 是 SDK 管理的不可变 typed tree（null/bool/signed integer/unsigned integer/decimal/string/bytes/list/object），不接收任意 JVM object。大文件/内存不塞入 value tree，而使用 Document/Artifact/region handle。
 
-这条边界允许绝对地址写入，但不虚构可逆性：外部process、device或kernel memory写入一旦发生，关闭handle或销毁Custom process不等于回滚；任意写、并发primitive与部分成功必须进入run report／journal所需事实，终态可为unknown held-state。专用process的意义是隔离Host UI、classloader污染和活动handle，不是阻止已获高权限的plugin／Custom影响目标系统。普通backend和preparation job永远拿不到Custom的可枚举目录。
+`DependencyView` 只能用 manifest slot 获得 exact bound handle，不可枚举。`CapabilityDirectory` 可枚举本 Custom session 冻结包集内的 `CUSTOM_CALLABLE` descriptor，并按 exact identity 开启 handle。同一 export 可分别声明 `DEPENDENCY` 和 `CUSTOM_CALLABLE`，一个不暗推另一个。
 
-###### 19.5.64 依赖调用、owner与终结矩阵
+SDK 预置 `ghostlock.raw-memory/v1` capability：
 
-同一Host registry维护package声明与export identity，各平面只取得与其职责相符的运行视图：
+- address space + target identity + absolute address 的 bounded read/write；宽度、对齐、endianness、partial transfer 和 native error 显式返回。
+- owned allocation/query/free 与 external/kernel arbitrary address 是不同 handle/result；关闭 session 不宣称回滚已执行写入。
+- 真实 mapping/fd/device/kernel/native handle 由 export provider 的 Kotlin/DSO 拥有；Host 只管理 capability lease 和 session 终结。
 
-| 场景 | 谁选择／解析 | 谁调用 | 谁拥有资源／close | 失败后事实 |
-|---|---|---|---|---|
-| 静态profile／预建KO | Host按requirement、compatibility与用户pin | 无plugin code或Host读取value | immutable catalog object／artifact lease | 缺失、歧义、digest不符即`NOT_READY` |
-| importer／extractor／toolchain／exporter | Host preparation scheduler | Host调用provider job | provider拥有私有资源，Host拥有workspace／output publish | job失败不发布；旧revision结果不得进入新draft |
-| backend同包native | package实现决定私有调用 | backend Kotlin直接调用binding | plugin binding／DSO | backend按真实结果收口；Host不第二次close native handle |
-| backend跨包service | Host按signed dependency slot绑定 | backend经non-enumerable dependency lookup | provider service handle；RunHost治理lease终结 | missing／wrong API在code load前拒绝；活动run不重解 |
-| Custom公开capability | Host冻结session package set并建目录 | Custom枚举后调用typed handle | export provider拥有实现；Custom RunHost治理session | session销毁关闭handle，但不声称撤销外部／kernel副作用 |
-| Host flow／log／artifact基础服务 | Host按execution context提供 | backend／Custom调用shared adapter | Host | 只治理Host资源；不成为plugin native owner |
+### 5.4 result 与 Host operation
 
-依赖关系与调用入口因此仍“由Host注册表调用”，但不是所有对象都经过同一种lookup：ordinary依赖必须声明、绑定且不可枚举；Custom只能枚举显式`CUSTOM_CALLABLE`；package私有实现不注册。这样既保留Custom调用任意已加载公开能力，也避免普通backend和preparation pipeline退化成全局service locator。
+`BackendRunReport` 不再固定两个 Diagnose stage。它包含：
 
-###### 19.5.65 builtin/imported、KMP、i18n与多架构保持项
+- domain completion：`COMPLETED / REFUSED / FAILED / CANCELLED / UNKNOWN`；
+- effect state：`NONE / APPLIED / CLEANED / HELD / UNKNOWN`；
+- 有序 stage facts（plugin-stable stage id + common state/reason/exit facts）；
+- 发布的 Document/Artifact/output refs 及可审计 detail。
 
-决策03不重开以下已确认方向：
+Host 另有 transport/process/log/workspace/root-operation 事实。最终 product result 由 Host 组合两者：RunHost death/contract corruption 可将结果提升为 `UNKNOWN`，但 Host 不把 plugin 报告的 backend domain failure改写为 success。Payload/Finish/root-script 由 Host 以稳定 `HostOperation` 提供，backend 决定在自己编排的何处调用并把返回事实写入 report。
 
-- builtin archive由APK／desktop distribution携带，只是`BUILTIN_SEED`来源；首次可用启动由唯一seeder调用同一verifier／immutable installer写入同一catalog，崩溃后幂等恢复，catalog未`READY`不得selection／run。imported package走相同identity、compatibility、resolver和RunHost loader；差异只允许存在于初始trust、能否禁用／卸载、update channel和seed reconciliation policy。
-- Android code-bearing package仍需要受控dynamic code loading：只从app-private、immutable、已验证且适配当前variant的installed object建立package classloader／native search path，shared API由Host parent提供，plugin依赖和DSO留在package closure。DCL只是把exact code装入目标RunHost的机制，不兼任capability registry或native owner；exact classloader类型、只读时序与API 34／37处理在新的implementation batch按当时minSdk／targetSdk核对。
-- `plugin/api/`保存最小跨classloader binary contracts，`plugin/core/`保存Android/JVM可共享的catalog／Document／resolver／presentation／i18n模型，`plugin/packages/<id>/`保存实际package的Kotlin／Java及C/C++源码；`plugin/native-source/common/`只可作为被具体package编译进去的source authority，不产Host／公共DSO。exact Gradle plugin、source set和task在新的implementation batch再核对，不继承旧240行ledger。
-- `.so`、源码构建`.ko`、DEX和`.glplugin.zip`都是leaf package build output；不得放入production source目录冒充源码。预建KO是带provenance的provider input／artifact，自定义KO是importer输入；Host/App不因打包它们而成为native owner。
-- 一个逻辑package release可发布`android-arm64-v8a`、`armeabi-v7a`、`x86`、`x86_64`或以后desktop等thin archive；设备只安装实际RunHost ABI所需variant。target ISA／KMI属于Document／Artifact事实，不等于Host ABI；纯数据package可为`universal`。
+## 6. Compose UI API 与状态传递
 
-<a id="retained-i18n-goal"></a>
+### 6.1 UI 入口
 
-- App终态仍是`:app:shared` KMP Compose UI加`:app:android`／`:app:desktop`平台壳。App base catalog、builtin plugin和imported plugin继续进入唯一`I18nRegistry`与locale/message engine；plugin只携带authenticated declarative presentation和语言data，Host渲染Material／Miuix Compose。既有i18n4k薄门面可作为后继exact batch的复用候选，不因本次runtime重画而另造message engine；旧exact版本／ledger不自动成为实施授权。
-- 当前`docs/development/full-process-uml.md`描述已实现产品链，不为尚未实现的候选改画。决策03先在本节用候选图表达，待implementation切换真实owner时同批更新权威UML。
+`:plugin:ui-api` 是 KMP Compose library，终态公开角色为：
 
-###### 19.5.66 明确删除的过度设计与暂缓项
+```kotlin
+interface BackendUiEntryPoint {
+    fun create(context: BackendUiContext): BackendUiSession
+}
+interface BackendUiSession : AutoCloseable {
+    @Composable fun Content()
+    fun freeze(): BackendUiSnapshot
+    override fun close()
+}
+interface BackendProviderUiEntryPoint {
+    fun create(context: BackendProviderUiContext): BackendProviderUiSession
+}
+interface BackendProviderUiSession : AutoCloseable {
+    @Composable fun Content()
+    fun freeze(): ProviderUiSnapshot
+    override fun close()
+}
+interface ToolUiEntryPoint {
+    fun create(context: ToolUiContext): ToolUiSession
+}
+interface ToolUiSession : AutoCloseable {
+    @Composable fun Content()
+    fun freeze(): ToolUiSnapshot
+    override fun close()
+}
+interface CustomExecutorUiEntryPoint {
+    fun create(context: CustomExecutorUiContext): CustomExecutorUiSession
+}
+interface CustomExecutorUiSession : AutoCloseable {
+    @Composable fun Content()
+    fun freezeScript(): ScriptArtifact
+    override fun close()
+}
+```
 
-| 决策02／旧批次机制 | 决策03处理 | 原因 |
+Host 应用只在自己的 page/navigation 壳内调用 selected backend `Content()`。Backend `Content()` 通过 `BackendUiContext.providers(slotId)` 取得已互相匹配的 `BackendProviderUiHandle`，选择后在它自己决定的 Compose 位置调用 provider `Content()`。Provider 同理可嵌入已声明 Tool UI。Host 负责创建/缓存/关闭 handle 和验证 slot，不选 provider，不指定嵌套位置。
+
+UI context 只提供具名能力：`BackendUiContext` = strings/status sink/state store/preparation controller/provider directory；`BackendProviderUiContext` = strings/status sink/state store/preparation controller/declared Tool directory/parent-slot facts；`ToolUiContext` = strings/status sink/state store/preparation controller/declared inputs；`CustomExecutorUiContext` = strings/status sink/state store/script artifact store/WebUI platform host。只有 Backend context 能读父 slot provider directory，只有 Custom runtime context 能读可枚举 capability directory。
+
+### 6.2 配置与准备状态
+
+UI plugin 可在内部使用 Compose state/Flow/ViewModel，但跨 SDK 只传递两种通用事实：
+
+- `PluginUiStatus`：`READY / BUSY / NOT_READY / FAILED`、当前 revision、用 plugin message key 表达的人类可读 reason，以及是否允许 `freeze()`。通过 context 的 `UiStatusSink` 发布。
+- `BackendUiSnapshot`：只含 backend-owned execution configuration Document、exact selected provider binding refs、revision 与 catalog generation；不得复制 provider physical Document/Artifact。
+- `ProviderUiSnapshot`：只含该 provider-owned physical configuration Document/Artifact、provider identity、slot/contract identity 与 revision；Tool output 若成为 physical input，也只由 provider snapshot 引用。Host 只核对这些身份和 freshness，不反序列化领域字段。
+
+因此 43499 CPU/尝试次数由 backend UI 显示并写入 backend configuration Document；物理 profile 由 selected 43499 provider UI 显示并产出 Provider snapshot。Host 只用聚合 status 决定通用 Run 按钮是否 ready，并在用户启动时请求 backend session `freeze()`。
+
+UI session 失败不触发 Host 自动回退为声明式表单；该 component 在当前 catalog generation 中不可用并报告原因。已冻结 run 不读取正在变化的 UI state。
+
+### 6.3 统一 i18n
+
+- App base bundle、builtin plugin 和 imported plugin 的 `i18nBundles` 进入同一 KMP locale/message registry；namespace 绑定 verified package/component identity。
+- UI plugin 通过 `PluginStrings`/Compose local 按 message key + typed arguments 读取当前 locale；不把 Android `R.string`、`Context`、resource id 放入 SDK。
+- Host 管理 locale 选择、fallback 和 catalog registration；plugin 拥有自己的文案和参数语义。UI status/reason 传 message ref，不传已固化为 Android 语言的 string。
+
+## 7. 从导入/准备到攻击/收尾的全流程
+
+### 7.1 安装与首次 builtin 初始化
+
+1. APK/Desktop distribution 只携带 builtin `.glplugin.zip` object + seed index，不把 implementation class/native 合并进 Host runtime classpath。
+2. catalog 首次 READY 前，seeder 将 builtin archive 交给同一 verifier/immutable installer，记录 `BUILTIN_SEED`。中途死亡后下次启动以 exact owned staging 规则幂等恢复。
+3. 外部导入使用同一 verifier/object store/catalog。未有 publisher 认证机制时，`publisherId` 对 `USER_IMPORT_UNVERIFIED` 只是声明身份；hash 证明完整性，不证明作者。
+4. builtin/imported 的运行差异仅是默认 trust、是否可禁用/卸载、seed reconciliation 和 update channel；selection/resolution/UI/runtime 不分叉。
+
+### 7.2 43499 的 UI/准备示例
+
+1. Host shell 选中 43499 backend，用 UI loader 实例化 `BackendUiEntryPoint`，提供 locale、opaque state store、preparation controller 和受限 provider directory。
+2. Backend UI 绘制自己的 CPU/尝试次数/route/retry/timeout，然后读取 `physical-config` slot 的候选。目录只包含双向匹配 43499 的 provider。
+3. Backend UI 选择某 provider handle，在自己的“物理配置”区域嵌入 provider `Content()`。Host 不知道这个区域或字段。
+4. Provider 可从静态 profile 选择、导入 conf/json/自定义 KO，或调用 backend-neutral extractor/toolchain Tool job。Extractor 可直接产出 Document；serializer Tool 可把 Document 反向写成外部配置文件。
+5. Host preparation controller 为 job 提供输入 handle/workspace/cancel/output publisher。Provider/Tool 执行领域逻辑；Host 原子发布 content-addressed output，丢弃旧 revision 迟到结果。
+6. Provider 发布 READY 并冻结 exact physical Document/Artifact refs。Backend UI 的 snapshot 同时携带自己的 execution configuration Document 与所选 provider binding refs，但不把 provider output 复制进 backend Document。Host/RunHost 若发现重复 physical payload、stale revision、parent/slot/contract/content identity 不匹配，必须拒绝 freeze/cutoff。任一必需 slot NOT_READY，backend 就不允许 freeze。
+
+### 7.3 run/cutoff/收尾
+
+1. 用户开始 run；Host 请求 selected backend UI session `freeze()`，验证 snapshot revision/catalog generation/exact refs，并冻结 backend、provider outputs、Payload/Finish、execution domain 与 package closure。
+2. RunHost 通过只读 PFD/handles 重验证 exact objects，建立 protected-parent classloading；shared SDK/Compose/Kotlin 由 Host parent 提供，plugin 不得重新定义 protected namespace。
+3. Resolver 按依赖顺序创建普通 capability/job service，最后创建 backend run。Backend 只看到 slot-bound `DependencyView`，不能枚举 catalog。
+4. Backend Kotlin 自己执行编排，直接调用本 package binding/DSO，或调用 declared capability/HostOperation。Host 不声明 native method，不按 symbol 调用，不持有 pointer/handle。
+5. Backend 返回 domain report。Host 合并 root-operation、transport、log、cleanup/process-death 事实形成 product report。
+6. 正常终结时按 backend run -> capability leases -> provider/tool runtime -> classloaders/workspace 的逆依赖顺序关闭；plugin native owner 在自己 `close()` 中处理 native。Host 治理 process 销毁与资源漏洞，不第二次 close native handle。
+7. RunHost 死亡、partial native effect 或不能证明 cleanup 时，effect state 保持 `UNKNOWN/HELD`；不因终止 process 宣称外部/kernel 状态已回滚。
+
+### 7.4 Custom Executor/WebUI
+
+1. Host 启动一个 active `CUSTOM_EXECUTOR` UI session。Custom Executor 绘制 editor、语言选择、脚本参数和运行结果；用户 script/bundle 作为 Artifact 导入。
+2. 启动 session 时，Host 从 enabled/trusted/target-compatible packages 解析一个 exact 闭包，装载明示 `CUSTOM_CALLABLE` exports，然后冻结只读 `CapabilityDirectory`。活动 session 不热插拔。
+3. Lua/JavaScript bridge 将 script value 映射到 `PluginValue`。raw-memory contract 允许指定地址读写和 owned region 管理；script 不得获得任意 JVM reflection/JNA object，因为那会绕过 identity/lifecycle/result contract，而不是因为要削弱 raw capability。
+4. 声明 WebUI 的 bundle 由 Custom Executor 的 Compose UI 在 UI process 中显示 WebView/Web container；执行 script 在 Custom RunHost。二者只经 typed message bridge 交换 JSON-like `PluginValue`/artifact refs。这是 lifecycle/process 分工，不宣称 WebUI 对高权限 Custom 构成安全沙箱。
+
+## 8. classloading、兼容性与安全失败
+
+### 8.1 classloader 规则
+
+- UI loader 和 runtime loader 都从 app-private、immutable、重验证 object 构建。Android DCL 文件在写入前建立只读 inode/权限并在重开后 rehash；Desktop 使用等价只读 materialization。
+- `java.*`、`kotlin.*`、`kotlinx.coroutines.*`、`androidx.compose.*`、`com.ghostlock.plugin.api.*`、`com.ghostlock.plugin.ui.*` 是 parent-owned protected namespace。archive verifier 拒绝定义这些 class。
+- plugin implementation/dependency 为 child-owned。UI payload 不有 native search path；runtime payload 只有当前 package verified DSO path。跨 package 不传 implementation class，而传 SDK value/handle/capability contract。
+
+### 8.2 API 版本
+
+- runtime API 和 UI API 分别有 major/minor。major 不等拒绝；plugin `minMinor` 高于 Host 拒绝；Host 增加 minor 只能增加可选能力/新接口，不改已发布方法。
+- `:plugin:api`、`:plugin:ui-api`、`:plugin:core` 开启 explicit API 和 Kotlin/JVM ABI dump/check。SDK BOM 固定 Kotlin/Compose/coroutines 编译基线；plugin 以 compileOnly/API 方式编译，不把第二份 runtime 打入 payload。
+- 不对 `diagnostic-v1` 建 compatibility adapter：它只有同仓 builtin Diagnose consumer，external import 尚未产生可保护用户。v2 落地时 Diagnose 与 Host 同批单轨迁移。
+
+### 8.3 imported code 的统一执行信任
+
+完整性通过只回答“归档内容与 manifest 一致”，不自动授权执行。Catalog 为每个 exact `package version + semantic content root` 保存唯一 `executionTrust`：`BUILTIN_TRUSTED / USER_GRANTED / NOT_GRANTED / REVOKED`。导入含 DEX/JAR/native/WebUI/script engine 等可执行 payload 的包在校验通过后先进入 `NOT_GRANTED`；用户必须经过独立的高风险确认才变为 `USER_GRANTED`。导入动作本身不暗含执行授权。
+
+一个 `ExecutionEligibilityResolver` 是唯一读取点，UI entry、preparation job、runtime backend 与 Custom Executor/capability 在 create/load 前都必须经过它；任何局部 loader 不得自行降低条件。包升级、version 变化或 semantic content root 变化都不继承旧 grant。用户 revoke 后，新的 UI/preparation/runtime/Custom 创建立即拒绝，尚未进入 cutoff 的 session 安全关闭；已经 cutoff 的攻击 RunHost 保留冻结事实并按既定 cancel/cleanup 语义结束，不能伪称 native/kernel effect 已回滚。完全不含可执行 payload 的 data-only 包可不要求 execution grant，但仍保留 `USER_IMPORT_UNVERIFIED` provenance。
+
+### 8.4 失败语义
+
+| 阶段 | 失败 | 结果 |
 |---|---|---|
-| 一个public `ComponentContext`同时服务provider注册、backend run和Custom | 删除，改为三种生命周期context | 权限、可变性、失败与close语义不同；万能context会泄漏能力 |
-| declaration index、run graph之后再用一套通用runtime registry承载所有value／job／service | 保留唯一catalog与解析事实，但按preparation、ordinary、Custom投影不同view | 保持单一authority，不强迫不同生命周期使用同一对象协议 |
-| Diagnose native binding注册为service再由同包Diagnose查回 | 删除，package内直接调用 | 没有跨package consumer，只是在为框架制造需求和双owner风险 |
-| future Custom必须预声明每个dependency并取得filtered lookup | 删除；Custom session枚举所有已加载`CUSTOM_CALLABLE` export | 与Custom的探索／底层控制目标冲突 |
-| 把具体`NativeBinding`、Host Flow类或任意JVM对象注册给Custom | 改为stable operation／raw-memory contract与owner adapter | 保留能力，不把私有实现、JNA类型和classloader细节变成ABI |
-| provider通过同一registry实时链式调用、轮询或注入UI | 删除；Host调度有限job并传immutable value | 资源准备需要revision／artifact语义，不需要常驻service locator |
-| UI field成为provider或pipeline node | 删除；field是Host draft中的declarative data | 避免为动态选项建立通用reactive workflow引擎 |
-| 批次01一次冻结完整Java ABI、manifest、wire、DCL、process终结、KMP、i18n和240行scope | 整体作废；决策03认可后按第一个真实vertical重新做exact design | 旧scope在真实Custom contract出现前过早冻结且已与需求冲突 |
-| 为所有未来backend预建durable journal、SAT solver、OCI/TUF、远程repo、四ABI与PC runtime | 保留触发条件，不进入首个exact batch | 没有当前consumer；未实现不阻断当前痛点 |
-| 以大量额外验证证明尚未实现的远期能力 | 只验证当批声明、实际target和真实consumer | 验证不放宽，但不得用未来矩阵扩大当前批 |
+| admission/catalog | manifest/hash/path/API/target/component 无效 | 不发布新 generation；已 READY generation 保持，bootstrap 损坏则 FAILED |
+| execution trust | imported executable 未授权、已 revoke，或新 content root 沿用旧 grant | 所有 UI/preparation/runtime/Custom entry 在执行前统一拒绝；活动 cutoff run 按冻结语义终结 |
+| UI load/create/render | class/constructor/Compose contract 失败 | component 当前 generation 不可用；不创建 Host 伪 UI，不运行 backend |
+| provider binding | parent/slot/contract 不互相匹配 | 不进候选目录；required slot 没有候选则 backend NOT_READY |
+| preparation | job cancel/fail/old revision | 不发布新 output；旧冻结 output 不被暗替换 |
+| freeze/cutoff | revision/catalog/object 已变 | 拒绝该次 run，返回 UI 重新确认；不自动用新值 |
+| runtime load/dependency | entry 错误或 slot missing | plugin code 执行前拒绝；已创建 lease 逆序关闭 |
+| backend/native/process | exception/cancel/death/partial effect | 保留 FAILED/CANCELLED/UNKNOWN 及 HELD/UNKNOWN effect；不伪造 cleanup/success |
+| Custom capability | descriptor/codec/operation 错误 | 当次 call 失败并记录；session 是否终止由 Custom Executor 明确策略决定 |
 
-这里的简化不是取消身份、签名、digest、API／ABI、private install、process isolation、close或真实设备门；这些在相应实现存在时仍是必要判据。被删除的是没有真实consumer的通用层、重复视图、过早exact字段和把未来功能当当前准出条件。
+## 9. 迁移、实施顺序与回退边界
 
-###### 19.5.67 后继批次边界与实时checkbox
+不并行开展多个正式 backend。每一批验过再进下一批：
 
-决策03经独立critic与用户认可后，当前只开放第一个exact implementation batch的设计。该批从真实Diagnose vertical选择最少能力且不复用旧240行ledger：先建立package/catalog＋builtin Diagnose私有native直调，随后才以data-only profile provider证明“上游更新配置无需重装APK”，再以真实Custom consumer冻结Custom directory与一个明确raw-memory／operation contract；若用户另行调整顺序，以当时真实痛点和caller为准。43499、43284／KO、98260、extractor、toolchain、Desktop和新增ABI各自在真正接入时补相称contract与门，不因框架能表达就记为implemented或supported。
+1. **决策04可行性关闭**：用本节目标 classloader 与拟保留的最小 `ui-api` 子集，证明独立 Android dynamic DEX 与 Desktop JAR 都能 create session、真实 Compose、完成一次 state change、读统一 i18n、freeze、close；记录命令和 artifact identity。该 proof 不发布 production API。
+2. **SDK-v2 exact design gate**：补齐第 5 节列出的完整可编译 contract/schema/state machine，作者自检、critic 和用户认可后才允许 source。
+3. **SDK-v2 source batch**：实现 manifest/core/runtime API/UI API/testkit/build plugin 和最小 conformance package。fixture 必须使用已批准 final API，不新增临时 public interface；它验证 Android/Desktop Compose interaction、i18n、multidex、多 component、parent binding、capability/close 和 ABI check。
+4. **Host-v2 batch**：catalog/resolver/UI loader/RunHost loader 切到 v2，引入 `:app:shared/:app:android/:app:desktop` 目标层次，同批更新当前 UML。该批未完成前不接真实攻击 plugin。
+5. **Diagnose migration batch**：将 builtin Diagnose 从 `diagnostic-v1`/Host UI 迁到 final Backend runtime/UI interfaces；删除 v1 公共类、manifest parser 分支与硬编码 namespace。只在此批结束后宣称 v2 完整替换。
+6. **43499 vertical**：backend UI/runtime + 一个 backend-bound profile provider，用真实 CPU/尝试次数/物理配置证明 owner 和独立 provider update。`gl-9lz` 只保留产品目标与可复用 Document 完整性证据，exact contract 重做。
+7. **Tool vertical**：用 generic extractor 和 serializer 完成 `extractor -> 43499 provider -> 43499 backend` 与 PC 反向序列化；再引入 43284 KO/toolchain。
+8. **Custom Executor vertical**：一个 Lua 和一个 JavaScript 基本执行、一个真实 backend-exported capability、raw-memory contract 和一个 WebUI bridge。删除当前 Host-internal empty/restricted Lua placeholder，不保留两套 Custom。
+9. **后续 vertical**：43284、98260、额外 ABI、Desktop 完整运行域、repository/update 按真实 consumer 分批。
 
-- 原已完成步骤、批准与运行证据：见 Beads `gl-sfg` notes 的迁移前记录；本设计不维护进度checkbox。
-- BXP3-B1：可编辑`.glplugin.zip`格式差异已完成作者自检及同一非作者critic定点复审，最终阻断／重要／建议／新增finding均为0；用户于2026-11-20明确批准本批production implementation，`BXP3-B1-P0`单变量preflight已通过，现进入本批production source，旧240行ledger保持历史、不可执行。
-- BXP3-I1/V1：production已授权且P0通过；当前只开始本批148行ledger内的source implementation，architecture、完整unit、native、artifact、AVD与真机门仍`NOT_RUN`，Desktop不在本批范围。
+回退只在批次 commit 层面使用正常 Git 历史，不为此建双轨 runtime/feature flag/rollback 脚本。迁移到 v2 的某个包不能在同一发布中同时被 v1/v2 加载。未通过相应真机门的 backend/profile 仍不标 supported。
 
+## 10. fitness functions 与验收
 
+### 10.1 静态/构建判据
 
+- public SDK ABI dump 不含 `DiagnosticBackend*`、Host `Flow`、Android `R`、JNA/native pointer；除本决策列出的长期角色外，任何新增 public type/method 都必须能追溯到获批的 SDK-v2 exact design，不由 source 批临场扩张。
+- manifest v2 可表达一包多 component/multidex/UI+runtime payload/thin variant；只有文件 SHA-256 列表，无 ZIP-byte identity 或人为 size/entry caps。
+- 每个 package 有自己 Gradle module/build/test；App runtime classpath/APK native dir 不含 plugin implementation/JNA/DSO。
+- `:app:shared` 不依赖 Android resource API；plugin i18n 不用 Android XML/resource id。
+- architecture guard 拒绝 Host 依赖 plugin implementation namespace、provider 指向多个/错误 parent、UI payload native search path、plugin 重定义 protected namespace。
+
+### 10.2 conformance 场景
+
+- 同一 final SDK 编译的外部 fixture 在 Android 动态 DEX 和 Desktop JAR 中渲染 Compose，变更状态，读取同一 i18n bundle，freeze 后运行，并按逆序 close。
+- Backend 只能看到互相匹配的 provider；Backend 决定 provider UI 嵌套位置；Host 不存在 provider UI route/schema 分支。
+- 准备 job 的旧 revision 结果不能进入新 snapshot；freeze 后 catalog/provider/config 变化不能热替活动 run。
+- ordinary backend 不能枚举全局 capability；Custom Executor 能枚举本 session 冻结的 `CUSTOM_CALLABLE` export，并经 standard raw-memory capability 完成指定地址读/写的合同测试。
+- UI/runtime/preparation 在 entry 创建中途失败时，已获得资源严格逆序关闭；process death 保留 UNKNOWN/HELD 而不冒充 cleanup。
+
+### 10.3 分层证据
+
+- 本设计批：OpenSpec strict、Markdown/link/UML 结构、author self-check、non-author design-critic；不运行无关 product/device gate。
+- SDK/Host 批：ABI checks、JVM/unit、Android host tests、artifact reopen、AVD 交互加载与 process-death、Desktop conformance；详细命令在该批 exact scope 中定义。
+- 真实攻击 backend/native/execution-domain 仍按各自 App/Shizuku/真机门证明。Compose fixture/AVD 不替代 43499/43284/98260 真机证据。
+
+## 11. 明确非目标与待触发项
+
+- 本批不选 JavaScript engine、Desktop WebView 库、远程 repository/TUF/OCI、publisher PKI、SAT solver、hot swap 或跨 OS UID sandbox；不选择 publisher PKI 不代表可以跳过第 8.3 节的 explicit execution grant。
+- 本批不冻结 43499/43284/98260 的领域 Document schema 字段；只冻结它们使用的 SDK envelope、provider binding 和 UI/runtime lifecycle。
+- 不为每个未来 operation 新建 component kind、context 或 registry。新真实角色无法归入四种 role 时，必须用具名 consumer 重开设计。
+
+<a id="acceptance-plugin-sdk-v2"></a>
 <a id="acceptance-gl-sfg"></a>
 
-### 验收定义与原边界：gl-sfg
+### 决策04设计验收边界
 
-<!-- migrated-source: acceptance_criteria gl-sfg -->
-保留原文各行为判据、当轮证据和未关闭设备门。此decision收录完成不关闭任何关联业务任务。
-
-批准/审核/实际结果：Beads `gl-sfg` notes；本段不维护实时勾选或新PASS。
+设计交付必须同时具备：OpenSpec proposal/spec/design、同步的活跃计划目标 UML、旧 gl-9lz 的取代说明、跨 classloader Compose 可行性证据、作者自检和非作者 critic 结论。用户明确认可后只开放第 9 节的 **SDK-v2 exact design gate**；该 gate 未再获认可前不得开始 production source，也不自动批准 Host/Diagnose/43499/Custom 后续批。

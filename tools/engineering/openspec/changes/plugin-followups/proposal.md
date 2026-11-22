@@ -1,27 +1,16 @@
-## Why
+## Historical status
 
-由真实consumer触发的插件后继需求。`gl-9lz`现在细化第二个plugin vertical：让kernel profile以独立data-only package和typed Document更新，避免只改设备配置仍须重装APK，并删除Diagnose为旧wire生成的假profile。其余后继仍只保留既有边界。原批准/历史结果按原Beads记录，设计工件齐备不代表production实现或门禁通过。
+本 change 保存 `gl-9lz` 等后继任务在 2026-11-21 形成的历史设计与证据，不再表达当前产品 delta，也不是 production 实施入口。原 format 1.1/API 1.1、data-only `PROVIDER`、Diagnose consumer 与 `runhost-wire` exact design 已在 2026-11-22 被 `plugin-architecture` 的 P-BACKEND-X-002/决策04取代；本 change 因此跳过 delta specs。
 
-## What Changes
+仍然有效的是产品问题和已经取得的可复用证据：上游只更新设备 profile 时不应要求重装 APK；用户导入数据要保留 provenance、完整性、恢复和 restart/cutoff 语义。这些要求必须在决策04的 backend-bound provider、Document/Artifact 和统一 catalog 模型中重新作 exact design，不能继续实现这里的旧接口。
 
-- 精确设计format 1.1的`PROVIDER`/Document声明、独立kernel-profile package和multi-record builtin seed。
-- 让Diagnose通过API 1.1可选读取当前kernel release精确匹配的冻结Document，并以Document bindings替换RunHost全局必需`profileArtifactId`。
-- 增加仅data-only、显式用户准入、重启后生效的provider archive导入/恢复；损坏的固定user-imported profile record只能经窄恢复操作移除，不自动fallback。当前READY generation不热换，因此不提前实现live object pin/lease。
-- 由既有one-shot bootstrap在读取catalog前清理catalog staging/scratch及Document create→unlink两个exact owned transient命名空间；不新增后台cleaner、第二套GC或通用目录清扫。
-- production实现仍须作者自检、独立审查和用户明确批准；本次不启动Custom、真实攻击backend、extractor/toolchain或通用hot update。
+## Current authority
 
-## Capabilities
+- 当前插件系统架构：`../plugin-architecture/design.md`。
+- 当前 delta specs：`../plugin-architecture/specs/`。
+- 任务状态、依赖、批准和实施证据：Beads 中的 `gl-83p`、`gl-9lz` 及对应真实 consumer。
+- 本目录 `design.md` 仅供沿革追溯；其当前时态描述应按文件头的 superseded notice 阅读。
 
-- `plugin-data-provider`：data-only package、typed Document、builtin/user-import provenance与restart-gated activation。
-- `runhost-wire`：从单一必需profile改为manifest声明的零到多个Document binding；保持现有PFD owner、Payload/Finish和lifecycle合同。
+## No implementation authorization
 
-## Impact
-
-- `gl-2zi`：P-BACKEND-CORE-001：由真实 consumer 触发配置实现；状态、依赖、批准与实际证据由Beads唯一维护。
-- `gl-9lz`：P-BACKEND-X-002：data-only profile provider / Document；本change新增exact设计与delta specs，状态、批准与实际证据仍由Beads唯一维护。
-- `gl-tz3`：P-BACKEND-X-002：真实 Custom consumer 的公开能力合同；状态、依赖、批准与实际证据由Beads唯一维护。
-- `gl-r8h`：P-BACKEND-X-002：外部 extractor Maven consumer；状态、依赖、批准与实际证据由Beads唯一维护。
-- `gl-dt8`：P-BACKEND-X-002：external import/update 与 READY 后对象保护；状态、依赖、批准与实际证据由Beads唯一维护。
-- `gl-2u2`：真实 backend 候选：43284 保持断开；状态、依赖、批准与实际证据由Beads唯一维护。
-- `gl-2ot`：真实 backend 候选：98260 保持断开；状态、依赖、批准与实际证据由Beads唯一维护。
-- `gl-m0f`：真实 backend 候选：43499 保持断开；状态、依赖、批准与实际证据由Beads唯一维护。
+本历史 change 不授权 format 1.1/API 1.1、旧 `PROVIDER`、Diagnose Document binding 或任何 product source 改动。决策04获认可后，也只先开放 SDK-v2 exact design gate，不自动恢复本 change 的旧实施范围。

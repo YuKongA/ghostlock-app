@@ -148,7 +148,7 @@ P-LOG-IO-001：日志导出（[gl-s7q设计](../../tools/engineering/openspec/ch
 | P-UI-ICON-002 | Material/Miuix 当前依赖的全量图标目录需求；有效正文在OpenSpec | [gl-72l设计](../../tools/engineering/openspec/changes/ui-followups/design.md#record-gl-72l) |
 | P-UI-CORE-001 | App内KMP shared Compose UI、App/plugin共用唯一KMP `I18nRegistry`与catalog schema、Compose Multiplatform非文本资源、Android/Desktop平台壳、UI feature/package与单向presentation owner收口；远期目标已记录，exact design待plugin owner稳定后重开 | [gl-75t设计](../../tools/engineering/openspec/changes/ui-followups/design.md#record-gl-75t) |
 | P-BACKEND-X-001 | Backend 成员资格、删除与断开闭包；有效正文在OpenSpec | [gl-5r9设计](../../tools/engineering/openspec/changes/runtime-foundations/design.md#record-gl-5r9) |
-| P-BACKEND-X-002 | 多组件 PluginPackage、共享 API、独立输入 provider（含固定 Maven 版本的外部 Kernel Symbol Extractor consumer）、settings presentation与注册到唯一App/plugin `I18nRegistry`的authenticated bundle、thin variant 与 RunHost 安全装载 | [gl-sfg设计](../../tools/engineering/openspec/changes/plugin-architecture/design.md#record-gl-sfg) |
+| P-BACKEND-X-002 | 多组件 `.glplugin.zip` 的完整系统架构、SDK exact-design 先行门、plugin-owned Compose UI、backend-bound provider、backend-neutral Tool、单一 Custom Executor、统一 KMP i18n、thin variant 与 plugin-owned native | [决策04](../../tools/engineering/openspec/changes/plugin-architecture/design.md#record-plugin-sdk-v2) |
 | P-RUN-CORE-001 | 运行结果、会话终态与内部 core 收口；有效正文在OpenSpec | [gl-k6e设计](../../tools/engineering/openspec/changes/runtime-foundations/design.md#record-gl-k6e) |
 | E-DOC-X-002 | 开发环境、OpenSpec设计/Beads执行与CDA（旧接入沿革保留） | [OpenSpec/Beads职责](../../tools/engineering/openspec/changes/planning-tool-responsibilities/design.md) |
 | E-BUILD-X-001 | 当前构建闭环修复；精确设计在OpenSpec，原批准保持 | [gl-4on设计](../../tools/engineering/openspec/changes/build-closure-repair/design.md#record-gl-4on) |

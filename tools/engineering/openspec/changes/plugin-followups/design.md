@@ -1,5 +1,7 @@
 # 由真实consumer触发的插件后继需求
 
+> **取代通知（2026-11-22）**：`gl-9lz` 的产品目标（profile 独立更新、typed Document、无需重装 APK）保留，但本文为 Diagnose 专用 consumer 冻结的 format 1.1/API 1.1/Host 编排 data-only provider exact design 已被 [P-BACKEND-X-002/决策04](../plugin-architecture/design.md#record-plugin-sdk-v2) 取代，不再是 production 实施入口。后续在 v2 SDK 落地后，按“backend-bound provider 由父 backend UI 嵌入，generic Tool 依赖由 provider 调用”重新细化；原 critic/验证证据只作历史可复用输入。
+
 ## Context and scope
 
 完整迁入的有效设计/范围与验收正文；不是新增实施批。原批准/历史结果按原Beads记录，工具工件齐备不代表实现或门禁通过。
@@ -36,12 +38,12 @@
 ## P-BACKEND-X-002：data-only profile provider / Document
 
 <!-- migrated-source: 043fdf6a Beads gl-9lz description -->
-本节是现行设计/验收正文；Beads只保存执行状态、批准和实际证据。历史来源仅作追溯。
+本节是已被决策04取代的历史 exact design；Beads只保存原执行状态、批准和实际证据，不从这些证据推导 v2 实施获批。
 原始来源（已归档/承接）：docs/archive/20261121-1301-backend-root-execution-unification-plan.md#p-backend-x-002-decision-03
 
 <!-- migrated-source: design gl-9lz -->
 共享OpenSpec设计位置（仅按当前任务疑点展开，不复读所有依赖）：
-- OpenSpec [gl-sfg](../plugin-architecture/design.md#record-gl-sfg)；对应Beads只查执行/证据。
+- OpenSpec [决策04](../plugin-architecture/design.md#record-plugin-sdk-v2)；它是当前架构 authority。
 - OpenSpec [gl-dek](../builtin-diagnose-plugin/design.md#record-gl-dek)；对应Beads只查执行/证据。
 
 > **状态（2026-11-21）**：用户在`gl-bvj`记录Shizuku client-death上游阻断后明确要求“上游在做了，先跳过，进入下一阶段”。本节因此只跳过重复排障和Host workaround，不把`gl-bvj`、B1真机门或Shizuku physical death改成PASS。本文按CDA `EVOLUTION`模式在基线`b3f87e695d9a89b6256f58d256322762a8089f5e`上细化Diagnose之后的第二个plugin vertical；完成作者自检、独立critic和用户批准前，不授权production实现。
