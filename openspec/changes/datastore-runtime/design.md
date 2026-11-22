@@ -27,13 +27,15 @@ NOT_RUN：source与普通门既有完成记录保留；当前没有获准AVD，�
 
 **2026-11-08 用户裁定**：内部持久状态直接使用 `kotlinx.serialization` 序列化完整 Kotlin data class，并由 typed `DataStore<T>` 持有；不再保留“Preferences key 映射 + Payload/Finish 手写 canonical JSON/JCS codec”这两套内部机制。该裁定取代本节上一版的“两份 Preferences DataStore、两份保留 v3 文件格式的 typed DataStore、Hub 全局 mutex”设计；旧 `payload-v3.json`、`finish-v3.json` 的具体内部字节格式和纯内部 `*DocumentV3` wrapper 不再是目标合同。
 
-**SETTINGS-REQ-CONFIG-01 已关闭（2026-11-08 用户规则修订）**：AGENTS §4 现只要求“需要系统内核偏移信息的 backend”以 GLK profile 为配置权威；Diagnose 与 43284 明确不在该集合。`stress_enabled` 因此可以由 Diagnose 自己的 serializable settings data class/typed DataStore 持久化，并在 run 前单向冻结为 immutable snapshot；GLK profile、SharedPreferences、环境变量和 native global 不得镜像该值。该修订是配置分类规则本身的收窄，不是知情越权，也不产生例外技术债。
+**SETTINGS-REQ-CONFIG-01 已关闭（2026-11-08 用户规则修订）**：当时规则把“需要系统内核偏移信息的 backend”归入 GLK profile 配置类别；Diagnose 与 43284 明确不在该集合。`stress_enabled` 因此可以由 Diagnose 自己的 serializable settings data class/typed DataStore 持久化，并在 run 前单向冻结为 immutable snapshot；profile、SharedPreferences、环境变量和 native global 不得镜像该值。该修订保留的是配置分类边界；profile的后继介质与分发权威由下段`gl-9lz`取代。
 
-继续保留的产品边界只有：Payload 与 Finish 仍是两个相互独立、且独立于 backend 的 domain authority；用户发起 Flow 前必须把当前编辑状态真正写入并等待完成；需要系统内核偏移信息的 backend profile 仍是该 backend 自己的 `.conf`/GLK profile 文件；Flow/RunHost 只消费一次冻结的输入，不直接打开应用设置存储。本批已按冻结职责完成 production source；未修改开发者定义任务清单的结构或新增条目。
+**后继唯一权威（2026-11-21）**：P-BACKEND-X-002 的 [`gl-9lz` data-only profile provider / Document](../plugin-followups/design.md#record-gl-9lz) 取代本节此前“backend-owned `.conf`/GLK profile file library”“extractor 输出 `.conf` 进入该 library”以及“kernel profile 只能随 APK 更新”的**目标介质与分发通路**。目标唯一通路改为同一plugin catalog中的data-only provider → typed immutable Document → run cutoff；外部extractor的后继consumer也只能构造同一Document，不再建立平行`.conf` runtime authority。该后继仍须自己的独立审查、用户production批准、实现和门禁；在它落地前，当前工作树仍如实保留APK assets和未接通状态，不能把目标取代写成已实现。这里继续保留且不被取代的合同只有：profile bytes不得进入DataStore、非offset backend settings仍使用各自typed DataStore、profile领域校验由真实backend负责、设备专属数据不参加自动备份。
+
+继续保留的产品边界只有：Payload 与 Finish 仍是两个相互独立、且独立于 backend 的 domain authority；用户发起 Flow 前必须把当前编辑状态真正写入并等待完成；需要系统内核偏移信息的 backend 仍消费自己的领域profile语义，但其目标介质与冻结通路由上述`gl-9lz`唯一承接；Flow/RunHost 只消费一次冻结的输入，不直接打开应用设置存储。本批已按冻结职责完成 production source；未修改开发者定义任务清单的结构或新增条目。
 
 ###### 最小存储规则
 
-1. **DataStore 只保存小型结构化状态**：应用设置、用户选择、不依赖系统内核偏移的 backend 设置、Payload 与 Finish。每个 aggregate 直接序列化自己的完整 data class；repository 只做 domain 校验和 Android 副作用，不再逐 key 搬运字段。需要系统内核偏移的 backend 配置仍进入自己的 GLK profile，不能在 DataStore 镜像。
+1. **DataStore 只保存小型结构化状态**：应用设置、用户选择、不依赖系统内核偏移的 backend 设置、Payload 与 Finish。每个 aggregate 直接序列化自己的完整 data class；repository 只做 domain 校验和 Android 副作用，不再逐 key 搬运字段。需要系统内核偏移的 backend 配置由上述`gl-9lz` typed Document承接，不能在 DataStore 镜像。
 2. **SettingsHub 只表示 UI 进程内的唯一装配/所有权入口**：它可以持有具名 typed stores，但不得增加 factory、反射注册表、第二缓存、revision、全局 mutex、后台重试队列、数据库或跨 store 事务协议。若直接由具名 repository 唯一持有 store 更简单，实施设计应删除空壳 Hub，而不是为名称保留一层。
 3. **DataStore actor 是唯一写顺序 owner**：每次编辑都以 `updateData { current -> current.copy(...) }` 或具名 aggregate transform 直接提交，不从观察流取旧快照后整对象覆盖。一次用户命令仅在 repository 的 application-scoped `async(start = CoroutineStart.UNDISPATCHED)` 已进入对应 `updateData` 调用并返回 completion handle 后才算 `accepted`；因此 callback 返回前，命令已经交给同一个 DataStore actor，后续事件即使首个写仍在途也继续提交，不能静默丢弃。每个 repository 只跟踪未完成 completion handle 与首个写失败，用于 await/fail-closed；它不重排、不重放、不保存数据，也不是第二条 writer queue。不得增加全局 mutex、revision protocol 或“稍后自动落盘”。Payload 与 Finish 分别提交，不声称崩溃时跨文件原子性。
 4. **进程边界固定**：UI/application 主进程是 typed DataStore 的唯一 reader/writer。当前 `:flowhost` 以及 Shizuku host 不构造 SettingsHub、不打开同一 DataStore，只接收已经冻结并完成身份绑定的请求/文件。
@@ -50,13 +52,13 @@ NOT_RUN：source与普通门既有完成记录保留；当前没有获准AVD，�
 | 日志、运行提示与开机行为设置 | `operational-preferences.json` 中的完整 `OperationalPreferences` typed DataStore | `OperationalPreferences` 整体 typed DataStore | 只保存选择与策略；日志内容、字体字节和运行结果不放入该对象。 |
 | 权限执行器选择 | `app-selection.json` 的 `AppSelection.selectedExecutor` | 与 backend 选择共享同一个完整 `AppSelection` typed aggregate，但只以字段 transform 修改 | 只持久化 App/Shizuku 选择；binder 在线、permission、uid 等事实每次实时读取，禁止缓存为 authority。 |
 | 当前 backend 选择 | `app-selection.json` 的 `AppSelection.selectedBackendKey`，`BackendSessionStore`只保留运行期投影 | 与执行器选择共享同一个完整 `AppSelection` typed aggregate，但只以字段 transform 修改 | 恢复 stable backend key；key 不存在或不可选时回退当前 registry 首个 selectable。backend membership/descriptor 本身不持久化。 |
-| backend 设置 | Diagnose stress 等尚未落地；旧候选错误地强制使用 GLK profile | 不依赖系统内核偏移的 backend 使用自己的 serializable settings data class；需要系统内核偏移的 backend 使用 GLK profile | Diagnose `stress_enabled`以typed DataStore为唯一持久authority并单向派生run snapshot，禁止profile镜像。43284同样不被强制放入GLK。Custom backend当前只允许WebUI，其数据随package自管。 |
+| backend 设置 | Diagnose stress 等尚未落地；旧候选错误地强制使用 GLK profile | 不依赖系统内核偏移的 backend 使用自己的 serializable settings data class；需要系统内核偏移的 backend 使用`gl-9lz` provider/catalog中的typed Document | Diagnose `stress_enabled`以typed DataStore为唯一持久authority并单向派生run snapshot，禁止profile镜像。43284同样不被强制放入profile Document。Custom backend当前只允许WebUI，其数据随package自管。 |
 | Payload | `payload.json` 中的完整 `PayloadDefinition` typed DataStore | `PayloadDefinition` 整体 typed DataStore | 与 backend/Finish 独立；页面编辑可在内存实时显示，但 preview/Flow 前必须等待 durable save。内部不再要求 v3/JCS wrapper。 |
 | Finish | `finish.json` 中的完整 `FinishDefinition` typed DataStore | `FinishDefinition` 整体 typed DataStore | 与 Payload 独立；内置动作更新必须保留同一 definition 中其它 action；preview 只读取 Payload，Finish 仅在完整 root script 生成时读取。 |
 | 导入字体 | `files/fonts/terminal-font.ttf`，`OperationalPreferences`只保存`fonts/terminal-font.ttf`相对引用 | app-private durable asset + typed settings 中的稳定引用 | picker 后复制完整文件再发布选择；替换成功前旧文件仍可用。DataStore 不保存字体 bytes，也不依赖临时 URI。 |
 | <a id="durable-input-requirement"></a>Payload/Finish 脚本与 LKM | data class 目前保存 `content://` URI，但未取得 persistable grant；freezer 当前明确拒绝这些 kind | app-private durable artifact library，data class 只保存 artifact id | 这是后续真实 consumer 需求；必须 copy-on-import 或持久 grant 二选一。为保证 run 冻结的 exact object，推荐 copy-on-import；未接 resolver 前继续显示 incomplete/fail closed。 |
-| backend `.conf`/GLK profile | APK `assets/kernel_profiles/*.conf` 为内置只读；用户 profile repository 尚未落地 | backend-owned profile file library | kernel offset、`kernel_phys_load`、waiter 等继续是文件配置，不塞 Compose/DataStore。内置 asset 不可变；用户导入/生成文件有稳定 id，run 时复制/打开并冻结 exact bytes。设备专属 profile 默认不参加跨设备自动备份。 |
-| extractor 输出 | KMP extractor/桌面 JVM 前端尚未落地 | extractor common 返回 typed result；Android/desktop frontend 显式导出 `.conf`/报告 | common 模块不持久化、不知道 Android DataStore。CLI 默认无状态；GUI 自己保存界面偏好，生成 profile 进入上述 profile library 或用户选择路径。 |
+| backend profile | 当前仍是APK `assets/kernel_profiles/*.conf` 且runtime loader未接通；这是实现前事实，不是目标authority | [`gl-9lz`](../plugin-followups/design.md#record-gl-9lz)唯一承接的data-only provider + typed immutable Document + plugin catalog | kernel offset、`kernel_phys_load`、waiter 等不塞 Compose/DataStore。builtin/user-imported Document经同一resolver冻结exact bytes；具体offset/route/cred合法性仍由真实backend验证。设备专属 profile 默认不参加跨设备自动备份。 |
+| extractor 输出 | 外部 Kernel Symbol Extractor consumer尚未落地 | extractor common返回typed result；GhostLock后继provider job直接构造同一Document，显式导出`.conf`/报告只属于另行批准的用户导出产品格式 | common模块不持久化、不知道Android DataStore；CLI默认无状态，GUI只保存界面偏好。不得让`.conf`导出文件成为与plugin catalog/Document平行的runtime profile library。 |
 | custom backend 包 | 未来 ZIP（manifest、Lua、WebUI、资源），当前未实现 | package directory + package manifest | 包体不进 DataStore；DataStore 只可保存已选 package id/入口偏好。安装、升级、卸载和 WebUI 数据隔离随 custom backend 专项设计。 |
 | run input 与 root-script workspace | `noBackupFilesDir/run-input`、app/shell `runhost/<run>`、`files/root-script-preview` | run-scoped ordinary files | 目标是lease/terminal/preview结束即清理且不参与backup；这是目标合同，不是current preview行为。 |
 | backend persistent state | `runhost/backend-state/<backendKey>` 每次无条件创建，但当前没有 backend consumer | 暂无通用持久化需求 | 在真实 backend 声明跨 run 状态前不应创建通用目录或协议；未来由该 backend 独占、放在 no-backup 区，禁止借它保存 app 设置。 |
@@ -64,7 +66,7 @@ NOT_RUN：source与普通门既有完成记录保留；当前没有获准AVD，�
 | 手动分享日志与诊断包 | `cacheDir/logs`、`cacheDir/diagnostic-*`、`.tar.gz` | cache/share artifact | 可重建、可被系统回收；分享/另存成功不令 cache 成为 authority。FileProvider grant 只覆盖一次分享。 |
 | RunHost 状态、LogHub 流、设备/manager 探测 | 内存、binder、`/proc`/系统 API | 不持久化 | run lifecycle、在线状态、SELinux、安装包、root manager 可用性、fd/PID/timestamp 每次重新观察；`RunReport`只作为普通 Info 日志行进入现有 sink。 |
 | Compose/SavedStateHandle 页面状态 | `remember`、`rememberSaveable`、`SavedStateHandle` | UI transient state | 只跨重组或系统保存恢复；弹窗、拖拽、滚动、搜索、临时编辑焦点不进入产品 DataStore。真正的用户配置仍由对应 typed repository 保存。 |
-| APK/构建期资产 | kernel profile assets、WebView/JNA license assets、Gradle 生成物 | immutable packaged/build artifacts | 不属于运行时持久化中枢；更新随 APK。`build/`、`.so`、测试 fixture 不作为用户数据。 |
+| APK/构建期资产 | kernel profile当前仍在APK assets；WebView/JNA license assets与Gradle生成物继续存在 | profile目标由`gl-9lz`独立data-only package承接；其它immutable packaged/build artifacts保持原owner | 不属于运行时持久化中枢。profile只改数据时目标是不重装APK；`build/`、`.so`、测试fixture不作为用户数据。 |
 | 未来密钥/敏感会话 | 当前无可持久 secret | 默认不持久化；确需长期 secret 时单独使用 Keystore-backed owner | runtime key、SPI、端口、token 用会话帧并用后清零，禁止进入 DataStore、profile、日志或文档。 |
 
 ###### DS-D1 exact implementation design（2026-11-08 开发者要求实施）
