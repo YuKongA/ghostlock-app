@@ -432,34 +432,6 @@ val gitVersionCode = runCatching {
     1
 }
 
-// //TODO(kotlin-disable-20261010): 资源路径仍在，模块已禁用；恢复见台账
-val lkmManifestFile = rootProject.file("profile-core/src/main/resources/lkm-kmi-manifest.tsv")
-val lkmSourceDir = rootProject.file("tools/lkm/ghostlock")
-/* Generated artefacts live under the Gradle build root (user instruction: "构建统一
- * 通过 gradle 构建，并且产物放在 /build 下，不要乱放"). The app module owns them
- * because both LKM tasks live here and the consumer is :app's assets; the path is
- * still under $HOME, which is what the podman VM can mount. */
-val lkmCacheDir = layout.buildDirectory.dir("lkm").get().asFile
-val lkmGeneratedAssets = layout.buildDirectory.dir("generated/lkmAssets")
-
-/** The repository's SINGLE NDK authority (the root script resolves the same keys;
- *  AGP 8's ApplicationExtension exposes no ndkDirectory). */
-fun resolveNdkDir(): File {
-    val properties = Properties()
-    val local = rootProject.file("local.properties")
-    if (local.isFile) local.inputStream().use { stream -> properties.load(stream) }
-    val candidates = listOf(
-        properties.getProperty("ndk.dir"),
-        properties.getProperty("ondk.dir"),
-        System.getenv("ANDROID_NDK_HOME"),
-    )
-    val dir = candidates.firstOrNull { !it.isNullOrBlank() }?.let { File(it) }
-    check(dir != null && dir.isDirectory) {
-        "NDK not found; set ANDROID_NDK_HOME or ndk.dir in local.properties"
-    }
-    return dir
-}
-
 val builtinGlPlugin = configurations.create("builtinGlPlugin") {
     isCanBeConsumed = false
     isCanBeResolved = true
@@ -552,8 +524,6 @@ android {
     sourceSets {
         named("main") {
             kotlin.directories.add(buildInfoSrc.get().asFile.absolutePath)
-            /* LKM images are generated (never committed); AGP forbids Provider here. */
-            assets.directories.add(lkmGeneratedAssets.get().asFile.absolutePath)
             /* A6-4 finishing script, copied from the repository source. */
         }
     }
@@ -745,9 +715,6 @@ kotlin {
 
 // The exporter-agreement test compares against the freshly exported .bin set.
 tasks.withType<Test>().configureEach {
-    // //TODO(kotlin-disable-20261010): profile-core 任务已禁用
-    // dependsOn(":profile-core:exportProfiles")
-
     dependsOn(generateBuiltinPluginAssets)
     inputs.dir(builtinPluginAssetsDirectory)
     systemProperty("ghostlock.builtinPluginAssets", builtinPluginAssetsDirectory.get().asFile.absolutePath)
@@ -802,9 +769,6 @@ dependencies {
     implementation("top.yukonga.miuix.kmp:miuix-nav:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.4")
-    // //TODO(kotlin-disable-20261010): profile-core 已禁用
-    // implementation(project(":profile-core"))
-
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     testImplementation("org.robolectric:robolectric:4.17")

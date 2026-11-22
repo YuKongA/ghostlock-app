@@ -29,17 +29,8 @@ flowchart TB
     CORE[":plugin:core\nKMP manifest / index / catalog model"]
     DIAG[":plugin:packages:diagnose\nKotlin + JNA + private native source"]
     ZIP["verified builtin\n.glplugin.zip\nARM64 / one BACKEND component"]
-    HOST_GATE["nativeTestHost\ncurrent-run Allure aggregate"]
-    ANDROID_GATE["nativeBuildAndroid\nverified plugin ZIP + debug/release APK boundary"]
-    DEBUG_GATE["verifyDebugUnitTestXml\ncurrent-run Allure"]
-    RELEASE_GATE["verifyReleaseUnitTestXml\nindependent current-run Allure"]
-    CHECK_ALL["legacy checkAll aggregate"]
     DIAG --> ZIP
     API -. compileOnly ABI .-> DIAG
-    ANDROID_GATE --> ZIP
-    HOST_GATE --> CHECK_ALL
-    ANDROID_GATE --> CHECK_ALL
-    DEBUG_GATE --> CHECK_ALL
   end
 
   subgraph MAIN[Android main process]
@@ -457,11 +448,11 @@ log	call	backend	stage	false	true	true	key	true	256
 
 - **指针**：条目级拒绝码散见 [lua-surface-design](../archive/20261017-1835-lua-surface-design.md) §1 与附件；**完整集合以本表为准**，其他处不另立清单（「表达一致」）。
 
-### 3.3 Kotlin / Rust 位置
+### 3.3 Kotlin / Rust 位置（历史能力草图；当前组件见 §0）
 
 | 件 | 位置 | 职责 |
 |---|---|---|
-| Kotlin | `app/` + `profile-core/` | HOCON 解析/合并/覆盖 · `resolve`（Document 三段）· payload 生成 |
+| Kotlin | `app/` | 当前 App owner；旧 `profile-core/` module 已删除，下述能力草图不表示 current implementation |
 | Rust | `tools/extract_rs/` | boot.img / OTA → profile（`--format conf` / `json`） |
 
 **Kotlin 能力契约（2026-10-14，接口已编译；backend 尚未接线）**：
@@ -714,10 +705,7 @@ sequenceDiagram
   E-->>U: StepResult (Ran / Refused / Frozen + calls)
 ```
 
-**门禁命令**：D1 = `./gradlew :nativeTestHost :app:testDebugUnitTest
-:nativeBuildAndroid`；真机 =
-./gradlew deviceGate（装 APK → 起临时界面 → 抓 logcat → 按 native 导出的 manifest **机器校验**）；
-两者合起来 = ./gradlew gateAll。
+**历史门禁说明**：本段原有 D1、真机和聚合命令均已退役；当前互不聚合的 host、App unit 与 Android build gates 见 §11.8，真机判据见工程规范 §8.3。
 
 ## 5. Kotlin 侧链驱动器（2026-10-16 · 照 `ghostlock-app-ref@5f184760` 移植）
 
@@ -1275,24 +1263,25 @@ flowchart LR
   TSV["native-test-disposition.tsv<br/>machine authority"] --> INVENTORY
   TSV --> C43499["43499glued/tests/CMakeLists.txt<br/>registration drift guard"]
   TSV --> CCONTRACT["tools/tests/CMakeLists.txt<br/>registration drift guard"]
-  INVENTORY --> T43499["nativeTest43499GluedHost<br/>configure → build → CTest → module Allure"]
+  INVENTORY --> T43499["nativeTest43499GluedHost"]
   C43499 --> T43499
-  INVENTORY --> TCONTRACT["nativeTestContractsHost<br/>configure → build → CTest → module Allure"]
+  INVENTORY --> TCONTRACT["nativeTestContractsHost"]
   CCONTRACT --> TCONTRACT
   PCOMMON["plugin/native-source/common"] --> TCONTRACT
   PDIAG["plugin/packages/diagnose/src/main/cpp"] --> TCONTRACT
-  INVENTORY --> TAVB["avbcheck typed task<br/>configure → build → CTest → module Allure"]
-  T43499 --> HOST_GATE["root nativeTestHost<br/>current-run module set → Allure aggregate"]
+  INVENTORY --> TAVB["avbcheck host task"]
+  T43499 --> HOST_GATE["root nativeTestHost"]
   TCONTRACT --> HOST_GATE
   TAVB --> HOST_GATE
-  HOST_GATE --> CHECK_ALL["root checkAll"]
-  ANDROID_GATE["nativeBuildAndroid<br/>verified plugin ZIP + debug/release APK boundary"] --> CHECK_ALL
-  TEST_DEBUG["testDebugUnitTest"] --> XML_DEBUG["verifyDebugUnitTestXml<br/>current full run → Allure"]
-  TEST_RELEASE["testReleaseUnitTest"] --> XML_RELEASE["verifyReleaseUnitTestXml<br/>current full run → Allure"]
-  XML_DEBUG --> CHECK_ALL
+  subgraph GATES["separately invoked gates"]
+    HOST_GATE
+    ANDROID_GATE["nativeBuildAndroid<br/>verified plugin ZIP + debug/release APK boundary"]
+    XML_DEBUG["verifyDebugUnitTestXml"]
+    XML_RELEASE["verifyReleaseUnitTestXml"]
+  end
 ```
 
-Allure只读取本轮Test／CTest结构化结果并生成报告；runner退出状态、producer完整性与全量范围仍由Gradle持有，图中不预写实际PASS数量。此T-B时点已经由plugin package拥有Diagnose/JNA/native producer，`nativeBuildAndroid`验证唯一plugin ZIP与debug/release APK boundary；旧`checkAll`仍聚合host、Android build与debug结果门，release结果门独立调用，待后继T-C删除。Host CTest 对 production source 的编译不使 App 重新成为 native owner，也不证明任何漏洞 ELF 可运行。
+各 gate 的当前结果与实际计数只写对应 Beads 证据，不在结构图预写 PASS。Host CTest 对 production source 的编译不使 App 重新成为 native owner，也不证明任何漏洞 ELF 可运行。
 
 ### 11.9 2026-11-02：新进程 Flow 通道（历史；由 §11.12 typed RunHost 取代）
 

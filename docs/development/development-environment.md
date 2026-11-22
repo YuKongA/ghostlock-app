@@ -73,10 +73,9 @@ Windows 使用同一包清单与 `sdkmanager.bat` / `gradlew.bat`；plugin produ
 
 | 现象 | 实际原因与定位 |
 |---|---|
-| Linux/Windows plugin 打包失败 | `plugin/packages/diagnose/build.gradle.kts` 的 `llvm-nm` 路径固定为 `prebuilt/darwin-x86_64`；需所属实施批修复/验证可移植性 |
-| `nativeTestHost` / `checkAll` 缺 native 源码 | [host CMake](../../tools/tests/CMakeLists.txt) 仍引用已迁移的旧 app `common/gl_log.c`、`common/run_handoff.c`、`backends/diagnose/diagnose.cpp`；补装 SDK 不会恢复这些输入 |
 | inventory 没覆盖新 plugin 树 | [根 Gradle](../../build.gradle.kts) 的 `verifyNativeTestInventory` 仍扫描旧 app/tools 范围；由测试接线批处理，不据此声称新 plugin 已完整验证 |
-| 照抄 CI 仍失败 | [CI](../../.github/workflows/build.yml) 使用 ONDK r30.1、JDK21，且仍调用当前未声明的 `exportProfiles`；它不是完整的新机安装说明 |
+
+[CI](../../.github/workflows/build.yml) 显式安装与 module DSL 一致的 SDK side-by-side NDK30.0.16248370，并使用 JDK21；本地 macOS 构建成功不等于 GitHub Linux CI 已通过。
 
 <a id="planning-tools"></a>
 

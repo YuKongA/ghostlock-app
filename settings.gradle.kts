@@ -31,8 +31,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "GhostLock"
 include(":app")
-// //TODO(kotlin-disable-20261010): profile-core 已禁用（用户裁定删除，检查归 Kotlin）；恢复见台账
-// include(":profile-core")
 include(":plugin:api")
 include(":plugin:core")
 include(":plugin:packages:diagnose")

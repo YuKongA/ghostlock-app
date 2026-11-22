@@ -15,9 +15,6 @@ concurrency:
   group: "${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: true
 
-env:
-  ONDK_VERSION: "r30.1"
-
 jobs:
   build-apk:
     name: Build APK
@@ -37,23 +34,8 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Cache ONDK
-        id: ondk-cache
-        uses: actions/cache@v6
-        with:
-          path: ${{ runner.temp }}/ondk
-          key: ondk-${{ env.ONDK_VERSION }}-linux
-
-      - name: Download ONDK
-        if: steps.ondk-cache.outputs.cache-hit != 'true'
-        run: |
-          url="https://github.com/topjohnwu/ondk/releases/download/${ONDK_VERSION}/ondk-${ONDK_VERSION}-linux.tar.xz"
-          mkdir -p "${{ runner.temp }}/ondk"
-          curl -fL "$url" -o "${{ runner.temp }}/ondk.tar.xz"
-          tar -C "${{ runner.temp }}/ondk" --strip-components=1 -xf "${{ runner.temp }}/ondk.tar.xz"
-
-      - name: Link ONDK Rust toolchain
-        run: rustup toolchain link ondk "${{ runner.temp }}/ondk/toolchains/rust"
+      - name: Install pinned Android NDK
+        run: sdkmanager "ndk;30.0.16248370"
 
       - name: Decode Android signing key
         if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
@@ -61,9 +43,6 @@ jobs:
 
       - name: Build Release APK
         run: |
-          export ONDK_HOME="${{ runner.temp }}/ondk"
-          export ANDROID_NDK_HOME="$ONDK_HOME"
-          export NDK_ROOT="$ONDK_HOME"
           export KEYSTORE_PATH="../keystore.jks"
           export KEYSTORE_PASS="${{ secrets.KEY_STORE_PASSWORD }}"
           export KEY_ALIAS="${{ secrets.ALIAS }}"
@@ -73,27 +52,11 @@ jobs:
       - name: Rename Release APK
         run: mv build/app/outputs/apk/release/*.apk GhostLock-release.apk
 
-      - name: Export kernel profiles (GLK1)
-        run: ./gradlew exportProfiles --no-daemon
-
-      - name: Package kernel profiles
-        run: |
-          cd build/profiles
-          zip -r "$GITHUB_WORKSPACE/GhostLock-profiles.zip" .
-          unzip -l "$GITHUB_WORKSPACE/GhostLock-profiles.zip" | tail -5
-
       - name: Upload Release APK
         uses: actions/upload-artifact@v7
         with:
           name: GhostLock-release
           path: GhostLock-release.apk
-          archive: false
-
-      - name: Upload kernel profiles
-        uses: actions/upload-artifact@v7
-        with:
-          name: GhostLock-profiles
-          path: GhostLock-profiles.zip
           archive: false
 
   prerelease:
@@ -120,11 +83,7 @@ jobs:
           mkdir -p release-files
           find artifacts -type f -exec cp {} release-files/ \;
           cd release-files
-          for f in GhostLock-release.apk GhostLock-profiles.zip; do
-            if [ -f "$f" ]; then
-              sha256sum "$f"
-            fi
-          done > sha256sum.txt
+          sha256sum GhostLock-release.apk > sha256sum.txt
           cd ..
 
           VERSION_NAME=$(sed -nE 's/^[[:space:]]*val appVersionName = "([^"]+)".*/\1/p' app/build.gradle.kts)
@@ -163,7 +122,6 @@ jobs:
               "",
               "#### Files",
               "- `GhostLock-release.apk`: GhostLock Android Application",
-              "- `GhostLock-profiles.zip`: Bundled kernel profiles (HOCON)",
               "",
               "#### SHA256 Checksums",
               "```",

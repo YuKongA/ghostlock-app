@@ -1,5 +1,4 @@
 import java.nio.file.Files
-import java.util.Properties
 
 plugins {
     id("com.android.application") version "9.1.0" apply false
@@ -30,44 +29,6 @@ plugins {
  * The Make/NDK artifacts still land in build/ (see core/Makefile), and the
  * root clean removes every module build/ directory.
  */
-
-private fun localProperties(): Properties = Properties().also { properties ->
-    val propertiesFile = rootProject.file("local.properties")
-    if (propertiesFile.isFile) {
-        propertiesFile.inputStream().use(properties::load)
-    }
-}
-
-private fun ondkHome(): String? =
-    System.getenv("ONDK_HOME")?.takeIf(String::isNotBlank)
-        ?: localProperties().getProperty("ondk.dir")?.takeIf(String::isNotBlank)
-
-private fun useOndk(): Boolean = !ondkHome().isNullOrBlank()
-
-private fun resolveNdkDir(): String {
-    val ondk = ondkHome()
-    if (ondk != null) return ondk
-
-    val properties = localProperties()
-    val ndkEnvironment = System.getenv("ANDROID_NDK_HOME")
-        ?: System.getenv("ANDROID_NDK_ROOT")
-    if (!ndkEnvironment.isNullOrBlank()) return ndkEnvironment
-
-    properties.getProperty("ndk.dir")?.takeIf(String::isNotBlank)?.let { return it }
-
-    val sdkDir = properties.getProperty("sdk.dir") ?: System.getenv("ANDROID_HOME")
-    if (!sdkDir.isNullOrBlank()) {
-        val ndkRoot = File(sdkDir, "ndk")
-        val versions = ndkRoot.listFiles()
-            ?.filter(File::isDirectory)
-            ?.map(File::getName)
-            ?.sorted()
-            .orEmpty()
-        if (versions.isNotEmpty()) return File(ndkRoot, versions.last()).absolutePath
-    }
-
-    throw GradleException("NDK not found; set ANDROID_NDK_HOME or ndk.dir in local.properties")
-}
 
 /**
  * 找一个可执行工具：先看 -P<NAME>= 属性，再看同名环境变量，再扫 PATH 与 Homebrew 的常见位置。
@@ -178,8 +139,6 @@ tasks.register("cleanBuildPollution") {
 private val glCmake = resolveTool("cmake")
 private val glCtest = resolveTool("ctest")
 private val glNinja = resolveTool("ninja")
-private val glCmakeCommon = listOf("-G", "Ninja", "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
-    "-DCMAKE_MAKE_PROGRAM=" + glNinja)
 
 /** Delegates report generation and status modeling to the pinned Allure CLI. */
 abstract class AllureReportTask : org.gradle.api.DefaultTask() {
@@ -589,12 +548,6 @@ tasks.register("nativeBuildAndroid") {
         ":app:verifyDebugBuiltinPluginBoundary",
         ":app:verifyReleaseBuiltinPluginBoundary",
     )
-}
-
-tasks.register("checkAll") {
-    group = "verification"
-    description = "Runs host-native, Android-native, and exact Kotlin XML gates."
-    dependsOn("nativeTestHost", "nativeBuildAndroid", ":app:verifyDebugUnitTestXml")
 }
 
 /**

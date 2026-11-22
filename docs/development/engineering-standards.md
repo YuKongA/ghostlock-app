@@ -453,12 +453,12 @@ setup → W1（SELinux）→ W2（凭据）→ W3（seccomp）→ handoff（root
 - **构建逻辑一律写进 Gradle KTS**（`*.gradle.kts`）：LKM/DDK、插件产物、native 准备等都由 Gradle 任务承担；**禁止独立 `.sh` 构建脚本**。
 - **`.sh` 仅限设备端与运维**：例如 `tools/lkm/ghostlock/root_cmd.sh`（经 `call_usermodehelper` 执行的设备载荷）、`tools/device-guard/*`、`.github/scripts/*`；**第三方/参考项目自己的 `build.sh` 与本规约无关**，文档中照原样引用。
 - **跨平台硬要求**：不得依赖 `shasum` / `sha256sum` / `mkdir -p` / `mv` / `cp` / `find` / bash —— 一律用 JVM/Gradle API（`MessageDigest`、`Copy`/`Sync`、`FileTree`）。
-- **工具链路径不依赖 PATH**：如 `llvm-objcopy` 由既有 NDK 解析器（`android.ndkDirectory`，见 root `build.gradle.kts`）定位；prebuilt host tag 用通配。
+- **工具链路径不依赖 PATH**：Android native producer 通过 `androidComponents.sdkComponents.ndkDirectory` 取得与 AGP 一致的 NDK，再从 `toolchains/llvm/prebuilt/*/bin` 定位所需工具；不得硬编码 prebuilt host tag。
 - **容器引擎**：探测 `podman` → `docker`，允许 `-PcontainerEngine=` 覆盖；需要容器的任务（如 `buildLkmImages`）必须**显式**执行，**不挂** `preBuild`。
 - **跨端列表不得手抄**：8 个 KMI label 由 native 导出 `lkm-kmi-manifest.tsv`（两份逐字节一致）供 Gradle 与 Kotlin 消费——与 `profile-manifest-v3.tsv` / `combination-manifest.tsv` / `vocabulary-manifest.tsv` 同规。
 
 - **产物在仓库内真实 `build/`，禁止任何链接**；出问题 `./gradlew clean`；疑似旧树产物 `realpath` 核实后清理，不得并存两棵树。
-- NDK：设 `ANDROID_NDK_HOME`/`ANDROID_NDK_ROOT` 或 `local.properties` 的 `ndk.dir`。Rust 交叉编译用 rustup 的 `rustc` + `rustup target add aarch64-linux-android`。
+- Android module 的 NDK 由 DSL `ndkVersion` 与 SDK side-by-side 安装共同确定，`local.properties` 只写 `sdk.dir`，不用已弃用的 `ndk.dir`；不经 AGP 的独立诊断任务若需要其它路径，必须在其自身入口具名声明。Rust 交叉编译用 rustup 的 `rustc` + `rustup target add aarch64-linux-android`。
 
 <a id="engineering-build-writers"></a>
 
