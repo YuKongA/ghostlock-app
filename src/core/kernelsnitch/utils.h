@@ -145,7 +145,13 @@ namespace ghostlock::kernel {
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
         CPU_SET(core, &cpuset);
-        SYSCHK(sched_setaffinity(0, sizeof(cpu_set_t), &cpuset));
+        /* Hotplugged cores can reject the mask with EINVAL; fall back to cpu0
+         * instead of leaving the thread unpinned. */
+        if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) != 0 && errno == EINVAL) {
+            CPU_ZERO(&cpuset);
+            CPU_SET(0, &cpuset);
+            (void) sched_setaffinity(0, sizeof(cpu_set_t), &cpuset);
+        }
     }
 
     static inline void reset_cpu_pin(void) {

