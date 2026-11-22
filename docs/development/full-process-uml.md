@@ -4,7 +4,7 @@
 
 > **时间视点**：当前工作树；只描述源码中已经存在的结构与行为。活跃计划完成后的目标见[活跃计划最终目标全局 UML](active-plan-target-uml.md#global-active-plan-target-view)。两份图回答不同问题，不互相替代。
 >
-> **当前截面（2026-11-21）**：`BXP3-B1` production source 已进入工作树，但完整 V1、AVD 与具名 ARM64 真机门尚未全部关闭；下图因此表示“已存在但仍在验证中的实现”，不表示 BXP3-B1 已完成。当前唯一 backend package 是 APK builtin、ARM64、单 component 的 `DIAGNOSE`；provider、外部导入、Custom、真实攻击 backend、额外 ABI、Desktop 与统一 KMP i18n 尚未实现。
+> **当前截面（2026-11-22）**：`BXP3-B1` production source 已进入工作树，但完整 V1、AVD 与具名 ARM64 真机门尚未全部关闭；SDK-v2 当前只新增了未接 Host 的 `:plugin:core` manifest/identity source。下图因此表示“已存在但仍在验证中的实现”，不表示 BXP3-B1 或 SDK-v2 已完成。当前唯一 backend package 仍是 APK builtin、ARM64、单 component 的 `DIAGNOSE`；provider、外部导入、Custom、真实攻击 backend、额外 ABI、Desktop app 与统一 KMP i18n 尚未实现。
 >
 > **本页优先级**：§0 是当前全局 authority。后续 A0–A6、旧 D7 及历次局部图继续保留沿革和子系统细节；其中旧标题即使含“current authority”，也不得覆盖 §0 的 2026-11-21 当前截面。
 
@@ -17,7 +17,7 @@
 > **本文件是当前时间视点的唯一全局权威 UML**；目标时间视点另见[活跃计划最终目标全局 UML](active-plan-target-uml.md#global-active-plan-target-view)。旧实现 UML 已归档为 [old-full-process-uml.md](old-full-process-uml.md)（**仅历史对照**，结构与本件不同）。
 > 依据：`rewrite-plan-v2`（A0–A6）· `lua-surface-design`（暴露面 7 条）· `lua-surface-annex-document/-target/-route-switch` · ADR-0008/0009/0010 · `A6-baseline-approval`。日期 2026-10-08。
 
-## 0. 2026-11-21 当前工作树全局视图
+## 0. 2026-11-22 当前工作树全局视图
 
 ### 0.1 组件与 owner
 
@@ -26,11 +26,14 @@ flowchart TB
   subgraph BUILD[Gradle 与 package producer]
     direction LR
     API[":plugin:api\nJava diagnostic-v1 ABI"]
-    CORE[":plugin:core\nKMP manifest / index / catalog model"]
+    CORE[":plugin:core commonMain\nmanifest 1.0 / index / catalog model"]
+    SCHEMA["approved manifest 2.0 JSON Schema\nOpenSpec single source"]
+    COREV2[":plugin:core jvmSharedMain\nstrict v2 model / JCS root / semantic validation\nAndroid + Desktop JVM; no Host consumer"]
     DIAG[":plugin:packages:diagnose\nKotlin + JNA + private native source"]
     ZIP["verified builtin\n.glplugin.zip\nARM64 / one BACKEND component"]
     DIAG --> ZIP
     API -. compileOnly ABI .-> DIAG
+    SCHEMA -. generated resource .-> COREV2
   end
 
   subgraph MAIN[Android main process]
@@ -96,6 +99,7 @@ flowchart TB
 - Binder endpoint在所有prepare出口逆序关闭decode PFD；validated duplicate由同一holder一次性转移，ordinary artifacts只由staging关闭，archive只由loader关闭。
 - RunHost 先重验 archive、manifest、API/ABI/domain，再加载 entry；插件 Kotlin 独占 JNA/native load、call、close。
 - 当前 `PluginBackendFlow` 仍是 Host `Flow` 适配器；是否让旧 Host `Flow/SequentialFlow` 退出是尚未批准的设计差异，不在本当前图中预先实施。
+- `:plugin:core` 的 v2 source 已能在 Android/Desktop JVM 解析和校验 manifest 2.0、计算 exact semantic root；它尚未接入 catalog/verifier/loader，也不代表 `:plugin:api` v2、Host-v2 或任何真实插件已实现。
 
 ### 0.2 catalog 与一次运行状态
 
