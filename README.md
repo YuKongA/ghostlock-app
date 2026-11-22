@@ -18,7 +18,7 @@ Rows explicitly marked **Shizuku required** run through a shell UserService. Sta
 
 ## Android application architecture
 
-The current architecture authority is the shared runtime design ([gl-4tt design](openspec/changes/runtime-foundations/design.md#record-gl-4tt)) plus the active builtin-plugin increment ([gl-dek design](openspec/changes/builtin-diagnose-plugin/design.md#record-gl-dek)). The canonical current-state diagrams are in [full-process-uml.md](docs/development/full-process-uml.md).
+The current architecture authority is the shared runtime design ([gl-4tt design](tools/engineering/openspec/changes/runtime-foundations/design.md#record-gl-4tt)) plus the active builtin-plugin increment ([gl-dek design](tools/engineering/openspec/changes/builtin-diagnose-plugin/design.md#record-gl-dek)). The canonical current-state diagrams are in [full-process-uml.md](docs/development/full-process-uml.md).
 
 The Kotlin application uses a neutral Clean Architecture boundary. Domain models contain no Android, Compose, concrete-backend, or persistence type. Android storage and platform effects live in data adapters; application wiring lives in AppContainer; screens and ViewModels consume immutable state plus action contracts.
 
@@ -162,4 +162,4 @@ is redistributed here and reusing it upstream requires their permission:
 
 ### Vendored libraries
 
-- [ludocode/mpack](https://github.com/ludocode/mpack) — MessagePack reader/writer, MIT; vendored at [`core/lib/mpack/`](core/lib/mpack/) with its LICENSE kept alongside.
+- [ludocode/mpack](https://github.com/ludocode/mpack) — MessagePack reader/writer, MIT; vendored at [`core/lib/mpack/`](core/lib/mpack) with its LICENSE kept alongside.

@@ -37,16 +37,16 @@
 | 信息 / 动作 | 唯一位置与入口 |
 |---|---|
 | 全工程治理、审查与门禁原则 | 本套现行规范；工具模板不复制、放宽或覆盖 |
-| 目标、范围、非目标、当前承诺与后续触发 | OpenSpec `proposal.md` / `design.md`；[propose](../../.agents/skills/openspec-propose/SKILL.md) / [update](../../.agents/skills/openspec-update-change/SKILL.md) |
-| 真实调用者、取舍、owner/失败语义、图与逐文件scope | 同一 OpenSpec `design.md`；共享设计只定义一处。作者按需使用 [CDA](../../.agents/skills/constraint-driven-architecture/SKILL.md)，不是另交报告 |
-| 行为规范与验收定义 | `openspec/specs` 的当前公共合同、change 的 `specs` 增量及 `design` 验收矩阵；已批准但未实现/未验收的增量不提前同步主规范 |
-| 执行任务、认领、真实依赖、实时进度 | Beads；[apply](../../.agents/skills/openspec-apply-change/SKILL.md)从 `spec_id` 读取 OpenSpec，不维护 `tasks.md` 或另一份checkbox |
+| 目标、范围、非目标、当前承诺与后续触发 | OpenSpec `proposal.md` / `design.md`；[propose](../../tools/engineering/skills/openspec-propose/SKILL.md) / [update](../../tools/engineering/skills/openspec-update-change/SKILL.md) |
+| 真实调用者、取舍、owner/失败语义、图与逐文件scope | 同一 OpenSpec `design.md`；共享设计只定义一处。作者按需使用 [CDA](../../tools/engineering/skills/constraint-driven-architecture/SKILL.md)，不是另交报告 |
+| 行为规范与验收定义 | `tools/engineering/openspec/specs` 的当前公共合同、change 的 `specs` 增量及 `design` 验收矩阵；已批准但未实现/未验收的增量不提前同步主规范 |
+| 执行任务、认领、真实依赖、实时进度 | Beads；[apply](../../tools/engineering/skills/openspec-apply-change/SKILL.md)从 `spec_id` 读取 OpenSpec，不维护 `tasks.md` 或另一份checkbox |
 | 原批准、纠正、独立审查及实际命令/结果 | 原 Beads 的 notes/comments；保留日期、原话/来源、范围、输入与取代关系。设计受纠正时同步OpenSpec当前边界，证据不重写为新批准 |
-| 探索、合同同步、完成后归档 | 按需用 [explore](../../.agents/skills/openspec-explore/SKILL.md)、[sync-specs](../../.agents/skills/openspec-sync-specs/SKILL.md)、[archive](../../.agents/skills/openspec-archive-change/SKILL.md)，不是每批必走的额外串行流程 |
+| 探索、合同同步、完成后归档 | 按需用 [explore](../../tools/engineering/skills/openspec-explore/SKILL.md)、[sync-specs](../../tools/engineering/skills/openspec-sync-specs/SKILL.md)、[archive](../../tools/engineering/skills/openspec-archive-change/SKILL.md)，不是每批必走的额外串行流程 |
 
 **旧纯Markdown计划已完整迁移，不恢复 MASTER/ROADMAP/REMAINING 或旧计划正文 authority。** OpenSpec 持有完整有效设计，不能只放一个指向旧计划或Beads design的壳。Beads `spec_id` 直达对应文件/稳定锚点，description只概括执行对象，design留空，acceptance_criteria只指向适用验收定义；不复制完整设计、scope或矩阵。原批准和历史证据中的引用/当时设计说明是只读沿革，不是并行可编辑设计。
 
-先从相关Beads任务或[语义代号登记](#work-identifiers)直达OpenSpec，按问题读取所需章节；不默认展开全部change、依赖或归档。旧号映射只在[公共执行设计](../../openspec/changes/runtime-foundations/design.md#legacy-identifiers)维护；其它仓库任务仅链接，不导入第二份。
+先从相关Beads任务或[语义代号登记](#work-identifiers)直达OpenSpec，按问题读取所需章节；不默认展开全部change、依赖或归档。旧号映射只在[公共执行设计](../../tools/engineering/openspec/changes/runtime-foundations/design.md#legacy-identifiers)维护；其它仓库任务仅链接，不导入第二份。
 
 `ready`/artifact `done`只说明依赖或工件状态，不表示批准、实现或运行PASS；Beads decision.closed可能只是设计收录，不是整个产品变更验收。原批准范围、冻结/暂停、真机门与最终树复验条件保持；实际未执行仍为NOT_RUN。合理后续需求仍deferred，具名条件缺失仍blocked；依赖只连接实际先决条件，参考链接不设新阻断。
 
@@ -113,7 +113,7 @@
 | 领域/范围 | RULE | 工作规范与验收规则 |
 | 领域/范围 | X | 由具名主模块负责的跨模块/跨层合同，正文必须列出边界，不代表“全仓任意修改” |
 
-P-LOG-IO-001：日志导出（[gl-s7q设计](../../openspec/changes/logging-runtime/design.md#record-gl-s7q)，`p-log-io-001`）、P-LOG-X-001：跨层日志中枢（[gl-s7q设计](../../openspec/changes/logging-runtime/design.md#record-gl-s7q)，`p-log-x-001`）、[P-RUN-IPC-001：RunHost wire](../../openspec/specs/runhost-wire/spec.md#p-run-ipc-001) 均为已有内容的实际身份；`E-BUILD-NATIVE-001` 仍仅为未分配示例。`CORE` 指模块内部合同，`IO` 指文件/流，`X` 只用于确有具名 owner 的跨层/跨模块合同，不作为不分析归属的兜底；其它影响仍列在原范围中。测试随被验证合同归属，不因 test 字样自动成为工程工具任务。
+P-LOG-IO-001：日志导出（[gl-s7q设计](../../tools/engineering/openspec/changes/logging-runtime/design.md#record-gl-s7q)，`p-log-io-001`）、P-LOG-X-001：跨层日志中枢（[gl-s7q设计](../../tools/engineering/openspec/changes/logging-runtime/design.md#record-gl-s7q)，`p-log-x-001`）、[P-RUN-IPC-001：RunHost wire](../../tools/engineering/openspec/specs/runhost-wire/spec.md#p-run-ipc-001) 均为已有内容的实际身份；`E-BUILD-NATIVE-001` 仍仅为未分配示例。`CORE` 指模块内部合同，`IO` 指文件/流，`X` 只用于确有具名 owner 的跨层/跨模块合同，不作为不分析归属的兜底；其它影响仍列在原范围中。测试随被验证合同归属，不因 test 字样自动成为工程工具任务。
 
 ### 分配、定位与兼容
 
@@ -131,36 +131,36 @@ P-LOG-IO-001：日志导出（[gl-s7q设计](../../openspec/changes/logging-runt
 
 | 根代号 | 中文主题／主责范围 | 唯一定义 |
 |---|---|---|
-| P-RUN-X-001 | 统一计划容器与执行主干跨层合同；具体决策/批次按实际模块分配 | [gl-4tt设计](../../openspec/changes/runtime-foundations/design.md#record-gl-4tt) |
-| P-RUN-IPC-001 | 产品执行编排的 App/Shizuku 进程通信合同；从属上项 | [RunHost typed wire 与状态机](../../openspec/specs/runhost-wire/spec.md#p-run-ipc-001) |
+| P-RUN-X-001 | 统一计划容器与执行主干跨层合同；具体决策/批次按实际模块分配 | [gl-4tt设计](../../tools/engineering/openspec/changes/runtime-foundations/design.md#record-gl-4tt) |
+| P-RUN-IPC-001 | 产品执行编排的 App/Shizuku 进程通信合同；从属上项 | [RunHost typed wire 与状态机](../../tools/engineering/openspec/specs/runhost-wire/spec.md#p-run-ipc-001) |
 | E-REVIEW-RULE-001 | 设计审核与规划规则；旧 A–G 为本根条目组 | [设计与规划审查原则](design-review-principles.md#e-review-rule-001) |
 | E-REVIEW-RULE-002 | 工程实施、批次与验证规范；章节号仅限本文 | [工程与设计规范](engineering-standards.md#e-review-rule-002) |
 | E-REVIEW-RULE-003 | 设计原则的理论依据与解释；旧 D 为操作附录 | [设计哲学](design-philosophy.md#e-review-rule-003) |
 | E-REVIEW-RULE-004 | Agent 执行纪律与门禁入口；编号不改变既有权威层级 | [AGENTS](../../AGENTS.md#e-review-rule-004) |
 | E-DOC-RULE-001 | 文档、工程代号与计划模板；跨端架构问题表为附录 | [文档编写规范](documentation-standards.md#e-doc-rule-001) |
 | E-DOC-UI-001 | 双 UI 套件的文档指南；范围为 UI，不属于某一运行批次 | [UI 生成指南](ui-ai-guide.md#e-doc-ui-001) |
-| P-PAYLOAD-CORE-001 | Payload 必需性、失败与成功语义；有效正文在OpenSpec | [gl-kct设计](../../openspec/changes/runtime-foundations/design.md#record-gl-kct) |
-| P-FINISH-CORE-001 | Finish 严重度与必执行语义；有效正文在OpenSpec | [gl-7c2设计](../../openspec/changes/runtime-foundations/design.md#record-gl-7c2) |
-| P-PAYLOAD-IO-001 | Payload 接管确认与文件保留；有效正文在OpenSpec | [gl-2qz设计](../../openspec/changes/runtime-foundations/design.md#record-gl-2qz) |
-| P-RUN-IO-001 | 运行输入 staging、脚本发布与产物持久化；有效正文在OpenSpec | [gl-dzp设计](../../openspec/changes/runtime-foundations/design.md#record-gl-dzp) |
-| P-BACKEND-CORE-001 | BackendDefinition 组合根、BackendDescriptor 与具名BackendUi边界；BD-I3配置实现延后 | [gl-7yv设计](../../openspec/changes/runtime-foundations/design.md#record-gl-7yv) |
-| P-UI-ICON-001 | Material/Miuix 全项目语义图标目录；有效正文在OpenSpec | [gl-rot设计](../../openspec/changes/semantic-icon-catalog/design.md#record-gl-rot) |
-| P-UI-ICON-002 | Material/Miuix 当前依赖的全量图标目录需求；有效正文在OpenSpec | [gl-72l设计](../../openspec/changes/ui-followups/design.md#record-gl-72l) |
-| P-UI-CORE-001 | App内KMP shared Compose UI、App/plugin共用唯一KMP `I18nRegistry`与catalog schema、Compose Multiplatform非文本资源、Android/Desktop平台壳、UI feature/package与单向presentation owner收口；远期目标已记录，exact design待plugin owner稳定后重开 | [gl-75t设计](../../openspec/changes/ui-followups/design.md#record-gl-75t) |
-| P-BACKEND-X-001 | Backend 成员资格、删除与断开闭包；有效正文在OpenSpec | [gl-5r9设计](../../openspec/changes/runtime-foundations/design.md#record-gl-5r9) |
-| P-BACKEND-X-002 | 多组件 PluginPackage、共享 API、独立输入 provider（含固定 Maven 版本的外部 Kernel Symbol Extractor consumer）、settings presentation与注册到唯一App/plugin `I18nRegistry`的authenticated bundle、thin variant 与 RunHost 安全装载 | [gl-sfg设计](../../openspec/changes/plugin-architecture/design.md#record-gl-sfg) |
-| P-RUN-CORE-001 | 运行结果、会话终态与内部 core 收口；有效正文在OpenSpec | [gl-k6e设计](../../openspec/changes/runtime-foundations/design.md#record-gl-k6e) |
-| E-DOC-X-002 | 开发环境、OpenSpec设计/Beads执行与CDA（旧接入沿革保留） | [OpenSpec/Beads职责](../../openspec/changes/planning-tool-responsibilities/design.md) |
-| E-BUILD-X-001 | 当前构建闭环修复；精确设计在OpenSpec，原批准保持 | [gl-4on设计](../../openspec/changes/build-closure-repair/design.md#record-gl-4on) |
-| E-BUILD-X-002 | Allure报告门薄适配、runtime source baseline恢复及四棵提交候选的唯一hunk owner；原批准保持 | [Allure报告门设计](../../openspec/changes/allure-reporting-gates/design.md#record-allure-reporting-gates) |
-| E-DOC-X-001 | 计划权威、归档与跨文档入口收口；有效正文在OpenSpec | [gl-8zk设计](../../openspec/changes/archive/2026-11-21-workflow-history/design.md#record-gl-8zk) |
-| P-LOG-IO-001 | 日志自动导出与文件 sink；有效正文在OpenSpec | [gl-s7q设计](../../openspec/changes/logging-runtime/design.md#record-gl-s7q) |
-| P-LOG-X-001 | 跨层单一日志中枢及结果归属边界；有效正文在OpenSpec | [gl-s7q设计](../../openspec/changes/logging-runtime/design.md#record-gl-s7q) |
-| P-SETTINGS-IO-001 | 全项目持久化分类、完整 data class typed DataStore 与 run 前落盘边界；有效正文在OpenSpec | [gl-zgp设计](../../openspec/changes/datastore-runtime/design.md#record-gl-zgp) |
-| P-DIAG-NATIVE-001 | Diagnose 的 native／JNA／shell 诊断纵向；有效正文在OpenSpec | [gl-yhz设计](../../openspec/changes/diagnose-handoff-foundations/design.md#record-gl-yhz) |
-| P-RUN-HANDOFF-001 | common 固定位置脚本 handoff 与 Diagnose 单次 native chain；有效正文在OpenSpec | [gl-obq设计](../../openspec/changes/diagnose-handoff-foundations/design.md#record-gl-obq) |
-| P-BACKEND-NATIVE-001 | 43284-Glued native carrier 候选；有效正文在OpenSpec | [gl-2u2设计](../../openspec/changes/plugin-followups/design.md#record-gl-2u2) |
-| P-BACKEND-NATIVE-002 | 98260 native carrier 候选；有效正文在OpenSpec | [gl-2ot设计](../../openspec/changes/plugin-followups/design.md#record-gl-2ot) |
+| P-PAYLOAD-CORE-001 | Payload 必需性、失败与成功语义；有效正文在OpenSpec | [gl-kct设计](../../tools/engineering/openspec/changes/runtime-foundations/design.md#record-gl-kct) |
+| P-FINISH-CORE-001 | Finish 严重度与必执行语义；有效正文在OpenSpec | [gl-7c2设计](../../tools/engineering/openspec/changes/runtime-foundations/design.md#record-gl-7c2) |
+| P-PAYLOAD-IO-001 | Payload 接管确认与文件保留；有效正文在OpenSpec | [gl-2qz设计](../../tools/engineering/openspec/changes/runtime-foundations/design.md#record-gl-2qz) |
+| P-RUN-IO-001 | 运行输入 staging、脚本发布与产物持久化；有效正文在OpenSpec | [gl-dzp设计](../../tools/engineering/openspec/changes/runtime-foundations/design.md#record-gl-dzp) |
+| P-BACKEND-CORE-001 | BackendDefinition 组合根、BackendDescriptor 与具名BackendUi边界；BD-I3配置实现延后 | [gl-7yv设计](../../tools/engineering/openspec/changes/runtime-foundations/design.md#record-gl-7yv) |
+| P-UI-ICON-001 | Material/Miuix 全项目语义图标目录；有效正文在OpenSpec | [gl-rot设计](../../tools/engineering/openspec/changes/semantic-icon-catalog/design.md#record-gl-rot) |
+| P-UI-ICON-002 | Material/Miuix 当前依赖的全量图标目录需求；有效正文在OpenSpec | [gl-72l设计](../../tools/engineering/openspec/changes/ui-followups/design.md#record-gl-72l) |
+| P-UI-CORE-001 | App内KMP shared Compose UI、App/plugin共用唯一KMP `I18nRegistry`与catalog schema、Compose Multiplatform非文本资源、Android/Desktop平台壳、UI feature/package与单向presentation owner收口；远期目标已记录，exact design待plugin owner稳定后重开 | [gl-75t设计](../../tools/engineering/openspec/changes/ui-followups/design.md#record-gl-75t) |
+| P-BACKEND-X-001 | Backend 成员资格、删除与断开闭包；有效正文在OpenSpec | [gl-5r9设计](../../tools/engineering/openspec/changes/runtime-foundations/design.md#record-gl-5r9) |
+| P-BACKEND-X-002 | 多组件 PluginPackage、共享 API、独立输入 provider（含固定 Maven 版本的外部 Kernel Symbol Extractor consumer）、settings presentation与注册到唯一App/plugin `I18nRegistry`的authenticated bundle、thin variant 与 RunHost 安全装载 | [gl-sfg设计](../../tools/engineering/openspec/changes/plugin-architecture/design.md#record-gl-sfg) |
+| P-RUN-CORE-001 | 运行结果、会话终态与内部 core 收口；有效正文在OpenSpec | [gl-k6e设计](../../tools/engineering/openspec/changes/runtime-foundations/design.md#record-gl-k6e) |
+| E-DOC-X-002 | 开发环境、OpenSpec设计/Beads执行与CDA（旧接入沿革保留） | [OpenSpec/Beads职责](../../tools/engineering/openspec/changes/planning-tool-responsibilities/design.md) |
+| E-BUILD-X-001 | 当前构建闭环修复；精确设计在OpenSpec，原批准保持 | [gl-4on设计](../../tools/engineering/openspec/changes/build-closure-repair/design.md#record-gl-4on) |
+| E-BUILD-X-002 | Allure报告门薄适配、runtime source baseline恢复及四棵提交候选的唯一hunk owner；原批准保持 | [Allure报告门设计](../../tools/engineering/openspec/changes/allure-reporting-gates/design.md#record-allure-reporting-gates) |
+| E-DOC-X-001 | 计划权威、归档与跨文档入口收口；有效正文在OpenSpec | [gl-8zk设计](../../tools/engineering/openspec/changes/archive/2026-11-21-workflow-history/design.md#record-gl-8zk) |
+| P-LOG-IO-001 | 日志自动导出与文件 sink；有效正文在OpenSpec | [gl-s7q设计](../../tools/engineering/openspec/changes/logging-runtime/design.md#record-gl-s7q) |
+| P-LOG-X-001 | 跨层单一日志中枢及结果归属边界；有效正文在OpenSpec | [gl-s7q设计](../../tools/engineering/openspec/changes/logging-runtime/design.md#record-gl-s7q) |
+| P-SETTINGS-IO-001 | 全项目持久化分类、完整 data class typed DataStore 与 run 前落盘边界；有效正文在OpenSpec | [gl-zgp设计](../../tools/engineering/openspec/changes/datastore-runtime/design.md#record-gl-zgp) |
+| P-DIAG-NATIVE-001 | Diagnose 的 native／JNA／shell 诊断纵向；有效正文在OpenSpec | [gl-yhz设计](../../tools/engineering/openspec/changes/diagnose-handoff-foundations/design.md#record-gl-yhz) |
+| P-RUN-HANDOFF-001 | common 固定位置脚本 handoff 与 Diagnose 单次 native chain；有效正文在OpenSpec | [gl-obq设计](../../tools/engineering/openspec/changes/diagnose-handoff-foundations/design.md#record-gl-obq) |
+| P-BACKEND-NATIVE-001 | 43284-Glued native carrier 候选；有效正文在OpenSpec | [gl-2u2设计](../../tools/engineering/openspec/changes/plugin-followups/design.md#record-gl-2u2) |
+| P-BACKEND-NATIVE-002 | 98260 native carrier 候选；有效正文在OpenSpec | [gl-2ot设计](../../tools/engineering/openspec/changes/plugin-followups/design.md#record-gl-2ot) |
 
 <a id="documentation-diagrams"></a>
 

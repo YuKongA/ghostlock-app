@@ -26,9 +26,9 @@
 | Android NDK | **30.0.16248370**：`plugin/packages/diagnose/build.gradle.kts`；当前 ABI 为 arm64-v8a | [NDK 安装](https://developer.android.com/studio/projects/install-ndk) |
 | CMake / CTest / Ninja | CMake **≥3.22**：[host tests](../../tools/tests/CMakeLists.txt)；仓库未 pin 精确 CMake/Ninja 版本；Android 本机已安装3.22.1 | [CMake 下载](https://cmake.org/download/)、[Ninja 官方安装指引](https://github.com/ninja-build/ninja/wiki/Pre-built-Ninja-packages) |
 | Python | Allure bridge 需要 **≥3.9**，仅用标准库：`tools/allure_report.py`；其它脚本按实际任务检查 | [Python 下载](https://www.python.org/downloads/) |
-| Node / npm | 规划工具需要 Node **≥22.20.0**；建议受支持的 LTS。根依赖使用 lockfile | [Node 下载](https://nodejs.org/en/download)、[npm ci](https://docs.npmjs.com/cli/commands/npm-ci) |
+| Node / npm | 规划工具需要 Node **≥22.20.0**；建议受支持的 LTS。工程工具依赖使用 lockfile | [Node 下载](https://nodejs.org/en/download)、[npm ci](https://docs.npmjs.com/cli/commands/npm-ci) |
 | Allure Report | **3.33.0**：`tools/allure_report.py` 的 VERSION；接入 bridge 的 Gradle 门自动安装到 `build/tooling/allure` | [Allure 3 安装](https://allurereport.org/docs/v3/install/) |
-| 文档 lint | markdownlint-cli2 **0.23.3**：[package.json](../../package.json) / [lockfile](../../package-lock.json) | [上游用法](https://github.com/DavidAnson/markdownlint-cli2) |
+| 文档 lint | markdownlint-cli2 **0.23.3**：[package.json](../../tools/engineering/package.json) / [lockfile](../../tools/engineering/package-lock.json) | [上游用法](https://github.com/DavidAnson/markdownlint-cli2) |
 
 依赖解析使用 Google Maven、Maven Central、Gradle Plugin Portal 及 JitPack；首次安装还需要访问 Gradle、JDK、Android、npm 的下载源。网络错误先按实际失败 URL 排查，不通过改版本或关门禁绕过。
 
@@ -81,43 +81,45 @@ Windows 使用同一包清单与 `sdkmanager.bat` / `gradlew.bat`；plugin produ
 
 ## 5. 文档与规划工具
 
-根目录执行 `npm ci`，使用项目本地 CLI，不依赖全局最新版。OpenSpec **2.1.1**、Beads **1.3.4** 由 `package.json` 与 lockfile 固定；CDA 仅安装 runtime skill、引用和许可证，上游 commit 为 `04d2e998f19b08be6ba7f697315f3a16ecdf2708`，本地入口补充项目分工；不运行上游评测 harness，不需要服务器、独立 Dolt 或额外 JDK。
+仓库根目录执行 `npm --prefix tools/engineering ci`，使用项目本地 CLI，不依赖全局最新版。OpenSpec **2.1.1**、Beads **1.3.4** 由 `tools/engineering/package.json` 与同目录 lockfile 固定；CDA 仅安装 runtime skill、引用和许可证，上游 commit 为 `04d2e998f19b08be6ba7f697315f3a16ecdf2708`，本地入口补充项目分工；不运行上游评测 harness，不需要服务器、独立 Dolt 或额外 JDK。
 
 - [OpenSpec 安装](https://openspec.dev/docs/installation)：proposal/design/specs设计与规范管理。
 - [Beads 官方安装](https://github.com/gastownhall/beads/blob/main/docs/getting-started/installation.md)：执行任务、依赖、进度和批准/运行证据。
 - [CDA 上游](https://github.com/Liparakis/ConstraintDrivenArchitecture)：作者的约束驱动设计方法；不替代独立审查。
 
 ```sh
-npm ci
-npm run --silent bd -- version
-npm run --silent openspec -- --version
-npm run --silent openspec -- list --json
-npm run --silent bd -- bootstrap --yes
-npm run --silent bd -- ready --json
+npm --prefix tools/engineering ci
+npm --prefix tools/engineering run --silent bd -- version
+npm --prefix tools/engineering run --silent openspec -- --version
+npm --prefix tools/engineering run --silent openspec -- list --json
+npm --prefix tools/engineering run --silent bd -- bootstrap --yes
+npm --prefix tools/engineering run --silent bd -- ready --json
 ```
 
-`npm ci` 包含 Beads 的原生 binary 下载（对应固定版本及本机 OS/架构），不要用 `--ignore-scripts` 后宣称 bd 已安装。OpenSpec项目适配、CDA、作者自检和独立审查skills已在仓库内，新 clone 不必再装 skill。命令报缺依赖时先 `npm ci`，不用会临时下载最新版的裸 `npx`。OpenSpec schema为ghostlock，proposal/design/specs为设计正文、tracks:null不生成tasks.md；工具分工只在[文档规范](documentation-standards.md#planning-tool-authority)维护。
+`npm --prefix tools/engineering ci` 包含 Beads 的原生 binary 下载（对应固定版本及本机 OS/架构），不要用 `--ignore-scripts` 后宣称 bd 已安装。OpenSpec 项目适配、CDA、作者自检和独立审查入口位于 `tools/engineering/skills/`，由根 AGENTS.md 按任务指向；Agent 直接读取对应 SKILL.md，不依赖 `.agents/skills` 自动发现，不重复安装。命令报缺依赖时先 `npm --prefix tools/engineering ci`，不用会临时下载最新版的裸 `npx`。OpenSpec schema为ghostlock，proposal/design/specs为设计正文、tracks:null不生成tasks.md；工具分工只在[文档规范](documentation-standards.md#planning-tool-authority)维护。
 
 ### 日常命令
 
 只看进度用 `show <id> --short` / `list`；读取任务的spec_id后直接打开相关OpenSpec章节。`--brief-deps`只缩短依赖对象；证据按需取notes/comments，不输出整个任务库或全部历史。
 
 ```sh
-npm run --silent bd -- show <id> --json --brief-deps
-npm run --silent bd -- update <id> --claim
-npm run --silent bd -- update <id> --append-notes '<实际命令、输入、输出/退出码、NOT_RUN项>'
-npm run --silent bd -- close <id> --reason '<满足原判据的结论及证据位置>'
-npm run --silent bd -- update <id> --spec-id 'openspec/changes/<name>/design.md#<anchor>'
-npm run --silent openspec -- instructions apply --change <name> --json
-npm run --silent bd -- dep relate <task-id> <decision-id>  # 参考，不新增阻断
+npm --prefix tools/engineering run --silent bd -- show <id> --json --brief-deps
+npm --prefix tools/engineering run --silent bd -- update <id> --claim
+npm --prefix tools/engineering run --silent bd -- update <id> --append-notes '<实际命令、输入、输出/退出码、NOT_RUN项>'
+npm --prefix tools/engineering run --silent bd -- close <id> --reason '<满足原判据的结论及证据位置>'
+npm --prefix tools/engineering run --silent bd -- update <id> --spec-id 'tools/engineering/openspec/changes/<name>/design.md#<anchor>'
+npm --prefix tools/engineering run --silent openspec -- instructions apply --change <name> --json
+npm --prefix tools/engineering run --silent bd -- dep relate <task-id> <decision-id>  # 参考，不新增阻断
 ```
 
-设计正文只维护在OpenSpec，Beads `design`留空、`spec_id`指向设计文件/锚点，验收字段只引用适用矩阵。不要把整个JSONL当日常阅读入口。title / `external_ref` 保留语义编号；候选需求用 `deferred`，具名条件缺失用 `blocked`。只领取获准工作，close 不会替你验证行为或批准范围。人类查进度可运行 `npm run --silent bd -- list`，不必翻旧计划历史。
+以上命令从仓库根目录执行；npm 脚本的工作目录是 `tools/engineering`，所以 CLI 输出文件参数（如 `-o .beads/issues.jsonl`）相对此目录，而 `spec_id` 和设计中的源码路径仍相对仓库根目录。
+
+设计正文只维护在OpenSpec，Beads `design`留空、`spec_id`指向设计文件/锚点，验收字段只引用适用矩阵。不要把整个JSONL当日常阅读入口。title / `external_ref` 保留语义编号；候选需求用 `deferred`，具名条件缺失用 `blocked`。只领取获准工作，close 不会替你验证行为或批准范围。人类查进度可运行 `npm --prefix tools/engineering run --silent bd -- list`，不必翻旧计划历史。
 
 ### 保存、交接与升级
 
-- 任务的写入 authority 是 `.beads/embeddeddolt` 中的原生数据库，CLI 维护其事务历史。`.beads/issues.jsonl` 是 CLI 生成的任务交接投影，禁止手编；新 clone 的 `bootstrap` 导入该投影。它保留任务描述、OpenSpec指针、验收引用、notes、状态、依赖和注释；OpenSpec设计文件必须同批提交，不包含完整 Dolt 分支历史，不是跨机器并发同步。
-- 已配置自动导出，间隔为 **1ms**（上游把 `0s` 解释为默认60s，不表示关闭节流）。在交付/提交前执行一次 `npm run --silent bd -- export -o .beads/issues.jsonl`，确认最后一次更新已落盘；正常提交它和原生配置，不提交数据库文件。
+- 任务的写入 authority 是 `tools/engineering/.beads/embeddeddolt` 中的原生数据库，CLI 维护其事务历史。`tools/engineering/.beads/issues.jsonl` 是 CLI 生成的任务交接投影，禁止手编；新 clone 的 `bootstrap` 导入该投影。它保留任务描述、OpenSpec指针、验收引用、notes、状态、依赖和注释；OpenSpec设计文件必须同批提交，不包含完整 Dolt 分支历史，不是跨机器并发同步。
+- 已配置自动导出，间隔为 **1ms**（上游把 `0s` 解释为默认60s，不表示关闭节流）。在交付/提交前执行一次 `npm --prefix tools/engineering run --silent bd -- export -o .beads/issues.jsonl`，确认最后一次更新已落盘；正常提交它和原生配置，不提交数据库文件。
 - 当前只配置本地任务协作，没有发布 Dolt remote。原生 CLI 的“无 remote”提示不证明任务丢失，也不授权 Agent 自动 push；真正跨机协作时使用官方 Dolt remote/push/pull，而不是手写 JSONL 合并器。
 - 自动 backup、auto-push、export git-add 均关闭，未安装 Git hooks。正常本地 commit 由 Agent 核对本批范围和适用验证后主动完成。fresh clone 用 **bootstrap，不重复 init**：Beads1.3.4 的 `init` 会自动提交 agent 文件，`--skip-agents --skip-hooks` 不会取消此行为。
 - 升级时精确修改 npm 版本/lockfile、CDA 来源与实际适配；保留OpenSpec设计/Beads执行的本地skill与schema适配；不直接用生成器更新覆盖成Markdown任务清单。只验证受影响的工具行为与既有门禁，不升级产品工具链。

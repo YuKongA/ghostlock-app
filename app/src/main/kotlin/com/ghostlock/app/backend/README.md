@@ -1,6 +1,6 @@
 # Backend membership 与 builtin Diagnose plugin
 
-> 本文描述当前工作树。有效设计见 [BXP3-B1](../../../../../../../../openspec/changes/builtin-diagnose-plugin/design.md#record-gl-dek)，当前结构图见 [full-process-uml.md](../../../../../../../../docs/development/full-process-uml.md#global-current-view)。历史 same-APK `BackendRegistry`、`BackendDefinition`、Host-owned Diagnose Flow/JNA/native 与 Custom placeholder 已退出当前实现。
+> 本文描述当前工作树。有效设计见 [BXP3-B1](../../../../../../../../tools/engineering/openspec/changes/builtin-diagnose-plugin/design.md#record-gl-dek)，当前结构图见 [full-process-uml.md](../../../../../../../../docs/development/full-process-uml.md#global-current-view)。历史 same-APK `BackendRegistry`、`BackendDefinition`、Host-owned Diagnose Flow/JNA/native 与 Custom placeholder 已退出当前实现。
 
 ## 1. 当前 owner
 

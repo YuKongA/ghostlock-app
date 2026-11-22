@@ -18,7 +18,7 @@
 
 ## Android 应用架构
 
-当前架构权威由公共运行设计（[gl-4tt 设计](openspec/changes/runtime-foundations/design.md#record-gl-4tt)）和正在实施的内置插件增量（[gl-dek 设计](openspec/changes/builtin-diagnose-plugin/design.md#record-gl-dek)）共同确定；当前状态的唯一全局图位于 [full-process-uml.md](docs/development/full-process-uml.md)。
+当前架构权威由公共运行设计（[gl-4tt 设计](tools/engineering/openspec/changes/runtime-foundations/design.md#record-gl-4tt)）和正在实施的内置插件增量（[gl-dek 设计](tools/engineering/openspec/changes/builtin-diagnose-plugin/design.md#record-gl-dek)）共同确定；当前状态的唯一全局图位于 [full-process-uml.md](docs/development/full-process-uml.md)。
 
 Kotlin 应用采用中性 Clean Architecture 边界。domain 模型不包含 Android、Compose、具体 backend 或持久化类型；Android 存储与平台副作用位于 data adapter；应用组装统一由 AppContainer 持有；Screen 与 ViewModel 只消费不可变状态和 action contract。
 

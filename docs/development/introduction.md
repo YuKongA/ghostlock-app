@@ -2,7 +2,7 @@
 
 <a id="run-introduction"></a>
 
-> **代号与快照范围**：当前条目引用主计划语义代号（[gl-4tt设计](../../openspec/changes/runtime-foundations/design.md#record-gl-4tt)，`plan-semantic-identifiers`），不是统一 RUN 前缀下的旧 R 序号；下文原快照、历史批准与门禁保持原义，旧来源子号按映射定位。
+> **代号与快照范围**：当前条目引用主计划语义代号（[gl-4tt设计](../../tools/engineering/openspec/changes/runtime-foundations/design.md#record-gl-4tt)，`plan-semantic-identifiers`），不是统一 RUN 前缀下的旧 R 序号；下文原快照、历史批准与门禁保持原义，旧来源子号按映射定位。
 
 > 当前快照：P-RUN-X-001/批次03已于2026-11-17完成shared Host去重；`BXP3-B1` builtin Diagnose plugin source已经进入当前工作树，完整V1、AVD双域、process-death与具名ARM64真机门仍未关闭。P-DIAG-NATIVE-001/批次01的旧same-APK 4 KiB/16 KiB App/Shizuku纵向证据继续只作历史事实，不能外推为当前pluginized路径PASS。
 > 有效设计在OpenSpec、原批准与进度在Beads；提交依赖先经过已完成的Allure报告门`gl-8s7`，再由runtime source baseline恢复`gl-dpd`补齐三个已批准但未形成Git前驱的完成态，之后由当前B1 exact scope/矩阵`gl-dek`消费，最后进入重叠构建闭环`gl-4on`；B1父设计仍为`gl-sfg`。旧统一ledger只保留历史，不再是当前逐文件范围authority；结构图见[当前状态全局UML](full-process-uml.md#global-current-view)。
@@ -53,7 +53,7 @@ DataStore actor 是每个 aggregate 的唯一写顺序 owner。设置事件提�
 
 ## 三、typed RunHost 执行链
 
-合同定义：[P-RUN-IPC-001：RunHost wire 与状态机](../../openspec/specs/runhost-wire/spec.md#p-run-ipc-001)；下列为本页原快照说明，不复制合同 authority。
+合同定义：[P-RUN-IPC-001：RunHost wire 与状态机](../../tools/engineering/openspec/specs/runhost-wire/spec.md#p-run-ipc-001)；下列为本页原快照说明，不复制合同 authority。
 
 1. UI只提交selected stable backend key。
 2. `RunSessionCoordinator`只读一次terminal READY `BackendCatalogView`，按key取得同一projection的descriptor与exact `PluginObjectRef`，再把privilege snapshot固定为admission与dispatch共同target；显示名称只来自Host presentation。

@@ -21,12 +21,12 @@
 
 <a id="agents-reading"></a>
 
-**只读任务相关条款，复用未变化上下文，不遍历全部链接或历史。** 下列入口在触及对应任务时必须遵守；细则只在链接目标维护，按需读取不降低效力。**skill 是相应职责的按需入口，不是另一轮流程；细则仍只在所引规范维护。**
+**只读任务相关条款，复用未变化上下文，不遍历全部链接或历史。** 下列入口在触及对应任务时必须遵守；细则只在链接目标维护，按需读取不降低效力。**skill 是相应职责的按需入口，不是另一轮流程；细则仍只在所引规范维护。** 工程工具及 skill 集中在 `tools/engineering/`；按任务直接读取下列或[工具分工](docs/development/documentation-standards.md#planning-tool-authority)所指的 SKILL.md，不依赖原生 skill 自动发现。
 
 - **首次配置或缺工具**：按[开发环境](docs/development/development-environment.md)选择任务依赖，不把全套工具或产品门变成文档任务前置条件。
 
 - **先设计、最小改动、适用验证**：按 [S/M/L 分级](/docs/development/engineering-standards.md#engineering-change-levels) 执行 Explore → Design → Implement → Verify；L 级先出计划并获用户认可。一批一类事，上批验过再进；同批门禁连续失败 2 次即停，回 debug。
-- **作者先自检，再交付审查**：Lead/子智能体在设计/代码正式送审、交付前或接到自检任务时，主动读取并使用 [ghostlock-author-self-check](/.agents/skills/ghostlock-author-self-check/SKILL.md)，按 [作者自检](/docs/development/design-review-principles.md#review-author-self-check) 修正原交付；不另设报告或预审，不替代独立审查、批准和门禁。
+- **作者先自检，再交付审查**：Lead/子智能体在设计/代码正式送审、交付前或接到自检任务时，主动读取并使用 [ghostlock-author-self-check](/tools/engineering/skills/ghostlock-author-self-check/SKILL.md)，按 [作者自检](/docs/development/design-review-principles.md#review-author-self-check) 修正原交付；不另设报告或预审，不替代独立审查、批准和门禁。
 - **任务选路**：普通 S/M 不跑全套；按已批准设计实施不重开设计；新 L／实质设计差异进入 OpenSpec，涉及实质架构再用 CDA。按[工具分工](docs/development/documentation-standards.md#planning-tool-authority)直达对应 skill，作者自检照常，独立审查只按 §7。
 - **纠正立即生效**：停止受影响动作及委派，同步直接执行入口；不自行重启停止项，不把 NOT_RUN 改成 PASS。纠正、临时指令及交接按 [执行细则](/docs/development/engineering-standards.md#engineering-execution)。
 - **不空转**：每轮推进唯一交付物或具名未知；无新输入/假设不重复检查，证据足够即交付。调查、SHA 和进展报告按 [取证与汇报](/docs/development/engineering-standards.md#engineering-investigation)；结论给命令与结果，不以状态复述冒充进展。
@@ -59,7 +59,7 @@
 
 - **非作者、只读、同岗固定成员**；不写文件、不跑门禁。权威序：守则 > AGENTS > engineering-standards/design-philosophy > analysis。
 - **触发**：新 L 级设计定稿，或实质改变已批准目标/范围、合同、owner/生命周期、失败语义、成功/验收判据，含审核/门禁原则修订。按已批准设计实施、进度/证据补录、格式/代号/链接机械修订不触发；实施偏离只审差异，普通代码评审与适用测试照常。
-- **任务入口**：按上述条件触发时，Lead 委派既有非作者 critic 主动读取并使用 [ghostlock-design-critic](/.agents/skills/ghostlock-design-critic/SKILL.md)，无需用户另行指定。审查与关闭按 [审查原则 §3](/docs/development/design-review-principles.md#review-execution)：独立判断，critic 已指定且原条件明确的机械修复由 Lead 核对，其余定点复审；**阻断未按原条件关闭不得过对应 gate**，不无条件追加最终 PASS。
+- **任务入口**：按上述条件触发时，Lead 委派既有非作者 critic 主动读取并使用 [ghostlock-design-critic](/tools/engineering/skills/ghostlock-design-critic/SKILL.md)，无需用户另行指定。审查与关闭按 [审查原则 §3](/docs/development/design-review-principles.md#review-execution)：独立判断，critic 已指定且原条件明确的机械修复由 Lead 核对，其余定点复审；**阻断未按原条件关闭不得过对应 gate**，不无条件追加最终 PASS。
 
 <a id="agents-gates"></a>
 
@@ -89,7 +89,7 @@
 ## 11. 指针表（旧 → 新；旧标签 R9，非全局 R9）
 
 - 三层架构（结构/CLI/资产/组件模型/owner 白名单/根级标量/vr_guard/命名空间）⇒ `introduction.md` §一 §三；决策 `adr/0001`·`0003`·`0004`·`0006`。
-- 设计 ⇒ `npm run --silent openspec -- list --json`；执行与依赖 ⇒ `npm run --silent bd -- list` / `show <id> --json --brief-deps` 的 spec_id；语义代号 ⇒ [工程代号入口](/docs/development/documentation-standards.md#work-identifiers)；执行分层 ⇒ [P-RUN-X-001 简介](/docs/development/introduction.md#run-introduction)。
+- 设计 ⇒ `npm --prefix tools/engineering run --silent openspec -- list --json`；执行与依赖 ⇒ `npm --prefix tools/engineering run --silent bd -- list` / `show <id> --json --brief-deps` 的 spec_id；语义代号 ⇒ [工程代号入口](/docs/development/documentation-standards.md#work-identifiers)；执行分层 ⇒ [P-RUN-X-001 简介](/docs/development/introduction.md#run-introduction)。
 - 原则疑问 ⇒ [设计哲学对应主题](/docs/development/design-philosophy.md#e-review-rule-003)；全工程 R 短码 ⇒ [工程规则表](/docs/development/engineering-rules.md)，均按疑点查阅。
 
 ## 12. 通用日志

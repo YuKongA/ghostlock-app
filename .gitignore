@@ -30,5 +30,5 @@ node_modules/
 .dolt/
 *.db
 .beads-credential-key
-.beads/proxieddb/
+tools/engineering/.beads/proxieddb/
 *.gate.lock*
