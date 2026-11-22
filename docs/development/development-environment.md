@@ -1,105 +1,243 @@
-# 开发环境：命令来源与从零安装
+# 配置开发环境
 
-本文负责环境安装与命令定位，不定义产品支持状态、批准或新门禁。盘点日期 **2026-11-22**。以下命令均从仓库根目录执行，另注工作目录者除外。按任务读对应部分，不要求全文安装。
+按本文完成安装后，你可以在当前终端使用项目的构建、测试和计划管理工具。**首次配置读第 1–4 节；查某个命令来自哪里，直接看[命令参考](#environment-command-sources)。**
 
-- 从系统自带工具开始：[一键安装](#environment-install)。macOS 额外假设已安装 Homebrew；Linux 假设常规 workstation + GNU 用户空间；Windows 假设 Windows 11 系统 PowerShell/WSL 组件入口。
-- 不知道命令从哪里来：[命令来源表](#environment-command-sources)。有 Wrapper/本地 npm CLI 的工具不另装全局版。
-- 只做文档/计划：[规划工具](#planning-tools)；构建：[Android](#android-setup)；设备/Rust：[按需工具](#optional-tools)。
-- `plugin/**` 与 Allure bridge 已纳入 Git；以本 checkout 的构建配置为准。文件缺失应报告 checkout 不完整，不造占位实现。环境准备成功不表示当前重构树通过产品验收。
+安装器目前提供 macOS、Linux 和 Windows/WSL2 路线。全新系统实装尚未验证；已有验证为安装器回归测试和下载元数据检查，不代表产品构建或真机通过。
+
+## 1. 选择平台和开发任务
+
+### 平台要求
+
+| 平台 | 开始前需要 | 执行位置 |
+|---|---|---|
+| macOS，Apple Silicon / Intel | 系统工具及 Homebrew | Terminal，普通用户 |
+| Linux x86_64 | 常规 workstation、GNU 工具、sudo 权限 | 终端，普通用户 |
+| Windows 11 x64 | 系统 PowerShell；允许启用 WSL2 | PowerShell 安装，之后在 Ubuntu 中开发 |
+
+Linux 安装器面向 Ubuntu 24.04+、Debian 13+、Fedora 43+、openSUSE Tumbleweed 和当前 Arch，通过发行版包管理器安装依赖。Linux arm64 仅提供规划工具安装；Android host 工具需要 x86_64。Atomic/Silverblue、Alpine、NixOS 不使用本文的系统包安装路线。
+
+### 选择安装内容
+
+| 你要做什么 | 安装参数 | 内容 |
+|---|---|---|
+| 文档、设计、任务管理 | `planning` | Git、ripgrep、Python、Node、Beads、OpenSpec、Markdown lint |
+| Android 开发、host native 测试 | `android`（默认） | planning + C/C++、CMake/CTest、Ninja、JDK、Android SDK/NDK |
+| 还需要 retained Rust extractor | `full` | android + Rust/Cargo |
+
+不用预先安装 Python、Node、Java 或 Android Studio。安装器补齐所选任务的依赖；默认安装不包含模拟器镜像。
+
+## 2. 取得代码
+
+**已有工作副本：直接进入该目录，继续第 3 节。**
+
+已有 Git 时：
+
+```sh
+git clone https://github.com/YuKongA/ghostlock-app.git
+cd ghostlock-app
+```
+
+没有 Git 时，从[仓库页面](https://github.com/YuKongA/ghostlock-app)下载 ZIP 并解压，先在解压目录运行第 3 节的安装器。安装完成后 Git 即可用，再执行上面的 clone 命令。正式开发使用 Git 工作副本，并在其中重跑所需安装命令，生成该工作副本的环境入口；ZIP 没有项目计算 versionCode 所需的 Git 历史。
+
+Windows 下，正式工作副本建议放在 WSL 的 Linux home，而不是 Windows 挂载盘。已有 Windows 工作副本也可从下面的 PowerShell 入口开始安装。
 
 <a id="environment-install"></a>
 
-## 1. 从零安装：选择一档执行
+## 3. 安装并激活
 
-安装源码集中在 [`tools/engineering/install`](../../tools/engineering/install/)：[`install.sh`](../../tools/engineering/install/install.sh)负责系统前置包，[`install.py`](../../tools/engineering/install/install.py)负责共同下载/配置，Windows [`install.ps1`](../../tools/engineering/install/install.ps1)进入 WSL2 后执行同一个安装器。它们是安装工具，不是新的构建或审核流程。
+以下示例安装 `android`；只做文档时替换为 `planning`，需要 Rust 时替换为 `full`。
 
-| 参数 | 安装内容 | 不执行 |
-|---|---|---|
-| `--profile planning` | Git、rg、Python（安装器）、Node 24 LTS、工程 npm lockfile 中的 CLI | 不读 Android/Rust 配置，不装 JDK/SDK |
-| `--profile android`（默认） | planning + host C/C++、CMake/CTest、Ninja、JDK daemon/toolchain、SDK platform/Build Tools/NDK/SDK CMake/platform-tools | 不创建或启动 AVD，不部署设备 |
-| `--profile full` | android + rustup、manifest MSRV 对应 Rust/Cargo | 不编译 extractor，不跑任何产品门 |
-| `--system-image 'system-images;…'` | android/full 额外安装 emulator 和明确指定的系统镜像 | 不替用户选择目标 API/ABI，不声称 AVD 等同真机 |
-| `--accept-licenses` | 明确同意由脚本接受 Android SDK 许可证；省略则交互确认 | 不改其它许可/授权/项目批准 |
-| `--plan` | 只读显示本 checkout 的版本需求；此预览需要已有 Python3 | 不先安装 Python，不联网、不写文件、不改系统包 |
+### macOS / Linux
 
-### 1.1 先取得仓库，不假设 Git 已安装
-
-Git 尚未安装时，从项目代码托管页面用浏览器下载源码 ZIP并解压，再从解压目录执行下面安装命令；ZIP中的安装器可准备环境，但没有 Git 历史，不用于计算正式 versionCode。Git 可用后，用项目实际 clone URL 执行 `git clone <仓库URL>`，进入 clone 后重跑所需安装档，使用该 checkout 输出的激活路径。不要把 ZIP 冒充完整 clone，稳定 versionCode 仍需完整历史。
-
-### 1.2 macOS：Apple Silicon / Intel
-
-在系统 Terminal 中执行（无需预装 Python、Node、Java或 Android Studio）：
+在代码根目录执行：
 
 ```sh
 bash tools/engineering/install/install.sh --profile android
+source build/engineering/env-android.sh
 ```
 
-`brew` 不在 PATH 时，脚本寻找 `/opt/homebrew/bin/brew`、`/usr/local/bin/brew`。缺 Xcode Command Line Tools 时会打开 Apple 安装入口并退出 3；完成系统对话框后重跑同一命令。Homebrew 本身不由本脚本重复安装。脚本不自动安装 Rosetta，不以 x64 SDK 冒充 Apple Silicon SDK。
+第一次安装可能需要下载较大的 JDK、SDK 和 NDK。Linux 会提示 sudo 密码；不要用 `sudo bash`运行整个安装器。Android SDK 许可证由你交互确认。
 
-### 1.3 Linux：常规可变 workstation
+macOS 若弹出 Command Line Tools 安装窗口，完成安装后重跑同一命令。脚本返回退出码 3 表示在等待这个系统步骤，不是安装完成。
 
-Ubuntu **24.04+**、Debian **13+**、Fedora **43+**、openSUSE Tumbleweed、当前 Arch 使用同一命令，按系统已有包管理器分支；这些是提供脚本的目标平台，不是本机实装通过声明：
+### Windows / WSL2
 
-```sh
-bash tools/engineering/install/install.sh --profile android
-```
-
-非 root 用户需要 `sudo` 权限及密码；只有系统包阶段使用 sudo，后续工具归当前用户。不要用 `sudo bash install.sh` 把全部环境装到 root home。不覆盖 apt/dnf/zypper 仓库配置，不关闭 TLS，不自动全系统升级。Arch 使用现有一致的软件包数据库；出现镜像404/过期数据库时，先按发行版策略维护系统，安装器不自行执行部分升级。Atomic/Silverblue、Alpine/musl、NixOS、容器 minimal image 不等同此处的 workstation，不套用这些包命令。
-
-Android 的 Linux host 预编译工具按 **x86_64** 路线提供；Linux arm64 可运行 planning 档，android/full 在安装前明确停止，不假装 NDK可用。
-
-### 1.4 Windows 11 x64：系统 PowerShell → WSL2 Ubuntu
-
-现有 host CMake 明示 POSIX，Gradle 使用 `python3`，Allure bridge 使用无 `.cmd` 的本地 CLI。**本安装入口选择 WSL2 Linux 工具链，不宣称 Windows 原生全链路兼容。** 不依赖用户预装 winget、Chocolatey、Git Bash、Python或 Node。
-
-在项目目录的 PowerShell 中执行：
+在代码目录的 PowerShell 中执行：
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\engineering\install\install.ps1 -Profile android
 ```
 
-首次启用 WSL 时按系统提示使用管理员 PowerShell、重启；随后执行 `wsl -d Ubuntu-24.04` 完成 Linux 用户初始化，再重跑同一安装命令。此类 OS 重启/首次用户创建是明确的续跑点，不写成无人值守一次必成功。`-AcceptLicenses`、`-SystemImage 'system-images;…'`对应 Linux 参数。Windows ARM64 不属于此 Android 安装目标。
+首次启用 WSL2 时：
 
-WSL 建议将正式 Git checkout 放在 Linux home，包和 SDK也装在 Linux文件系统，不混用 Windows SDK/NDK。若现有 `local.properties` 指向 Windows盘 SDK，脚本提前停止并保留它；应在独立 Linux checkout 配置，不能将 Windows SDK 目录喂给 Linux sdkmanager。设备 USB转接/Windows emulator互联另见[设备说明](#optional-tools)，本脚本不修改宿主USB、防火墙或虚拟化配置。
+1. 根据系统提示以管理员身份运行并重启 Windows。
+2. 执行 `wsl -d Ubuntu-24.04`，完成 Linux 用户创建。
+3. 回到 PowerShell，重跑上面的安装命令。
 
-### 1.5 安装器实际执行的系统包命令
+安装完成后进入 **WSL Ubuntu**，按脚本打印的绝对路径执行 `source`。如果工作副本已在 WSL 中，也可以直接执行 macOS/Linux 小节的两条命令。
 
-先按 planning 列安装；android/full **在同一条 install 中追加**右列。包名在此解释，执行列表以对应脚本为准。
+项目现有 host 测试和 Allure 调用链依赖 POSIX；这里使用 Linux 工具链，不是 Windows 原生构建。Windows SDK/NDK 不与 WSL 共用。
 
-| 系统 / 命令来源 | planning 包 | android/full 追加包 |
-|---|---|---|
-| Homebrew：`brew install` | `git ripgrep python ca-certificates` | `cmake ninja`；compiler来自 Apple CLT |
-| Debian/Ubuntu APT：`sudo apt-get update`，`sudo apt-get install -y` | `git ripgrep python3 ca-certificates curl tar xz-utils unzip` | `build-essential cmake ninja-build pkg-config` |
-| Fedora DNF：`sudo dnf install -y` | `git ripgrep python3 ca-certificates curl tar xz unzip` | `gcc gcc-c++ make cmake ninja-build pkgconf-pkg-config` |
-| openSUSE Zypper：`sudo zypper --non-interactive install` | 同 Fedora planning 列 | `gcc gcc-c++ make cmake ninja pkg-config` |
-| Arch Pacman：`sudo pacman -S --needed --noconfirm` | `git ripgrep python ca-certificates curl tar xz unzip` | `base-devel cmake ninja pkgconf` |
-| Windows：系统 `wsl.exe --install --distribution Ubuntu-24.04 --no-launch` | 安装/启用 WSL2 Ubuntu，随后使用上述 APT分支 | 同 Ubuntu，不混装 Windows compiler |
+### 以后重新打开终端
 
-系统包管理器可能安装/更新列出的包及其依赖；这不是纯只读检查。macOS `bash`/`curl`/`tar`/`unzip` 来自系统，Linux相应缺项由上表补齐。安装器Python仅用标准库，不依赖 pip、requests、jq 或 uv。
-
-### 1.6 下载、持久化与激活
-
-- Node：官方 `latest-v24.x` 的匹配 host/arch tar.gz，核对官方 `SHASUMS256.txt`；**24系列最新修订版是安装策略，不是仓库精确pin**，npm `--engine-strict`进一步检查整个lockfile。
-- JDK：Adoptium API按仓库声明的major、OS和架构获取 Temurin JDK，核对API提供的SHA256；完整版本目录复用，新目录同盘暂存后落位，不覆盖使用中的JDK。版本/下载入口由安装器打印或保留版本化目录，不改系统 Java alternatives。
-- Android CLI：Google `repository2-3.xml` 的 `cmdline-tools;latest`，同时选择 host-os/host-arch，按上游 checksum 类型校验；SDK具体包读取仓库配置，SDK CMake **3.22.1**是本安装器兼容选择，不冒充项目精确pin。
-- Rust：仅full，官方下载 `rustup-init` 并核对SHA256，`--no-modify-path --default-toolchain none`；安装 manifest MSRV对应toolchain。MSRV并非唯一可用版本，不更改全局Rust默认值。
-- 下载工具落在 `~/.local/share/ghostlock-development/`；Rust使用既有 `CARGO_HOME`/`RUSTUP_HOME`或rustup默认目录。保留已有 `local.properties`，有合法 `sdk.dir`就使用它，否则设置 `ANDROID_HOME` 指向受管SDK，不写弃用 `ndk.dir`。
-- 每个 checkout/profile 单独生成未跟踪的 `build/engineering/env-<profile>.sh`。**安装结束按打印路径执行 `source`，后续命令在该 shell 中运行**。不修改 shell rc，不覆盖另一 checkout/profile 的激活入口。
-- 激活文件设置 PATH、JAVA_HOME、JDK_TOOLCHAIN_HOME、ANDROID_HOME；专用 `GRADLE_USER_HOME`仅配置 `org.gradle.java.installations.fromEnv=JAVA_HOME,JDK_TOOLCHAIN_HOME`，不修改全局 `~/.gradle/gradle.properties`。IDE需使用相同Gradle user home/JDK，不能只配置终端。
-- 失败立即返回非零；系统包已安装的部分保留，修正具名失败后重跑。不会重置Git、认领Beads、运行bootstrap/测试、启动AVD或安装APK。
+在同一工作副本根目录，只需重新激活对应环境：
 
 ```sh
-# 已有Python时先看只读安装需求
-bash tools/engineering/install/install.sh --plan --profile android
-# 实际安装后，使用本checkout对应入口
 source build/engineering/env-android.sh
 ```
 
+planning/full 分别使用 `env-planning.sh`、`env-full.sh`。这些文件位于忽略的 build 目录；安装器不修改你的 shell 启动文件。
+
+<a id="android-setup"></a>
+
+## 4. 确认工具可用，然后开始工作
+
+### 所有安装档
+
+```sh
+node --version
+npm --prefix tools/engineering run --silent bd -- version
+npm --prefix tools/engineering run --silent openspec -- --version
+```
+
+三条命令应正常退出并显示版本。Beads/OpenSpec 的版本以[工程工具 package.json](../../tools/engineering/package.json)为准。
+
+### android / full 再检查
+
+```sh
+java -version
+"$JDK_TOOLCHAIN_HOME/bin/javac" -version
+"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --list_installed
+cmake --version
+ctest --version
+ninja --version
+```
+
+应能看到 daemon JDK、编译 JDK 和仓库所要求的 SDK 包；具体版本及其配置位置见[开发工具参考](#environment-command-sources)。这些检查确认工具可启动，不执行产品测试。
+
+**到这里环境配置结束。** 接下来按你的任务选择入口：
+
+- 查任务、读设计：[Beads / OpenSpec 日常使用](#planning-tools)。
+- 编译或测试：按[工程规范中的适用门命令](engineering-standards.md#engineering-gate-commands)执行，不把所有门当成初始化步骤。
+- 配置模拟器、连接设备或使用 Rust：[可选配置](#optional-tools)。
+- 某一步失败：[常见问题](#environment-troubleshooting)。
+
+<a id="planning-tools"></a>
+
+## 5. Beads / OpenSpec 日常使用
+
+下面的命令均在仓库根目录执行。npm 脚本实际在 `tools/engineering` 中运行；Beads 的 `spec_id` 仍以仓库根目录为基准。
+
+### 新 clone：导入任务
+
+安装器已经执行过 npm 安装。**仅当新 clone 尚未初始化本地任务库时**，执行：
+
+```sh
+npm --prefix tools/engineering run --silent bd -- bootstrap --yes
+```
+
+它读取已提交的任务投影。已有任务库不重建；不要改用 `bd init`，该版本的 init 会产生额外初始化提交。
+
+### 查任务和设计
+
+```sh
+npm --prefix tools/engineering run --silent bd -- list
+npm --prefix tools/engineering run --silent bd -- show <id> --json --brief-deps
+npm --prefix tools/engineering run --silent openspec -- list --json
+npm --prefix tools/engineering run --silent openspec -- instructions apply --change <name> --json
+```
+
+从任务的 `spec_id` 打开对应设计。`--brief-deps`只缩短依赖对象，notes/comments仍会返回；只需导航字段时可使用：
+
+```sh
+npm --prefix tools/engineering run --silent bd -- show <id> --json --brief-deps |
+  node -e 'const rows = JSON.parse(require("node:fs").readFileSync(0, "utf8")); const fields = ["id", "title", "status", "spec_id", "acceptance_criteria", "dependencies"]; console.log(JSON.stringify(rows.map(row => Object.fromEntries(fields.map(key => [key, row[key]]))), null, 2));'
+```
+
+### 更新任务与保存记录
+
+以下是按需操作，不要整段执行。认领、关闭及设计批准仍遵守原任务要求；工具的 ready 状态不代表获准实施。
+
+```sh
+npm --prefix tools/engineering run --silent bd -- update <id> --claim
+npm --prefix tools/engineering run --silent bd -- update <id> --append-notes '<实际命令、结果与未运行项>'
+npm --prefix tools/engineering run --silent bd -- close <id> --reason '<满足原判据的结论及证据位置>'
+npm --prefix tools/engineering run --silent bd -- update <id> --spec-id 'tools/engineering/openspec/changes/<name>/design.md#<anchor>'
+npm --prefix tools/engineering run --silent bd -- dep relate <task-id> <decision-id>
+```
+
+提交前导出最后一次更新：
+
+```sh
+npm --prefix tools/engineering run --silent bd -- export -o .beads/issues.jsonl
+```
+
+这里的输出路径相对 npm 工作目录，实际文件是 `tools/engineering/.beads/issues.jsonl`。
+
+- 原生任务库：`tools/engineering/.beads/embeddeddolt`；JSONL 是 CLI 生成的 Git 交接投影，不手编，也不包含完整 Dolt 历史。
+- 当前自动导出间隔为 1ms；auto-push、backup、export git-add 均关闭，没有安装 Git hooks 或配置共享 Dolt remote。“无 remote”提示不等于任务丢失，不需为本地使用配置服务或 push。
+- 设计正文、任务字段及批准证据的唯一归属见[工具分工](documentation-standards.md#planning-tool-authority)；相关 skill 由根 AGENTS.md 路由，不另装全局 skill。
+
+<a id="optional-tools"></a>
+
+## 6. 可选配置
+
+### 模拟器与真机
+
+用 `sdkmanager --list`选择完整的 `system-images;...`包，再按任务需要安装：
+
+```sh
+bash tools/engineering/install/install.sh --profile android --system-image '<完整镜像包名>'
+source build/engineering/env-android.sh
+avdmanager create avd -n <名称> -k '<同一镜像包名>'
+emulator -avd <名称>
+```
+
+Linux 模拟器加速需要 KVM 权限；macOS 使用 Hypervisor.Framework。安装器不调整内核、用户组或虚拟化设置。
+
+真机先运行 `adb devices -l`，后续命令使用 `adb -s <SERIAL> ...`。Linux 可能需要 USB/udev 规则；WSL USB接入参考[Microsoft USB文档](https://learn.microsoft.com/windows/wsl/connect-usb)。原[真机门禁](engineering-standards.md#engineering-device-gate)不变，AVD不能替代其证据。
+
+### Rust extractor
+
+激活 full 档后：
+
+```sh
+rustc --version
+cargo --version
+```
+
+需要运行 extractor 测试时，进入 `tools/extract_rs` 再执行 `cargo test --release`。项目根目录没有 Cargo.toml。
+
+### IDE 与已有 SDK
+
+IDE需要使用与激活脚本一致的 JDK 和 `GRADLE_USER_HOME`。安装器保留 `local.properties`；已有合法 `sdk.dir`时使用该 SDK，否则通过 `ANDROID_HOME`选择受管 SDK。NDK由模块的 `ndkVersion`选择，不写弃用的 `ndk.dir`。
+
+<a id="environment-troubleshooting"></a>
+
+## 7. 常见问题
+
+| 现象 | 处理方式 |
+|---|---|
+| 新终端找不到 node/java/adb | 先source本checkout对应的`build/engineering/env-*.sh`，不要先重复全局安装 |
+| macOS要求安装CLT，退出3 | 完成Apple安装窗口，再重跑原命令 |
+| Windows首次启用WSL后未继续安装 | 完成重启及Ubuntu用户创建，再重跑PowerShell入口 |
+| WSL提示Windows SDK路径冲突 | 使用Linux checkout及SDK；保留Windows工作副本的local.properties |
+| 下载失败或校验不匹配 | 按输出的URL检查网络/代理；修正原因后重跑，不关闭TLS或跳过校验 |
+| npm成功，但bd命令失败 | 检查原生binary下载错误；npm安装成功不等于CLI已能启动 |
+| Beads提示没有Dolt remote | 本地使用无需remote；跨机协作另按官方Dolt方式配置 |
+| Arch安装出现旧数据库或镜像404 | 按发行版策略维护一致的系统；安装器不做部分升级 |
+| host CMake低于3.22或compiler不支持所需C++23 | 检查发行版开发包；根Gradle允许`-Pcmake=`、`-Pctest=`、`-Pninja=`指定工具 |
+| inventory未覆盖plugin树 | 现有verifyNativeTestInventory接线问题，不是缺依赖；本安装器不修改检查范围 |
+
+安装失败前已安装的系统包会保留。安装器复用完整工具版本目录；不会用恢复Git工作树的方式处理安装失败。
+
 <a id="environment-command-sources"></a>
 
-## 2. 开发命令从哪里来
+## 8. 命令与安装参考
 
-### 2.1 操作系统与安装底座
+本节用于查阅，不需要在首次配置时逐行阅读。**版本以链接的仓库配置为准，安装动作以脚本为准**；以下快照日期为2026-11-22。
+
+### 系统命令
 
 | 命令 | 提供者 / 安装来源 | 开发用途 |
 |---|---|---|
@@ -113,7 +251,7 @@ source build/engineering/env-android.sh
 | `xcode-select`、`xcrun`、`/usr/libexec/java_home` | macOS系统/CLT | Apple工具定位；`java_home`不负责安装JDK，也未必枚举用户自定义JDK目录 |
 | `sha256sum` / `shasum -a 256` / `Get-FileHash -Algorithm SHA256` | 分别GNU coreutils / macOS / PowerShell内建 | 仅在身份敏感下载/产物核验时使用；安装器用Python hashlib，不要求三者全装 |
 
-### 2.2 仓库工具、编译器与SDK
+### 开发工具及版本来源
 
 | 命令 / 组件 | 提供者、版本唯一来源 | 实际用途 / 定位 |
 |---|---|---|
@@ -140,7 +278,7 @@ source build/engineering/env-android.sh
 | `rustup`、`rustc`、`cargo` | rustup；[Cargo.toml](../../tools/extract_rs/Cargo.toml) MSRV **1.97.1**，依赖由Cargo.lock锁定 | 仅retained extractor；`cargo test --release` cwd为`tools/extract_rs`，根目录没有Cargo.toml |
 | CDA、作者自检、design-critic | 仓库[skills](../../tools/engineering/skills/)文本入口 | 无独立可执行命令，也不要求pip/npm再次安装 |
 
-### 2.3 实际任务调用链（不是额外必跑清单）
+### 构建与测试命令的调用链
 
 验证判据仍只在[工程规范§8.1](engineering-standards.md#engineering-gate-commands)维护；这里解释既有命令消费什么，避免缺依赖时盲装工具。
 
@@ -156,100 +294,40 @@ source build/engineering/env-android.sh
 | `python3 tools/cmp_disasm.py …` | 仓库Python脚本 → `LLVM_OBJDUMP`或PATH/NDK的llvm-objdump；仍是可选诊断，非门禁 |
 | `…/allure agent query --from <报告目录> summary` | 已由原门安装的Allure3 → 已生成报告；不替代原测试退出状态和当前producer证据 |
 
-<a id="android-setup"></a>
+### 系统包清单
 
-## 3. Android：安装后如何找到工具
+planning安装左列；android/full在同一包安装命令中追加右列。
 
-```sh
-source build/engineering/env-android.sh
-java -version
-"$JDK_TOOLCHAIN_HOME/bin/javac" -version
-"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --list_installed
-adb version
-cmake --version
-ctest --version
-ninja --version
-```
+| 系统 / 命令来源 | planning 包 | android/full 追加包 |
+|---|---|---|
+| Homebrew：`brew install` | `git ripgrep python ca-certificates` | `cmake ninja`；compiler来自 Apple CLT |
+| Debian/Ubuntu APT：`sudo apt-get update`，`sudo apt-get install -y` | `git ripgrep python3 ca-certificates curl tar xz-utils unzip` | `build-essential cmake ninja-build pkg-config` |
+| Fedora DNF：`sudo dnf install -y` | `git ripgrep python3 ca-certificates curl tar xz unzip` | `gcc gcc-c++ make cmake ninja-build pkgconf-pkg-config` |
+| openSUSE Zypper：`sudo zypper --non-interactive install` | 同 Fedora planning 列 | `gcc gcc-c++ make cmake ninja pkg-config` |
+| Arch Pacman：`sudo pacman -S --needed --noconfirm` | `git ripgrep python ca-certificates curl tar xz unzip` | `base-devel cmake ninja pkgconf` |
+| Windows：系统 `wsl.exe --install --distribution Ubuntu-24.04 --no-launch` | 安装/启用 WSL2 Ubuntu，随后使用上述 APT分支 | 同 Ubuntu，不混装 Windows compiler |
 
-SDK包安装由脚本读取配置；手工排障需要同一入口时：
+系统包管理器会处理所列软件包及其依赖。macOS `bash`/`curl`/`tar`/`unzip` 来自系统，Linux相应缺项由上表补齐。安装器Python仅用标准库，不依赖 pip、requests、jq 或 uv。
 
-```sh
-"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --list
-"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
-```
+### 安装选项与文件位置
 
-默认交互许可证；没有明确同意不自动管道yes。`local.properties`若已有其它配置保持原样。未使用安装器时可按实际绝对路径配置`sdk.dir`，或设置ANDROID_HOME；不要写`ndk.dir`，AGP通过module的`ndkVersion`选择NDK。下载源包括Google、Adoptium、Node、Gradle、Maven Central、Gradle Plugin Portal、JitPack、npm与rustup；失败按实际URL/包名排查，不降版本或关门禁绕过。
+| 选项 / 位置 | 用途 |
+|---|---|
+| `--accept-licenses` / PowerShell `-AcceptLicenses` | 明确允许自动接受Android SDK许可证；默认交互确认 |
+| `--system-image` / PowerShell `-SystemImage` | 安装指定镜像和emulator，不创建或启动AVD |
+| `--plan` | 仅显示需求，不联网、不安装；此预览需要已有Python3 |
+| `~/.local/share/ghostlock-development/` | Node、JDK、默认SDK及专用Gradle user home |
+| `build/engineering/env-<profile>.sh` | 当前checkout/profile的激活文件，设置PATH及对应工具环境变量 |
+| `tools/engineering/node_modules/` | lockfile安装的工程CLI |
+| `CARGO_HOME` / `RUSTUP_HOME` | 既有设置或rustup默认目录，不更改全局Rust默认版本 |
 
-<a id="optional-tools"></a>
+安装器源码：[Shell入口](../../tools/engineering/install/install.sh)、[Windows入口](../../tools/engineering/install/install.ps1)、[共用实现](../../tools/engineering/install/install.py)。Node选择24系列最新LTS patch；JDK按仓库major从Adoptium获取；Android CLI按Google元数据匹配OS/架构。下载按上游校验值核对。SDK CMake3.22.1是安装器兼容选择，不是仓库精确pin；Rust安装manifest MSRV对应版本，不表示只允许该版本。
 
-## 4. 按需设备、Rust与平台边界
+更新工程依赖时使用 `npm --prefix tools/engineering ci`，版本升级修改原package/lockfile。保留OpenSpec本地schema与skill适配，避免上游生成器覆盖为另一套任务清单。
 
-- **AVD**：先通过`sdkmanager --list`选择与获准测试目标匹配的完整`system-images;...`包，传给安装器`--system-image`；然后用`avdmanager create avd -n <名称> -k '<同一镜像包>'`创建，`emulator -avd <名称>`启动。Linux硬件加速需要KVM权限，macOS使用Hypervisor.Framework；脚本不擅自调整组/内核/虚拟化设置。镜像可用不代表AVD已启动或产品已验收。
-- **真机**：`adb devices -l`检查连接；之后`adb -s <SERIAL> ...`只对明确设备操作。Linux可能需要发行版USB/udev规则；Windows/WSL需要宿主USB转接（如Microsoft文档中的usbipd-win）或获准无线调试。设备授权、驱动与网络不能由“包安装成功”代替；安装器不运行fastboot flash、root或攻击操作。
-- **Rust**：full档激活文件设置RUSTUP_TOOLCHAIN，`rustc --version`、`cargo --version`确认；不用全局`rustup default`替别的项目改默认版本。普通Android开发不需要Rust。
-- **host compiler**：C11/C++23的真实编译能力以适用host测试验证，不以`c++ --version`替代。根Gradle仍支持`-Pcmake=...`、`-Pctest=...`、`-Pninja=...`指定现有工具，无需创建包装器。
-- **现有接线问题**：根`verifyNativeTestInventory`仍扫描旧app/tools范围，未覆盖整个plugin树；这是检查接线问题，不是环境缺包，本安装工作不改它。
-- **CI**：[workflow](../../.github/workflows/build.yml)使用Zulu21启动环境并显式安装NDK；daemon criteria仍25。CI未显式完整配置所有Node/Python/platform/Build Tools，不据此声称跨平台bootstrap或产品门已通过。
+### 安装器维护验证
 
-<a id="planning-tools"></a>
-
-## 5. 文档与规划工具
-
-仓库根目录执行 `npm --prefix tools/engineering ci`，使用项目本地 CLI，不依赖全局最新版。OpenSpec **2.1.1**、Beads **1.3.4** 由 `tools/engineering/package.json` 与同目录 lockfile 固定；CDA 仅安装 runtime skill、引用和许可证，上游 commit 为 `04d2e998f19b08be6ba7f697315f3a16ecdf2708`，本地入口补充项目分工；不运行上游评测 harness，不需要服务器、独立 Dolt 或额外 JDK。
-
-- [OpenSpec 安装](https://openspec.dev/docs/installation)：proposal/design/specs设计与规范管理。
-- [Beads 官方安装](https://github.com/gastownhall/beads/blob/main/docs/getting-started/installation.md)：执行任务、依赖、进度和批准/运行证据。
-- [CDA 上游](https://github.com/Liparakis/ConstraintDrivenArchitecture)：作者的约束驱动设计方法；不替代独立审查。
-
-```sh
-npm --prefix tools/engineering ci
-npm --prefix tools/engineering run --silent bd -- version
-npm --prefix tools/engineering run --silent openspec -- --version
-npm --prefix tools/engineering run --silent openspec -- list --json
-npm --prefix tools/engineering run --silent bd -- bootstrap --yes
-npm --prefix tools/engineering run --silent bd -- ready --json
-```
-
-Beads 的安装阶段或首次调用会取得对应固定版本的原生 binary；npm 版本的 install-script 策略可能不同，最终以 `bd -- version` 实际执行成功为准，不以 npm 退出 0 或跳过脚本冒充可用。OpenSpec 项目适配、CDA、作者自检和独立审查入口位于 `tools/engineering/skills/`，由根 AGENTS.md 按任务指向；Agent 直接读取对应 SKILL.md，不依赖 `.agents/skills` 自动发现，不重复安装。命令报缺依赖时先 `npm --prefix tools/engineering ci`，不用会临时下载最新版的裸 `npx`。OpenSpec schema为ghostlock，proposal/design/specs为设计正文、tracks:null不生成tasks.md；工具分工只在[文档规范](documentation-standards.md#planning-tool-authority)维护。
-
-### 日常命令
-
-只看进度用 `show <id> --short` / `list`；读取任务的spec_id后直接打开相关OpenSpec章节。`--brief-deps`只缩短依赖对象；证据按需取notes/comments，不输出整个任务库或全部历史。
-
-```sh
-npm --prefix tools/engineering run --silent bd -- show <id> --json --brief-deps
-npm --prefix tools/engineering run --silent bd -- update <id> --claim
-npm --prefix tools/engineering run --silent bd -- update <id> --append-notes '<实际命令、输入、输出/退出码、NOT_RUN项>'
-npm --prefix tools/engineering run --silent bd -- close <id> --reason '<满足原判据的结论及证据位置>'
-npm --prefix tools/engineering run --silent bd -- update <id> --spec-id 'tools/engineering/openspec/changes/<name>/design.md#<anchor>'
-npm --prefix tools/engineering run --silent openspec -- instructions apply --change <name> --json
-npm --prefix tools/engineering run --silent bd -- dep relate <task-id> <decision-id>  # 参考，不新增阻断
-```
-
-首次定位设计时，可只投影导航字段，避免展开长 notes（`<id>` 替换为实际任务 ID）；批准与实际证据仍按需读取原 notes/comments，投影不证明实施获准：
-
-```sh
-npm --prefix tools/engineering run --silent bd -- show <id> --json --brief-deps |
-  node -e 'const rows = JSON.parse(require("node:fs").readFileSync(0, "utf8")); const fields = ["id", "title", "status", "spec_id", "acceptance_criteria", "dependencies"]; console.log(JSON.stringify(rows.map(row => Object.fromEntries(fields.map(key => [key, row[key]]))), null, 2));'
-```
-
-以上命令从仓库根目录执行；npm 脚本的工作目录是 `tools/engineering`，所以 CLI 输出文件参数（如 `-o .beads/issues.jsonl`）相对此目录，而 `spec_id` 和设计中的源码路径仍相对仓库根目录。
-
-设计正文只维护在OpenSpec，Beads `design`留空、`spec_id`指向设计文件/锚点，验收字段只引用适用矩阵。不要把整个JSONL当日常阅读入口。title / `external_ref` 保留语义编号；候选需求用 `deferred`，具名条件缺失用 `blocked`。只领取获准工作，close 不会替你验证行为或批准范围。人类查进度可运行 `npm --prefix tools/engineering run --silent bd -- list`，不必翻旧计划历史。
-
-### 保存、交接与升级
-
-- 任务的写入 authority 是 `tools/engineering/.beads/embeddeddolt` 中的原生数据库，CLI 维护其事务历史。`tools/engineering/.beads/issues.jsonl` 是 CLI 生成的任务交接投影，禁止手编；新 clone 的 `bootstrap` 导入该投影。它保留任务描述、OpenSpec指针、验收引用、notes、状态、依赖和注释；OpenSpec设计文件必须同批提交，不包含完整 Dolt 分支历史，不是跨机器并发同步。
-- 已配置自动导出，间隔为 **1ms**（上游把 `0s` 解释为默认60s，不表示关闭节流）。在交付/提交前执行一次 `npm --prefix tools/engineering run --silent bd -- export -o .beads/issues.jsonl`，确认最后一次更新已落盘；正常提交它和原生配置，不提交数据库文件。
-- 当前只配置本地任务协作，没有发布 Dolt remote。原生 CLI 的“无 remote”提示不证明任务丢失，也不授权 Agent 自动 push；真正跨机协作时使用官方 Dolt remote/push/pull，而不是手写 JSONL 合并器。
-- 自动 backup、auto-push、export git-add 均关闭，未安装 Git hooks。正常本地 commit 由 Agent 核对本批范围和适用验证后主动完成。fresh clone 用 **bootstrap，不重复 init**：Beads1.3.4 的 `init` 会自动提交 agent 文件，`--skip-agents --skip-hooks` 不会取消此行为。
-- 升级时精确修改 npm 版本/lockfile、CDA 来源与实际适配；保留OpenSpec设计/Beads执行的本地skill与schema适配；不直接用生成器更新覆盖成Markdown任务清单。只验证受影响的工具行为与既有门禁，不升级产品工具链。
-
-## 6. 安装器验证与证据边界
-
-安装器只验证版本、CLI可启动、SDK安装命令退出码，不执行产品门，也不自动Beads bootstrap。新clone需要任务库时由[规划工具](#planning-tools)的现有bootstrap命令导入，已有任务库不重建。
-
-本次脚本修改的验证命令：
+仅修改安装器时使用：
 
 ```sh
 bash -n tools/engineering/install/install.sh
@@ -258,7 +336,7 @@ bash tools/engineering/install/install.sh --plan --profile planning
 bash tools/engineering/install/install.sh --plan --profile android
 ```
 
-以上回归验证参数拒绝、只读预览、版本提取、SDK架构选择、校验失败与原配置保全，**不等于在干净OS完成安装**。macOS/Linux/Windows全新系统实装、Windows PowerShell运行、AVD/真机及产品门在未实跑时都保持 **NOT_RUN**。不为安装改真实合同、任务依赖或批准状态。
+回归与只读预览不等于干净OS实装。当前Windows PowerShell运行、各OS全新安装、产品构建及设备验证仍为NOT_RUN。[CI](../../.github/workflows/build.yml)的JDK21启动环境与daemon criteria25分工不同，也不替代跨平台安装验证。
 
 ### 官方来源（按工具查阅）
 
@@ -269,6 +347,10 @@ bash tools/engineering/install/install.sh --plan --profile android
 - [Android SDK下载](https://developer.android.com/studio)、[sdkmanager](https://developer.android.com/tools/sdkmanager)、[NDK安装](https://developer.android.com/studio/projects/install-ndk)、[AVD](https://developer.android.com/studio/run/managing-avds)。
 - [Rustup安装](https://rust-lang.github.io/rustup/installation/index.html)、[CMake](https://cmake.org/download/)、[Ninja](https://github.com/ninja-build/ninja/wiki/Pre-built-Ninja-packages)。
 
-Agent 接手提示，可直接复用：
+### 本文结构参考
 
-> 从AGENTS.md按任务定位环境工具。先查命令来源与checkout版本权威，只装所需profile；安装前保全local.properties，安装后激活本checkout环境。区分环境缺失、仓库接线错误和行为失败。不要全量跑门、改生产代码或任务状态；回报实际命令、退出码和未运行平台，不将静态/模拟测试写成实装PASS。
+- [Firefox Linux build](https://firefox-source-docs.mozilla.org/setup/linux_build.html)：准备系统、bootstrap、开始构建的顺序。
+- [Chromium Linux build](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/docs/linux/build_instructions.md)：先交代前置条件和工作目录，再给具体操作。
+- [Tauri prerequisites](https://tauri.app/start/prerequisites/)：按操作系统组织依赖入口。
+
+只借鉴文档组织方式，不引入这些项目的工具、硬件要求或构建流程。
