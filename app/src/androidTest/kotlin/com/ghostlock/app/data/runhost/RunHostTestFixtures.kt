@@ -114,14 +114,14 @@ internal object RunHostProcessMapsProbe {
         request: RunHostRequest,
     ): RunHostMapsEvidence {
         requireMainProcessDoesNotMapPluginLibraries()
-        val expectedDirectory = appNativeDirectory(context, request)
+        val expectedDirectories = appNativeDirectories(context, request)
         val processName = context.packageName + ":flowhost"
         val activityManager = context.getSystemService(ActivityManager::class.java)
         val matches = activityManager.runningAppProcesses.orEmpty()
             .filter { process -> process.processName == processName }
-            .mapNotNull { process -> mapsEvidenceOrNull(process.pid, expectedDirectory) }
+            .mapNotNull { process -> mapsEvidenceOrNull(process.pid, expectedDirectories) }
         require(matches.size == 1) {
-            "expected one $processName mapping $expectedDirectory, found ${matches.size}"
+            "expected one $processName mapping $expectedDirectories, found ${matches.size}"
         }
         return matches.single()
     }
@@ -157,6 +157,25 @@ internal object RunHostProcessMapsProbe {
         return evidence
     }
 
+    /** Returns the sole live one-shot UserService PID before plugin preparation starts. */
+    fun captureShizukuRunHostPid(context: Context): Int {
+        val result = runShizuku(
+            arrayOf(
+                "/system/bin/sh",
+                "-c",
+                FIND_RUNHOST_PID_SCRIPT,
+                "ghostlock-runhost-pid",
+                context.packageName + ":rh",
+            ),
+        )
+        require(result.exitCode == 0) {
+            "Shizuku PID probe failed: exit=${result.exitCode}; stderr=${result.stderr.take(256)}"
+        }
+        val lines = result.stdout.lineSequence().filter(String::isNotBlank).toList()
+        require(lines.size == 1) { "Shizuku PID probe returned ${lines.size} lines" }
+        return lines.single().toInt().also { pid -> require(pid > 0) }
+    }
+
     /** Waits briefly for the already-observed App-UID process to leave `/proc`. */
     fun awaitAppProcessGone(pid: Int): Boolean = awaitProcessGone {
         !File("/proc/$pid").exists()
@@ -180,14 +199,16 @@ internal object RunHostProcessMapsProbe {
     /** Returns exact maps evidence only when both DSOs use this run's extracted directory. */
     private fun mapsEvidenceOrNull(
         pid: Int,
-        expectedDirectory: String,
+        expectedDirectories: Set<String>,
     ): RunHostMapsEvidence? = runCatching {
         val lines = File("/proc/$pid/maps").readLines()
         val diagnose = lines.firstOrNull { line ->
-            line.contains("$expectedDirectory/libghostlock_diagnose.so")
+            expectedDirectories.any { directory ->
+                line.contains("$directory/libghostlock_diagnose.so")
+            }
         } ?: return null
         val jna = lines.firstOrNull { line ->
-            line.contains("$expectedDirectory/libjnidispatch.so")
+            expectedDirectories.any { directory -> line.contains("$directory/libjnidispatch.so") }
         } ?: return null
         RunHostMapsEvidence(pid, diagnose, jna)
     }.getOrNull()
@@ -203,14 +224,23 @@ internal object RunHostProcessMapsProbe {
         }
     }
 
-    private fun appNativeDirectory(
+    private fun appNativeDirectories(
         context: Context,
         request: RunHostRequest,
-    ): String = File(
-        context.noBackupFilesDir,
-        "runhost/${request.runId}-${request.generation}/plugin/" +
-            "00-${request.pluginContentSha256.take(CONTENT_ROOT_PREFIX_HEX)}/lib/arm64-v8a",
-    ).absolutePath
+    ): Set<String> {
+        val directory = File(
+            context.noBackupFilesDir,
+            "runhost/${request.runId}-${request.generation}/plugin/" +
+                "00-${request.pluginContentSha256.take(CONTENT_ROOT_PREFIX_HEX)}/lib/arm64-v8a",
+        ).absolutePath
+        return buildSet {
+            add(directory)
+            // Android exposes the same user-0 app data through both bind-mount aliases in /proc/maps.
+            if (directory.startsWith(USER_ZERO_DATA_PREFIX)) {
+                add(APP_DATA_ALIAS_PREFIX + directory.removePrefix(USER_ZERO_DATA_PREFIX))
+            }
+        }
+    }
 
     private fun shizukuNativeDirectory(
         context: Context,
@@ -237,15 +267,28 @@ internal object RunHostProcessMapsProbe {
             String::class.java,
         ).apply { isAccessible = true }
         val process = method.invoke(null, command, null, null) as ShizukuRemoteProcess
-        check(process.waitFor(PROBE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-            process.destroyForcibly()
-            "Shizuku shell probe timed out"
-        }
+        val exitCode = awaitShizukuProcess(process)
         return ShellProbeResult(
-            exitCode = process.exitValue(),
+            exitCode = exitCode,
             stdout = process.inputStream.bufferedReader().use { it.readText() },
             stderr = process.errorStream.bufferedReader().use { it.readText() },
         )
+    }
+
+    private fun awaitShizukuProcess(process: ShizukuRemoteProcess): Int {
+        val deadline = SystemClock.elapsedRealtime() + TimeUnit.SECONDS.toMillis(PROBE_TIMEOUT_SECONDS)
+        do {
+            try {
+                return process.exitValue()
+            } catch (problem: IllegalArgumentException) {
+                if (problem.message != SHIZUKU_PROCESS_RUNNING_MESSAGE) throw problem
+            } catch (_: IllegalThreadStateException) {
+                // java.lang.Process uses this exception for the same still-running state.
+            }
+            SystemClock.sleep(PROCESS_GONE_POLL_MS)
+        } while (SystemClock.elapsedRealtime() < deadline)
+        process.destroyForcibly()
+        error("Shizuku shell probe timed out")
     }
 
     private data class ShellProbeResult(
@@ -255,9 +298,12 @@ internal object RunHostProcessMapsProbe {
     )
 
     private const val CONTENT_ROOT_PREFIX_HEX = 16
+    private const val USER_ZERO_DATA_PREFIX = "/data/user/0/"
+    private const val APP_DATA_ALIAS_PREFIX = "/data/data/"
     private const val PROCESS_GONE_TIMEOUT_MS = 3_000L
     private const val PROCESS_GONE_POLL_MS = 50L
     private const val PROBE_TIMEOUT_SECONDS = 3L
+    private const val SHIZUKU_PROCESS_RUNNING_MESSAGE = "process hasn't exited"
     private const val PID_GONE_SCRIPT = "[ ! -e \"/proc/\$1\" ]"
 
     private val FIND_MAPPINGS_SCRIPT = listOf(
@@ -278,5 +324,24 @@ internal object RunHostProcessMapsProbe {
         "done",
         "[ -n \"\$found\" ] || exit 4",
         "printf '%s\\n%s\\n%s\\n' \"\$found\" \"\$diagnose\" \"\$jna\"",
+    ).joinToString("\n")
+
+    private val FIND_RUNHOST_PID_SCRIPT = listOf(
+        "set -eu",
+        "expected=\$1",
+        "found=",
+        "for cmdline in /proc/[0-9]*/cmdline; do",
+        "  [ -r \"\$cmdline\" ] || continue",
+        "  command=\$(tr '\\000' '\\n' < \"\$cmdline\" | head -n 1)",
+        "  case \"\$command\" in",
+        "    \"\$expected\"*) ;;",
+        "    *) continue ;;",
+        "  esac",
+        "  [ -z \"\$found\" ] || exit 3",
+        "  found=\${cmdline#/proc/}",
+        "  found=\${found%/cmdline}",
+        "done",
+        "[ -n \"\$found\" ] || exit 4",
+        "printf '%s\\n' \"\$found\"",
     ).joinToString("\n")
 }

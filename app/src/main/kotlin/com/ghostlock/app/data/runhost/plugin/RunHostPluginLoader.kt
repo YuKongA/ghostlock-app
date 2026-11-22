@@ -375,11 +375,13 @@ internal class RunHostPluginLoader(
     private fun fsyncDirectory(directory: File) {
         val descriptor = Os.open(
             directory.absolutePath,
-            OsConstants.O_RDONLY or LINUX_O_DIRECTORY or OsConstants.O_CLOEXEC or
-                OsConstants.O_NOFOLLOW,
+            OsConstants.O_RDONLY or OsConstants.O_CLOEXEC or OsConstants.O_NOFOLLOW,
             0,
         )
         try {
+            check(Os.fstat(descriptor).st_mode and OsConstants.S_IFMT == OsConstants.S_IFDIR) {
+                "plugin package fsync target is not a directory"
+            }
             Os.fsync(descriptor)
         } finally {
             Os.close(descriptor)
@@ -451,8 +453,6 @@ internal class RunHostPluginLoader(
         const val VERIFY_DIRECTORY = "verify"
         const val PACKAGE_ROOT_PREFIX_HEX = 16
         const val STREAM_BUFFER_BYTES = 16 * 1024
-        // Stable Linux UAPI flags absent from some Android SDK OsConstants stubs.
-        const val LINUX_O_DIRECTORY = 0x10000
         const val READ_ONLY_FILE_MODE = 0b100000000
         const val SEARCH_ONLY_DIRECTORY_MODE = 0b101000000
         const val OWNER_DIRECTORY_MODE = 0b111000000
