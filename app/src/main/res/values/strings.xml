@@ -263,4 +263,8 @@
     <string name="fallback_label">Fallback route</string>
     <string name="fallback_none">None</string>
     <string name="field_fallback_to">fallback_to</string>
+    <string name="auto_root_on_boot">Auto-root after reboot</string>
+    <string name="auto_root_on_boot_summary">Attempts root once after the first unlock. An interrupted attempt disables auto-root on the next boot.</string>
+    <string name="auto_root_on_boot_save_failed">Could not save the auto-root setting</string>
+    <string name="auto_root_on_boot_running">Running automatic root</string>
 </resources>
