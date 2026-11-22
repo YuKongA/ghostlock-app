@@ -112,6 +112,13 @@ npm --prefix tools/engineering run --silent openspec -- instructions apply --cha
 npm --prefix tools/engineering run --silent bd -- dep relate <task-id> <decision-id>  # 参考，不新增阻断
 ```
 
+首次定位设计时，可只投影导航字段，避免展开长 notes（`<id>` 替换为实际任务 ID）；批准与实际证据仍按需读取原 notes/comments，投影不证明实施获准：
+
+```sh
+npm --prefix tools/engineering run --silent bd -- show <id> --json --brief-deps |
+  node -e 'const rows = JSON.parse(require("node:fs").readFileSync(0, "utf8")); const fields = ["id", "title", "status", "spec_id", "acceptance_criteria", "dependencies"]; console.log(JSON.stringify(rows.map(row => Object.fromEntries(fields.map(key => [key, row[key]]))), null, 2));'
+```
+
 以上命令从仓库根目录执行；npm 脚本的工作目录是 `tools/engineering`，所以 CLI 输出文件参数（如 `-o .beads/issues.jsonl`）相对此目录，而 `spec_id` 和设计中的源码路径仍相对仓库根目录。
 
 设计正文只维护在OpenSpec，Beads `design`留空、`spec_id`指向设计文件/锚点，验收字段只引用适用矩阵。不要把整个JSONL当日常阅读入口。title / `external_ref` 保留语义编号；候选需求用 `deferred`，具名条件缺失用 `blocked`。只领取获准工作，close 不会替你验证行为或批准范围。人类查进度可运行 `npm --prefix tools/engineering run --silent bd -- list`，不必翻旧计划历史。
