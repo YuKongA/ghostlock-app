@@ -21,7 +21,7 @@
 
 <a id="agents-reading"></a>
 
-**只读任务相关条款，复用未变化上下文，不遍历全部链接或历史。** 下列入口在触及对应任务时必须遵守；细则只在链接目标维护，按需读取不降低效力。**skill 是相应职责的按需入口，不是另一轮流程；细则仍只在所引规范维护。** 工程工具及 skill 集中在 `tools/engineering/`；按任务直接读取下列或[工具分工](docs/development/documentation-standards.md#planning-tool-authority)所指的 SKILL.md，不依赖原生 skill 自动发现。
+**只读任务相关条款，复用未变化上下文，不遍历全部链接或历史。** 下列入口在触及对应任务时必须遵守；细则只在链接目标维护，按需读取不降低效力。**skill 是相应职责的按需入口，不是另一轮流程；细则仍只在所引规范维护。** 工程工具及 skill 集中在 `tools/engineering/`；按任务直接读取下列或[工具分工](docs/development/documentation-standards.md#planning-tool-authority)所指的 SKILL.md，不依赖原生 skill 自动发现。本文 `/tools/...`、`/docs/...` 链接以仓库根目录为基准，不是系统绝对路径；skill 内链接相对其文件目录解析，命令的工作目录见[开发环境](docs/development/development-environment.md#planning-tools)。
 
 - **首次配置或缺工具**：按[开发环境](docs/development/development-environment.md)选择任务依赖，不把全套工具或产品门变成文档任务前置条件。
 

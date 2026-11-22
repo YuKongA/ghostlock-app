@@ -1,4 +1,4 @@
 interface:
   display_name: "Constraint-Driven Architecture"
   short_description: "Evidence-led architecture for simpler systems"
-  default_prompt: "Use $constraint-driven-architecture to design a defensible initial architecture from product constraints."
+  default_prompt: "Read tools/engineering/skills/constraint-driven-architecture/SKILL.md relative to the repository root and apply its task-appropriate architecture guidance."

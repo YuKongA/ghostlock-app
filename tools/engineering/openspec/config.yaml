@@ -6,7 +6,10 @@ context: 'Write in Chinese; preserve OpenSpec structural headings and SHALL/MUST
   Source paths and Beads spec_id are repository-relative. Run documented npm --prefix
   commands from the repository root, not the CLI project root.
 
-  Read ../../AGENTS.md and ../../docs/development/documentation-standards.md#planning-tool-authority only as relevant.
+  From the repository root, read AGENTS.md and
+  docs/development/documentation-standards.md#planning-tool-authority only as relevant.
+
+  Resolve outputPath against changeDir returned by instructions, not the shell cwd.
 
   OpenSpec proposal/design/specs owns complete current design, scope and acceptance
   criteria; old Markdown plans are historical sources only.
