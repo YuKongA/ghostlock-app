@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# WSL invokes this script from Windows checkouts too.
+tools/engineering/install/*.sh text eol=lf
