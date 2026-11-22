@@ -121,7 +121,7 @@ NATIVE_HOST_TESTS := \
   target_constants_test native_resource_test \
   profile_binary_test futex_hash_test number_parse_test \
   runtime_paths_test handoff_probe_test victim_context_test \
-  run_state_test address_space_test cpp_link_probe_test
+  run_state_test address_space_test cpp_link_probe_test payload_bounds_test
 
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
 	@status=0; for test in $^; do $$test || status=1; done; exit $$status
@@ -186,6 +186,10 @@ $(HOST_BUILD_DIR)/cpp_link_probe_test: core/tests/cpp_link_probe.cpp core/tests/
 $(HOST_BUILD_DIR)/target_constants_test: core/tests/target_constants_test.cpp core/kernel/target.h core/kernel/target_constants.hpp
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/target_constants_test.cpp -o $@
+
+$(HOST_BUILD_DIR)/payload_bounds_test: core/tests/payload_bounds_test.cpp core/kernel/payload_bounds.h core/kernel/target.h core/kernel/constants.hpp
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore -DTARGET_CONFIG_H=\"$(TARGET_CONFIG)\" core/tests/payload_bounds_test.cpp -o $@
 
 $(HOST_BUILD_DIR)/native_resource_test: core/tests/native_resource_test.cpp core/support/native_resource.cpp core/support/native_resource.hpp core/support/native_result.hpp
 	@mkdir -p $(HOST_BUILD_DIR)

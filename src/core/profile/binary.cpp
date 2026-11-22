@@ -57,6 +57,19 @@ namespace ghostlock::binary_profile {
                         std::remove_reference_t<decltype(*o.member)>>(r);        \
                 }                                                            \
     }
+        /* Like PLAIN, but present only when the value is nonzero. For the task
+         * fields whose runtime contract is `0 = absent -> legacy fallback`, this
+         * keeps the member a plain scalar (getters/fallbacks unchanged) while
+         * omitting the key on the wire when absent, so pre-refactor documents
+         * stay byte-identical. A provided 0 decodes to the same absent state. */
+#define NONZERO(key, member)                                                     \
+    {                                                                            \
+        key, [](const profile::kernel_offsets &o) { return o.member != 0; },     \
+                [](const profile::kernel_offsets &o) { return to_raw(o.member); },\
+                [](profile::kernel_offsets &o, uint64_t r) {                    \
+                    o.member = from_raw<decltype(o.member)>(r);                 \
+                }                                                            \
+    }
 
         constexpr Field kMeta[] = {
             PLAIN("kernel_major", meta.kernel_major),
@@ -76,6 +89,7 @@ namespace ghostlock::binary_profile {
             PLAIN("real_cred", task.real_cred), PLAIN("cred", task.cred),
             PLAIN("comm", task.comm), PLAIN("tasks", task.tasks),
             PLAIN("seccomp", task.seccomp),
+            NONZERO("usage", task.usage),
         };
 
         constexpr Field kCred[] = {
@@ -212,6 +226,7 @@ namespace ghostlock::binary_profile {
         };
 #undef PLAIN
 #undef OPT
+#undef NONZERO
 
         const size_t kHeaderSize = 16;
 

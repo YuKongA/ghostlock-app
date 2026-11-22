@@ -22,6 +22,10 @@ namespace ghostlock::kernel {
     inline constexpr unsigned SKB_RECLAIM_SENDS = 4;
     inline constexpr unsigned long FOPS_TABLE_OFF = FOPS_OFF;
     inline constexpr int32_t SKB_FRAG_BIAS = 0;
+    /* TCP zerocopy shifts each payload chunk by this bias (the non-tcp layout
+     * uses SKB_FRAG_BIAS=0 and carries the shift in SKB_DATA_DELTA instead).
+     * Shared by prepare_skb_payload() and the task_struct.usage bound check. */
+    inline constexpr int32_t TCP_SKB_FRAG_BIAS = 0xe80;
 
     inline constexpr int32_t FAKE_TASK_PRIO = 120;
     inline constexpr int32_t FAKE_WAITER_PRIO = 140;

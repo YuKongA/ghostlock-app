@@ -96,4 +96,31 @@ class ControllerInternalsTest {
             assertEquals(listOf("multicast_waiter"), branches.toList())
             assertFalse(snapshot["fallback"].asValueMap()?.containsKey("route") == true)
         }
+
+    @Test
+    fun `out-of-range task usage is reported before execution`() =
+        withController("controller-usage-bounds") { controller ->
+            /* This release's active route is tcp_zerocopy, whose payload chunk
+             * admits usage <= 0x197C (6524); mirrors native task_usage_offset_limit. */
+            controller.updateAdvanced(release, pair, mapOf("task_struct.usage" to 32768L))
+            assertTrue(controller.load(release, pair).invalidPaths.contains("task_struct.usage"))
+
+            controller.updateAdvanced(release, pair, mapOf("task_struct.usage" to 6525L))
+            assertTrue(controller.load(release, pair).invalidPaths.contains("task_struct.usage"))
+
+            /* Route-aware: 10000 fits the select/mcast chunk but not the tcp one. */
+            controller.updateAdvanced(release, pair, mapOf("task_struct.usage" to 10000L))
+            assertTrue(controller.load(release, pair).invalidPaths.contains("task_struct.usage"))
+
+            controller.updateAdvanced(release, pair, mapOf("task_struct.usage" to 6524L))
+            assertFalse(controller.load(release, pair).invalidPaths.contains("task_struct.usage"))
+
+            /* Device-verified vivo value and the legacy fallback offset fit. */
+            controller.updateAdvanced(release, pair, mapOf("task_struct.usage" to 56L))
+            assertFalse(controller.load(release, pair).invalidPaths.contains("task_struct.usage"))
+
+            /* 0 = absent -> legacy fallback, always valid. */
+            controller.updateAdvanced(release, pair, mapOf("task_struct.usage" to 0L))
+            assertFalse(controller.load(release, pair).invalidPaths.contains("task_struct.usage"))
+        }
 }

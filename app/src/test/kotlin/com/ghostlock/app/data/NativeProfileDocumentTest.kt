@@ -145,6 +145,32 @@ class NativeProfileDocumentTest {
     }
 
     @Test
+    fun `task usage is omitted when absent`() {
+        /* 0 / null means legacy fallback: the key must not appear, so profiles
+         * that do not override it keep the pre-refactor wire bytes exactly. */
+        val bytes = doc("multicast_waiter").toBinary()
+        val task = entriesOf(bytes, "task_struct")
+        assertTrue(task.none { it.first == "usage" })
+        val decoded = NativeProfileDocument.fromBinary(bytes)!!
+        assertEquals(0u, decoded.taskStruct.usage)
+    }
+
+    @Test
+    fun `task usage is emitted when present and round trips`() {
+        val bytes = doc(
+            "multicast_waiter",
+            mapOf("task_struct.usage" to 56L),
+        ).toBinary()
+        val task = entriesOf(bytes, "task_struct")
+        assertEquals(56L, task.toMap()["usage"])
+        /* Same trailing order as native `kTask`, so the two serializers agree. */
+        assertEquals(listOf("usage"), task.map { it.first }.takeLast(1))
+        val decoded = NativeProfileDocument.fromBinary(bytes)!!
+        assertEquals(56u, decoded.taskStruct.usage)
+        assertTrue(bytes.contentEquals(decoded.toBinary()))
+    }
+
+    @Test
     fun `signed values keep their two's complement bits`() {
         val bytes = doc("select_stack", mapOf("pselect_waiter_shift" to -2L)).toBinary()
         assertEquals(-2L, entriesOf(bytes, "route.select_stack").toMap()["waiter_shift"]!!)

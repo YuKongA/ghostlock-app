@@ -90,6 +90,7 @@ const CONF_TASK_FIELDS: &[(&str, &str)] = &[
     ("task_comm", "comm"),
     ("task_tasks", "tasks"),
     ("task_seccomp", "seccomp"),
+    ("task_usage", "usage"),
 ];
 
 /// Full route field universe per branch (authoritative: Kotlin
@@ -394,17 +395,20 @@ pub fn render_conf(input: &ConfInputs<'_>) -> String {
 
     let task: Vec<(String, String)> = CONF_TASK_FIELDS
         .iter()
-        .map(|(macro_name, key)| {
-            (
+        .filter_map(|(macro_name, key)| {
+            let value = input.structs.get(*macro_name).copied().flatten();
+            /* usage is optional (0/absent -> the compiled legacy fallback):
+             * emit it only when BTF resolves it, so a generated conf without a
+             * measured usage keeps the pre-usage field set exactly. */
+            if *macro_name == "task_usage" && value.is_none() {
+                return None;
+            }
+            Some((
                 (*key).to_string(),
-                input
-                    .structs
-                    .get(*macro_name)
-                    .copied()
-                    .flatten()
+                value
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "null".to_string()),
-            )
+            ))
         })
         .collect();
     push_conf_block(&mut lines, "task_struct", &task);

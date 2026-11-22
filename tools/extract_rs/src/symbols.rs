@@ -40,6 +40,7 @@ pub const STRUCT_FIELDS: &[(&str, &[(&str, &str)])] = &[
             ("task_comm", "comm"),
             ("task_tasks", "tasks"),
             ("task_seccomp", "seccomp"),
+            ("task_usage", "usage"),
         ],
     ),
     (

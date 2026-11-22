@@ -99,5 +99,6 @@ private fun fieldLabelRes(path: String): Int? = when (path) {
     "task_struct.seccomp" -> R.string.field_task_seccomp
     "task_struct.tasks" -> R.string.field_task_tasks
     "task_struct.tgid" -> R.string.field_task_tgid
+    "task_struct.usage" -> R.string.field_task_usage
     else -> null
 }

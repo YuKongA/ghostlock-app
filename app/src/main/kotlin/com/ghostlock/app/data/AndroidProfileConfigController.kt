@@ -108,6 +108,17 @@ internal class AndroidProfileConfigController(
         val major = value("kernel_major")
         if (major != 5L && major != 6L) invalid += "kernel_major"
 
+        /* task_struct.usage is the fake-task refcount write offset; it must fit
+         * the payload chunk for the active route (mirrors native
+         * kernel::task_usage_offset_limit). 0/absent keeps the legacy fallback
+         * and is always valid; a provided value is reported before execution. */
+        val taskUsage = value("task_struct.usage")
+        if (taskUsage != null && taskUsage != 0L &&
+            (taskUsage < 0L || taskUsage > taskUsageLimit(route))
+        ) {
+            invalid += "task_struct.usage"
+        }
+
         val copySize = value("cred.copy_size")
         if (copySize == null || copySize == 0L) invalid += "cred.copy_size"
         /* Absent cred.usage_offset decodes as 0 and passes, exactly like native. */
@@ -857,7 +868,7 @@ internal class AndroidProfileConfigController(
         private val TaskStructFieldNames = listOf(
             "prio", "normal_prio", "sched_task_group", "pi_lock", "pi_waiters", "pi_top_task",
             "pi_blocked_on", "pid", "tgid", "atomic_flags", "real_cred", "cred", "comm", "tasks",
-            "seccomp",
+            "seccomp", "usage",
         )
         private val CredFieldNames = listOf(
             "copy_size", "usage_offset", "usage_value", "caps_offset", "caps_count", "caps_value",
@@ -885,6 +896,26 @@ internal class AndroidProfileConfigController(
         )
         private const val SizeofU32 = 4L
         private const val SizeofU64 = 8L
+
+        /* Payload chunk geometry mirrored from native kernel/constants.hpp and
+         * kernel/target.h (see kernel::task_usage_offset_limit / payload_bounds.h).
+         * ORDER3_SIZE = PAGE_SIZE(4096) << MM_ORDER(3); SKB_SEND_SIZE = 2*ORDER3_SIZE
+         * and the last chunk starts at ORDER3_SIZE, so the headroom before the
+         * chunk bias / fake-task offset is ORDER3_SIZE. */
+        private const val Order3Size = 0x8000L
+        private const val TcpSkbFragBias = 0xe80L
+        private const val FakeTaskOff = 0x1280L
+        private const val TcpFakeTaskOff = 0x5800L
+
+        /** Largest task_struct.usage that still fits the last payload chunk. */
+        private fun taskUsageLimit(route: String?): Long {
+            return if (route == "tcp_zerocopy") {
+                Order3Size - TcpSkbFragBias - TcpFakeTaskOff - SizeofU32
+            } else {
+                /* SKB_FRAG_BIAS = 0 for the select/mcast layouts. */
+                Order3Size - FakeTaskOff - SizeofU32
+            }
+        }
         private const val PrefBuiltinRelease = "debug_builtin_release"
         private const val PrefActiveUserProfile = "active_user_profile"
         const val PrefDebugProfileOverrides = "debug_profile_overrides"
