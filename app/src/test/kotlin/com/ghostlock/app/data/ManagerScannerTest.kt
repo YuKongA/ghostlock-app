@@ -28,6 +28,8 @@ class ManagerScannerTest {
                 "me.weishu.kernelsu.pr",
                 "com.sukisu.ultra.pr",
                 "com.sukisu.ultra",
+                "com.sukisu.nova.pr",
+                "com.sukisu.nova",
                 "com.resukisu.resukisu",
                 "org.bakasu.bakasu",
                 "com.kowx712.supermanager",
@@ -40,6 +42,8 @@ class ManagerScannerTest {
     fun `builtin list covers SukiSU Ultra and its PR build`() {
         assertTrue("com.sukisu.ultra" in ManagerScanner.BUILTIN)
         assertTrue("com.sukisu.ultra.pr" in ManagerScanner.BUILTIN)
+        assertTrue("com.sukisu.nova" in ManagerScanner.BUILTIN)
+        assertTrue("com.sukisu.nova.pr" in ManagerScanner.BUILTIN)
     }
 
     @Test

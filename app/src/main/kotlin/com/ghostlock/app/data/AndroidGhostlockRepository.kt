@@ -1037,11 +1037,14 @@ class AndroidGhostlockRepository(context: Context) : GhostlockRepository {
         val packages = ManagerScanner.resolvePackages(selectedManagerPackage())
         for (packageName in packages) {
             val source = runCatching {
-                File(appContext.packageManager.getApplicationInfo(packageName, 0).nativeLibraryDir, "libksud.so")
-            }.getOrNull()?.takeIf { it.isFile } ?: continue
+                ManagerScanner.findKsud(
+                    packageName,
+                    appContext.packageManager.getApplicationInfo(packageName, 0).nativeLibraryDir,
+                )
+            }.getOrNull() ?: continue
             return source
         }
-        onLog("<k> no manager app with libksud.so found")
+        onLog("<k> no manager app with ksud found")
         return null
     }
 
