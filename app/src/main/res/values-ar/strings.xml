@@ -81,7 +81,7 @@
     <string name="safe_mode_label">الوضع الآمن</string>
     <string name="safe_mode_summary">تعطيل جميع الوحدات</string>
     <string name="force_attack_test_label">فرض اختبار الإكسبلويت</string>
-    <string name="force_attack_test_summary">تجاهل صلاحيات KernelSU الحالية وتشغيل الإكسبلويت على أي حال. ستُهمَل العملية الفرعية ذات الصلاحيات في النهاية</string>
+    <string name="force_attack_test_summary">تجاهل صلاحيات KernelSU/APatch الحالية وتشغيل الإكسبلويت على أي حال. ستُهمَل العملية الفرعية ذات الصلاحيات في النهاية</string>
     <string name="shizuku_label">التشغيل عبر Shizuku</string>
     <string name="shizuku_summary">تخطي الـ Seccomp</string>
     <string name="shizuku_recommended_hint">يوصى بتشغيل هذه الكيرنل عبر Shizuku</string>
@@ -93,7 +93,7 @@
     <string name="manager_summary_auto">تلقائي (موصى به)</string>
     <string name="manager_picker_title">اختر مدير الصلاحيات</string>
     <string name="manager_picker_empty">لم يُعثر على أي تطبيق</string>
-    <string name="manager_no_ksud">لم يُعثر على libksud.so، لذلك قد لا يعمل التطبيق</string>
+    <string name="manager_no_ksud">لم يُعثر على libksud.so أو libapd.so، لذلك قد لا يعمل التطبيق</string>
     <string name="manager_show_all">عرض جميع التطبيقات</string>
     <string name="manager_hide_all">عرض التطبيقات المتوافقة فقط</string>
     <string name="w3_shizuku_hint_title">تفعيل Shizuku؟</string>

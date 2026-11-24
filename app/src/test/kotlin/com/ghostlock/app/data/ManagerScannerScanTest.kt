@@ -30,15 +30,15 @@ class ManagerScannerScanTest {
         pm = app.packageManager
     }
 
-    private fun install(pkg: String, system: Boolean, ksud: Boolean) {
-        // Each package gets its own lib dir so ksud presence is independent.
+    private fun install(pkg: String, system: Boolean, ksud: Boolean, daemonLib: String = "libksud.so") {
+        // Each package gets its own lib dir so ksud/apd presence is independent.
         val dir = File(app.cacheDir, "libs-${pkg}-${System.nanoTime()}").apply { mkdirs() }
         val info = ApplicationInfo().apply {
             packageName = pkg
             flags = if (system) ApplicationInfo.FLAG_SYSTEM else 0
             nativeLibraryDir = dir.absolutePath
         }
-        if (ksud) File(dir, "libksud.so").writeText("stub")
+        if (ksud) File(dir, daemonLib).writeText("stub")
         shadowOf(pm).installPackage(
             PackageInfo().apply {
                 packageName = pkg
@@ -50,18 +50,21 @@ class ManagerScannerScanTest {
     @Test
     fun `scan keeps user apps and drops self and system apps`() {
         install("me.weishu.kernelsu", system = false, ksud = true)
+        install("me.bmax.apatch", system = false, ksud = true, daemonLib = "libapd.so")
         install("com.example.no-ksud", system = false, ksud = false)
         install("com.android.settings", system = true, ksud = false)
 
         val result = ManagerScanner.scan(pm, "com.ghostlock.app")
-        // User apps without libksud stay visible for the show-all section.
+        // User apps without libksud/libapd stay visible for the show-all section.
         assertEquals(
-            listOf("me.weishu.kernelsu", "com.example.no-ksud"),
+            listOf("me.bmax.apatch", "me.weishu.kernelsu", "com.example.no-ksud"),
             result.map { it.packageName },
         )
         assertTrue(result[0].hasKsud)
         assertTrue(result[0].builtin)
-        assertFalse(result[1].hasKsud)
+        assertTrue(result[1].hasKsud)
+        assertTrue(result[1].builtin)
+        assertFalse(result[2].hasKsud)
     }
 
     @Test

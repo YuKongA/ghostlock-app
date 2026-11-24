@@ -81,7 +81,7 @@
     <string name="safe_mode_label">Safe mode</string>
     <string name="safe_mode_summary">Disable all modules</string>
     <string name="force_attack_test_label">Force attack test</string>
-    <string name="force_attack_test_summary">Ignore an existing KernelSU root and run the exploit anyway; the rooted child is discarded at the end</string>
+    <string name="force_attack_test_summary">Ignore an existing KernelSU/APatch root and run the exploit anyway; the rooted child is discarded at the end</string>
     <string name="shizuku_label">Run via Shizuku</string>
     <string name="shizuku_summary">Skip Seccomp bypass</string>
     <string name="shizuku_recommended_hint">This kernel recommends running via Shizuku</string>
@@ -93,7 +93,7 @@
     <string name="manager_summary_auto">Auto (recommended)</string>
     <string name="manager_picker_title">Choose root manager</string>
     <string name="manager_picker_empty">No apps found</string>
-    <string name="manager_no_ksud">No libksud.so detected, may not work</string>
+    <string name="manager_no_ksud">No libksud.so or libapd.so detected, may not work</string>
     <string name="manager_show_all">Show all apps</string>
     <string name="manager_hide_all">Show compatible only</string>
     <string name="w3_shizuku_hint_title">Enable Shizuku?</string>
