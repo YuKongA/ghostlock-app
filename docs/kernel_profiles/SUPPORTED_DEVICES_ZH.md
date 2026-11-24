@@ -32,6 +32,7 @@ W3 seccomp bypass，即使并非必需，也能节省时间。
 | `5.15.178-android13-8-00021-g6f2f96be86b9-ab13729987`  | Xiaomi MIX Fold 3                                                |
 | `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`  | Sony Xperia 1 V                                                  |
 | `5.15.189-android13-8-00004-g1c3825f8ac0a-ab14110541`  | Sony Xperia 1 V                                                  |
+| `5.15.194-android13-8-00019-gf4321180a397-ab15212794`  | Xiaomi MIX Fold 3                                                |
 | `5.15.206-android13-8-00056-g3f87b8704e9e-ab15683575`  | ASUS Zenfone 10                                                  |
 | `6.1.25-android14-11-maybe-dirty`                      | MEIZU 21 / MEIZU 21 Pro                                          |
 | `6.1.78-android14-11-gb6577b760481-ab12075023`         | Redmi Note 14 Pro 5G                                             |
