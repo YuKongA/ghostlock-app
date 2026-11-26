@@ -1,5 +1,5 @@
-#ifndef GHOSTLOCK_NUMBER_PARSE_H
-#define GHOSTLOCK_NUMBER_PARSE_H
+#ifndef LSPRIVILEGE_NUMBER_PARSE_H
+#define LSPRIVILEGE_NUMBER_PARSE_H
 
 /* Pure numeric text parsing shared by the KernelSnitch utilities.
  *
@@ -12,7 +12,7 @@
 #include <cerrno>
 #include <cstdlib>
 
-namespace ghostlock::kernelsnitch {
+namespace lsprivilege::kernelsnitch {
     struct ParsedUnsigned {
         unsigned long value;
         int32_t valid;
@@ -34,6 +34,6 @@ namespace ghostlock::kernelsnitch {
         parsed.valid = (end && *end == '\0' && (errno == 0 || errno == EINVAL));
         return parsed;
     }
-} // namespace ghostlock::kernelsnitch
+} // namespace lsprivilege::kernelsnitch
 
 #endif

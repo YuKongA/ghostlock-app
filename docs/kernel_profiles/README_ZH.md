@@ -2,7 +2,7 @@
 
 > English: [README.md](README.md)
 
-GhostLock 用 `uname -r` 精确匹配内核版本。匹配不到时应用会拒绝运行。支持一款
+LSPrivilege 用 `uname -r` 精确匹配内核版本。匹配不到时应用会拒绝运行。支持一款
 新内核通常不用改代码，只要补一份 profile（HOCON 配置）。
 
 只有内核几何（符号与结构体偏移）是必填项。`recommend_shizuku` 和 `execution`
@@ -56,7 +56,7 @@ GhostLock 用 `uname -r` 精确匹配内核版本。匹配不到时应用会拒�
 
    ```sh
    (cd tools/extract_rs && cargo build --release)
-   build/extract/release/ghostlock-extract boot.img --format conf --out profile.conf
+   build/extract/release/lsprivilege-extract boot.img --format conf --out profile.conf
    ```
 
    `--format conf` 输出 flatten（无 `include`、6.x 凭据/KernelSnitch 常量内联）的

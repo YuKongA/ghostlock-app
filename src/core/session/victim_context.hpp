@@ -1,5 +1,5 @@
-#ifndef GHOSTLOCK_VICTIM_CONTEXT_HPP
-#define GHOSTLOCK_VICTIM_CONTEXT_HPP
+#ifndef LSPRIVILEGE_VICTIM_CONTEXT_HPP
+#define LSPRIVILEGE_VICTIM_CONTEXT_HPP
 
 #include "support/native_resource.hpp"
 
@@ -7,7 +7,7 @@
 
 #include <utility>
 
-namespace ghostlock::session::victim {
+namespace lsprivilege::session::victim {
     /* Owns the six pipe ends of the victim protocol plus the child pid for one
  * W2/W3 chain. The child-side ends are closed by the fork child before
  * child_main runs; the parent-side ends are closed once their protocol step
@@ -27,12 +27,12 @@ namespace ghostlock::session::victim {
 
         VictimContext &operator=(const VictimContext &) = delete;
 
-        ghostlock::support::UniqueFd task_read;
-        ghostlock::support::UniqueFd cmd_write;
-        ghostlock::support::UniqueFd uid_read;
-        ghostlock::support::UniqueFd task_write;
-        ghostlock::support::UniqueFd cmd_read;
-        ghostlock::support::UniqueFd uid_write;
+        lsprivilege::support::UniqueFd task_read;
+        lsprivilege::support::UniqueFd cmd_write;
+        lsprivilege::support::UniqueFd uid_read;
+        lsprivilege::support::UniqueFd task_write;
+        lsprivilege::support::UniqueFd cmd_read;
+        lsprivilege::support::UniqueFd uid_write;
 
         [[nodiscard]] pid_t child() const noexcept { return child_; }
         void set_child(pid_t child) noexcept { child_ = child; }
@@ -49,6 +49,6 @@ namespace ghostlock::session::victim {
     private:
         pid_t child_ = -1;
     };
-} // namespace ghostlock::session::victim
+} // namespace lsprivilege::session::victim
 
 #endif

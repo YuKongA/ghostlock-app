@@ -14,7 +14,7 @@
 #include <string_view>
 #include <vector>
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
 namespace {
     void put_u16(std::string &out, uint16_t value) {
@@ -91,10 +91,10 @@ int32_t main(void) {
     /* ---- Black box: round trips through the public API. ---- */
     profile::kernel_offsets values = {};
     values.uname_r = "6.6.77-transport-test";
-    values.route = ghostlock::profile::kRouteMulticastWaiter;
+    values.route = lsprivilege::profile::kRouteMulticastWaiter;
     values.meta.kernel_major = 6;
     values.meta.recommend_shizuku = 1;
-    values.meta.fallback_route = ghostlock::profile::kRouteSelectStack;
+    values.meta.fallback_route = lsprivilege::profile::kRouteSelectStack;
     values.task.prio = 132;
     values.task.real_cred = 0x12345678;
     values.credential.copy_size = 0x88;
@@ -115,8 +115,8 @@ int32_t main(void) {
     assert(strcmp(parsed.uname_r, values.uname_r) == 0);
     assert(parsed.meta.kernel_major == 6);
     assert(parsed.meta.recommend_shizuku == 1);
-    assert(parsed.route == ghostlock::profile::kRouteMulticastWaiter);
-    assert(parsed.meta.fallback_route == ghostlock::profile::kRouteSelectStack);
+    assert(parsed.route == lsprivilege::profile::kRouteMulticastWaiter);
+    assert(parsed.meta.fallback_route == lsprivilege::profile::kRouteSelectStack);
     assert(parsed.task.prio == 132);
     assert(parsed.task.real_cred == 0x12345678);
     assert(parsed.credential.copy_size == 0x88);
@@ -136,7 +136,7 @@ int32_t main(void) {
     {
         profile::kernel_offsets strict = {};
         strict.uname_r = "strict";
-        strict.route = ghostlock::profile::kRouteSelectStack;
+        strict.route = lsprivilege::profile::kRouteSelectStack;
         /* A provided 0 is preserved and present (not "unset"). */
         strict.geometry.pselect_waiter_shift = 0;
         strict.misc.kernel_phys_load = 0;
@@ -151,7 +151,7 @@ int32_t main(void) {
         /* The same for the multicast route's own section. */
         profile::kernel_offsets mstrict = {};
         mstrict.uname_r = "mstrict";
-        mstrict.route = ghostlock::profile::kRouteMulticastWaiter;
+        mstrict.route = lsprivilege::profile::kRouteMulticastWaiter;
         mstrict.geometry.mcast_waiter_off = 0;
         assert(round_trip(mstrict, &parsed, release, sizeof(release)) == 0);
         assert(parsed.geometry.mcast_waiter_off.has_value() &&
@@ -160,7 +160,7 @@ int32_t main(void) {
         /* Negatives round-trip exactly. */
         profile::kernel_offsets neg = {};
         neg.uname_r = "neg";
-        neg.route = ghostlock::profile::kRouteSelectStack;
+        neg.route = lsprivilege::profile::kRouteSelectStack;
         neg.geometry.pselect_waiter_shift = -2;
         assert(round_trip(neg, &parsed, release, sizeof(release)) == 0);
         assert(parsed.geometry.pselect_waiter_shift.value_or(99) == -2);
@@ -168,7 +168,7 @@ int32_t main(void) {
         /* An absent optional stays absent after the round trip. */
         profile::kernel_offsets absent = {};
         absent.uname_r = "absent";
-        absent.route = ghostlock::profile::kRouteMulticastWaiter;
+        absent.route = lsprivilege::profile::kRouteMulticastWaiter;
         absent.geometry.mcast_buffer_size = 264;
         assert(round_trip(absent, &parsed, release, sizeof(release)) == 0);
         assert(!parsed.geometry.mcast_waiter_off.has_value());
@@ -179,7 +179,7 @@ int32_t main(void) {
     /* ---- Header bytes: magic, version 2, middleware id, release. ---- */
     {
         char buffer[8192];
-        values.route = ghostlock::profile::kRouteSelectStack;
+        values.route = lsprivilege::profile::kRouteSelectStack;
         const int32_t size = binary_profile::serialize(&values, buffer, sizeof(buffer));
         assert(size > 0);
         const auto *bytes = reinterpret_cast<const unsigned char *>(buffer);
@@ -191,7 +191,7 @@ int32_t main(void) {
         const uint16_t middleware = static_cast<uint16_t>(bytes[10] | (bytes[11] << 8));
         assert(magic == 0x0D000721u && binary_profile::kMagic == 0x0D000721u);
         assert(version == 2u && binary_profile::kVersion == 2u);
-        assert(middleware == ghostlock::profile::kRouteSelectStack);
+        assert(middleware == lsprivilege::profile::kRouteSelectStack);
         assert(bytes[16] == '6'); /* release starts right after the 16-byte header */
     }
 
@@ -199,7 +199,7 @@ int32_t main(void) {
     {
         /* Unknown section is skipped; unknown key is ignored; known keys apply. */
         std::string doc = build_doc(
-            ghostlock::profile::kRouteTcpZerocopy, "unknown",
+            lsprivilege::profile::kRouteTcpZerocopy, "unknown",
             {
                 {"not_a_section", {{"x", 1}}},
                 {"route.tcp_zerocopy", {{"not_a_field", 123}, {"attempts", 2000}}},
@@ -208,32 +208,32 @@ int32_t main(void) {
         assert(parsed.execution.tcp_attempts == 2000);
 
         /* A key of another section is ignored. */
-        doc = build_doc(ghostlock::profile::kRouteTcpZerocopy, "other",
+        doc = build_doc(lsprivilege::profile::kRouteTcpZerocopy, "other",
                         {{"route.select_stack", {{"waiter_shift", 9}}}});
         assert(parse_doc(doc, &parsed, release, sizeof(release)) == 0);
         assert(!parsed.geometry.pselect_waiter_shift.has_value());
 
         /* Duplicated key applies last-wins. */
-        doc = build_doc(ghostlock::profile::kRouteTcpZerocopy, "dup",
+        doc = build_doc(lsprivilege::profile::kRouteTcpZerocopy, "dup",
                         {{"route.tcp_zerocopy", {{"attempts", 1}, {"attempts", 2}}}});
         assert(parse_doc(doc, &parsed, release, sizeof(release)) == 0);
         assert(parsed.execution.tcp_attempts == 2);
 
         /* Signed values sign-extend exactly. */
-        doc = build_doc(ghostlock::profile::kRouteSelectStack, "signed",
+        doc = build_doc(lsprivilege::profile::kRouteSelectStack, "signed",
                         {{"route.select_stack", {{"waiter_shift", -2}}}});
         assert(parse_doc(doc, &parsed, release, sizeof(release)) == 0);
         assert(parsed.geometry.pselect_waiter_shift.value_or(0) == -2);
 
         /* An empty document body is valid (everything stays default/absent). */
-        doc = build_doc(ghostlock::profile::kRouteMulticastWaiter, "empty", {});
+        doc = build_doc(lsprivilege::profile::kRouteMulticastWaiter, "empty", {});
         assert(parse_doc(doc, &parsed, release, sizeof(release)) == 0);
         assert(!parsed.geometry.mcast_waiter_off.has_value());
     }
 
     /* ---- White box: truncations and lying counts. ---- */
     {
-        std::string doc = build_doc(ghostlock::profile::kRouteTcpZerocopy, "trunc",
+        std::string doc = build_doc(lsprivilege::profile::kRouteTcpZerocopy, "trunc",
                                     {{"route.tcp_zerocopy", {{"attempts", 5}}}});
         const size_t entries_at = doc.size() - (1 + std::strlen("attempts") + 8);
         assert(parse_doc(doc.substr(0, entries_at - 1), &parsed, release, sizeof(release)) == -1);
@@ -250,7 +250,7 @@ int32_t main(void) {
     /* ---- Rejections: magic, version, ids, routes, short buffers. ---- */
     {
         char buffer[8192];
-        values.route = ghostlock::profile::kRouteSelectStack;
+        values.route = lsprivilege::profile::kRouteSelectStack;
         const int32_t size = binary_profile::serialize(&values, buffer, sizeof(buffer));
         assert(size > 0);
         char broken[8192];
@@ -265,7 +265,7 @@ int32_t main(void) {
                                      tiny_release, sizeof(tiny_release)) == -1);
 
         for (int version : {1, 3, 4, 5}) {
-            std::string doc = build_doc(ghostlock::profile::kRouteSelectStack, "v", {});
+            std::string doc = build_doc(lsprivilege::profile::kRouteSelectStack, "v", {});
             doc[4] = static_cast<char>(version & 0xff);
             doc[5] = static_cast<char>(version >> 8);
             assert(parse_doc(doc, &parsed, release, sizeof(release)) == -1);
@@ -274,17 +274,17 @@ int32_t main(void) {
             const std::string doc = build_doc(static_cast<uint8_t>(route), "r", {});
             assert(parse_doc(doc, &parsed, release, sizeof(release)) == -1);
         }
-        assert(parse_doc(build_doc(ghostlock::profile::kRouteSelectStack, "f", {}, 9,
+        assert(parse_doc(build_doc(lsprivilege::profile::kRouteSelectStack, "f", {}, 9,
                                    binary_profile::kBackendCve202643499),
                          &parsed, release, sizeof(release)) == -1);
-        assert(parse_doc(build_doc(ghostlock::profile::kRouteSelectStack, "b",
+        assert(parse_doc(build_doc(lsprivilege::profile::kRouteSelectStack, "b",
                                    {}, binary_profile::kFrontendRootChild, 9),
                          &parsed, release, sizeof(release)) == -1);
 
         /* Component ids decode and are reported. */
         profile::kernel_offsets ids_values = {};
         ids_values.uname_r = "component-ids";
-        ids_values.route = ghostlock::profile::kRouteSelectStack;
+        ids_values.route = lsprivilege::profile::kRouteSelectStack;
         char idbuf[8192];
         const int32_t idsize = binary_profile::serialize(&ids_values, idbuf, sizeof(idbuf));
         assert(idsize > 0);
@@ -293,10 +293,10 @@ int32_t main(void) {
                                      release, sizeof(release), &ids) == 0);
         assert(ids.frontend == binary_profile::kFrontendRootChild);
         assert(ids.backend == binary_profile::kBackendCve202643499);
-        assert(ids.middleware == ghostlock::profile::kRouteSelectStack);
+        assert(ids.middleware == lsprivilege::profile::kRouteSelectStack);
 
         /* A profile without a declared route never serializes. */
-        values.route = ghostlock::profile::kRouteAuto;
+        values.route = lsprivilege::profile::kRouteAuto;
         assert(binary_profile::serialize(&values, buffer, sizeof(buffer)) == -1);
     }
 

@@ -1,5 +1,5 @@
-#ifndef GHOSTLOCK_PROFILE_MACROS_H
-#define GHOSTLOCK_PROFILE_MACROS_H
+#ifndef LSPRIVILEGE_PROFILE_MACROS_H
+#define LSPRIVILEGE_PROFILE_MACROS_H
 
 /* Build-time overridable VR.ko tag-B offset, consumed by
  * the cve_2026_43499 backend's W2 anti-root bypass. It stays a define (not a

@@ -13,7 +13,7 @@
 
 #include <string>
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
 namespace {
     struct TempLogDir {
@@ -23,9 +23,9 @@ namespace {
 
     TempLogDir make_temp_log_dir(const char *contents) {
         TempLogDir dir{};
-        snprintf(dir.path, sizeof(dir.path), "/tmp/ghostlock_handoff_XXXXXX");
+        snprintf(dir.path, sizeof(dir.path), "/tmp/lsprivilege_handoff_XXXXXX");
         assert(mkdtemp(dir.path) != nullptr);
-        dir.log_path = std::string(dir.path) + "/.ghostlock_ksu.log";
+        dir.log_path = std::string(dir.path) + "/.lsprivilege_ksu.log";
         if (contents) {
             FILE *file = fopen(dir.log_path.c_str(), "w");
             assert(file != nullptr);
@@ -44,7 +44,7 @@ namespace {
 int32_t main(void) {
     bool loaded = false;
     bool failed = false;
-    assert(!ghostlock::session::scan_ksu_log("/nonexistent/.ghostlock_ksu.log",
+    assert(!lsprivilege::session::scan_ksu_log("/nonexistent/.lsprivilege_ksu.log",
                                              loaded, failed));
     assert(!loaded && !failed);
 
@@ -52,40 +52,40 @@ int32_t main(void) {
         "[*] unrelated\n[+] KernelSU module loaded\n");
     loaded = false;
     failed = false;
-    assert(ghostlock::session::scan_ksu_log(loaded_dir.log_path, loaded, failed));
+    assert(lsprivilege::session::scan_ksu_log(loaded_dir.log_path, loaded, failed));
     assert(loaded && !failed);
 
     TempLogDir already_dir = make_temp_log_dir("[+] KernelSU already loaded\n");
     loaded = false;
     failed = false;
-    assert(ghostlock::session::scan_ksu_log(already_dir.log_path, loaded, failed));
+    assert(lsprivilege::session::scan_ksu_log(already_dir.log_path, loaded, failed));
     assert(loaded && !failed);
 
     TempLogDir failed_dir = make_temp_log_dir("[!] KernelSU module not loaded\n");
     loaded = false;
     failed = false;
-    assert(ghostlock::session::scan_ksu_log(failed_dir.log_path, loaded, failed));
+    assert(lsprivilege::session::scan_ksu_log(failed_dir.log_path, loaded, failed));
     assert(!loaded && failed);
 
     TempLogDir ap_loaded_dir = make_temp_log_dir("[+] APatch module loaded\n");
     loaded = false;
     failed = false;
     bool is_apatch = false;
-    assert(ghostlock::session::scan_ksu_log(ap_loaded_dir.log_path, loaded, failed, &is_apatch));
+    assert(lsprivilege::session::scan_ksu_log(ap_loaded_dir.log_path, loaded, failed, &is_apatch));
     assert(loaded && !failed && is_apatch);
 
     TempLogDir ap_already_dir = make_temp_log_dir("[+] APatch already loaded\n");
     loaded = false;
     failed = false;
     is_apatch = false;
-    assert(ghostlock::session::scan_ksu_log(ap_already_dir.log_path, loaded, failed, &is_apatch));
+    assert(lsprivilege::session::scan_ksu_log(ap_already_dir.log_path, loaded, failed, &is_apatch));
     assert(loaded && !failed && is_apatch);
 
     TempLogDir ap_failed_dir = make_temp_log_dir("[!] APatch module not loaded\n");
     loaded = false;
     failed = false;
     is_apatch = false;
-    assert(ghostlock::session::scan_ksu_log(ap_failed_dir.log_path, loaded, failed, &is_apatch));
+    assert(lsprivilege::session::scan_ksu_log(ap_failed_dir.log_path, loaded, failed, &is_apatch));
     assert(!loaded && failed && is_apatch);
 
     /* Both markers accumulate independently, mirroring the legacy scan. */
@@ -93,28 +93,28 @@ int32_t main(void) {
         "[!] KernelSU module not loaded\n[+] KernelSU already loaded\n");
     loaded = false;
     failed = false;
-    assert(ghostlock::session::scan_ksu_log(both_dir.log_path, loaded, failed));
+    assert(lsprivilege::session::scan_ksu_log(both_dir.log_path, loaded, failed));
     assert(loaded && failed);
 
     /* A zero policy performs no poll and no sleep. */
-    ghostlock::session::HandoffPollPolicy idle_policy;
+    lsprivilege::session::HandoffPollPolicy idle_policy;
     idle_policy.module_poll_attempts = 0;
     idle_policy.enforce_poll_attempts = 0;
     idle_policy.log_poll_attempts = 0;
-    const ghostlock::session::HandoffProbeResult idle =
+    const lsprivilege::session::HandoffProbeResult idle =
             handoff_probe_run(idle_policy, loaded_dir.log_path);
     assert(!idle.module_visible && !idle.ksu_log_loaded &&
            !idle.ksu_log_failed && !idle.enforce_ok && !idle.ready());
 
     /* The log marker wins without any module visibility, and the default
    * enforce cadence probes once. */
-    ghostlock::session::HandoffPollPolicy policy;
+    lsprivilege::session::HandoffPollPolicy policy;
     policy.module_poll_attempts = 0;
     policy.enforce_poll_attempts = 1;
     policy.enforce_poll_interval_ms = 0;
     policy.log_poll_attempts = 1;
     policy.log_poll_interval_ms = 0;
-    const ghostlock::session::HandoffProbeResult probe =
+    const lsprivilege::session::HandoffProbeResult probe =
             handoff_probe_run(policy, loaded_dir.log_path);
     assert(!probe.module_visible);
     assert(probe.ksu_log_loaded && !probe.ksu_log_failed);
@@ -125,8 +125,8 @@ int32_t main(void) {
     }
 
     /* A missing per-run log leaves the log probes false. */
-    const ghostlock::session::HandoffProbeResult missing = handoff_probe_run(
-        policy, "/nonexistent-home/.ghostlock_ksu.log");
+    const lsprivilege::session::HandoffProbeResult missing = handoff_probe_run(
+        policy, "/nonexistent-home/.lsprivilege_ksu.log");
     assert(!missing.ksu_log_loaded && !missing.ksu_log_failed);
     assert(!missing.ready());
 

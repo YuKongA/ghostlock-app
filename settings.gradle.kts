@@ -27,6 +27,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "GhostLock"
+rootProject.name = "LSPrivilege"
 include(":app")
 include(":profile-core")

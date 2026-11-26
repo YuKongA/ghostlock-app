@@ -1,12 +1,12 @@
-#ifndef GHOSTLOCK_VICTIM_PROCESS_HPP
-#define GHOSTLOCK_VICTIM_PROCESS_HPP
+#ifndef LSPRIVILEGE_VICTIM_PROCESS_HPP
+#define LSPRIVILEGE_VICTIM_PROCESS_HPP
 
 #include "common.h"
 #include "session/victim_context.hpp"
 
 #include <optional>
 
-namespace ghostlock::session::victim {
+namespace lsprivilege::session::victim {
     /* Verification contexts handed to retry_write_stage callbacks. */
     struct w2_stage_context {
         VictimContext &pipes;
@@ -34,6 +34,6 @@ namespace ghostlock::session::victim {
     int32_t verify_seccomp_probe_stage(void *context);
 
     int32_t verify_leaf_dir_stage(void *context);
-} // namespace ghostlock::session::victim
+} // namespace lsprivilege::session::victim
 
 #endif

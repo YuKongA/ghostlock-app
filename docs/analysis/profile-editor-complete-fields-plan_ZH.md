@@ -10,7 +10,7 @@
   适配中，`kernel_phys_load` 在 UI 找不到，extractor conf 无法被 Kotlin 读取。
 - 基线行为：
   1. 「参数覆盖」页（`ProfileOverrideScreen`）只渲染 `ExecutionEditor`，字段来自
-     `ProfileConfig.GeneralPaths`（`GhostlockModels.kt:95`），共 9 个
+     `ProfileConfig.GeneralPaths`（`LSPrivilegeModels.kt:95`），共 9 个
      `execution.*` 项加当前 route 调参。`kernel_phys_load`、`task_struct.*`、
      `cred.*`、`offset.*` 都不出现。
   2. 「高级参数覆盖」页（`AdvancedOverrideScreen`）用 `buildTree(full)` 只遍历
@@ -36,7 +36,7 @@
 
 - 不改攻击路径（waiter/race/payload/route/exec 流程）、不改 `src/core/` 的 native
   解析逻辑。
-- 不新增 route 或组件，不改 GLK1 wire 与 HOCON 传输格式版本（仍为 v2）。
+- 不新增 route 或组件，不改 PRIV1 wire 与 HOCON 传输格式版本（仍为 v2）。
 - 不动 `kernelsnitch/`、`LegacyProfileConverter.kt` 的 v1 转换、规范中的明确保留
   清单。
 - 不改变现有内置 profile 的正确数值，只补齐字段与表示。
@@ -49,7 +49,7 @@
 | `tools/extract_rs/src/main.rs` | conf 组装传入完整字段集合（含 null 占位） |
 | `app/src/main/assets/kernel_profiles/*.conf` | 逐份补齐公共与 route 字段，未知写 `null` |
 | `app/src/main/kotlin/.../data/AndroidProfileConfigController.kt` | `buildTree`/`generalFields`/`routeTuningPaths` 按当前 route、fallback、公共字段的全集渲染，缺失补 `null`；`buildTree` 跳过 `execution` |
-| `app/src/main/kotlin/.../domain/model/GhostlockModels.kt` | `GeneralPaths` 扩展为 execution 全字段 |
+| `app/src/main/kotlin/.../domain/model/LSPrivilegeModels.kt` | `GeneralPaths` 扩展为 execution 全字段 |
 | `profile-core/.../data/HoconSupport.kt` | 核对 `render` 对 `null` 的输出，补测试 |
 | `docs/kernel_profiles/PROFILE_SCHEMA*.md` | 回写字段完整性规则 |
 
@@ -71,16 +71,16 @@ extractor conf --(十进制 + null 占位)--> HOCON(含每一项) --(Number/null
   （`task_struct`/`cred`/`offset`/`kernel`/`kernelsnitch`），缺失显示 `null`。
 - D2 execution 放一般编辑页：`execution.*` 在 `ProfileOverrideScreen` 完整加载，
   不进高级树，不内联进设备 profile HOCON。
-- D3=A：`null` 表示键不出现在 GLK1 binary（native 读作未提供）。HOCON/UI 保留
+- D3=A：`null` 表示键不出现在 PRIV1 binary（native 读作未提供）。HOCON/UI 保留
   `null` 仅作占位，不改变 wire 的 presence 语义，也不引入 presence 位图。
 - D4：内置 profile 逐份手工补 `null`（基线 `deff0b1` 下共 54 份设备 profile）。
 - D5 可执行 branch：extractor 只输出被选中的可执行 route branch；有 fallback 时
   连同 fallback branch 的 geometry 一并输出，`fallback.to` 写实际 route。
 
-GLK1 v2 是 Kotlin 与 native 之间的传输格式，也是内置预编译 profile 的载体
+PRIV1 v2 是 Kotlin 与 native 之间的传输格式，也是内置预编译 profile 的载体
 （`exportKernelProfiles` 产出 `.bin`，native `--load-prebuilt-profile`）。它不是
 用户编辑的保存格式（保存为 HOCON/preferences），也不是执行格式。因此 D3=A
-不改 GLK1 字节格式，只改 HOCON/UI/extractor 三层。
+不改 PRIV1 字节格式，只改 HOCON/UI/extractor 三层。
 
 ## 5.15 multicast→select fallback（deferred）
 

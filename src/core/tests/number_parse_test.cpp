@@ -34,8 +34,8 @@ int32_t main(void) {
         {"99999999999999999999999999", 0, ULONG_MAX, 0},
     };
     for (size_t i = 0; i < sizeof(vectors) / sizeof(vectors[0]); i++) {
-        const ghostlock::kernelsnitch::ParsedUnsigned parsed =
-                ghostlock::kernelsnitch::number_parse_unsigned(vectors[i].text, vectors[i].base);
+        const lsprivilege::kernelsnitch::ParsedUnsigned parsed =
+                lsprivilege::kernelsnitch::number_parse_unsigned(vectors[i].text, vectors[i].base);
         if (parsed.value != vectors[i].value ||
             parsed.valid != vectors[i].valid) {
             fprintf(stderr, "vector %zu ('%s' base=%d) -> value=%lu valid=%d\n", i,

@@ -1,4 +1,4 @@
-# Running GhostLock on a MediaTek device
+# Running LSPrivilege on a MediaTek device
 
 > 中文版: [MEDIATEK_ZH.md](MEDIATEK_ZH.md)
 
@@ -82,7 +82,7 @@ those values. Saving applies them to the next run; no rebuild is required.
 ## Step 3: run and verify
 
 Run the exploit once, then read the first lines of the debug log
-(`Download/ghostlock-debug-log/<time>/*.log.txt`):
+(`Download/lsprivilege-debug-log/<time>/*.log.txt`):
 
 ```
 [*] soc: mtk; kernel_phys_load=<value>
@@ -95,10 +95,10 @@ If W1 keeps failing, recheck both values against the script output.
 
 Some MediaTek devices only need boot.img and work right away. On others, the
 attack still fails during W1 because `kernel_phys_load` / `kernel_phys_offset`
-are missing. GhostLock can recover them from the stock **vendor_boot.img**, with
+are missing. LSPrivilege can recover them from the stock **vendor_boot.img**, with
 no root and no /proc access.
 
-1. Open GhostLock → **Advanced options** → **Parameter configuration** →
+1. Open LSPrivilege → **Advanced options** → **Parameter configuration** →
    **Load configuration** → **Parse local image.**
 2. Select **boot.img**.
 3. Tap **Attach vendor_boot.img (MediaTek only)** and

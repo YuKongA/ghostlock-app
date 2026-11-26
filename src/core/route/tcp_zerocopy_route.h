@@ -11,7 +11,7 @@
 #include <atomic>
 #include <cstddef>
 
-namespace ghostlock::route::tcp_zerocopy {
+namespace lsprivilege::route::tcp_zerocopy {
     /* Owns every userspace resource of one TCP zerocopy attempt: the loopback
  * pair, the punching memfd and its shared mapping, and the punch worker.
  * Lifetime is explicit: prepare() -> execute() -> disarm() -> destroy().
@@ -21,8 +21,8 @@ namespace ghostlock::route::tcp_zerocopy {
  * the still-running puncher never sees a recycled descriptor. */
     class TcpZerocopyRoute final {
     public:
-        TcpZerocopyRoute(ghostlock::race::PiRace *race, const ghostlock::memory::WriteRequest *request,
-                         const ghostlock::profile::TargetProfile &profile,
+        TcpZerocopyRoute(lsprivilege::race::PiRace *race, const lsprivilege::memory::WriteRequest *request,
+                         const lsprivilege::profile::TargetProfile &profile,
                          size_t mapping_length) noexcept;
 
         ~TcpZerocopyRoute() noexcept = default;
@@ -38,7 +38,7 @@ namespace ghostlock::route::tcp_zerocopy {
         [[nodiscard]] int32_t prepare() noexcept;
 
         /* Run the trigger after prepare() established exclusive ownership. */
-        [[nodiscard]] ghostlock::route::RouteStatus execute() noexcept;
+        [[nodiscard]] lsprivilege::route::RouteStatus execute() noexcept;
 
         /* Stop every trigger and drain the consumer. */
         void disarm() noexcept;
@@ -50,27 +50,27 @@ namespace ghostlock::route::tcp_zerocopy {
 
         [[nodiscard]] int32_t fail(int32_t step, int32_t error_number) noexcept;
 
-        ghostlock::race::PiRace *race = nullptr;
-        const ghostlock::memory::WriteRequest *request = nullptr;
-        const ghostlock::profile::TargetProfile &profile;
-        ghostlock::support::UniqueFd client_fd;
-        ghostlock::support::UniqueFd server_fd;
-        ghostlock::support::UniqueFd punch_fd;
-        ghostlock::support::MappedRegion mapping;
+        lsprivilege::race::PiRace *race = nullptr;
+        const lsprivilege::memory::WriteRequest *request = nullptr;
+        const lsprivilege::profile::TargetProfile &profile;
+        lsprivilege::support::UniqueFd client_fd;
+        lsprivilege::support::UniqueFd server_fd;
+        lsprivilege::support::UniqueFd punch_fd;
+        lsprivilege::support::MappedRegion mapping;
         size_t mapping_length = 0;
         size_t page_size = 0;
-        ghostlock::support::PthreadOwner punch_worker;
+        lsprivilege::support::PthreadOwner punch_worker;
         std::atomic<int32_t> punch_go;
         std::atomic<int32_t> punch_stop;
         std::atomic<int32_t> punch_phase;
         std::atomic<int32_t> punch_failed;
         int32_t route_won = 0;
-        ghostlock::route::RouteStatus status{};
+        lsprivilege::route::RouteStatus status{};
 
     private:
         /* dirty failure: never close or unmap anything the puncher may still use */
         void retain_for_process_lifetime() noexcept;
     };
-} // namespace ghostlock::route::tcp_zerocopy
+} // namespace lsprivilege::route::tcp_zerocopy
 
 #endif

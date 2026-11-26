@@ -296,7 +296,7 @@ pub struct ConfInputs<'a> {
     pub extra_offsets: &'a ConfExtraOffsets,
 }
 
-/// Renders a flattened, self-contained GLK profile (`--format conf`): no
+/// Renders a flattened, self-contained PRIV profile (`--format conf`): no
 /// `include` lines, the shared 6.x credential and KernelSnitch constants
 /// inlined, keys and nesting matching `app/src/main/assets/kernel_profiles/`.
 /// Fields without a derived value are omitted rather than written as `null`.
@@ -307,7 +307,7 @@ pub fn render_conf(input: &ConfInputs<'_>) -> String {
         .next()
         .and_then(|part| part.parse::<u32>().ok());
     let mut lines = vec![
-        format!("# GhostLock kernel profile: {release} (HOCON, self-contained)."),
+        format!("# LSPrivilege kernel profile: {release} (HOCON, self-contained)."),
         format!("release = \"{release}\""),
         "schema_version = 1".to_string(),
         format!("kernel_major = {}", major.unwrap_or(0)),

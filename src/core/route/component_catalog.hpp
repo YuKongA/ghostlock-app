@@ -1,12 +1,12 @@
-#ifndef GHOSTLOCK_COMPONENT_CATALOG_HPP
-#define GHOSTLOCK_COMPONENT_CATALOG_HPP
+#ifndef LSPRIVILEGE_COMPONENT_CATALOG_HPP
+#define LSPRIVILEGE_COMPONENT_CATALOG_HPP
 
 #include <cstdint>
 #include <string_view>
 
 #include "profile/model.h"
 
-namespace ghostlock::runtime {
+namespace lsprivilege::runtime {
     /* Stable component ids. Explicit numeric values; never rely on the
      * compiler's enum layout. Batch 3 registers one implementation per class
      * (root_child frontend, cve_2026_43499 backend); the UMH / 64560 ids are
@@ -24,7 +24,7 @@ namespace ghostlock::runtime {
     /* Middleware reuses the profile route enum: the three tactics are exactly
      * the set the wire carries. Auto means "unresolved" and is never
      * selectable. */
-    using MiddlewareKind = ghostlock::profile::RouteKind;
+    using MiddlewareKind = lsprivilege::profile::RouteKind;
 
     struct ComponentSelection final {
         FrontendKind frontend;
@@ -124,6 +124,6 @@ namespace ghostlock::runtime {
             default: return "auto";
         }
     }
-} // namespace ghostlock::runtime
+} // namespace lsprivilege::runtime
 
 #endif

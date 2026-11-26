@@ -1,6 +1,6 @@
 # AGENTS.md
 
-GhostLock：Android 内核提权工具。通过 PI-futex 竞争覆盖 waiter，依次完成
+LSPrivilege：Android 内核提权工具。通过 PI-futex 竞争覆盖 waiter，依次完成
 W1（SELinux）、W2（凭据/uid 0）、W3（seccomp），最后 handoff 给 root child 做
 KernelSU 模块加载。内核按精确 `uname -r` 匹配 HOCON profile，未匹配即拒绝运行。
 
@@ -9,11 +9,11 @@ KernelSU 模块加载。内核按精确 `uname -r` 匹配 HOCON profile，未匹
 | 层        | 位置                | 说明                                                                                       |
 | --------- | ------------------- | ------------------------------------------------------------------------------------------ |
 | Android   | `app/`              | Kotlin/Compose UI、HOCON profile 解析/合并/覆盖、Shizuku UserService、日志                 |
-| Native    | `src/core/`         | C++23 攻击 runtime，产物 `build/native/ghostlock`                                          |
-| Extractor | `tools/extract_rs/` | Rust；boot.img / OTA / URL → `--format conf`（flatten GLK profile）/ `--format json`（v1） |
+| Native    | `src/core/`         | C++23 攻击 runtime，产物 `build/native/lsprivilege`                                          |
+| Extractor | `tools/extract_rs/` | Rust；boot.img / OTA / URL → `--format conf`（flatten PRIV profile）/ `--format json`（v1） |
 
-- Native 不是 JNI：`libghostlock.so` 是可执行 ELF，由 Kotlin `ProcessBuilder` 启动。
-  CLI：`--ghostlock-app-call`（stdin GLK1）/ `--load-prebuilt-profile <bin>`
+- Native 不是 JNI：`liblsprivilege.so` 是可执行 ELF，由 Kotlin `ProcessBuilder` 启动。
+  CLI：`--lsprivilege-app-call`（stdin PRIV1）/ `--load-prebuilt-profile <bin>`
   （无参数的 v1 `offsets.json` 入口已移除）。入口细节见
   `docs/analysis/native-entrypoint-plan.md`（git 历史）。
 - 内置 profile 在 `app/src/main/assets/kernel_profiles/`：`index.conf` 索引、
@@ -28,7 +28,7 @@ KernelSU 模块加载。内核按精确 `uname -r` 匹配 HOCON profile，未匹
 
 ```sh
 # Native
-make -C src ghostlock                 # NDK 构建（ANDROID_NDK_HOME 或 local.properties）
+make -C src lsprivilege                 # NDK 构建（ANDROID_NDK_HOME 或 local.properties）
 make -C src native-host-tests         # 主机单元测试（含固定向量/生命周期）
 make -C src lint-tidy                 # clang-tidy，要求 0 findings
 ANDROID_NDK_HOME=... make -C src      # NDK 未自动探测时的显式写法
@@ -36,11 +36,11 @@ ANDROID_NDK_HOME=... make -C src      # NDK 未自动探测时的显式写法
 # Android / 提取器
 ./gradlew :app:assembleDebug
 ./gradlew :app:testDebugUnitTest
-./gradlew exportKernelProfiles        # 生成 GLK1 .bin 到 build/kernel-profiles/
+./gradlew exportKernelProfiles        # 生成 PRIV1 .bin 到 build/kernel-profiles/
 (cd tools/extract_rs && cargo test --release)
 
 # 攻击函数形状对比（攻击路径改动必须跑）
-python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
+python3 tools/cmp_disasm.py <baseline-binary> build/native/lsprivilege
 ```
 
 ## 改动流程：先设计，后改动（强制）
@@ -59,7 +59,7 @@ python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
    规范中的"明确保留"清单。
 4. **Verify**：按级别跑满 §1.3 门槛并保留证据；汇报时给出命令与结果，不写"应该没问题"。
 
-- 攻击路径改动 = `cmp_disasm`（8 函数）+ 真机门禁 + 门禁记录（格式见
+- 攻击路径改动 = `cmp_disasm`（6 函数）+ 真机门禁 + 门禁记录（格式见
   `docs/development/documentation-standards.md`），缺一不可。
 - 大改动按批次推进，一个批次只做一类事，上一批验证通过再进下一批。
 
@@ -67,7 +67,7 @@ python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
 
 - C++23、`-fno-rtti`、静态 libc++；`-Wall -Wextra -Wconversion -Wsign-conversion`，
   新代码不得引入告警。include 用相对 `src/core` 的路径（如 `#include "route/tcp_zerocopy_route.h"`）。
-- 命名空间分层：`ghostlock::{route,session,memory,attack,race,support,profile}`；
+- 命名空间分层：`lsprivilege::{route,session,memory,attack,race,support,profile}`；
   `kernelsnitch/` 是上游原样移植代码，不要顺手重写。
 - 全局状态只允许 `g_exploit_session`（进程唯一 singleton）与启动期只读的
   `g_direct_map_end`；新代码不得再引入可变全局或引用别名。审计记录见
@@ -82,8 +82,8 @@ python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
     （`route_catalog_test.cpp` / `RouteCatalogAgreementTest.kt` 断言同一列表）
   - `profile/binary.cpp` 字段表 ↔ Kotlin route config 的 `entries()/apply()/from()`，键名逐字一致
   - route 私有参数放 route 扩展节；只有共享代码会读的才进公共槽（顺序也必须一致）
-- 配置权威是 GLK1 profile + HOCON。执行层不得读配置类环境变量，只允许进程/路径类
-  （`GHOSTLOCK_HOME`、`TMPDIR`、`GHOSTLOCK_KSU_LOG`）。需要新状态就扩展 profile。
+- 配置权威是 PRIV1 profile + HOCON。执行层不得读配置类环境变量，只允许进程/路径类
+  （`LSPRIVILEGE_HOME`、`TMPDIR`、`LSPRIVILEGE_KSU_LOG`）。需要新状态就扩展 profile。
 - **不要随意新增或叠加配置/profile 传输格式版本号**。本分支统一为 **v2**（对象分段：
   `header + sections[name → fields[name → u64]]`，presence 由键是否出现表达，值按位严格保存）。
   Kotlin 与 native 版本绑定，同一分支内直接替换，不做旧版本兼容；不同 branch 需要不同格式时，
@@ -105,10 +105,10 @@ python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
 
 - 普通改动：`make -C src native-host-tests` + NDK 构建零警告 + `make -C src lint-tidy`。
 - 攻击关键路径（waiter/race/payload/route/exec 流程）改动：
-  1. `tools/cmp_disasm.py` 对比 8 个攻击函数，要求 IDENTICAL (strict) 或已复核的注解差异；
+  1. `tools/cmp_disasm.py` 对比 6 个攻击函数，要求 IDENTICAL (strict) 或已复核的注解差异；
   2. 真机门禁（冷机、固定 CPU 对、单 route、KernelSU 未加载的干净启动）；
-  3. 日志在设备 `Download/ghostlock-debug-log/<时间>/*.log.txt`（同目录另有
-     `profile.conf`/`profile.bin`，记录本次生效配置与送入 native 的 GLK1 字节），确认 route 命中与写验证通过。
+  3. 日志在设备 `Download/lsprivilege-debug-log/<时间>/*.log.txt`（同目录另有
+     `profile.conf`/`profile.bin`，记录本次生效配置与送入 native 的 PRIV1 字节），确认 route 命中与写验证通过。
 - 真机结果按 `docs/analysis/device-gates/*.md` 的格式归档（git 历史中有整套
   S/CPP/U01/NS\* 证据链样例）。
 - `KERNEL-PANIC-01` 是已知环境/时序问题：同构建可 PASS/panic/PASS，判定因果要求同构建

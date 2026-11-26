@@ -3,7 +3,7 @@
 # Extractor structure derivation without BTF: plan (2026-09-30)
 
 > Level: L, covering the extractor's core derivation path and profile field contract. Status: planned, not implemented.
-> Related issue: YuKongA/ghostlock-app#213, OPPO A3x 5G / PKD130,
+> Related issue: YuKongA/lsprivilege-app#213, OPPO A3x 5G / PKD130,
 > `5.15.180-android13-8-o-g88bbcb96ee5e`, a kernel without BTF.
 
 ## Status and baseline
@@ -40,7 +40,7 @@ Non-goals:
 - Fully decompile arbitrary structs.
 - Introduce Ghidra/rizin/radare2. The extractor must remain self-contained and run on
   `aarch64-linux-android` (`build.gradle.kts:135`).
-- Change the GLK1/wire/profile format, native code, or BTF path behavior.
+- Change the PRIV1/wire/profile format, native code, or BTF path behavior.
 - Cover 100% of fields. Each field can fail independently and is omitted on failure.
 
 Constraints:
@@ -138,7 +138,7 @@ whose BTF can be disabled. Without an image, work must stop at stage 1 and unit 
 ## Explicitly preserved
 
 BTF parsing and the BTF-first path, the `derive_pselect_layout` algorithm and invariants,
-`unverified candidate` semantics, the profile/GLK1 format, all native code, and the
+`unverified candidate` semantics, the profile/PRIV1 format, all native code, and the
 `kernel_layout_verified` gate.
 
 ## Progress

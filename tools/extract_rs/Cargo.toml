@@ -1,13 +1,13 @@
 [package]
-name = "ghostlock-extract"
+name = "lsprivilege-extract"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.97.1"
-description = "GhostLock kernel offset extractor"
+description = "LSPrivilege kernel offset extractor"
 license = "Apache-2.0"
 
 [[bin]]
-name = "ghostlock-extract"
+name = "lsprivilege-extract"
 path = "src/main.rs"
 
 [dependencies]

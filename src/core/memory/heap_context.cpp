@@ -5,7 +5,7 @@
 
 #include <utility>
 
-namespace ghostlock::memory {
+namespace lsprivilege::memory {
     namespace {
         /* Return the page to the empty state without touching any fd. Ownership
  * release is always explicit (destroy()), never scope-exit. */
@@ -94,4 +94,4 @@ namespace ghostlock::memory {
         prebuilt.destroy();
         quarantine.destroy();
     }
-} // namespace ghostlock::memory
+} // namespace lsprivilege::memory

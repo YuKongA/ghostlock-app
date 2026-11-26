@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-GhostLock 将每个受支持的 frontend、backend 和 middleware 组合编译为 `Pipeline<Frontend, Backend, Middleware>`。运行时由解析后的 profile 选择组合。
+LSPrivilege 将每个受支持的 frontend、backend 和 middleware 组合编译为 `Pipeline<Frontend, Backend, Middleware>`。运行时由解析后的 profile 选择组合。
 
 ## 组件
 
@@ -31,7 +31,7 @@ GhostLock 将每个受支持的 frontend、backend 和 middleware 组合编译�
 | `race/` | PI 竞争的 owner，以及 waiter、owner 和 consumer 线程。 |
 | `memory/` | 地址解析、堆与页状态、payload 编码。 |
 | `session/` | 单次调用状态、运行配置、frontend handoff、阶段类型、探针与 victim 上下文。[exploit_session.hpp](session/exploit_session.hpp) 记录每个字段的所有者、借用者和终结点。 |
-| `profile/` | GLK1 v2 编解码器、类型化模型、访问器与入口。 |
+| `profile/` | PRIV1 v2 编解码器、类型化模型、访问器与入口。 |
 | `kernel/` | 目标 ABI、常量与偏移表。 |
 | `support/` | Result 与 RAII 辅助工具、时间和致命错误。 |
 | `kernelsnitch/` | 内核地址发现。 |
@@ -43,12 +43,12 @@ Catalog、契约、policy 和 pipeline 头文件可在主机编译。Android 执
 
 ```sh
 make -C src native-host-tests
-make -C src ghostlock
+make -C src lsprivilege
 make -C src lint-tidy
 ```
 
-NDK 构建产出 `build/native/ghostlock`，必须零告警。`lint-tidy` 必须报告零 findings。攻击路径改动还需对比攻击函数，并执行[真机门禁](../../docs/development/engineering-standards_ZH.md)：
+NDK 构建产出 `build/native/lsprivilege`，必须零告警。`lint-tidy` 必须报告零 findings。攻击路径改动还需对比攻击函数，并执行[真机门禁](../../docs/development/engineering-standards_ZH.md)：
 
 ```sh
-python3 tools/cmp_disasm.py <baseline> build/native/ghostlock
+python3 tools/cmp_disasm.py <baseline> build/native/lsprivilege
 ```

@@ -12,7 +12,7 @@ and native.
 > **Two version names**, not one sequence:
 > - **Profile schema version**: the HOCON profile generation, carried by
 >   `schema_version` (section 2).
-> - **Binary wire version**: the GLK1 transport version after magic
+> - **Binary wire version**: the PRIV1 transport version after magic
 >   `0x0D000721`. The writer emits wire version `2` (object sections, section
 >   9). Kotlin and native are bound to the same version.
 >
@@ -33,7 +33,7 @@ parse as **HOCON**:
   reselect.
 - Kotlin parses the text (`HoconSupport`) and sends the typed binary struct to
   native (section 9). The app stores and exports HOCON.
-- `ghostlock-extract --format conf` emits a flattened, self-contained profile
+- `lsprivilege-extract --format conf` emits a flattened, self-contained profile
   (credential/KernelSnitch constants inlined, no `include` lines) that imports
   through the normal path.
 - Extractor output is a **candidate source**: it writes every field of the
@@ -73,7 +73,7 @@ selection or an explicit imported/override value).
 ## 2. Top-level structure
 
 ```hocon
-# GhostLock kernel profile (HOCON; JSON stays valid)
+# LSPrivilege kernel profile (HOCON; JSON stays valid)
 release = "6.6.77-android15-8-gca30f3b4bef6-abogki440974771-4k"
 schema_version = 1
 kernel_major = 6
@@ -309,8 +309,8 @@ version-bound and there is no legacy decode.
   route. The authoritative section/key tables are `profile/binary.cpp` (`kSections`);
   the Kotlin object sections in `NativeProfile.kt` must follow them exactly.
 - App invocation: direct and Shizuku both pass the profile on **stdin** with
-  `--ghostlock-app-call`. The app does not write `active-profile.bin`.
-  For CLI runs, `--load-prebuilt-profile <bin>` reads an exported GLK1 file.
+  `--lsprivilege-app-call`. The app does not write `active-profile.bin`.
+  For CLI runs, `--load-prebuilt-profile <bin>` reads an exported PRIV1 file.
 - Native has exactly one decode path: `profile/entry.cpp` hands the stdin (or
   file) bytes to `profile/binary.cpp::parse`. It detects no format other than
   the magic and has no JSON fallback.
@@ -325,7 +325,7 @@ version-bound and there is no legacy decode.
    geometry, and each such field must be present. A value the image or device
    cannot supply is written as an explicit `null` (never `0` as a placeholder,
    unless 0 is the real value). Fields of routes other than the active one (and
-   its declared fallback) are omitted. `ghostlock-extract --format conf` emits
+   its declared fallback) are omitted. `lsprivilege-extract --format conf` emits
    this complete skeleton; `null` keeps the field visible and editable in the
    app instead of silently absent.
 2. `route` has exactly one branch, and that branch must carry the route's
@@ -351,7 +351,7 @@ exclusively (section 9); the v1 path is Kotlin-side and self-contained.
 - **v1 is the old JSON format**: the `offsets.json` of the remote/main era, an
   extractor report (`symbols` / `struct_fields`, four top-level scalars, and
   metadata such as `kimage_text_base` / `btf_size` / `kallsyms`).
-  `ghostlock-extract --format json` still emits this shape for external tools.
+  `lsprivilege-extract --format json` still emits this shape for external tools.
 - `LegacyProfileConverter` normalizes a v1 document to v2 on load, idempotently:
 
   | v1 content | Conversion result |

@@ -12,9 +12,9 @@
 #include "session/exploit_session.hpp"
 #include "kernel/target.h"
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
-namespace ghostlock::route {
+namespace lsprivilege::route {
     route::RouteStatus do_kernel5_fake_lock_route(const memory::WriteRequest *request) {
         (void) request;
         route::RouteStatus status = {.code = ROUTE_RETRYABLE};
@@ -107,13 +107,13 @@ namespace ghostlock::route {
 
     /* Acquire every userspace resource owned by the TCP route. No PI consumer or
  * punch operation is armed until this function has completed successfully. */
-} // namespace ghostlock::route
+} // namespace lsprivilege::route
 
 #if defined(__ANDROID__)
 #include "race/threads.hpp"
 #include "route/route_policy.hpp"
 
-namespace ghostlock::route {
+namespace lsprivilege::route {
     /* MulticastPolicy route hooks (Batch 4). Declared in route_policy.hpp,
      * defined here because the implementations are Android-only. The one-shot
      * route keeps its own small stack frame in
@@ -155,5 +155,5 @@ namespace ghostlock::route {
         }
         return true;
     }
-} // namespace ghostlock::route
+} // namespace lsprivilege::route
 #endif

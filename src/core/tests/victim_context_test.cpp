@@ -13,7 +13,7 @@
 
 #include <cerrno>
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
 namespace {
     pid_t spawn_sleeper() {
@@ -32,7 +32,7 @@ namespace {
 } // namespace
 
 int32_t main(void) {
-    ghostlock::session::victim::VictimContext context;
+    lsprivilege::session::victim::VictimContext context;
     assert(context.child() == -1);
     assert(!context.task_read.valid());
 

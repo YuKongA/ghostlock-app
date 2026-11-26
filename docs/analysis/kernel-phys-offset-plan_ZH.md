@@ -7,7 +7,7 @@
 - 分支 `main`，基线 `2d9d801`（含 `02369c1` 的 profile 完整字段；extractor 十进制）。
 - 触发设备 MTK6893（moto edge 40，`lyriq`），
   `6.6.127-android15-8-gb947b5758b2a-ab15580855-4k`。
-- 真机日志（`ghostlock-direct-*.log`）：
+- 真机日志（`lsprivilege-direct-*.log`）：
   - `soc: mtk; kernel_phys_load=0x40080000`，phys 已正确加载。
   - `[-] W1: SELinux: target 0x0000000000000000 is outside the direct map, not attempting`
   - `[-] Write 1 failed`，`native exited code=1`。
@@ -70,7 +70,7 @@
 
 ## 反汇编核对记录（cmp_disasm）
 
-- 基线：`git stash` 回退本次改动后 `buildGhostlockNative` 产出的二进制；候选：含改动构建。
+- 基线：`git stash` 回退本次改动后 `buildLSPrivilegeNative` 产出的二进制；候选：含改动构建。
 - 结果（8 攻击函数）：
   - `owner_thread` / `consumer_thread` / `run_main_route_threads` /
     `do_kernel5_fake_lock_route` / `do_one_write`：IDENTICAL (strict)。
@@ -88,7 +88,7 @@
 ## 决策记录
 
 - D1 字段名 `kernel_phys_offset`，与 `kernel_phys_load` 并列（已落地：
-  `profile-core/src/main/kotlin/com/ghostlock/app/data/NativeProfile.kt:29`）。
+  `profile-core/src/main/kotlin/org/lsposed/lsprivilege/data/NativeProfile.kt:29`）。
 - D2 缺省回退 `P0_PHYS_OFFSET (0x80000000)`（已落地：
   `src/core/memory/address_space.cpp:86-87`）。
 - D3 extractor 后续由 `iomem.rs` 从 `/proc/iomem` 推导 DRAM base 与物理加载地址

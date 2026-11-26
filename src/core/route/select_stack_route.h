@@ -17,7 +17,7 @@
 #define PSELECT_ROUTE_NFDS 320
 #endif
 
-namespace ghostlock::route::select_stack {
+namespace lsprivilege::route::select_stack {
     /* Bit-access wrapper for one fd_set; syscall boundaries still receive the raw
  * fd_set so the kernel ABI layout stays untouched. */
     class FdSet final {
@@ -43,9 +43,9 @@ namespace ghostlock::route::select_stack {
  * destructor close a descriptor a stuck consumer may still walk. */
     class SelectStackRoute final {
     public:
-        SelectStackRoute(ghostlock::race::PiRace *race, const ghostlock::memory::WriteRequest *request,
-                         const ghostlock::profile::TargetProfile &profile,
-                         ghostlock::profile::SelectStackLayout layout,
+        SelectStackRoute(lsprivilege::race::PiRace *race, const lsprivilege::memory::WriteRequest *request,
+                         const lsprivilege::profile::TargetProfile &profile,
+                         lsprivilege::profile::SelectStackLayout layout,
                          const std::array<int32_t, 3> &stdio_backup_value) noexcept;
 
         ~SelectStackRoute() noexcept = default;
@@ -63,7 +63,7 @@ namespace ghostlock::route::select_stack {
 
         /* Park the crafted waiter and run select/pselect. Defined in the
    * route-level part of select_stack_route.cpp. */
-        [[nodiscard]] ghostlock::route::RouteStatus execute() noexcept;
+        [[nodiscard]] lsprivilege::route::RouteStatus execute() noexcept;
 
         /* Stop the consumer trigger and bounded-drain it; a consumer still in
    * flight marks the route dirty. */
@@ -80,21 +80,21 @@ namespace ghostlock::route::select_stack {
             return block_borrows_pipe ? pipe_read.get() : block.get();
         }
 
-        ghostlock::race::PiRace *race = nullptr;
-        const ghostlock::memory::WriteRequest *request = nullptr;
-        const ghostlock::profile::TargetProfile &profile;
-        ghostlock::profile::SelectStackLayout layout{};
+        lsprivilege::race::PiRace *race = nullptr;
+        const lsprivilege::memory::WriteRequest *request = nullptr;
+        const lsprivilege::profile::TargetProfile &profile;
+        lsprivilege::profile::SelectStackLayout layout{};
         FdSet input_set;
         FdSet output_set;
         FdSet exception_set;
         FdSet owned_input_set;
         FdSet owned_output_set;
         FdSet owned_exception_set;
-        ghostlock::support::UniqueFd pipe_read;
-        ghostlock::support::UniqueFd pipe_write;
-        ghostlock::support::UniqueFd block;
-        ghostlock::support::UniqueFd high_read;
-        std::array<ghostlock::support::BorrowedFd, 3> stdio_backup;
+        lsprivilege::support::UniqueFd pipe_read;
+        lsprivilege::support::UniqueFd pipe_write;
+        lsprivilege::support::UniqueFd block;
+        lsprivilege::support::UniqueFd high_read;
+        std::array<lsprivilege::support::BorrowedFd, 3> stdio_backup;
         int32_t block_borrows_pipe = 0;
         int32_t selected_fds_installed = 0;
         int32_t consumer_stuck = 0;
@@ -102,11 +102,11 @@ namespace ghostlock::route::select_stack {
         int32_t successes = 0;
         int32_t select_result = 0;
         int32_t select_errno = 0;
-        ghostlock::route::RouteStatus status{};
+        lsprivilege::route::RouteStatus status{};
 
     private:
         void retain_for_process_lifetime() noexcept;
     };
-} // namespace ghostlock::route::select_stack
+} // namespace lsprivilege::route::select_stack
 
 #endif

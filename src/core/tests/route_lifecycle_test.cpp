@@ -8,7 +8,7 @@
 #include <cstdio>
 #include <string>
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
 namespace {
     struct FakeRoute {
@@ -65,7 +65,7 @@ namespace {
 } // namespace
 
 int32_t main(void) {
-    using namespace ghostlock::route;
+    using namespace lsprivilege::route;
 
     /* Prepare succeeds: the full sequence runs once, in order, and the route's
      * published status is returned. */

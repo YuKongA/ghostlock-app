@@ -8,7 +8,7 @@
   `02369c1` and decimal extractor output.
 - Triggering device: MTK6893, moto edge 40, `lyriq`,
   `6.6.127-android15-8-gb947b5758b2a-ab15580855-4k`.
-- Recorded device logs in `ghostlock-direct-*.log`:
+- Recorded device logs in `lsprivilege-direct-*.log`:
   - `soc: mtk; kernel_phys_load=0x40080000`, with the physical load address
     loaded correctly.
   - `[-] W1: SELinux: target 0x0000000000000000 is outside the direct map, not attempting`
@@ -79,7 +79,7 @@ Invariants:
 
 ## Disassembly review record, cmp_disasm
 
-- Baseline: the binary produced by `buildGhostlockNative` after using
+- Baseline: the binary produced by `buildLSPrivilegeNative` after using
   `git stash` to set aside these changes. Candidate: a build with the changes.
 - Results for 8 attack functions:
   - `owner_thread` / `consumer_thread` / `run_main_route_threads` /
@@ -102,7 +102,7 @@ Invariants:
 ## Decision record
 
 - D1: name the field `kernel_phys_offset`, alongside `kernel_phys_load`.
-  Implemented in `profile-core/src/main/kotlin/com/ghostlock/app/data/NativeProfile.kt:29`.
+  Implemented in `profile-core/src/main/kotlin/org/lsposed/lsprivilege/data/NativeProfile.kt:29`.
 - D2: default to `P0_PHYS_OFFSET (0x80000000)`.
   Implemented in `src/core/memory/address_space.cpp:86-87`.
 - D3: the extractor later uses `iomem.rs` to infer the DRAM base and physical

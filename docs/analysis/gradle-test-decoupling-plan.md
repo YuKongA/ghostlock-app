@@ -7,9 +7,9 @@
 - Historical pre-change baseline: `81b25c01`. Implementation: `15f34caf`.
 - Branch `very-not-stable-dev`. Scope: the root `build.gradle.kts` and `app/build.gradle.kts`.
 - Before implementation, `preBuild` in `app/build.gradle.kts` depended on
-  `prepareGhostlockJniLibs`, `prepareGhostlockExtractJniLibs`, and `generateBuildInfo`.
-- The first two tasks depended on `:buildGhostlockNative` (`make -C src ghostlock`, requiring
-  the NDK) and `:buildGhostlockExtract` (`cargo --target aarch64-linux-android`, requiring
+  `prepareLSPrivilegeJniLibs`, `prepareLSPrivilegeExtractJniLibs`, and `generateBuildInfo`.
+- The first two tasks depended on `:buildLSPrivilegeNative` (`make -C src lsprivilege`, requiring
+  the NDK) and `:buildLSPrivilegeExtract` (`cargo --target aarch64-linux-android`, requiring
   Rust's Android std), respectively. As a result, the JVM-only `:app:testDebugUnitTest`
   also triggered an arm64 native build.
 - Development machines without the NDK or `aarch64-linux-android` std could not run app unit tests.
@@ -33,7 +33,7 @@ Non-goals:
 ## Changes implemented
 
 - Keep only `generateBuildInfo` on `preBuild`.
-- Attach `prepareGhostlockJniLibs` / `prepareGhostlockExtractJniLibs` to
+- Attach `prepareLSPrivilegeJniLibs` / `prepareLSPrivilegeExtractJniLibs` to
   `merge*JniLibFolders` / `merge*NativeLibs`. `tasks.matching` covers matching tasks for
   debug/release and androidTest.
 - Preserve
@@ -45,10 +45,10 @@ flowchart TD
     T[testDebugUnitTest] --> P[preBuild]
     P --> G[generateBuildInfo]
     T --> E[profile-core:exportKernelProfiles]
-    M[merge*JniLibFolders / NativeLibs] --> PJ[prepareGhostlockJniLibs]
-    M --> PE[prepareGhostlockExtractJniLibs]
-    PJ --> BN[buildGhostlockNative]
-    PE --> BE[buildGhostlockExtract]
+    M[merge*JniLibFolders / NativeLibs] --> PJ[prepareLSPrivilegeJniLibs]
+    M --> PE[prepareLSPrivilegeExtractJniLibs]
+    PJ --> BN[buildLSPrivilegeNative]
+    PE --> BE[buildLSPrivilegeExtract]
 ```
 
 Invariants:
@@ -59,13 +59,13 @@ Invariants:
 
 ## Verification evidence
 
-- [x] `./gradlew :app:testDebugUnitTest --dry-run`: no `buildGhostlock*` /
-  `prepareGhostlock*` tasks appeared. `:profile-core:exportKernelProfiles` was still present.
-- [x] `./gradlew :app:assembleDebug --dry-run`: `buildGhostlockNative` /
-  `buildGhostlockExtract` / `prepare*JniLibs` were still present.
+- [x] `./gradlew :app:testDebugUnitTest --dry-run`: no `buildLSPrivilege*` /
+  `prepareLSPrivilege*` tasks appeared. `:profile-core:exportKernelProfiles` was still present.
+- [x] `./gradlew :app:assembleDebug --dry-run`: `buildLSPrivilegeNative` /
+  `buildLSPrivilegeExtract` / `prepare*JniLibs` were still present.
 - [x] `./gradlew :app:testDebugUnitTest`: BUILD SUCCESSFUL, with no native build logs.
 - [x] `./gradlew :app:assembleDebug`: BUILD SUCCESSFUL. The APK contained
-  `lib/arm64-v8a/libghostlock.so` and `libextract.so`.
+  `lib/arm64-v8a/liblsprivilege.so` and `libextract.so`.
 
 ## Rollback
 

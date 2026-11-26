@@ -95,7 +95,7 @@ END {
     red = esc "[1;31m"; yel = esc "[1;33m"; grn = esc "[1;32m"; off = esc "[0m"
     printf "\n"
     printf "%s%s%s\n", red, "=========================================================", off
-    printf "%s%s%s\n", red, "  GhostLock -- kernel physical addresses (MediaTek)", off
+    printf "%s%s%s\n", red, "  LSPrivilege -- kernel physical addresses (MediaTek)", off
     printf "%s%s%s\n", red, "=========================================================", off
     printf "release               = %s\n", release
     printf "delta (_stext - _text)= %d (0x%x)\n", delta, delta

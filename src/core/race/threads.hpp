@@ -1,10 +1,10 @@
-#ifndef GHOSTLOCK_ROUTE_THREADS_HPP
-#define GHOSTLOCK_ROUTE_THREADS_HPP
+#ifndef LSPRIVILEGE_ROUTE_THREADS_HPP
+#define LSPRIVILEGE_ROUTE_THREADS_HPP
 
 #include "common.h"
 #include "support/status.hpp"
 
-namespace ghostlock::race {
+namespace lsprivilege::race {
     /* Thread entry points registered with PiRace::start_threads(). */
     void *waiter_thread(void *arg);
 
@@ -16,7 +16,7 @@ namespace ghostlock::race {
     void reset_main_route_state(void);
 
     /* Create, synchronize, stop and join one explicitly owned PI race. */
-    Status run_main_route_threads(const ghostlock::memory::WriteRequest &request);
-} // namespace ghostlock::race
+    Status run_main_route_threads(const lsprivilege::memory::WriteRequest &request);
+} // namespace lsprivilege::race
 
 #endif

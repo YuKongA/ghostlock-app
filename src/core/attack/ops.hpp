@@ -1,12 +1,12 @@
-#ifndef GHOSTLOCK_EXPLOIT_OPS_HPP
-#define GHOSTLOCK_EXPLOIT_OPS_HPP
+#ifndef LSPRIVILEGE_EXPLOIT_OPS_HPP
+#define LSPRIVILEGE_EXPLOIT_OPS_HPP
 
 #include "common.h"
 #include "support/status.hpp"
 
 #include <array>
 
-namespace ghostlock::attack {
+namespace lsprivilege::attack {
     /* Shared timeline and execution-settings accessors. These stay inline so the
  * hot paths (PI workers) keep the exact code shape they had when this lived
  * in main.cpp. */
@@ -20,16 +20,16 @@ namespace ghostlock::attack {
     }
 
     inline double timer_ms(void) {
-        return ghostlock::runtime_time::runtime_elapsed_ms(&exploit_t0());
+        return lsprivilege::runtime_time::runtime_elapsed_ms(&exploit_t0());
     }
 
         inline int32_t in_direct_map(uintptr_t target) {
-        return target > ghostlock::kernel::DIRECT_MAP_BASE &&
-               target < ghostlock::kernel::g_direct_map_end;
+        return target > lsprivilege::kernel::DIRECT_MAP_BASE &&
+               target < lsprivilege::kernel::g_direct_map_end;
     }
 
     inline int32_t check_selinux_off(void) {
-        ghostlock::support::UniqueFd efd(open("/sys/fs/selinux/enforce", O_RDONLY | O_CLOEXEC));
+        lsprivilege::support::UniqueFd efd(open("/sys/fs/selinux/enforce", O_RDONLY | O_CLOEXEC));
         if (!efd.valid()) {
             /* untrusted_app often cannot read enforce while SELinux is enforcing. */
             return 0;
@@ -40,7 +40,7 @@ namespace ghostlock::attack {
     }
 
     inline int32_t enforce_readable(void) {
-        ghostlock::support::UniqueFd efd(open("/sys/fs/selinux/enforce", O_RDONLY | O_CLOEXEC));
+        lsprivilege::support::UniqueFd efd(open("/sys/fs/selinux/enforce", O_RDONLY | O_CLOEXEC));
         return efd.valid() ? 1 : 0;
     }
 
@@ -50,7 +50,7 @@ namespace ghostlock::attack {
      * fork() inherits that, so the W2 child does not need W3 there. */
         FILE *status = fopen("/proc/self/status", "r");
         if (!status) return 0;
-        auto close_status = ghostlock::support::make_scope_exit(
+        auto close_status = lsprivilege::support::make_scope_exit(
             [status]() noexcept { fclose(status); });
         char line[256];
         int32_t seccomp = 0;
@@ -64,11 +64,11 @@ namespace ghostlock::attack {
     }
 
     /* Launch: profile installation, validation and address resolution. */
-    void log_execution_settings(const struct ghostlock::profile::kernel_offsets *profile);
+    void log_execution_settings(const struct lsprivilege::profile::kernel_offsets *profile);
 
     void resolve_profile_addresses(void);
 
-    void install_profile(const struct ghostlock::profile::kernel_offsets &decoded);
+    void install_profile(const struct lsprivilege::profile::kernel_offsets &decoded);
 
     /* Attack primitives that stay in exploit_ops.cpp. */
     void apply_iomem_cache(void);
@@ -83,8 +83,8 @@ namespace ghostlock::attack {
      * shape the TIMER macro had, without the macro. */
     inline void timer_mark(const char *label) {
         pr_info("[T+%.0fms] %s\n", timer_ms(), label);
-        ghostlock::support::log_sync();
+        lsprivilege::support::log_sync();
     }
-} // namespace ghostlock::attack
+} // namespace lsprivilege::attack
 
 #endif

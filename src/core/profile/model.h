@@ -1,5 +1,5 @@
-#ifndef GHOSTLOCK_PROFILE_H
-#define GHOSTLOCK_PROFILE_H
+#ifndef LSPRIVILEGE_PROFILE_H
+#define LSPRIVILEGE_PROFILE_H
 
 #include <cstddef>
 #include <cstdint>
@@ -10,7 +10,7 @@
 #include <string_view>
 #include <utility>
 
-namespace ghostlock::profile {
+namespace lsprivilege::profile {
     /* PROFILE-SUGGEST-01: only kernel geometry (kernel_major, symbol and struct
      * offsets, waiter layout, credential template) is truly required. Kotlin merges
      * the shipped execution defaults and user overrides before the profile reaches
@@ -229,42 +229,42 @@ namespace ghostlock::profile {
          * 32-bit value both in `execution_settings` and on the wire (the legacy
          * JSON parser also rejects negatives), so each getter returns uint32_t
          * and no static_cast is required at the call site. */
-#define GHOSTLOCK_EXEC_U32(name) \
+#define LSPRIVILEGE_EXEC_U32(name) \
         [[nodiscard]] uint32_t name() const noexcept { return values_.execution.name; }
-        GHOSTLOCK_EXEC_U32(recommended_main_cpu)
-        GHOSTLOCK_EXEC_U32(recommended_consumer_cpu)
-        GHOSTLOCK_EXEC_U32(heap_prepare_max_attempts)
-        GHOSTLOCK_EXEC_U32(heap_prepare_timeout_ms)
-        GHOSTLOCK_EXEC_U32(heap_kernelsnitch_timeout_ms)
-        GHOSTLOCK_EXEC_U32(race_route_wait_ms)
+        LSPRIVILEGE_EXEC_U32(recommended_main_cpu)
+        LSPRIVILEGE_EXEC_U32(recommended_consumer_cpu)
+        LSPRIVILEGE_EXEC_U32(heap_prepare_max_attempts)
+        LSPRIVILEGE_EXEC_U32(heap_prepare_timeout_ms)
+        LSPRIVILEGE_EXEC_U32(heap_kernelsnitch_timeout_ms)
+        LSPRIVILEGE_EXEC_U32(race_route_wait_ms)
         [[nodiscard]] uint32_t race_route_done_timeout_ms() const noexcept {
             constexpr uint32_t kDefaultRouteDoneTimeoutMs = 300000;
             return or_default(values_.execution.race_route_done_timeout_ms,
                               kDefaultRouteDoneTimeoutMs);
         }
-        GHOSTLOCK_EXEC_U32(race_setup_settle_us)
-        GHOSTLOCK_EXEC_U32(race_state_poll_interval_us)
-        GHOSTLOCK_EXEC_U32(w1_attempts)
-        GHOSTLOCK_EXEC_U32(w1_settle_us)
-        GHOSTLOCK_EXEC_U32(w1_scratch_repair_attempts)
-        GHOSTLOCK_EXEC_U32(w2_attempts)
-        GHOSTLOCK_EXEC_U32(w2_settle_us)
-        GHOSTLOCK_EXEC_U32(w3_chain_rounds)
-        GHOSTLOCK_EXEC_U32(w3_attempts)
-        GHOSTLOCK_EXEC_U32(w3_settle_us)
-        GHOSTLOCK_EXEC_U32(tcp_attempts)
-        GHOSTLOCK_EXEC_U32(tcp_arm_sequence)
-        GHOSTLOCK_EXEC_U32(tcp_post_receive_hold_iterations)
-        GHOSTLOCK_EXEC_U32(select_enter_delay_us)
-        GHOSTLOCK_EXEC_U32(select_timeout_us)
-        GHOSTLOCK_EXEC_U32(select_consumer_max_calls)
-        GHOSTLOCK_EXEC_U32(select_consumer_burst_calls)
-        GHOSTLOCK_EXEC_U32(handoff_pre_dispatch_settle_ms)
-        GHOSTLOCK_EXEC_U32(handoff_module_poll_attempts)
-        GHOSTLOCK_EXEC_U32(handoff_module_poll_interval_ms)
-        GHOSTLOCK_EXEC_U32(handoff_enforce_poll_attempts)
-        GHOSTLOCK_EXEC_U32(handoff_enforce_poll_interval_ms)
-#undef GHOSTLOCK_EXEC_U32
+        LSPRIVILEGE_EXEC_U32(race_setup_settle_us)
+        LSPRIVILEGE_EXEC_U32(race_state_poll_interval_us)
+        LSPRIVILEGE_EXEC_U32(w1_attempts)
+        LSPRIVILEGE_EXEC_U32(w1_settle_us)
+        LSPRIVILEGE_EXEC_U32(w1_scratch_repair_attempts)
+        LSPRIVILEGE_EXEC_U32(w2_attempts)
+        LSPRIVILEGE_EXEC_U32(w2_settle_us)
+        LSPRIVILEGE_EXEC_U32(w3_chain_rounds)
+        LSPRIVILEGE_EXEC_U32(w3_attempts)
+        LSPRIVILEGE_EXEC_U32(w3_settle_us)
+        LSPRIVILEGE_EXEC_U32(tcp_attempts)
+        LSPRIVILEGE_EXEC_U32(tcp_arm_sequence)
+        LSPRIVILEGE_EXEC_U32(tcp_post_receive_hold_iterations)
+        LSPRIVILEGE_EXEC_U32(select_enter_delay_us)
+        LSPRIVILEGE_EXEC_U32(select_timeout_us)
+        LSPRIVILEGE_EXEC_U32(select_consumer_max_calls)
+        LSPRIVILEGE_EXEC_U32(select_consumer_burst_calls)
+        LSPRIVILEGE_EXEC_U32(handoff_pre_dispatch_settle_ms)
+        LSPRIVILEGE_EXEC_U32(handoff_module_poll_attempts)
+        LSPRIVILEGE_EXEC_U32(handoff_module_poll_interval_ms)
+        LSPRIVILEGE_EXEC_U32(handoff_enforce_poll_attempts)
+        LSPRIVILEGE_EXEC_U32(handoff_enforce_poll_interval_ms)
+#undef LSPRIVILEGE_EXEC_U32
 
         [[nodiscard]] bool has_compact_waiter() const noexcept {
             return loaded_ && values_.misc.compact_waiter.value_or(0) != 0;
@@ -336,6 +336,6 @@ namespace ghostlock::profile {
         std::array<char, 256> release_{};
         bool loaded_ = false;
     };
-} // namespace ghostlock::profile
+} // namespace lsprivilege::profile
 
 #endif

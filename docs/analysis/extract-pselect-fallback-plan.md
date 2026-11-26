@@ -27,7 +27,7 @@ Goal: reject only when the final selected route depends on the pselect layout.
 
 Non-goals:
 
-- Change native exploit code, the GLK1/profile binary format, wire, or the app.
+- Change native exploit code, the PRIV1/profile binary format, wire, or the app.
 - Add tcp layouts for new families. The tcp branch in `conf_route_geometry` still
   recognizes only `STRUCT_OFFSETS_6_1`.
 - Extend the controllable pselect window for `shift=13`.

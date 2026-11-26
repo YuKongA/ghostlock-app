@@ -1,5 +1,5 @@
-#ifndef GHOSTLOCK_HOST_ATTACK_SCRIPT_HPP
-#define GHOSTLOCK_HOST_ATTACK_SCRIPT_HPP
+#ifndef LSPRIVILEGE_HOST_ATTACK_SCRIPT_HPP
+#define LSPRIVILEGE_HOST_ATTACK_SCRIPT_HPP
 
 /*
  * Host-only script driving the attack data flow with no real kernel work.
@@ -19,7 +19,7 @@
 
 #include "support/status.hpp"
 
-namespace ghostlock::host {
+namespace lsprivilege::host {
     struct HostAttackScript {
         /* verify_* outcomes: the front of the queue is consumed per call; an
          * empty queue returns the matching *_default. */
@@ -38,8 +38,8 @@ namespace ghostlock::host {
         int32_t process_has_seccomp_value = 1;
 
         /* One middleware route result per call; empty queue returns *_default. */
-        std::deque<ghostlock::Status> route_results{};
-        ghostlock::Status route_default = true;
+        std::deque<lsprivilege::Status> route_results{};
+        lsprivilege::Status route_default = true;
 
         /* One victim spawn per call; empty queue returns spawn_default. */
         struct Spawn {
@@ -65,9 +65,9 @@ namespace ghostlock::host {
         int32_t next_seccomp() { return pop(verify_seccomp, verify_seccomp_default); }
         int32_t next_leaf() { return pop(verify_leaf, verify_leaf_default); }
 
-        ghostlock::Status next_route() {
+        lsprivilege::Status next_route() {
             if (route_results.empty()) return route_default;
-            const ghostlock::Status value = route_results.front();
+            const lsprivilege::Status value = route_results.front();
             route_results.pop_front();
             return value;
         }
@@ -90,6 +90,6 @@ namespace ghostlock::host {
 
     /* Process-wide script for the host attack data flow. */
     HostAttackScript &script() noexcept;
-} // namespace ghostlock::host
+} // namespace lsprivilege::host
 
 #endif

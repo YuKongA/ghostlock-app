@@ -2,9 +2,9 @@
 
 #include "host_attack_script.hpp"
 
-/* Host stubs for the ghostlock::attack surface: no syscalls, no kernel work.
+/* Host stubs for the lsprivilege::attack surface: no syscalls, no kernel work.
  * Probes return the scripted verdict; side-effecting primitives are no-ops. */
-namespace ghostlock::attack {
+namespace lsprivilege::attack {
     int32_t in_direct_map(uintptr_t target) {
         (void) target;
         return 1;
@@ -22,13 +22,13 @@ namespace ghostlock::attack {
         return host::script().process_has_seccomp_value;
     }
 
-    void log_execution_settings(const struct ghostlock::profile::kernel_offsets *profile) {
+    void log_execution_settings(const struct lsprivilege::profile::kernel_offsets *profile) {
         (void) profile;
     }
 
     void resolve_profile_addresses(void) {}
 
-    void install_profile(const struct ghostlock::profile::kernel_offsets &decoded) {
+    void install_profile(const struct lsprivilege::profile::kernel_offsets &decoded) {
         (void) decoded;
     }
 
@@ -43,4 +43,4 @@ namespace ghostlock::attack {
     void timer_reset(void) {}
 
     void timer_mark(const char *label) { (void) label; }
-} // namespace ghostlock::attack
+} // namespace lsprivilege::attack

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.GhostLock" parent="@android:style/Theme.DeviceDefault.DayNight">
+    <style name="Theme.LSPrivilege" parent="@android:style/Theme.DeviceDefault.DayNight">
         <item name="android:windowActionBar">false</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowLightStatusBar">@bool/window_light_status_bar</item>

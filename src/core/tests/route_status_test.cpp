@@ -3,19 +3,19 @@
 #include <cassert>
 #include <cstddef>
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
 int32_t main() {
-    static_assert(static_cast<int32_t>(ghostlock::route::ROUTE_OK) == 0);
-    static_assert(static_cast<int32_t>(ghostlock::route::ROUTE_RETRYABLE) == 1);
-    static_assert(static_cast<int32_t>(ghostlock::route::ROUTE_FALLBACK_SAFE) == 2);
-    static_assert(static_cast<int32_t>(ghostlock::route::ROUTE_DIRTY_FAILURE) == 3);
-    static_assert(static_cast<int32_t>(ghostlock::route::ROUTE_UNSUPPORTED) == 4);
-    static_assert(sizeof(ghostlock::route::RouteStatus) == sizeof(int32_t) * 5);
-    static_assert(offsetof(ghostlock::route::RouteStatus, kernel_disarmed) == sizeof(int32_t) * 4);
+    static_assert(static_cast<int32_t>(lsprivilege::route::ROUTE_OK) == 0);
+    static_assert(static_cast<int32_t>(lsprivilege::route::ROUTE_RETRYABLE) == 1);
+    static_assert(static_cast<int32_t>(lsprivilege::route::ROUTE_FALLBACK_SAFE) == 2);
+    static_assert(static_cast<int32_t>(lsprivilege::route::ROUTE_DIRTY_FAILURE) == 3);
+    static_assert(static_cast<int32_t>(lsprivilege::route::ROUTE_UNSUPPORTED) == 4);
+    static_assert(sizeof(lsprivilege::route::RouteStatus) == sizeof(int32_t) * 5);
+    static_assert(offsetof(lsprivilege::route::RouteStatus, kernel_disarmed) == sizeof(int32_t) * 4);
 
-    constexpr ghostlock::route::RouteStatus fallback{
-        .code = ghostlock::route::ROUTE_FALLBACK_SAFE,
+    constexpr lsprivilege::route::RouteStatus fallback{
+        .code = lsprivilege::route::ROUTE_FALLBACK_SAFE,
         .userspace_clean = 1,
         .kernel_disarmed = 1,
     };
@@ -23,8 +23,8 @@ int32_t main() {
     static_assert(!fallback.is_dirty());
     static_assert(fallback.can_fallback());
 
-    constexpr ghostlock::route::RouteStatus dirty{
-        .code = ghostlock::route::ROUTE_DIRTY_FAILURE,
+    constexpr lsprivilege::route::RouteStatus dirty{
+        .code = lsprivilege::route::ROUTE_DIRTY_FAILURE,
         .userspace_clean = 0,
         .kernel_disarmed = 1,
     };

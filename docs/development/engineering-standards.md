@@ -1,6 +1,6 @@
 English | [简体中文](engineering-standards_ZH.md)
 
-# GhostLock engineering and design standards
+# LSPrivilege engineering and design standards
 
 > Practices and requirements. See [`design-philosophy.md`](design-philosophy.md) for the reasons behind them. These rules apply to human developers and
 > AI agents in this repository. Before any change, you must read this document and complete the design process in section 1.
@@ -38,7 +38,7 @@ For L-level changes, you must present the design and obtain the user's approval 
 | Change | Host tests | NDK build | lint-tidy | `cmp_disasm` | Device gate |
 |---|---|---|---|---|---|
 | S/M outside the attack path | Required | Required, zero warnings | Required, 0 findings | May skip | Not required |
-| M touching the attack path | Required | Required, zero warnings | Required, 0 findings | **Required**, 8 functions | Required; see §8.3 |
+| M touching the attack path | Required | Required, zero warnings | Required, 0 findings | **Required**, 6 functions | Required; see §8.3 |
 | L | Required | Required, zero warnings | Required, 0 findings | **Required** | Required, with archived evidence |
 
 See `AGENTS.md` and §8 for commands.
@@ -68,16 +68,16 @@ See `AGENTS.md` and §8 for commands.
 
 ```
 app/ (Kotlin, UI/domain/data/shizuku)
-  │  ProcessBuilder (not JNI): write GLK1 to stdin, collect logs from stdout/stderr, report the result through the exit code
+  │  ProcessBuilder (not JNI): write PRIV1 to stdin, collect logs from stdout/stderr, report the result through the exit code
   ▼
 src/core/ (C++23 executable ELF)     tools/extract_rs/ (Rust offline extractor)
 ```
 
-- Cross-layer contracts are limited to processes, files, stdin/stdout, exit codes, and GLK1/HOCON profile text. New cross-layer state must go through
+- Cross-layer contracts are limited to processes, files, stdin/stdout, exit codes, and PRIV1/HOCON profile text. New cross-layer state must go through
   a profile or file. Do not invent environment variables; see §3.1.
 - Kotlin layers: `ui → domain → data`. Platform I/O is allowed only in `data/`. `shizuku/` is an execution-entry variant,
   not a place for business rules.
-- Native namespace layers: `ghostlock::{route,session,memory,attack,race,support,profile}`.
+- Native namespace layers: `lsprivilege::{route,session,memory,attack,race,support,profile}`.
   All includes are relative to `src/core`, as in `#include "route/..."`, so ownership is visible at the call site.
 
 ### 2.2 Route structure, the project's main extension point
@@ -125,12 +125,12 @@ The sole authority for the complete list of places to update when adding middlew
 assets HOCON (index.conf + <uname-r>.conf + execution-*.conf + shared sections)
    → Kotlin parsing/merging (expand includes, explicit route selection)
    → user override layer (stored sparsely per release, higher priority than built-in and imported profiles)
-   → GLK1 binary (passed to native through stdin; exportKernelProfiles generates .bin)
+   → PRIV1 binary (passed to native through stdin; exportKernelProfiles generates .bin)
    → native TargetProfile read-only snapshot (the execution layer uses only this from this point on)
 ```
 
 - The profile is the sole configuration authority. The execution layer may read only process/path environment variables:
-  `GHOSTLOCK_HOME`, `TMPDIR`, and `GHOSTLOCK_KSU_LOG`. Extend the profile when new state is needed. Never add configuration environment variables.
+  `LSPRIVILEGE_HOME`, `TMPDIR`, and `LSPRIVILEGE_KSU_LOG`. Extend the profile when new state is needed. Never add configuration environment variables.
 - Match `uname -r` exactly. The profile declares the route explicitly. Do not infer it from the kernel version or device name.
 - Differences between imported and built-in profiles must be traceable. Compare fields before offering an override.
   A profile's release name and filename must match exactly.
@@ -143,7 +143,7 @@ TargetProfile (immutable, owns values) → ResolvedAddresses::init() → Resolve
    → uintptr_t write into the kernel
 ```
 
-- Distinguish optional fields from explicit 0. GLK1 expresses presence through whether a key exists. Native stores optional fields in `std::optional`.
+- Distinguish optional fields from explicit 0. PRIV1 expresses presence through whether a key exists. Native stores optional fields in `std::optional`.
   Implicit "0 = absent" compatibility is allowed only in a documented, one-time derivation entry point.
 - Every profile-driven buffer-size or offset calculation must check for overflow safely and validate the range before use.
   Follow the existing `MulticastGeometry`/`Fields` pattern.
@@ -206,7 +206,7 @@ Within the `waiter_thread → owner_thread → consumer_thread → CMP_REQUEUE_P
 
 ### 5.1 Kernel ABI structures, the highest-risk area
 
-- The GLK1 wire v2 section/key table in `profile/binary.cpp` is the contract authority. Once published, field names, types, and bit patterns must not change.
+- The PRIV1 wire v2 section/key table in `profile/binary.cpp` is the contract authority. Once published, field names, types, and bit patterns must not change.
   Add a field by adding an entry to that section and synchronizing Kotlin `NativeProfile.kt`. Section/entry order does not matter.
 - Tests lock down the Kotlin↔Native registries for `RouteKind` and field tables: `route_catalog_test` /
   `RouteCatalogAgreementTest`. Wire IDs, key names, and types must match. Named sections and entries are unordered.
@@ -242,7 +242,7 @@ and ported `kernelsnitch` code. New exceptions must be included in a plan docume
 
 - Language: C++23, `-fno-rtti`, static libc++, `-O2 -flto`, and `-Wall -Wextra -Wconversion -Wsign-conversion`.
   New code must not introduce warnings. RTTI, exceptions, and nonstandard extensions are forbidden.
-- Headers: use `#ifndef GHOSTLOCK_<PATH>_<FILE>_HPP` guards, make headers self-contained, and use `#include` paths relative to `src/core`
+- Headers: use `#ifndef LSPRIVILEGE_<PATH>_<FILE>_HPP` guards, make headers self-contained, and use `#include` paths relative to `src/core`
   for project headers. Sort within groups alphabetically, following the file's existing style without unrelated reordering.
 - Naming: `snake_case` for functions and variables, `PascalCase` for types, `kCamelCase` for compile-time constants, and `name_` for members.
   Macros are limited to the ported headers explicitly preserved.
@@ -303,10 +303,10 @@ See §1.5. Each batch has an independently verifiable commit sequence. Commit me
 ### 8.2 Attack-function shape comparison
 
 ```sh
-python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
+python3 tools/cmp_disasm.py <baseline-binary> build/native/lsprivilege
 ```
 
-- Covers 8 attack functions in `TARGETS`. The result must be `IDENTICAL (strict)` or annotation differences that have been reviewed and recorded,
+- Covers 6 attack functions in `TARGETS`. The result must be `IDENTICAL (strict)` or annotation differences that have been reviewed and recorded,
   such as an allowed `LAYOUT-SHIFT` single-address annotation. Add new attack functions to `TARGETS`.
 - Put reports and conclusions in the commit message or plan. Historical examples list IDENTICAL for each function in the batch report.
 
@@ -318,7 +318,7 @@ python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
 `KernelSU ready`, and no kernel panic. At minimum, repeat the run and record the run count.
 
 **Archive**: use the template in `documentation-standards.md`. Logs correspond to the device's
-`Download/ghostlock-debug-log/<时间>/` directory.
+`Download/lsprivilege-debug-log/<时间>/` directory.
 
 ### 8.4 Attribution discipline
 

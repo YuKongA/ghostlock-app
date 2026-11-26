@@ -1,5 +1,5 @@
-#ifndef GHOSTLOCK_TARGET_CONSTANTS_HPP
-#define GHOSTLOCK_TARGET_CONSTANTS_HPP
+#ifndef LSPRIVILEGE_TARGET_CONSTANTS_HPP
+#define LSPRIVILEGE_TARGET_CONSTANTS_HPP
 
 #include <cstddef>
 #include <cstdint>
@@ -7,7 +7,7 @@
 #include <optional>
 #include <type_traits>
 
-namespace ghostlock::target {
+namespace lsprivilege::target {
     namespace address {
         inline constexpr std::uintptr_t kImageTextBase = 0xffffffc080000000ULL;
         inline constexpr std::uintptr_t kMtkVirtualBase = 0xffffffc000000000ULL;
@@ -89,6 +89,6 @@ namespace ghostlock::target {
     static_assert(payload::kFakeTaskOffset == 0x1280);
     static_assert(payload::kTcpFakeTaskOffset == 0x5800);
     static_assert(payload::kTcpCredentialCopyOffset == 0x6800);
-} // namespace ghostlock::target
+} // namespace lsprivilege::target
 
 #endif

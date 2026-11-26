@@ -1,5 +1,5 @@
-#ifndef GHOSTLOCK_HOST_LINUX_MEMFD_H
-#define GHOSTLOCK_HOST_LINUX_MEMFD_H
+#ifndef LSPRIVILEGE_HOST_LINUX_MEMFD_H
+#define LSPRIVILEGE_HOST_LINUX_MEMFD_H
 
 /*
  * Host shim: macOS has no <linux/memfd.h>. The host attack data-flow test does

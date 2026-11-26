@@ -2,7 +2,7 @@
 #include "session/runtime_config.h"
 #include "session/runtime_paths.h"
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
 static void runtime_config_init_cpus(config::RuntimeConfig *config) {
     config->main_cpu = 0;
@@ -49,7 +49,7 @@ static int32_t runtime_config_validate_cpus(config::RuntimeConfig *config) {
 
 /* Apply profile CPU recommendations only where Kotlin/environment did not
  * make an explicit selection. Existing explicit choices remain authoritative. */
-int32_t ghostlock::config::RuntimeConfig::apply_profile(const profile::TargetProfile *profile) {
+int32_t lsprivilege::config::RuntimeConfig::apply_profile(const profile::TargetProfile *profile) {
     const profile::execution_settings *e = profile->execution();
     if (!e) return -1;
     int32_t old_main = main_cpu;
@@ -64,22 +64,22 @@ int32_t ghostlock::config::RuntimeConfig::apply_profile(const profile::TargetPro
 }
 
 static void runtime_config_init_paths(config::RuntimeConfig *config) {
-    const char *home = getenv("GHOSTLOCK_HOME");
+    const char *home = getenv("LSPRIVILEGE_HOME");
     if (!home || !home[0]) home = getenv("TMPDIR");
     if (!home || !home[0]) home = "/data/local/tmp";
 
-    config->home_dir = ghostlock::config::normalize_home_dir(home);
+    config->home_dir = lsprivilege::config::normalize_home_dir(home);
     config->root_script_path =
-            ghostlock::config::root_script_file(config->home_dir);
+            lsprivilege::config::root_script_file(config->home_dir);
 
-    const char *ksu_log = getenv("GHOSTLOCK_KSU_LOG");
+    const char *ksu_log = getenv("LSPRIVILEGE_KSU_LOG");
     config->ksu_log_path = (ksu_log && ksu_log[0])
                                ? std::string(ksu_log)
-                               : config->home_dir + "/.ghostlock_ksu.log";
+                               : config->home_dir + "/.lsprivilege_ksu.log";
 
     /* The value is embedded in shell single quotes by write_root_script;
      * escape ' so a quote in the path cannot break the script. */
-    const char *ksud = getenv("GHOSTLOCK_KSUD");
+    const char *ksud = getenv("LSPRIVILEGE_KSUD");
     if (ksud && ksud[0]) {
         std::string escaped;
         for (const char *p = ksud; *p; p++) {
@@ -92,7 +92,7 @@ static void runtime_config_init_paths(config::RuntimeConfig *config) {
 
 /* Capture all process environment and CPU/path choices exactly once. Input:
  * writable config; output: 0/-1 with the validated CPU pair. */
-int32_t ghostlock::config::RuntimeConfig::init() {
+int32_t lsprivilege::config::RuntimeConfig::init() {
     main_cpu = 0;
     consumer_cpu = 1;
     home_dir.clear();
@@ -108,7 +108,7 @@ int32_t ghostlock::config::RuntimeConfig::init() {
 }
 
 /* Log the immutable runtime snapshot. Input: initialized config; output: logs. */
-void ghostlock::config::RuntimeConfig::log() const {
+void lsprivilege::config::RuntimeConfig::log() const {
     pr_info("cpu pair: main=%d consumer=%d\n", main_cpu, consumer_cpu);
     pr_info("runtime home=%s script=%s\n", home_dir.c_str(),
             root_script_path.c_str());

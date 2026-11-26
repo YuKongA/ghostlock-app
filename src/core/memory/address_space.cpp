@@ -11,11 +11,11 @@
 /* Measured direct-map end. Defaults to the built-in bound and can only be
  * narrowed by a rooted /proc/iomem dump (apply_iomem_cache). KernelSnitch
  * reads it to bound its scan; it is never an authority wider than target.h. */
-namespace ghostlock::kernel {
+namespace lsprivilege::kernel {
     uint64_t g_direct_map_end = DIRECT_MAP_END;
-} // namespace ghostlock::kernel
+} // namespace lsprivilege::kernel
 
-namespace ghostlock::memory {
+namespace lsprivilege::memory {
 #if defined(__ANDROID__)
 #include <sys/system_properties.h>
 #endif
@@ -141,4 +141,4 @@ namespace ghostlock::memory {
                    ? "qcom/6.12"
                    : "qcom/other";
     }
-} // namespace ghostlock::memory
+} // namespace lsprivilege::memory

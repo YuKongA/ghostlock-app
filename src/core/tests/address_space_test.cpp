@@ -13,13 +13,13 @@
 #include <cstdio>
 
 namespace {
-    using ghostlock::memory::ResolvedAddresses;
-    using ghostlock::memory::SocFamily;
+    using lsprivilege::memory::ResolvedAddresses;
+    using lsprivilege::memory::SocFamily;
 
-    ghostlock::profile::kernel_offsets make_transport(uint64_t init_cred,
+    lsprivilege::profile::kernel_offsets make_transport(uint64_t init_cred,
                                                       std::optional<uint64_t> phys_load,
                                                       std::optional<uint64_t> phys_offset) {
-        ghostlock::profile::kernel_offsets values{};
+        lsprivilege::profile::kernel_offsets values{};
         values.uname_r = "test";
         values.offsets.init_cred = init_cred;
         values.misc.kernel_phys_load = phys_load;
@@ -29,9 +29,9 @@ namespace {
 }
 
 int main() {
-    using ghostlock::kernel::KIMAGE_TEXT_BASE;
-    using ghostlock::kernel::P0_PAGE_OFFSET;
-    using ghostlock::kernel::P0_PHYS_OFFSET;
+    using lsprivilege::kernel::KIMAGE_TEXT_BASE;
+    using lsprivilege::kernel::P0_PAGE_OFFSET;
+    using lsprivilege::kernel::P0_PHYS_OFFSET;
 
     const uint64_t off = 0x237a0e8; /* e.g. selinux_enforcing */
     const uint64_t image = KIMAGE_TEXT_BASE + off;
@@ -42,7 +42,7 @@ int main() {
      * translation is rejected. */
     {
         const auto transport = make_transport(0x1000, 0x40080000ULL, 0x40000000ULL);
-        ghostlock::profile::TargetProfile profile(transport);
+        lsprivilege::profile::TargetProfile profile(transport);
         ResolvedAddresses addresses;
         assert(addresses.init_for_soc(&profile, SocFamily::Mtk) == 0);
         assert(addresses.phys_offset == 0x40000000ULL);
@@ -53,7 +53,7 @@ int main() {
 
     {
         const auto transport = make_transport(0x1000, 0x40080000ULL, std::nullopt);
-        ghostlock::profile::TargetProfile profile(transport);
+        lsprivilege::profile::TargetProfile profile(transport);
         ResolvedAddresses addresses;
         assert(addresses.init_for_soc(&profile, SocFamily::Mtk) == 0);
         assert(addresses.phys_offset == P0_PHYS_OFFSET);
@@ -63,7 +63,7 @@ int main() {
     /* Absent override keeps the compiled default for every existing device. */
     {
         const auto transport = make_transport(0x1000, 0xa8000000ULL, std::nullopt);
-        ghostlock::profile::TargetProfile profile(transport);
+        lsprivilege::profile::TargetProfile profile(transport);
         ResolvedAddresses addresses;
         assert(addresses.init_for_soc(&profile, SocFamily::Qcom) == 0);
         assert(addresses.phys_offset == P0_PHYS_OFFSET);

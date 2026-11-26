@@ -1,5 +1,5 @@
-#ifndef GHOSTLOCK_CVE2026_43499_BACKEND_HPP
-#define GHOSTLOCK_CVE2026_43499_BACKEND_HPP
+#ifndef LSPRIVILEGE_CVE2026_43499_BACKEND_HPP
+#define LSPRIVILEGE_CVE2026_43499_BACKEND_HPP
 
 #include "memory/payload_builder.h"
 #include "profile/model.h"
@@ -9,7 +9,7 @@
 #include "session/stage_types.hpp"
 #include "support/status.hpp"
 
-namespace ghostlock::session::backend {
+namespace lsprivilege::session::backend {
     /* Batch 4 (D1=B) cve_2026_43499 backend: the setup stage plus the W1/W2/W3
      * step sequence. The sequence is owned by this backend, and the middleware
      * policy is a template parameter: every route hook (W2 repairs) and
@@ -50,6 +50,6 @@ namespace ghostlock::session::backend {
      * policy must name the same backend. */
     static_assert(Cve2026_43499Policy::kind == runtime::backend::Cve2026_43499::kind);
     static_assert(runtime::backend_available(Cve2026_43499Policy::kind));
-} // namespace ghostlock::session::backend
+} // namespace lsprivilege::session::backend
 
 #endif

@@ -3,13 +3,13 @@
 #include <cassert>
 #include <cstdio>
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
-static ghostlock::route::RouteStatus tcp_result;
+static lsprivilege::route::RouteStatus tcp_result;
 static int32_t tcp_calls;
 static int32_t select_calls;
 
-namespace ghostlock::route {
+namespace lsprivilege::route {
     RouteStatus do_tcp_fake_lock_route(const memory::WriteRequest *request) {
         assert(request);
         tcp_calls++;
@@ -34,63 +34,63 @@ namespace ghostlock::route {
             .code = ROUTE_OK
         };
     }
-} // namespace ghostlock::route
+} // namespace lsprivilege::route
 
-static void reset_stubs(ghostlock::route::RouteStatus status) {
+static void reset_stubs(lsprivilege::route::RouteStatus status) {
     tcp_result = status;
     tcp_calls = 0;
     select_calls = 0;
 }
 
 int32_t main(void) {
-    ghostlock::race::PiRace race;
-    ghostlock::memory::WriteRequest request = {.mode = ghostlock::memory::WriteMode::Zero};
+    lsprivilege::race::PiRace race;
+    lsprivilege::memory::WriteRequest request = {.mode = lsprivilege::memory::WriteMode::Zero};
     /* The optional fallback field is present: tcp failure falls back to select. */
     profile::kernel_offsets values = {
-        .route = ghostlock::profile::kRouteTcpZerocopy,
-        .meta = {.fallback_route = ghostlock::profile::kRouteSelectStack},
+        .route = lsprivilege::profile::kRouteTcpZerocopy,
+        .meta = {.fallback_route = lsprivilege::profile::kRouteSelectStack},
         .misc = {.compact_waiter = 1},
     };
-    ghostlock::profile::TargetProfile profile = ghostlock::profile::TargetProfile::from(&values);
+    lsprivilege::profile::TargetProfile profile = lsprivilege::profile::TargetProfile::from(&values);
     route::RouteController controller;
     controller.init(&race, &profile);
 
-    reset_stubs((ghostlock::route::RouteStatus)
+    reset_stubs((lsprivilege::route::RouteStatus)
     {
-        .code = ghostlock::route::ROUTE_FALLBACK_SAFE,
+        .code = lsprivilege::route::ROUTE_FALLBACK_SAFE,
         .userspace_clean = 1,
         .kernel_disarmed = 1,
     });
-    ghostlock::route::RouteStatus status = controller.execute(&request);
-    assert(status.code == ghostlock::route::ROUTE_OK);
+    lsprivilege::route::RouteStatus status = controller.execute(&request);
+    assert(status.code == lsprivilege::route::ROUTE_OK);
     assert(tcp_calls == 1 && select_calls == 1 && controller.fallback_used);
 
     /* Without the fallback field the tcp failure is returned unchanged. */
     profile::kernel_offsets no_fallback = {
-        .route = ghostlock::profile::kRouteTcpZerocopy,
+        .route = lsprivilege::profile::kRouteTcpZerocopy,
         .misc = {.compact_waiter = 1},
     };
-    ghostlock::profile::TargetProfile no_fallback_profile = ghostlock::profile::TargetProfile::from(&no_fallback);
+    lsprivilege::profile::TargetProfile no_fallback_profile = lsprivilege::profile::TargetProfile::from(&no_fallback);
     controller.init(&race, &no_fallback_profile);
-    reset_stubs((ghostlock::route::RouteStatus)
+    reset_stubs((lsprivilege::route::RouteStatus)
     {
-        .code = ghostlock::route::ROUTE_FALLBACK_SAFE,
+        .code = lsprivilege::route::ROUTE_FALLBACK_SAFE,
         .userspace_clean = 1,
         .kernel_disarmed = 1,
     });
     status = controller.execute(&request);
-    assert(status.code == ghostlock::route::ROUTE_FALLBACK_SAFE);
+    assert(status.code == lsprivilege::route::ROUTE_FALLBACK_SAFE);
     assert(tcp_calls == 1 && select_calls == 0 && !controller.fallback_used);
 
     controller.init(&race, &profile);
-    reset_stubs((ghostlock::route::RouteStatus)
+    reset_stubs((lsprivilege::route::RouteStatus)
     {
-        .code = ghostlock::route::ROUTE_DIRTY_FAILURE,
+        .code = lsprivilege::route::ROUTE_DIRTY_FAILURE,
         .userspace_clean = 0,
         .kernel_disarmed = 1,
     });
     status = controller.execute(&request);
-    assert(status.code == ghostlock::route::ROUTE_DIRTY_FAILURE);
+    assert(status.code == lsprivilege::route::ROUTE_DIRTY_FAILURE);
     assert(tcp_calls == 1 && select_calls == 0 && !controller.fallback_used);
 
     puts("route_controller_test: ok");

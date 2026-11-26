@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
 namespace {
     class ErrnoRestore final {
@@ -40,7 +40,7 @@ visibility (
 )
 )
 )
-int32_t ghostlock_cpp_link_probe(const char *text, int32_t saved_errno) noexcept {
+int32_t lsprivilege_cpp_link_probe(const char *text, int32_t saved_errno) noexcept {
     try {
         ErrnoRestore restore(saved_errno);
         const std::string owned = text ? text : "";

@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use ghostlock_extract::payload;
+use lsprivilege_extract::payload;
 
 fn main() {
     let mut args = std::env::args().skip(1);

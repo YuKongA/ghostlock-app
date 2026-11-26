@@ -1,8 +1,8 @@
 #include "race/pi_race.h"
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
-bool ghostlock::race::PiRace::reset(
+bool lsprivilege::race::PiRace::reset(
     uint32_t initial_delay_usec, int32_t main_cpu_value, int32_t consumer_cpu_value) noexcept {
     if (waiter_owner.joinable() || owner_owner.joinable() ||
         consumer_owner.joinable()) {
@@ -36,7 +36,7 @@ bool ghostlock::race::PiRace::reset(
     return true;
 }
 
-int32_t ghostlock::race::PiRace::start_threads(
+int32_t lsprivilege::race::PiRace::start_threads(
     void *(*waiter_entry)(void *), void *(*owner_entry)(void *),
     void *(*consumer_entry)(void *), const memory::WriteRequest * route_request)
 noexcept
@@ -77,7 +77,7 @@ noexcept
     return 0;
 }
 
-int32_t ghostlock::race::PiRace::abort_startup() noexcept {
+int32_t lsprivilege::race::PiRace::abort_startup() noexcept {
     consumer_stop.store(1);
     owner_stop.store(1);
     owner_owner.request_stop();
@@ -89,13 +89,13 @@ int32_t ghostlock::race::PiRace::abort_startup() noexcept {
     return first_error;
 }
 
-void ghostlock::race::PiRace::request_stop() noexcept {
+void lsprivilege::race::PiRace::request_stop() noexcept {
     consumer_go.store(0);
     consumer_stop.store(1);
     owner_stop.store(1);
 }
 
-int32_t ghostlock::race::PiRace::join() noexcept {
+int32_t lsprivilege::race::PiRace::join() noexcept {
     int32_t first_error = 0;
     const int32_t waiter_error = waiter_owner.joinable() ? waiter_owner.join() : 0;
     if (waiter_error != 0) first_error = waiter_error;
@@ -111,7 +111,7 @@ int32_t ghostlock::race::PiRace::join() noexcept {
     return first_error;
 }
 
-ghostlock::route::RouteStatus ghostlock::race::PiRace::outcome_with_counters(
+lsprivilege::route::RouteStatus lsprivilege::race::PiRace::outcome_with_counters(
     const route::RouteStatus &outcome, int32_t calls, int32_t success) noexcept {
     if (outcome.code == route::ROUTE_OK && (calls == 0 || success == 0)) {
         route::RouteStatus retryable = outcome;

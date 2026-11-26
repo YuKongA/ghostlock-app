@@ -1,5 +1,5 @@
-#ifndef GHOSTLOCK_HOST_LINUX_FUTEX_H
-#define GHOSTLOCK_HOST_LINUX_FUTEX_H
+#ifndef LSPRIVILEGE_HOST_LINUX_FUTEX_H
+#define LSPRIVILEGE_HOST_LINUX_FUTEX_H
 
 /*
  * Host shim: macOS has no <linux/futex.h>. The host attack data-flow test

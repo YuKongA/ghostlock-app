@@ -1,6 +1,6 @@
 English | [简体中文](design-philosophy_ZH.md)
 
-# GhostLock design principles
+# LSPrivilege design principles
 
 Read this document before making changes. See the [engineering standards](engineering-standards.md) for practices and verification requirements.
 
@@ -10,7 +10,7 @@ Host tests check whether code meets its specification. Device tests confirm actu
 
 ## 2. Make contracts explicit
 
-The profile selects the route explicitly. Do not infer it from the kernel version. Preserve the distinction between an absent value and an explicit `0`. GLK1 expresses presence through whether a key exists. Types or interfaces must make the owners, borrowers, and lifetime endpoints of files, threads, and child processes clear.
+The profile selects the route explicitly. Do not infer it from the kernel version. Preserve the distinction between an absent value and an explicit `0`. PRIV1 expresses presence through whether a key exists. Types or interfaces must make the owners, borrowers, and lifetime endpoints of files, threads, and child processes clear.
 
 The route lifecycle is fixed at `prepare → execute → disarm → destroy`. Required conventions must point to a type, field, or test. They cannot depend on verbal agreement.
 

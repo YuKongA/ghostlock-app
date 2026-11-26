@@ -1,4 +1,4 @@
-/ghostlock
+/lsprivilege
 local.properties
 .gradle/
 .idea/
@@ -6,7 +6,7 @@ local.properties
 cmake-build-*/
 *.iml
 app/build/
-libghostlock.so
+liblsprivilege.so
 libextract.so
 build/
 /.build/
@@ -18,4 +18,4 @@ target/
 *.keystore
 /.codex/
 /src/.codex/config.toml
-/ghostlock *
+/lsprivilege *

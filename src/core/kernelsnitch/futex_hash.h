@@ -7,7 +7,7 @@
 #include <cstdint>
 
 // --------------- ADDED/REPLACED FOR COMPATIBILITY ---------------
-namespace ghostlock::kernelsnitch {
+namespace lsprivilege::kernelsnitch {
     typedef uint32_t u32;
     typedef uint32_t __u32;
     typedef uint8_t u8;
@@ -252,4 +252,4 @@ namespace ghostlock::kernelsnitch {
         key.private_key.offset = addr & 0xfff;
         return futex_hash_context_key(context, &key);
     }
-} // namespace ghostlock::kernelsnitch
+} // namespace lsprivilege::kernelsnitch

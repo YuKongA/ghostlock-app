@@ -1,5 +1,5 @@
-#ifndef GHOSTLOCK_NATIVE_RESOURCE_HPP
-#define GHOSTLOCK_NATIVE_RESOURCE_HPP
+#ifndef LSPRIVILEGE_NATIVE_RESOURCE_HPP
+#define LSPRIVILEGE_NATIVE_RESOURCE_HPP
 
 #include "support/native_result.hpp"
 
@@ -12,7 +12,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace ghostlock::support {
+namespace lsprivilege::support {
     class BorrowedFd final {
     public:
         constexpr BorrowedFd() noexcept = default;
@@ -226,6 +226,6 @@ namespace ghostlock::support {
         pid_t pid_ = -1;
         State state_ = State::Empty;
     };
-} // namespace ghostlock::support
+} // namespace lsprivilege::support
 
 #endif

@@ -8,7 +8,7 @@
 #include <iterator>
 #include <span>
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
 namespace {
     void store64(unsigned char *p, size_t off, uint64_t value) {
@@ -31,7 +31,7 @@ namespace {
     }
 } // namespace
 
-namespace ghostlock::memory {
+namespace lsprivilege::memory {
     bool encode_compact_waiter(std::span<std::byte> waiter,
                                const WriteRequest &request,
                                const PayloadWriteLayout &layout) noexcept {
@@ -180,4 +180,4 @@ namespace ghostlock::memory {
             return 0;
         return 1;
     }
-} // namespace ghostlock::memory
+} // namespace lsprivilege::memory

@@ -350,7 +350,7 @@ pub fn render(analysis: &Analysis) -> String {
     let mut lines = Vec::new();
     let field = |name: &str, value: String| format!("{name:<23} {value}");
 
-    lines.push("== GhostLock kernel analysis ==".to_string());
+    lines.push("== LSPrivilege kernel analysis ==".to_string());
     lines.push(field(
         "release",
         analysis

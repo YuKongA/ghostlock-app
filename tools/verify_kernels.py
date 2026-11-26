@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Batch-verify ghostlock-extract across a set of kernel images.
+"""Batch-verify lsprivilege-extract across a set of kernel images.
 
 Usage:
     python3 tools/verify_kernels.py <boot.img|payload.bin|Image>...
@@ -18,7 +18,7 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BIN = os.path.join(ROOT, "tools", "extract_rs", "target", "release", "ghostlock-extract")
+BIN = os.path.join(ROOT, "build", "extract", "release", "lsprivilege-extract")
 
 
 def run(image):

@@ -1,5 +1,5 @@
-#ifndef GHOSTLOCK_ROUTE_POLICY_HPP
-#define GHOSTLOCK_ROUTE_POLICY_HPP
+#ifndef LSPRIVILEGE_ROUTE_POLICY_HPP
+#define LSPRIVILEGE_ROUTE_POLICY_HPP
 
 #include <concepts>
 #include <optional>
@@ -12,18 +12,18 @@
 #include "route/route_status.h"
 #include "support/status.hpp"
 
-namespace ghostlock::session {
+namespace lsprivilege::session {
     struct ExploitSession;
 }
 
-namespace ghostlock::route {
+namespace lsprivilege::route {
     RouteStatus do_pselect_fake_lock_route(const memory::WriteRequest *request);
 
     RouteStatus do_tcp_fake_lock_route(const memory::WriteRequest *request);
 
     RouteStatus do_kernel5_fake_lock_route(const memory::WriteRequest *request);
 
-    using RouteKind = ghostlock::profile::RouteKind;
+    using RouteKind = lsprivilege::profile::RouteKind;
 
     /* Native middleware catalog (Batch 3): each policy is one selectable
      * middleware tactic (tcp_zerocopy | select_stack | multicast_waiter). The
@@ -274,6 +274,6 @@ namespace ghostlock::route {
             return std::decay_t<decltype(policy)>::multicast;
         });
     }
-} // namespace ghostlock::route
+} // namespace lsprivilege::route
 
 #endif

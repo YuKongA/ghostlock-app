@@ -1,5 +1,5 @@
-#ifndef GHOSTLOCK_ADDRESS_SPACE_H
-#define GHOSTLOCK_ADDRESS_SPACE_H
+#ifndef LSPRIVILEGE_ADDRESS_SPACE_H
+#define LSPRIVILEGE_ADDRESS_SPACE_H
 
 #include "profile/model.h"
 #include "kernel/target_constants.hpp"
@@ -7,7 +7,7 @@
 
 #include <cstdint>
 
-namespace ghostlock::memory {
+namespace lsprivilege::memory {
     enum class SocFamily : int32_t {
         Qcom = 0,
         Mtk,
@@ -25,9 +25,9 @@ namespace ghostlock::memory {
         uintptr_t phys_offset = 0;
         target::KernelAddress<target::ImageAddressDomain> init_cred_image;
 
-        int32_t init(const ghostlock::profile::TargetProfile *profile);
+        int32_t init(const lsprivilege::profile::TargetProfile *profile);
 
-        int32_t init_for_soc(const ghostlock::profile::TargetProfile *profile, SocFamily family);
+        int32_t init_for_soc(const lsprivilege::profile::TargetProfile *profile, SocFamily family);
 
         uintptr_t data_alias(uintptr_t image_addr) const;
 
@@ -42,8 +42,8 @@ namespace ghostlock::memory {
             return init_cred_image.value();
         }
 
-        [[nodiscard]] const char *soc_name(const ghostlock::profile::TargetProfile *profile) const;
+        [[nodiscard]] const char *soc_name(const lsprivilege::profile::TargetProfile *profile) const;
     };
-} // namespace ghostlock::memory
+} // namespace lsprivilege::memory
 
 #endif

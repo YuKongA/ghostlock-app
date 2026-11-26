@@ -16,11 +16,11 @@
 #include <cstdint>
 
 namespace {
-    using ghostlock::host::script;
+    using lsprivilege::host::script;
 
     void reset_script() {
         auto &s = script();
-        s = ghostlock::host::HostAttackScript{};
+        s = lsprivilege::host::HostAttackScript{};
         s.spawn_default = {4242, 0xffff888000001000ULL};
     }
 
@@ -37,30 +37,30 @@ namespace {
         return condition;
     }
 
-    ghostlock::runtime::RunResult run_once() {
-        ghostlock::profile::kernel_offsets decoded{};
+    lsprivilege::runtime::RunResult run_once() {
+        lsprivilege::profile::kernel_offsets decoded{};
         decoded.meta.kernel_major = 6;
         decoded.execution.w1_attempts = 3;
         decoded.execution.w1_scratch_repair_attempts = 1;
         decoded.execution.w2_attempts = 4;
         decoded.execution.w3_chain_rounds = 2;
         decoded.execution.w3_attempts = 3;
-        ghostlock::session::g_exploit_session.profile =
-                ghostlock::profile::TargetProfile::from(&decoded);
-        return ghostlock::runtime::Pipeline<
-            ghostlock::session::frontend::RootChildPolicy,
-            ghostlock::session::backend::Cve2026_43499Policy,
-            ghostlock::route::SelectPolicy>::run(
-            ghostlock::session::g_exploit_session, decoded, nullptr, true);
+        lsprivilege::session::g_exploit_session.profile =
+                lsprivilege::profile::TargetProfile::from(&decoded);
+        return lsprivilege::runtime::Pipeline<
+            lsprivilege::session::frontend::RootChildPolicy,
+            lsprivilege::session::backend::Cve2026_43499Policy,
+            lsprivilege::route::SelectPolicy>::run(
+            lsprivilege::session::g_exploit_session, decoded, nullptr, true);
     }
 
     bool test_happy_path() {
         reset_script();
         const auto result = run_once();
         bool ok = true;
-        ok &= expect(result.code == ghostlock::runtime::RunCode::Completed,
+        ok &= expect(result.code == lsprivilege::runtime::RunCode::Completed,
                      "happy: pipeline should complete");
-        ok &= expect(result.stage == ghostlock::runtime::RunStage::Frontend,
+        ok &= expect(result.stage == lsprivilege::runtime::RunStage::Frontend,
                      "happy: terminal stage is the frontend");
         ok &= expect(count_calls("spawn") == 1, "happy: exactly one victim spawn");
         ok &= expect(count_calls("verify_w2") >= 1, "happy: W2 verified");
@@ -74,7 +74,7 @@ namespace {
         script().verify_w2 = {0, 0, 1};
         const auto result = run_once();
         bool ok = true;
-        ok &= expect(result.code == ghostlock::runtime::RunCode::Completed,
+        ok &= expect(result.code == lsprivilege::runtime::RunCode::Completed,
                      "retry: pipeline completes after late W2 success");
         /* First attempt verifies once; the second attempt verifies before and
          * after the write, where the queued success lands. */
@@ -88,11 +88,11 @@ namespace {
         script().verify_w2_default = 0;
         const auto result = run_once();
         const uint32_t attempts =
-                ghostlock::session::g_exploit_session.profile.w2_attempts();
+                lsprivilege::session::g_exploit_session.profile.w2_attempts();
         bool ok = true;
-        ok &= expect(result.code == ghostlock::runtime::RunCode::Failed,
+        ok &= expect(result.code == lsprivilege::runtime::RunCode::Failed,
                      "exhaust: pipeline fails");
-        ok &= expect(result.stage == ghostlock::runtime::RunStage::Backend,
+        ok &= expect(result.stage == lsprivilege::runtime::RunStage::Backend,
                      "exhaust: failure is in the backend");
         ok &= expect(count_calls("verify_w2") >= static_cast<int32_t>(attempts),
                      "exhaust: verify_w2 ran at least w2_attempts times");
@@ -104,7 +104,7 @@ namespace {
         script().verify_selinux = {0, 1};
         const auto result = run_once();
         bool ok = true;
-        ok &= expect(result.code == ghostlock::runtime::RunCode::Completed,
+        ok &= expect(result.code == lsprivilege::runtime::RunCode::Completed,
                      "selinux: pipeline completes");
         ok &= expect(count_calls("verify_selinux") == 2,
                      "selinux: verify_selinux retried twice");

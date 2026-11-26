@@ -5,7 +5,7 @@
 #include <iterator>
 #include <string_view>
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
 /* Cross-language agreement anchor: the canonical (token, wire) set. The Kotlin
  * RouteCatalogAgreementTest asserts the same list; drift on either side fails

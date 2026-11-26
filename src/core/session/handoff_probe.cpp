@@ -10,7 +10,7 @@
 #include <string_view>
 #include <unistd.h>
 
-namespace ghostlock::session {
+namespace lsprivilege::session {
     namespace {
         constexpr size_t kKsuLogPathMax = 320;
 
@@ -148,4 +148,4 @@ namespace ghostlock::session {
 
         return result;
     }
-} // namespace ghostlock::session
+} // namespace lsprivilege::session

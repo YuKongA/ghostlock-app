@@ -1,5 +1,5 @@
-#ifndef GHOSTLOCK_SUPPORT_RUN_STATE_HPP
-#define GHOSTLOCK_SUPPORT_RUN_STATE_HPP
+#ifndef LSPRIVILEGE_SUPPORT_RUN_STATE_HPP
+#define LSPRIVILEGE_SUPPORT_RUN_STATE_HPP
 
 /*
  * Attack step status reporting over stdio, enabled by --enable-status-record.
@@ -15,7 +15,7 @@
 #include <string>
 #include <string_view>
 
-namespace ghostlock::support::run_state {
+namespace lsprivilege::support::run_state {
     /* Protocol helpers (pure, host-testable). */
     std::string format_event(std::string_view step, std::string_view status);
 
@@ -30,6 +30,6 @@ namespace ghostlock::support::run_state {
 
     /* Announce that `step` finished and wait for the app to persist it. */
     void complete(const char *step) noexcept;
-} // namespace ghostlock::support::run_state
+} // namespace lsprivilege::support::run_state
 
 #endif

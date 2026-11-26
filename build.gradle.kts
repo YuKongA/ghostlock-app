@@ -90,10 +90,10 @@ tasks.register<Delete>("clean") {
     delete(layout.buildDirectory)
 }
 
-tasks.register<Exec>("buildGhostlockNative") {
-    description = "buildGhostlockNative"
+tasks.register<Exec>("buildLSPrivilegeNative") {
+    description = "buildLSPrivilegeNative"
     workingDir(file("src"))
-    commandLine("make", "ghostlock")
+    commandLine("make", "lsprivilege")
     val ndk = resolveNdkDir()
     environment("ANDROID_NDK_HOME", ndk)
     environment("NDK_ROOT", ndk)
@@ -101,22 +101,22 @@ tasks.register<Exec>("buildGhostlockNative") {
         fileTree("src") { include("**/*.c", "**/*.h", "**/*.cpp", "**/*.hpp") },
         file("src/Makefile"),
     )
-    outputs.file(file("build/native/ghostlock"))
+    outputs.file(file("build/native/lsprivilege"))
 }
 
-tasks.register<Copy>("prepareGhostlockJniLibs") {
-    description = "prepareGhostlockJniLibs"
-    dependsOn("buildGhostlockNative")
-    from("build/native/ghostlock")
+tasks.register<Copy>("prepareLSPrivilegeJniLibs") {
+    description = "prepareLSPrivilegeJniLibs"
+    dependsOn("buildLSPrivilegeNative")
+    from("build/native/lsprivilege")
     into("app/src/main/jniLibs/arm64-v8a")
-    rename { "libghostlock.so" }
+    rename { "liblsprivilege.so" }
     /* Strip only the packaged copy: static libc++ carries its DWARF into the
-     * binary, while the top-level ghostlock keeps its symbols for the
+     * binary, while the top-level lsprivilege keeps its symbols for the
      * disassembly comparisons. Paths are captured as plain strings so the
      * configuration cache can serialize this task. */
     val stripPath = File(extractNdkTools().clang)
         .resolveSibling("llvm-strip").absolutePath
-    val packagedPath = File(rootDir, "app/src/main/jniLibs/arm64-v8a/libghostlock.so").absolutePath
+    val packagedPath = File(rootDir, "app/src/main/jniLibs/arm64-v8a/liblsprivilege.so").absolutePath
     doLast {
         val code = ProcessBuilder(stripPath, "--strip-all", packagedPath)
             .inheritIO()
@@ -126,8 +126,8 @@ tasks.register<Copy>("prepareGhostlockJniLibs") {
     }
 }
 
-tasks.register<Exec>("buildGhostlockExtract") {
-    description = "buildGhostlockExtract"
+tasks.register<Exec>("buildLSPrivilegeExtract") {
+    description = "buildLSPrivilegeExtract"
     val tools = extractNdkTools()
     val isOndk = useOndk()
     val command = mutableListOf(resolveCargoExecutable())
@@ -150,13 +150,13 @@ tasks.register<Exec>("buildGhostlockExtract") {
         file("tools/extract_rs/Cargo.lock"),
     )
     inputs.property("useOndk", isOndk)
-    outputs.file(file("build/extract/aarch64-linux-android/release/ghostlock-extract"))
+    outputs.file(file("build/extract/aarch64-linux-android/release/lsprivilege-extract"))
 }
 
-tasks.register<Copy>("prepareGhostlockExtractJniLibs") {
-    description = "prepareGhostlockExtractJniLibs"
-    dependsOn("buildGhostlockExtract")
-    from("build/extract/aarch64-linux-android/release/ghostlock-extract")
+tasks.register<Copy>("prepareLSPrivilegeExtractJniLibs") {
+    description = "prepareLSPrivilegeExtractJniLibs"
+    dependsOn("buildLSPrivilegeExtract")
+    from("build/extract/aarch64-linux-android/release/lsprivilege-extract")
     into("app/src/main/jniLibs/arm64-v8a")
     rename { "libextract.so" }
 }

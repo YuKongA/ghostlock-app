@@ -3,7 +3,7 @@
 
 #include "kernel/target_constants.hpp"
 
-/* Compiled-in target geometry, functionized into ghostlock::kernel.
+/* Compiled-in target geometry, functionized into lsprivilege::kernel.
  *
  * The values fall into three groups: address-layout and payload-slot values
  * forwarded from target_constants.hpp, device/profile defaults, and the
@@ -11,8 +11,8 @@
  * runtime_struct_offsets.h accessors. Nothing here is a second authority; a
  * resolved profile still wins wherever a value is optional. */
 
-namespace ghostlock::kernel {
-    inline constexpr const char *BUILD_VARIANT_LABEL = "ghostlock_oplus";
+namespace lsprivilege::kernel {
+    inline constexpr const char *BUILD_VARIANT_LABEL = "lsprivilege_oplus";
 
     /* Kernel address layout. */
     inline constexpr std::uintptr_t KIMAGE_TEXT_BASE = target::address::kImageTextBase;
@@ -137,6 +137,6 @@ namespace ghostlock::kernel {
             target::payload::kTcpFakeTaskOffset;
     inline constexpr std::size_t TCP_CRED_COPY_OFF =
             target::payload::kTcpCredentialCopyOffset;
-} // namespace ghostlock::kernel
+} // namespace lsprivilege::kernel
 
 #endif

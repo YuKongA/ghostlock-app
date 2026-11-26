@@ -1,5 +1,5 @@
-#ifndef GHOSTLOCK_BACKEND_CONTRACT_HPP
-#define GHOSTLOCK_BACKEND_CONTRACT_HPP
+#ifndef LSPRIVILEGE_BACKEND_CONTRACT_HPP
+#define LSPRIVILEGE_BACKEND_CONTRACT_HPP
 
 #include <concepts>
 #include <tuple>
@@ -11,11 +11,11 @@
 #include "route/component_catalog.hpp"
 #include "session/stage_types.hpp"
 
-namespace ghostlock::session {
+namespace lsprivilege::session {
     struct ExploitSession;
 }
 
-namespace ghostlock::runtime {
+namespace lsprivilege::runtime {
     /* Batch 5 backend contract. Two levels, one availability authority:
      *
      *   - BackendIdentity: the declared id used for selection/validation
@@ -57,6 +57,6 @@ namespace ghostlock::runtime {
 
     static_assert(BackendIdentity<backend::Cve2026_43499>);
     static_assert(BackendIdentity<backend::Cve2026_64560>);
-} // namespace ghostlock::runtime
+} // namespace lsprivilege::runtime
 
 #endif

@@ -10,7 +10,7 @@
 #include <cstdio>
 #include <variant>
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
 namespace {
     struct StubState {
@@ -37,7 +37,7 @@ namespace {
     }
 } // namespace
 
-namespace ghostlock::route {
+namespace lsprivilege::route {
     RouteStatus do_pselect_fake_lock_route(const memory::WriteRequest *request) {
         assert(request);
         state.select_calls++;
@@ -55,11 +55,11 @@ namespace ghostlock::route {
         state.multicast_calls++;
         return state.multicast_status;
     }
-} // namespace ghostlock::route
+} // namespace lsprivilege::route
 
 int32_t main(void) {
-    using namespace ghostlock::route;
-    using ghostlock::profile::RouteKind;
+    using namespace lsprivilege::route;
+    using lsprivilege::profile::RouteKind;
 
     /* ---- White box: capabilities, including the base-class defaults. ---- */
     static_assert(SelectPolicy::kind == RouteKind::SelectStack);

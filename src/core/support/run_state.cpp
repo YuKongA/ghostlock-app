@@ -5,10 +5,10 @@
 #include <poll.h>
 #include <unistd.h>
 
-namespace ghostlock::support::run_state {
+namespace lsprivilege::support::run_state {
     namespace {
         constexpr char kMarker = static_cast<char>(0x1e);
-        constexpr const char *kAckLine = "\x1eGLK_STATUS_ACK";
+        constexpr const char *kAckLine = "\x1ePRIV_STATUS_ACK";
         constexpr int kAckTimeoutMs = 5000;
         constexpr size_t kMaxLine = 64;
 
@@ -44,7 +44,7 @@ namespace ghostlock::support::run_state {
             std::fprintf(stderr,
                          "warning: status record ACK timeout; disabling status record "
                          "for this run (rerun without --enable-status-record)\n");
-            std::fprintf(stdout, "%cGLK_STATUS_DISABLED\n", kMarker);
+            std::fprintf(stdout, "%cPRIV_STATUS_DISABLED\n", kMarker);
             std::fflush(stdout);
             g_enabled = false;
         }
@@ -60,7 +60,7 @@ namespace ghostlock::support::run_state {
         std::string line;
         line.reserve(step.size() + status.size() + 24);
         line.push_back(kMarker);
-        line.append("GLK_STATUS ");
+        line.append("PRIV_STATUS ");
         line.append(step.data(), step.size());
         line.push_back(' ');
         line.append(status.data(), status.size());
@@ -77,4 +77,4 @@ namespace ghostlock::support::run_state {
     void enter(const char *step) noexcept { transition(step, "in_progress"); }
 
     void complete(const char *step) noexcept { transition(step, "completed"); }
-} // namespace ghostlock::support::run_state
+} // namespace lsprivilege::support::run_state
