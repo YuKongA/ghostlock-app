@@ -17,6 +17,7 @@ import com.ghostlock.app.domain.run.LogSinkRequest
 import com.ghostlock.app.domain.run.LogLevel
 import com.ghostlock.app.domain.run.LogOrigin
 import com.ghostlock.app.domain.run.LogDraft
+import com.ghostlock.app.domain.run.LogRowsSnapshot
 import com.ghostlock.app.domain.run.RunReport
 import com.ghostlock.app.domain.run.RunSessionPhase
 import com.ghostlock.app.domain.run.RunSessionState
@@ -77,9 +78,8 @@ class LogHubMediaStoreIntegrationTest {
                     coroutineScope {
                         val source = KotlinLogConnector()
                         val collection = async { attach(source) }
-                        val message = "x".repeat(640)
-                        repeat(16_384) {
-                            source.emit(LogDraft(LogOrigin.Native, LogLevel.Info, message))
+                        repeat(INPUT_RECORD_COUNT) { index ->
+                            source.emit(LogDraft(LogOrigin.Native, LogLevel.Info, messageFor(index)))
                         }
                         source.finishInput()
                         collection.await()
@@ -91,11 +91,19 @@ class LogHubMediaStoreIntegrationTest {
                 logHub.state.first { state -> state.phase == RunSessionPhase.Done }
                 while (logHub.isRunning()) yield()
             }
+            // Flow completion does not imply that the independently queued UI sink has drained.
+            val uiRows = withTimeout(WAIT_TIMEOUT_MS) {
+                logHub.state.first { state ->
+                    val rows = state.entries
+                    rows.size > 0 && rows[rows.size - 1].message == "Product success: NO"
+                }.entries
+            }
 
             val prefix = withTimeout(WAIT_TIMEOUT_MS) { requireNotNull(logHub.filePrefix()) }
             val manualBytes = java.io.File(prefix.path).readBytes()
             assertEquals(prefix.byteLength, manualBytes.size.toLong())
             assertTrue(manualBytes.size > 10 * 1024 * 1024)
+            assertInputSequenceAndTerminal(manualBytes, uiRows)
             withTimeout(WAIT_TIMEOUT_MS) {
                 while (stored == null) {
                     val candidate = readDocument(resolver, displayName)
@@ -117,6 +125,62 @@ class LogHubMediaStoreIntegrationTest {
             stored?.let { document -> resolver.delete(document.uri, null, null) }
             deleteRowsByDisplayName(resolver, displayName)
         }
+    }
+
+    private fun messageFor(index: Int): String =
+        "bulk-${index.toString().padStart(5, '0')}-".padEnd(640, 'x')
+
+    private fun assertInputSequenceAndTerminal(bytes: ByteArray, uiRows: LogRowsSnapshot) {
+        var uiInputCount = 0
+        uiRows.forEachIndexed { index, row ->
+            assertEquals(index + 1L, row.commitId)
+            if (row.origin == LogOrigin.Native) {
+                assertEquals(messageFor(uiInputCount++), row.message)
+            }
+        }
+        assertEquals(INPUT_RECORD_COUNT, uiInputCount)
+
+        var entries = 0
+        var inputCount = 0
+        var sessions = 0
+        var terminals = 0
+        var lastLine = ""
+        bytes.inputStream().bufferedReader(Charsets.UTF_8).useLines { lines ->
+            lines.forEach { line ->
+                lastLine = line
+                when {
+                    line.startsWith("entry\t") -> {
+                        assertEquals(0, sessions)
+                        assertEquals(0, terminals)
+                        val fields = line.split('\t', limit = 6)
+                        assertEquals(6, fields.size)
+                        assertTrue("File has more entries than the UI snapshot", entries < uiRows.size)
+                        assertEquals("commit_id=${entries + 1L}", fields[1])
+                        assertEquals(entries + 1L, uiRows[entries].commitId)
+                        if (fields[2] == "origin=Native") {
+                            assertEquals("message=${messageFor(inputCount++)}", fields[5])
+                        }
+                        entries++
+                    }
+                    line.startsWith("session\t") -> {
+                        assertEquals(uiRows.size, entries)
+                        assertEquals(0, terminals)
+                        assertEquals("session\tphase=Done", line)
+                        sessions++
+                    }
+                    line.startsWith("end\t") -> {
+                        assertEquals(1, sessions)
+                        assertEquals("end\tterminal_received=true", line)
+                        terminals++
+                    }
+                }
+            }
+        }
+        assertEquals(INPUT_RECORD_COUNT, inputCount)
+        assertEquals(uiRows.size, entries)
+        assertEquals(1, sessions)
+        assertEquals(1, terminals)
+        assertEquals("end\tterminal_received=true", lastLine)
     }
 
     /** @return One complete diagnostic-only typed terminal report. */
@@ -172,6 +236,7 @@ class LogHubMediaStoreIntegrationTest {
     )
 
     private companion object {
+        const val INPUT_RECORD_COUNT: Int = 16_384
         const val BACKEND_KEY: String = "DIAGNOSE"
         const val EXPORT_PATH: String = "Download/ghostlock-log"
         const val WAIT_TIMEOUT_MS: Long = 60_000L
