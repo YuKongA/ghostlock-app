@@ -3,6 +3,7 @@
  * accepted); no JSON or legacy rules reach this unit. */
 #include "profile/entry.h"
 
+#include "kernel/payload_bounds.h"
 #include "profile/binary.h"
 #include "support/native_resource.hpp"
 
@@ -62,9 +63,20 @@ namespace ghostlock::profile_entry {
         int32_t decode(const std::string &document, profile::kernel_offsets *out,
                    char *release_buf, size_t release_buf_cap,
                    binary_profile::component_ids *ids) {
-            return ghostlock::binary_profile::parse(
+            const int32_t rc = ghostlock::binary_profile::parse(
                 std::string_view(document.data(), document.size()), out,
                 release_buf, release_buf_cap, ids);
+            if (rc != 0) return rc;
+            /* Reject an out-of-range fake-task refcount offset at load time,
+             * for both the App (stdin) and prebuilt (file) documents, before it
+             * can reach the payload builder. 0/absent keeps the legacy
+             * fallback. The runtime chunk guard in prepare_skb_payload() remains
+             * the authoritative check for the layout actually executed. */
+            if (!kernel::task_usage_offset_valid(out->route, out->task.usage)) {
+                errno = EINVAL;
+                return -1;
+            }
+            return 0;
         }
     } // namespace
 

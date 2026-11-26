@@ -254,6 +254,7 @@
     <string name="field_task_seccomp">seccomp 偏移</string>
     <string name="field_task_tasks">任务链表偏移</string>
     <string name="field_task_tgid">TGID 偏移</string>
+    <string name="field_task_usage">任务引用计数偏移</string>
     <string name="local_kernel">本机内核：%1$s</string>
     <string name="target_kernel">目标内核：%1$s</string>
     <string name="kernels_section">内核配置</string>

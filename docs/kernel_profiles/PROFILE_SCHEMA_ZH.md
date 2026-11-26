@@ -147,6 +147,7 @@ route { multicast_waiter { waiter_off = 96, buffer_size = 264 } }
 | `task_struct.atomic_flags` | `atomic_flags`（用于现场清理判定） |
 | `task_struct.real_cred` / `task_struct.cred` | real cred / cred 指针 |
 | `task_struct.comm` / `task_struct.tasks` / `task_struct.seccomp` | `comm`、任务链表、`seccomp` |
+| `task_struct.usage` | 可选，假任务的 `task_struct.usage`（引用计数）偏移；缺省/0 回退到编译期 `FAKE_TASK_USAGE_OFF`（0x40）。vivo 5.15 为 56 |
 
 ### 4.2 凭据模板（`cred`）
 

@@ -90,6 +90,9 @@ namespace ghostlock::profile {
         uint32_t pi_lock = 0, pi_waiters = 0, pi_top_task = 0, pi_blocked_on = 0;
         uint32_t pid = 0, tgid = 0, atomic_flags = 0;
         uint32_t real_cred = 0, cred = 0, comm = 0, tasks = 0, seccomp = 0;
+        /* fake_task refcount offset; 0 = absent -> kernel::FAKE_TASK_USAGE_OFF.
+         * vivo 5.15 places task_struct.usage at 56, not the oplus default 64. */
+        uint32_t usage = 0;
     };
 
     struct CredTemplate {

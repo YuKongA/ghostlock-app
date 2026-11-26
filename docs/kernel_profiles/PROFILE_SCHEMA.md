@@ -165,6 +165,7 @@ addresses into runtime addresses.
 | `task_struct.atomic_flags` | `atomic_flags` (used to decide whether state was cleaned up) |
 | `task_struct.real_cred` / `task_struct.cred` | real cred / cred pointers |
 | `task_struct.comm` / `task_struct.tasks` / `task_struct.seccomp` | `comm`, task list, `seccomp` |
+| `task_struct.usage` | Optional `task_struct.usage` (refcount) offset for the fake task; absent/0 falls back to the compiled `FAKE_TASK_USAGE_OFF` (0x40). vivo 5.15 uses 56 |
 
 ### 4.2 Credential template (`cred`)
 

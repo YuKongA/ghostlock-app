@@ -254,6 +254,7 @@
     <string name="field_task_seccomp">task_seccomp</string>
     <string name="field_task_tasks">task_tasks</string>
     <string name="field_task_tgid">task_tgid</string>
+    <string name="field_task_usage">task_usage</string>
     <string name="local_kernel">Device kernel: %1$s</string>
     <string name="target_kernel">Target kernel: %1$s</string>
     <string name="kernels_section">Kernel profiles</string>
