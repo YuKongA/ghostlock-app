@@ -1,5 +1,5 @@
-#ifndef GHOSTLOCK_ORCHESTRATOR_HPP
-#define GHOSTLOCK_ORCHESTRATOR_HPP
+#ifndef LSPRIVILEGE_ORCHESTRATOR_HPP
+#define LSPRIVILEGE_ORCHESTRATOR_HPP
 
 #include "route/component_catalog.hpp"
 #include "route/pipeline.hpp"
@@ -8,7 +8,7 @@
 #include "session/exploit_session.hpp"
 #include "session/root_child_frontend.hpp"
 
-namespace ghostlock::runtime {
+namespace lsprivilege::runtime {
     /* NativeOrchestrator (Batch 3/4): validate the component selection outside
      * the sensitive window and dispatch the catalogued combination through
      * direct template calls (no indirect dispatch). The switch enumerates the
@@ -48,6 +48,6 @@ namespace ghostlock::runtime {
         }
         return RunResult{.code = RunCode::Rejected};
     }
-} // namespace ghostlock::runtime
+} // namespace lsprivilege::runtime
 
 #endif

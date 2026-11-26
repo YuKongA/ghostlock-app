@@ -17,7 +17,7 @@
 <string name="action_running">Correndo…</string>
 <string name="advanced_settings">Opções avançadas</string>
 <string name="advanced_settings_summary">Perfis, logs de depuração e configurações de teste</string>
-<string name="app_name">GhostLock</string>
+<string name="app_name">LSPrivilege</string>
 <string name="builtin_auto_no_match">Correspondência automática selecionada; nenhum perfil corresponde a este kernel</string>
 <string name="builtin_edit_save_hint">Perfis integrados não podem ser salvos; use Salvar como para armazenar uma cópia.</string>
 <string name="builtin_immutable_notice">Perfis integrados não podem ser editados. Para usar parâmetros personalizados, edite as substituições e salve o resultado como um novo perfil.</string>

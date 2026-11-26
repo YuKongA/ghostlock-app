@@ -29,7 +29,7 @@ tasks.register<JavaExec>("exportKernelProfiles") {
     inputs.dir(profilesDir)
     outputs.dir(outputDir)
     classpath = sourceSets["main"].runtimeClasspath
-    mainClass.set("com.ghostlock.app.data.profile.ProfileExporter")
+    mainClass.set("org.lsposed.lsprivilege.data.profile.ProfileExporter")
     args(
         profilesDir.asFile.absolutePath,
         outputDir.get().asFile.absolutePath,

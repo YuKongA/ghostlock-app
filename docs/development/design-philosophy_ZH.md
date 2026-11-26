@@ -1,6 +1,6 @@
 [English](design-philosophy.md) | 简体中文
 
-# GhostLock 设计原则
+# LSPrivilege 设计原则
 
 改动前先读本文。具体做法与验证门槛见 [工程规范](engineering-standards_ZH.md)。
 
@@ -10,7 +10,7 @@
 
 ## 2. 显式表达契约
 
-route 由 profile 显式选择，不从内核版本推断。缺省与显式 `0` 必须分开保存，GLK1 用键是否出现表达 presence。文件、线程和子进程的所有者、借用者与终结点必须能从类型或接口看出。
+route 由 profile 显式选择，不从内核版本推断。缺省与显式 `0` 必须分开保存，PRIV1 用键是否出现表达 presence。文件、线程和子进程的所有者、借用者与终结点必须能从类型或接口看出。
 
 route 生命周期固定为 `prepare → execute → disarm → destroy`。必要的约定必须能指向类型、字段或测试，不能依赖口头共识。
 

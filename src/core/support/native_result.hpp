@@ -1,12 +1,12 @@
-#ifndef GHOSTLOCK_NATIVE_RESULT_HPP
-#define GHOSTLOCK_NATIVE_RESULT_HPP
+#ifndef LSPRIVILEGE_NATIVE_RESULT_HPP
+#define LSPRIVILEGE_NATIVE_RESULT_HPP
 
 #include <cerrno>
 #include <cstdint>
 #include <expected>
 #include <system_error>
 
-namespace ghostlock::support {
+namespace lsprivilege::support {
     struct SysError final {
         std::error_code code;
 
@@ -19,6 +19,6 @@ namespace ghostlock::support {
      * are unchanged, construction uses std::unexpected for failures. */
     template<typename T, typename E = SysError>
     using Result = std::expected<T, E>;
-} // namespace ghostlock::support
+} // namespace lsprivilege::support
 
 #endif

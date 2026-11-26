@@ -79,15 +79,15 @@ HOST_LD_GC := $(if $(filter Darwin,$(shell uname -s)),$(HOST_LD_GC_DARWIN),$(HOS
 HOST_BUILD_DIR := $(BUILD_ROOT)/host-test
 
 # Every generated artifact stays under build/ so nothing lands in the repo root.
-GHOSTLOCK_BIN := $(NATIVE_BUILD_DIR)/ghostlock
+LSPRIVILEGE_BIN := $(NATIVE_BUILD_DIR)/lsprivilege
 
-.PHONY: all ghostlock clean product
+.PHONY: all lsprivilege clean product
 
-all: ghostlock
+all: lsprivilege
 
-ghostlock: $(GHOSTLOCK_BIN)
+lsprivilege: $(LSPRIVILEGE_BIN)
 
-$(GHOSTLOCK_BIN): $(OBJS) Makefile
+$(LSPRIVILEGE_BIN): $(OBJS) Makefile
 	@echo "Using NDK compiler: $(NDK_CC)"
 	@echo "Using NDK C++ compiler/linker: $(NDK_CXX)"
 	@echo "Target config: $(TARGET_CONFIG)"
@@ -286,10 +286,10 @@ $(HOST_BUILD_DIR)/victim_context_test: core/tests/victim_context_test.cpp core/s
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -pthread -Icore core/tests/victim_context_test.cpp core/session/victim_context.cpp core/support/native_resource.cpp -o $@
 
-product: ghostlock
-	@echo "=== ghostlock binary ready: $(GHOSTLOCK_BIN) ==="
+product: lsprivilege
+	@echo "=== lsprivilege binary ready: $(LSPRIVILEGE_BIN) ==="
 	@echo "构建 APK: .\gradlew.bat :app:assembleDebug"
 
 clean:
-	rm -f $(GHOSTLOCK_BIN) ghostlock
+	rm -f $(LSPRIVILEGE_BIN) lsprivilege
 	rm -rf $(BUILD_ROOT)/native $(BUILD_ROOT)/host

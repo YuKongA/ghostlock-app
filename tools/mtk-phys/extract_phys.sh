@@ -16,7 +16,7 @@ $ADB get-state >/dev/null 2>&1 || { echo "error: no adb device" >&2; exit 1; }
 $ADB root >/dev/null 2>&1 || true
 $ADB wait-for-device
 
-dev=/data/local/tmp/ghostlock-mtk-phys.sh
+dev=/data/local/tmp/lsprivilege-mtk-phys.sh
 $ADB push "$here/mtk-phys.sh" "$dev" >/dev/null
 
 uid=$($ADB shell id -u | tr -d '\r')

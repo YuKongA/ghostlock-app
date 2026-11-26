@@ -1,5 +1,5 @@
 /*
- * GhostLock — victim process protocol: spawn, command pipe loop, root handoff.
+ * LSPrivilege — victim process protocol: spawn, command pipe loop, root handoff.
  *
  * Split out of main.cpp; the statement order and log text are unchanged.
  */
@@ -12,7 +12,7 @@
 #include <array>
 #include <poll.h>
 
-namespace ghostlock::session::victim {
+namespace lsprivilege::session::victim {
     /* Bounded verify read: a zombified child (vivo vr.ko tagB) leaves the
      * uid pipe silent forever, and the stock blocking read hangs the run. */
     static int32_t read_verify_timeout(int fd, void *buf, size_t bytes) {
@@ -287,4 +287,4 @@ namespace ghostlock::session::victim {
         pr_warning("leaf dir probe ambiguous (len=%u c0=%02x)\n", (unsigned) len, c0);
         return 0;
     }
-} // namespace ghostlock::session::victim
+} // namespace lsprivilege::session::victim

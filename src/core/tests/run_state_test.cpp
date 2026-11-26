@@ -6,20 +6,20 @@
 #include <cstdio>
 #include <string>
 
-namespace run_state = ghostlock::support::run_state;
+namespace run_state = lsprivilege::support::run_state;
 
 int main() {
     const std::string marker(1, '\x1e');
 
     const std::string event = run_state::format_event("w3b", "in_progress");
-    if (event != marker + "GLK_STATUS w3b in_progress\n") {
+    if (event != marker + "PRIV_STATUS w3b in_progress\n") {
         std::fprintf(stderr, "bad event: %s", event.c_str());
         return 1;
     }
 
-    if (!run_state::is_ack(marker + "GLK_STATUS_ACK")) return 1;
-    if (run_state::is_ack("GLK_STATUS_ACK")) return 1;
-    if (run_state::is_ack(marker + "GLK_STATUS w3b in_progress")) return 1;
+    if (!run_state::is_ack(marker + "PRIV_STATUS_ACK")) return 1;
+    if (run_state::is_ack("PRIV_STATUS_ACK")) return 1;
+    if (run_state::is_ack(marker + "PRIV_STATUS w3b in_progress")) return 1;
 
     run_state::configure(false);
     if (run_state::enabled()) return 1;

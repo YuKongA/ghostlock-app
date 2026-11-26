@@ -3,7 +3,7 @@
 # 提取器无 BTF 结构推导计划（2026-09-30）
 
 > 级别：L（提取器核心推导路径 + profile 字段契约）。状态：计划，未实施。
-> 关联 issue：YuKongA/ghostlock-app#213（OPPO A3x 5G / PKD130，
+> 关联 issue：YuKongA/lsprivilege-app#213（OPPO A3x 5G / PKD130，
 > `5.15.180-android13-8-o-g88bbcb96ee5e`，内核无 BTF）。
 
 ## 状态与基线
@@ -38,7 +38,7 @@
 - 不做通用 struct 全反编译。
 - 不引入 Ghidra/rizin/radare2。提取器保持自包含，可在
   `aarch64-linux-android` 上运行（`build.gradle.kts:135`）。
-- 不改 GLK1/wire/profile 格式、native 侧、BTF 路径行为。
+- 不改 PRIV1/wire/profile 格式、native 侧、BTF 路径行为。
 - 不追求覆盖 100% 字段。每个字段独立可失败，失败即省略。
 
 约束：
@@ -135,7 +135,7 @@ flowchart TD
 ## 明确保留
 
 BTF 解析与 BTF 优先路径、`derive_pselect_layout` 的算法与不变量、
-`unverified candidate` 语义、profile/GLK1 格式、native 全部代码、
+`unverified candidate` 语义、profile/PRIV1 格式、native 全部代码、
 `kernel_layout_verified` 门限。
 
 ## 进度

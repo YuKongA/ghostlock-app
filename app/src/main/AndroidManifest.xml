@@ -16,12 +16,12 @@
         <package android:name="me.bmax.apatch" />
     </queries>
     <application
-        android:name=".GhostlockApplication"
+        android:name=".LSPrivilegeApplication"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
-        android:theme="@style/Theme.GhostLock">
+        android:theme="@style/Theme.LSPrivilege">
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="${applicationId}.shizuku"
@@ -30,7 +30,7 @@
             android:multiprocess="false"
             android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
         <service
-            android:name=".shizuku.GhostlockUserService"
+            android:name=".shizuku.LSPrivilegeUserService"
             android:exported="false"
             tools:ignore="Instantiatable" />
         <activity

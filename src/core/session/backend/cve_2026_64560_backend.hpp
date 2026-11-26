@@ -1,12 +1,12 @@
-#ifndef GHOSTLOCK_CVE2026_64560_BACKEND_HPP
-#define GHOSTLOCK_CVE2026_64560_BACKEND_HPP
+#ifndef LSPRIVILEGE_CVE2026_64560_BACKEND_HPP
+#define LSPRIVILEGE_CVE2026_64560_BACKEND_HPP
 
 #include <string_view>
 
 #include "route/backend_contract.hpp"
 #include "route/component_catalog.hpp"
 
-namespace ghostlock::session::backend {
+namespace lsprivilege::session::backend {
     /* CVE-2026-64560 backend placeholder (Batch 5). A known-but-unavailable id:
      * no execution path, no device offsets and no profile fields. The wire v3
      * carries only the backend id (there is no backend-private section), so the
@@ -25,6 +25,6 @@ namespace ghostlock::session::backend {
     static_assert(runtime::BackendIdentity<Cve2026_64560Policy>);
     static_assert(!runtime::backend_available(Cve2026_64560Policy::kind));
     static_assert(Cve2026_64560Policy::kind == runtime::backend::Cve2026_64560::kind);
-} // namespace ghostlock::session::backend
+} // namespace lsprivilege::session::backend
 
 #endif

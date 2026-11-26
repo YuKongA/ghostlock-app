@@ -4,9 +4,9 @@
 
 #include <utility>
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
-namespace ghostlock::route::select_stack {
+namespace lsprivilege::route::select_stack {
     SelectStackRoute::SelectStackRoute(
         race::PiRace *race_context, const memory::WriteRequest *route_request,
         const profile::TargetProfile &profile_value,
@@ -126,7 +126,7 @@ namespace ghostlock::route::select_stack {
             status.code = ROUTE_FALLBACK_SAFE;
         }
     }
-} // namespace ghostlock::route::select_stack
+} // namespace lsprivilege::route::select_stack
 
 #if defined(__ANDROID__)
 #include "common.h"
@@ -151,17 +151,17 @@ namespace ghostlock::route::select_stack {
 #include "route/select_stack_route.h"
 #include "route/tcp_zerocopy_route.h"
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
-namespace ghostlock::route {
+namespace lsprivilege::route {
     static double fops_elapsed_ms(struct timespec *ref) {
         return runtime_time::runtime_elapsed_ms(ref);
     }
 
-    } // namespace ghostlock::route
+    } // namespace lsprivilege::route
 
 
-namespace ghostlock::route {
+namespace lsprivilege::route {
     /* Public compatibility entry: lifecycle is now explicitly ordered while the
  * common route dispatcher remains scheduled for S14. */
     static uint32_t route_delay_usec(const select_stack::SelectStackRoute *context,
@@ -349,9 +349,9 @@ namespace ghostlock::route {
             }
         }
     }
-} // namespace ghostlock::route
+} // namespace lsprivilege::route
 
-namespace ghostlock::route::select_stack {
+namespace lsprivilege::route::select_stack {
     int32_t SelectStackRoute::prepare() noexcept {
         if (!(session::g_exploit_session.heap.current.base) || !(session::g_exploit_session.heap.current.fake_lock) || !
             (session::g_exploit_session.
@@ -493,9 +493,9 @@ namespace ghostlock::route::select_stack {
         successes = successes_total;
         return status;
     }
-} // namespace ghostlock::route::select_stack
+} // namespace lsprivilege::route::select_stack
 
-namespace ghostlock::route {
+namespace lsprivilege::route {
     route::RouteStatus do_pselect_fake_lock_route(const memory::WriteRequest *request) {
         /* U01/SELECT-01: SelectStackRoute::execute() now retries compact routes
      * four times, rebuilding the payload page and fd_sets per attempt and
@@ -519,7 +519,7 @@ namespace ghostlock::route {
                 context.status.error_number);
         return status;
     }
-} // namespace ghostlock::route
+} // namespace lsprivilege::route
 #endif // __ANDROID__
 
 

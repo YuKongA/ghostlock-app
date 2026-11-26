@@ -1,12 +1,12 @@
-#ifndef GHOSTLOCK_RUNTIME_TIME_H
-#define GHOSTLOCK_RUNTIME_TIME_H
+#ifndef LSPRIVILEGE_RUNTIME_TIME_H
+#define LSPRIVILEGE_RUNTIME_TIME_H
 
 #include <ctime>
 
 
 #include <chrono>
 
-namespace ghostlock::runtime_time {
+namespace lsprivilege::runtime_time {
     using Nanoseconds = std::chrono::nanoseconds;
     using Milliseconds = std::chrono::duration<double, std::milli>;
 
@@ -51,6 +51,6 @@ namespace ghostlock::runtime_time {
         const timespec now = monotonic_now();
         return runtime_elapsed_between_ms(reference, &now);
     }
-} // namespace ghostlock::runtime_time
+} // namespace lsprivilege::runtime_time
 
 #endif

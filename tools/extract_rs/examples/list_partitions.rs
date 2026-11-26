@@ -2,7 +2,7 @@
 //!
 //! usage: cargo run --release --example list_partitions -- <payload.bin>
 
-use ghostlock_extract::payload;
+use lsprivilege_extract::payload;
 
 fn main() {
     let path = std::env::args().nth(1).unwrap_or_else(|| {

@@ -14,7 +14,7 @@
 #include <cerrno>
 #include <cstddef>
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
 namespace {
     void *increment(void *argument) {
@@ -57,10 +57,10 @@ int32_t main() {
     close(pipe_fd[1]);
     const int32_t observed = pipe_fd[0];
     {
-        ghostlock::support::UniqueFd first(observed);
-        ghostlock::support::UniqueFd second(std::move(first));
+        lsprivilege::support::UniqueFd first(observed);
+        lsprivilege::support::UniqueFd second(std::move(first));
         assert(!first.valid() && second.get() == observed);
-        ghostlock::support::BorrowedFd borrowed = second.borrow();
+        lsprivilege::support::BorrowedFd borrowed = second.borrow();
         assert(borrowed.valid() && borrowed.get() == observed);
     }
     errno = 0;
@@ -69,46 +69,46 @@ int32_t main() {
 
     int32_t scope_calls = 0;
     {
-        auto first = ghostlock::support::make_scope_exit([&]() noexcept { ++scope_calls; });
+        auto first = lsprivilege::support::make_scope_exit([&]() noexcept { ++scope_calls; });
         auto second = std::move(first);
         (void) second;
     }
     assert(scope_calls == 1);
     {
         auto cancelled =
-                ghostlock::support::make_scope_exit([&]() noexcept { ++scope_calls; });
+                lsprivilege::support::make_scope_exit([&]() noexcept { ++scope_calls; });
         cancelled.release();
     }
     assert(scope_calls == 1);
 
-    auto mapping = ghostlock::support::MappedRegion::map_anonymous(
+    auto mapping = lsprivilege::support::MappedRegion::map_anonymous(
         4096, PROT_READ | PROT_WRITE);
     assert(mapping && mapping.value().bytes().size() == 4096);
     mapping.value().bytes()[0] = std::byte{0x5a};
-    ghostlock::support::MappedRegion moved_mapping(std::move(mapping.value()));
+    lsprivilege::support::MappedRegion moved_mapping(std::move(mapping.value()));
     assert(moved_mapping.valid() && !mapping.value().valid());
     auto invalid_mapping =
-            ghostlock::support::MappedRegion::map_anonymous(0, PROT_READ | PROT_WRITE);
+            lsprivilege::support::MappedRegion::map_anonymous(0, PROT_READ | PROT_WRITE);
     assert(!invalid_mapping);
 
     std::atomic<int32_t> calls{0};
-    ghostlock::support::PthreadOwner worker;
+    lsprivilege::support::PthreadOwner worker;
     assert(worker.start(increment, &calls) == 0);
     assert(worker.join() == 0 && calls.load() == 1);
 
     StopState stop_state;
-    ghostlock::support::PthreadOwner stoppable;
+    lsprivilege::support::PthreadOwner stoppable;
     assert(stoppable.start(wait_for_stop, &stop_state, request_stop,
                            &stop_state) == 0);
     stoppable.request_stop();
     stoppable.request_stop();
     assert(stoppable.state() ==
-           ghostlock::support::PthreadOwner::State::StopRequested);
+           lsprivilege::support::PthreadOwner::State::StopRequested);
     assert(stoppable.join() == 0);
     assert(stop_state.stop_calls.load() == 1);
-    assert(stoppable.state() == ghostlock::support::PthreadOwner::State::Joined);
+    assert(stoppable.state() == lsprivilege::support::PthreadOwner::State::Joined);
 
-    ghostlock::support::PthreadOwner invalid_worker;
+    lsprivilege::support::PthreadOwner invalid_worker;
     assert(invalid_worker.start(nullptr, nullptr) == EINVAL);
 
     const pid_t pid = fork();
@@ -116,10 +116,10 @@ int32_t main() {
     if (pid == 0) {
         for (;;) pause();
     }
-    ghostlock::support::ChildProcess child(pid);
+    lsprivilege::support::ChildProcess child(pid);
     assert(child.terminate_and_wait(SIGKILL) == 0);
     assert(!child.valid());
-    assert(child.state() == ghostlock::support::ChildProcess::State::Reaped);
+    assert(child.state() == lsprivilege::support::ChildProcess::State::Reaped);
     assert(child.terminate_and_wait(SIGKILL) == EINVAL);
 
     const pid_t handoff_pid = fork();
@@ -127,13 +127,13 @@ int32_t main() {
     if (handoff_pid == 0) {
         for (;;) pause();
     }
-    ghostlock::support::ChildProcess handoff(handoff_pid);
+    lsprivilege::support::ChildProcess handoff(handoff_pid);
     assert(handoff.release_to_handoff() == handoff_pid);
-    assert(handoff.state() == ghostlock::support::ChildProcess::State::Transferred);
+    assert(handoff.state() == lsprivilege::support::ChildProcess::State::Transferred);
     assert(kill(handoff_pid, SIGKILL) == 0);
     assert(waitpid(handoff_pid, nullptr, 0) == handoff_pid);
 
-    ghostlock::support::ChildProcess invalid_child(-1);
+    lsprivilege::support::ChildProcess invalid_child(-1);
     assert(!invalid_child.valid());
     assert(invalid_child.release_to_handoff() == -1);
 
@@ -141,11 +141,11 @@ int32_t main() {
     const pid_t reaped_pid = fork();
     assert(reaped_pid >= 0);
     if (reaped_pid == 0) _exit(0);
-    ghostlock::support::ChildProcess reaped(reaped_pid);
+    lsprivilege::support::ChildProcess reaped(reaped_pid);
     assert(waitpid(reaped_pid, nullptr, 0) == reaped_pid);
     reaped.mark_reaped();
     assert(!reaped.valid());
-    assert(reaped.state() == ghostlock::support::ChildProcess::State::Reaped);
+    assert(reaped.state() == lsprivilege::support::ChildProcess::State::Reaped);
     reaped.mark_reaped(); /* idempotent */
     assert(reaped.terminate_and_wait(SIGKILL) == EINVAL);
 
@@ -165,9 +165,9 @@ int32_t main() {
                 waitpid(failed, nullptr, 0);
             } else {
                 assert(errno == EAGAIN || errno == ENOMEM);
-                ghostlock::support::ChildProcess none(failed);
+                lsprivilege::support::ChildProcess none(failed);
                 assert(!none.valid());
-                assert(none.state() == ghostlock::support::ChildProcess::State::Empty);
+                assert(none.state() == lsprivilege::support::ChildProcess::State::Empty);
                 assert(none.terminate_and_wait(SIGKILL) == EINVAL);
             }
             (void) setrlimit(RLIMIT_NPROC, &saved_limit);

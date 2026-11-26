@@ -11,18 +11,18 @@
 #include <type_traits>
 #include <utility>
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
 
 int32_t main(void) {
-    ghostlock::race::PiRace race;
+    lsprivilege::race::PiRace race;
     assert(race.reset(0, 0, 1));
-    ghostlock::memory::WriteRequest request{};
-    ghostlock::profile::SelectStackLayout layout = {.waiter_shift = 16, .compact_waiter = 1};
+    lsprivilege::memory::WriteRequest request{};
+    lsprivilege::profile::SelectStackLayout layout = {.waiter_shift = 16, .compact_waiter = 1};
     const profile::TargetProfile profile{};
     const std::array<int32_t, 3> no_stdio = {-1, -1, -1};
 
-    ghostlock::route::select_stack::SelectStackRoute context(&race, &request, profile, layout, no_stdio);
+    lsprivilege::route::select_stack::SelectStackRoute context(&race, &request, profile, layout, no_stdio);
     assert(context.race == &race && context.request == &request);
     assert(&context.profile == &profile);
     assert(context.layout.waiter_shift == 16 && context.layout.compact_waiter);
@@ -30,14 +30,14 @@ int32_t main(void) {
     assert(!context.block.valid() && !context.high_read.valid());
     assert(!context.stdio_backup[0].valid());
     assert(context.block_borrows_pipe == 0);
-    assert(context.status.code == ghostlock::route::ROUTE_RETRYABLE);
+    assert(context.status.code == lsprivilege::route::ROUTE_RETRYABLE);
     assert(!context.input_set.test(0));
     assert(!context.owned_input_set.test(5));
 
     /* Borrowed stdio backup is recorded as a borrowed handle. */
     {
         const std::array<int32_t, 3> backups = {100, 101, 102};
-        ghostlock::route::select_stack::SelectStackRoute borrowed_stdio(&race, &request, profile, layout, backups);
+        lsprivilege::route::select_stack::SelectStackRoute borrowed_stdio(&race, &request, profile, layout, backups);
         assert(borrowed_stdio.stdio_backup[0].get() == 100);
         assert(borrowed_stdio.stdio_backup[2].get() == 102);
     }
@@ -54,18 +54,18 @@ int32_t main(void) {
     }
 
     /* Move-only: no copy, descriptors and owned sets transfer with the move. */
-    static_assert(!std::is_copy_constructible_v<ghostlock::route::select_stack::SelectStackRoute>);
-    static_assert(!std::is_copy_assignable_v<ghostlock::route::select_stack::SelectStackRoute>);
-    static_assert(std::is_move_constructible_v<ghostlock::route::select_stack::SelectStackRoute>);
+    static_assert(!std::is_copy_constructible_v<lsprivilege::route::select_stack::SelectStackRoute>);
+    static_assert(!std::is_copy_assignable_v<lsprivilege::route::select_stack::SelectStackRoute>);
+    static_assert(std::is_move_constructible_v<lsprivilege::route::select_stack::SelectStackRoute>);
     {
-        ghostlock::route::select_stack::SelectStackRoute source(&race, &request, profile, layout, no_stdio);
+        lsprivilege::route::select_stack::SelectStackRoute source(&race, &request, profile, layout, no_stdio);
         int32_t fds[2];
         assert(pipe(fds) == 0);
         source.pipe_read.reset(fds[0]);
         source.pipe_write.reset(fds[1]);
         source.selected_fds_installed = 1;
         source.owned_input_set.set(9);
-        ghostlock::route::select_stack::SelectStackRoute moved(std::move(source));
+        lsprivilege::route::select_stack::SelectStackRoute moved(std::move(source));
         assert(moved.pipe_read.get() == fds[0]);
         assert(!source.pipe_read.valid());
         assert(moved.pipe_write.get() == fds[1]);
@@ -80,7 +80,7 @@ int32_t main(void) {
     /* A borrowed block descriptor (timerfd_create fallback) is not closed
    * twice: the pipe read end closes once. */
     {
-        ghostlock::route::select_stack::SelectStackRoute borrowed_block(
+        lsprivilege::route::select_stack::SelectStackRoute borrowed_block(
             &race, &request, profile, layout, no_stdio);
         int32_t fds[2];
         assert(pipe(fds) == 0);
@@ -95,7 +95,7 @@ int32_t main(void) {
 
     /* A stuck consumer retains every route descriptor for process lifetime. */
     {
-        ghostlock::route::select_stack::SelectStackRoute stuck(&race, &request, profile, layout, no_stdio);
+        lsprivilege::route::select_stack::SelectStackRoute stuck(&race, &request, profile, layout, no_stdio);
         int32_t fds[2];
         assert(pipe(fds) == 0);
         stuck.pipe_read.reset(fds[0]);
@@ -103,7 +103,7 @@ int32_t main(void) {
         stuck.select_errno = 9;
         stuck.consumer_stuck = 1;
         stuck.destroy();
-        assert(stuck.status.code == ghostlock::route::ROUTE_DIRTY_FAILURE);
+        assert(stuck.status.code == lsprivilege::route::ROUTE_DIRTY_FAILURE);
         assert(stuck.status.step == 34);
         assert(stuck.status.error_number == 9);
         assert(!stuck.pipe_read.valid() && !stuck.pipe_write.valid());
@@ -118,7 +118,7 @@ int32_t main(void) {
         int32_t saved_stdout = dup(1);
         assert(saved_stdout >= 0);
         const std::array<int32_t, 3> backups = {-1, saved_stdout, -1};
-        ghostlock::route::select_stack::SelectStackRoute restored(&race, &request, profile, layout, backups);
+        lsprivilege::route::select_stack::SelectStackRoute restored(&race, &request, profile, layout, backups);
         restored.destroy();
         assert(fcntl(saved_stdout, F_GETFD) != -1);
         close(saved_stdout);
@@ -134,7 +134,7 @@ int32_t main(void) {
     context.destroy();
     context.destroy();
     assert(context.status.userspace_clean == 1);
-    assert(context.status.code == ghostlock::route::ROUTE_FALLBACK_SAFE);
+    assert(context.status.code == lsprivilege::route::ROUTE_FALLBACK_SAFE);
 
     /* fail() records step and errno for the caller's log. */
     assert(context.fail(59, 5) == -1);

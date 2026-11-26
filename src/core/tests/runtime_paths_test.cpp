@@ -8,7 +8,7 @@
 
 #include <string>
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
 int32_t main(void) {
     assert(config::normalize_home_dir("/data/local/tmp") == "/data/local/tmp");
@@ -19,14 +19,14 @@ int32_t main(void) {
     assert(config::normalize_home_dir("///") == "/");
 
     assert(config::root_script_file("/data/local/tmp") ==
-           "/data/local/tmp/.ghostlock_root.sh");
-    assert(config::root_script_file("") == "/.ghostlock_root.sh");
+           "/data/local/tmp/.lsprivilege_root.sh");
+    assert(config::root_script_file("") == "/.lsprivilege_root.sh");
 
     const std::string long_home(config::kHomeDirCapacity + 200, 'a');
     const std::string normalized = config::normalize_home_dir(long_home);
     assert(normalized.size() == config::kHomeDirCapacity - 1);
     const std::string script = config::root_script_file(normalized);
-    assert(script.size() == normalized.size() + 19);
+    assert(script.size() == normalized.size() + 21);
     assert(script.size() <=
            config::kRootScriptPathCapacity - 1);
 

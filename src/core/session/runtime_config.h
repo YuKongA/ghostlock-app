@@ -1,12 +1,12 @@
-#ifndef GHOSTLOCK_RUNTIME_CONFIG_H
-#define GHOSTLOCK_RUNTIME_CONFIG_H
+#ifndef LSPRIVILEGE_RUNTIME_CONFIG_H
+#define LSPRIVILEGE_RUNTIME_CONFIG_H
 
 #include "profile/model.h"
 
 
 #include <string>
 
-namespace ghostlock::config {
+namespace lsprivilege::config {
     /* One runtime snapshot captured once from the environment. Paths own their
  * storage; callers convert to c_str() only at syscall/exec boundaries so no
  * temporary string pointer can outlive the snapshot. */
@@ -15,12 +15,12 @@ namespace ghostlock::config {
         int32_t main_cpu = 0;
         int32_t consumer_cpu = 1;
         std::string home_dir = "/data/local/tmp";
-        std::string root_script_path = "/data/local/tmp/.ghostlock_root.sh";
-        /* Per-run KernelSU log (U01-S14): Kotlin passes GHOSTLOCK_KSU_LOG so a
+        std::string root_script_path = "/data/local/tmp/.lsprivilege_root.sh";
+        /* Per-run KernelSU log (U01-S14): Kotlin passes LSPRIVILEGE_KSU_LOG so a
    * previous run's markers can never be misread; falls back to the legacy
    * home-dir name for CLI runs. */
-        std::string ksu_log_path = "/data/local/tmp/.ghostlock_ksu.log";
-        /* ksud/apd binary from GHOSTLOCK_KSUD, shell-escaped for the root
+        std::string ksu_log_path = "/data/local/tmp/.lsprivilege_ksu.log";
+        /* ksud/apd binary from LSPRIVILEGE_KSUD, shell-escaped for the root
          * script; empty keeps the script's own search order. */
         std::string ksud_path;
         /* True when ksud_path resolves to APatch's apd (libapd.so / apd). */
@@ -36,7 +36,7 @@ namespace ghostlock::config {
         int32_t init();
 
         /* Merge the profile's recommended CPU pair (validated). */
-        int32_t apply_profile(const ghostlock::profile::TargetProfile *profile);
+        int32_t apply_profile(const lsprivilege::profile::TargetProfile *profile);
 
         void log() const;
     };
@@ -44,6 +44,6 @@ namespace ghostlock::config {
     /* The process snapshot is owned by ExploitSession. Callers reach it through
  * this accessor; the public reference alias is gone (CPP12/SESSION-01). */
     RuntimeConfig &runtime_config_snapshot() noexcept;
-} // namespace ghostlock::config
+} // namespace lsprivilege::config
 
 #endif

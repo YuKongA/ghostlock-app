@@ -2,7 +2,7 @@
 
 #include <cassert>
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
 int32_t main() {
     constexpr timespec unnormalized{.tv_sec = 3, .tv_nsec = -250000000};
@@ -24,11 +24,11 @@ int32_t main() {
     static_assert(!runtime_time::reached(start, end));
     static_assert(runtime_time::reached(start, start));
 
-    assert(ghostlock::runtime_time::runtime_elapsed_between_ms(&start, &end) == 1250.0);
+    assert(lsprivilege::runtime_time::runtime_elapsed_between_ms(&start, &end) == 1250.0);
 
     const timespec first = runtime_time::monotonic_now();
     const timespec second = runtime_time::monotonic_now();
     assert(runtime_time::reached(second, first));
-    assert(ghostlock::runtime_time::runtime_elapsed_ms(&first) >= 0.0);
+    assert(lsprivilege::runtime_time::runtime_elapsed_ms(&first) >= 0.0);
     return 0;
 }

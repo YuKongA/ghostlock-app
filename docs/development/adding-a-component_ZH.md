@@ -2,7 +2,7 @@
 
 # 如何新增组件（middleware / backend / frontend）
 
-GhostLock 的执行链由 `Pipeline<Frontend, Backend, Middleware>` 在编译期固定：
+LSPrivilege 的执行链由 `Pipeline<Frontend, Backend, Middleware>` 在编译期固定：
 
 - **frontend**：启动/交接（当前 `root_child`；`umh_forward` 为声明但不可用的占位）；
 - **backend**：漏洞原语与写入步骤（当前 `cve_2026_43499`；`cve_2026_64560` 为纯头占位，不可用）；
@@ -139,10 +139,10 @@ UMH 不得默认绑定 KernelSU。
 7. 新增攻击路径函数时，把它加进 `tools/cmp_disasm.py` 的 `TARGETS`。
 
 ```sh
-make -C src ghostlock            # 真机二进制
+make -C src lsprivilege            # 真机二进制
 make -C src native-host-tests    # 主机单元测试
 make -C src lint-tidy            # clang-tidy（0 findings）
-python3 tools/cmp_disasm.py <baseline> build/native/ghostlock
+python3 tools/cmp_disasm.py <baseline> build/native/lsprivilege
 ./gradlew :app:testDebugUnitTest --offline
 ```
 

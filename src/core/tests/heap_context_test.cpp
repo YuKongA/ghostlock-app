@@ -9,7 +9,7 @@
 #include <type_traits>
 #include <utility>
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
 static void test_move_preserves_page_as_one_owner(void) {
     memory::HeapContext context;
@@ -84,7 +84,7 @@ static void test_page_is_move_only_and_released_explicitly(void) {
 }
 
 static void test_mm_set_releases_descriptors_explicitly(void) {
-    ghostlock::memory::MmContextSet set;
+    lsprivilege::memory::MmContextSet set;
     int32_t owned[4];
     assert(pipe(owned) == 0);
     assert(pipe(owned + 2) == 0);
@@ -119,7 +119,7 @@ static void test_mm_set_releases_descriptors_explicitly(void) {
     int32_t survivor[2];
     assert(pipe(survivor) == 0);
     {
-        ghostlock::memory::MmContextSet scoped;
+        lsprivilege::memory::MmContextSet scoped;
         scoped.memfds.assign(1, survivor[0]);
         scoped.childs.assign(1, 4321);
     }
@@ -128,7 +128,7 @@ static void test_mm_set_releases_descriptors_explicitly(void) {
     close(survivor[1]);
 
     set.memfds.assign(1, owned[1]);
-    ghostlock::memory::MmContextSet moved(std::move(set));
+    lsprivilege::memory::MmContextSet moved(std::move(set));
     assert(moved.memfds.size() == 1 && moved.memfds[0] == owned[1]);
     close(moved.memfds[0]);
 }

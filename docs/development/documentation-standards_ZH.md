@@ -77,7 +77,7 @@
 对应提交 `<hash>`（`<commit message>`）
 ## 设备与入口   # 型号、kernel uname -r、入口、uid/selinux/seccomp、home
 ## 结果         # route_done 计数与 status/clean/step/errno、child is root、handoff、panic 与否
-## 日志         # 文件名（与设备 Download/ghostlock-debug-log/<时间>/ 对应）
+## 日志         # 文件名（与设备 Download/lsprivilege-debug-log/<时间>/ 对应）
 ## 变更说明     # 本次验证针对的行为差异
 ```
 

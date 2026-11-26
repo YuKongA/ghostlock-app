@@ -1,5 +1,5 @@
-#ifndef GHOSTLOCK_PROFILE_BINARY_H
-#define GHOSTLOCK_PROFILE_BINARY_H
+#ifndef LSPRIVILEGE_PROFILE_BINARY_H
+#define LSPRIVILEGE_PROFILE_BINARY_H
 
 /* Binary transport for the resolved profile, shared with Kotlin
  * (profile-core/.../NativeProfile.kt). Little-endian.
@@ -25,7 +25,7 @@
 
 #include <string_view>
 
-namespace ghostlock::binary_profile {
+namespace lsprivilege::binary_profile {
     inline constexpr uint32_t kMagic = 0x0D000721u;
     inline constexpr uint16_t kVersion = 2u;
     /* Known component ids. The full catalog is decoded here; an id that is
@@ -56,11 +56,11 @@ namespace ghostlock::binary_profile {
 
     /* Parse one binary document into the native transport struct. `ids`, when
      * given, receives the decoded component selection. */
-    int32_t parse(std::string_view document, struct ghostlock::profile::kernel_offsets *out,
+    int32_t parse(std::string_view document, struct lsprivilege::profile::kernel_offsets *out,
               char *release_buf, size_t release_buf_cap, component_ids *ids = nullptr);
 
     /* Serialize the same layout (host tests and tooling). */
-    int32_t serialize(const struct ghostlock::profile::kernel_offsets *in, char *buffer, size_t capacity);
-} // namespace ghostlock::binary_profile
+    int32_t serialize(const struct lsprivilege::profile::kernel_offsets *in, char *buffer, size_t capacity);
+} // namespace lsprivilege::binary_profile
 
 #endif

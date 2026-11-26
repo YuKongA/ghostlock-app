@@ -2,7 +2,7 @@
 
 [中文](README_ZH.md)
 
-GhostLock compiles each supported frontend/backend/middleware combination as a `Pipeline<Frontend, Backend, Middleware>`. The resolved profile selects the combination at runtime.
+LSPrivilege compiles each supported frontend/backend/middleware combination as a `Pipeline<Frontend, Backend, Middleware>`. The resolved profile selects the combination at runtime.
 
 ## Components
 
@@ -31,7 +31,7 @@ GhostLock compiles each supported frontend/backend/middleware combination as a `
 | `race/` | PI race owner and waiter, owner, and consumer threads. |
 | `memory/` | Address resolution, heap/page state, and payload encoding. |
 | `session/` | Invocation state, runtime configuration, frontend handoff, stage types, probes, and victim context. [exploit_session.hpp](session/exploit_session.hpp) records each field's owner, borrowers, and termination point. |
-| `profile/` | GLK1 v2 codec, typed model, accessors, and entry points. |
+| `profile/` | PRIV1 v2 codec, typed model, accessors, and entry points. |
 | `kernel/` | Target ABI, constants, and offset tables. |
 | `support/` | Result and RAII helpers, time, and fatal errors. |
 | `kernelsnitch/` | Kernel-address discovery. |
@@ -43,12 +43,12 @@ The catalogue, contracts, policies, and pipeline headers compile on the host. Ke
 
 ```sh
 make -C src native-host-tests
-make -C src ghostlock
+make -C src lsprivilege
 make -C src lint-tidy
 ```
 
-The NDK build produces `build/native/ghostlock` and must have no warnings. `lint-tidy` must report zero findings. For attack-path changes, also compare the attack functions and run the [device gates](../../docs/development/engineering-standards.md):
+The NDK build produces `build/native/lsprivilege` and must have no warnings. `lint-tidy` must report zero findings. For attack-path changes, also compare the attack functions and run the [device gates](../../docs/development/engineering-standards.md):
 
 ```sh
-python3 tools/cmp_disasm.py <baseline> build/native/ghostlock
+python3 tools/cmp_disasm.py <baseline> build/native/lsprivilege
 ```

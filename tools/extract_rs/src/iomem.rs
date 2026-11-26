@@ -80,7 +80,7 @@ pub fn parse(text: &str) -> IomemInfo {
 
 /// Reads and parses an iomem source. With no explicit path it tries, in order:
 /// `/proc/iomem` (readable only as root), then the root child's cached dump
-/// `$GHOSTLOCK_HOME/.ghostlock_iomem`, then `/data/local/tmp/.ghostlock_iomem`.
+/// `$LSPRIVILEGE_HOME/.lsprivilege_iomem`, then `/data/local/tmp/.lsprivilege_iomem`.
 /// The cached file starts with a `# <release>` line, which the parser ignores.
 pub fn load(provided: Option<&Path>) -> Result<Option<IomemInfo>> {
     if let Some(path) = provided {
@@ -91,12 +91,12 @@ pub fn load(provided: Option<&Path>) -> Result<Option<IomemInfo>> {
     }
 
     let mut candidates: Vec<PathBuf> = vec![PathBuf::from("/proc/iomem")];
-    if let Ok(home) = std::env::var("GHOSTLOCK_HOME") {
+    if let Ok(home) = std::env::var("LSPRIVILEGE_HOME") {
         if !home.is_empty() {
-            candidates.push(Path::new(&home).join(".ghostlock_iomem"));
+            candidates.push(Path::new(&home).join(".lsprivilege_iomem"));
         }
     }
-    candidates.push(PathBuf::from("/data/local/tmp/.ghostlock_iomem"));
+    candidates.push(PathBuf::from("/data/local/tmp/.lsprivilege_iomem"));
 
     for candidate in candidates {
         if let Ok(text) = fs::read_to_string(&candidate) {

@@ -5,7 +5,7 @@
 
 /* Host stubs for the victim protocol: no fork, no pipes. spawn returns a
  * scripted pid/task and the stage verifies return scripted verdicts. */
-namespace ghostlock::session::victim {
+namespace lsprivilege::session::victim {
     std::optional<VictimSpawn> spawn_victim(VictimContext &pipes) {
         host::script().record("spawn");
         const host::HostAttackScript::Spawn spawn = host::script().next_spawn();
@@ -42,4 +42,4 @@ namespace ghostlock::session::victim {
         }
         return result;
     }
-} // namespace ghostlock::session::victim
+} // namespace lsprivilege::session::victim

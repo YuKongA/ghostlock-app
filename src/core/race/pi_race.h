@@ -9,7 +9,7 @@
 #include <atomic>
 #include <cstdint>
 
-namespace ghostlock::race {
+namespace lsprivilege::race {
     /* Owns one PI race attempt: the two PI futexes the waiter walks, the three
      * worker threads and the route outcome. The atomics stay public because the
      * route operations read and write them from their hot loops; this class owns
@@ -37,14 +37,14 @@ namespace ghostlock::race {
         [[nodiscard]] int32_t start_threads(void *(*waiter_entry)(void *),
                                         void *(*owner_entry)(void *),
                                         void *(*consumer_entry)(void *),
-                                        const ghostlock::memory::WriteRequest *route_request) noexcept;
+                                        const lsprivilege::memory::WriteRequest *route_request) noexcept;
 
         /* Waits for the route to finish and returns its outcome. A route that
          * reports Ok without a consumer call and success has not won the race, so
          * the returned outcome degrades to Retryable, matching the bool the
          * previous free function returned. The wait itself is unbounded today:
          * see TODO(pi-timeout-01). */
-        [[nodiscard]] ghostlock::route::RouteStatus run() noexcept;
+        [[nodiscard]] lsprivilege::route::RouteStatus run() noexcept;
 
         /* Business stop signal for the three workers; idempotent. */
         void request_stop() noexcept;
@@ -54,8 +54,8 @@ namespace ghostlock::race {
 
         /* Testable counter merge used by run(): Ok with zero calls or zero
          * successes is not a routed attempt. */
-        [[nodiscard]] static ghostlock::route::RouteStatus outcome_with_counters(
-            const ghostlock::route::RouteStatus &outcome, int32_t calls, int32_t success) noexcept;
+        [[nodiscard]] static lsprivilege::route::RouteStatus outcome_with_counters(
+            const lsprivilege::route::RouteStatus &outcome, int32_t calls, int32_t success) noexcept;
 
         /* C atomics cannot carry initializers in C++; static instances are
          * zero-initialized and every dynamic path calls reset() first.
@@ -81,15 +81,15 @@ namespace ghostlock::race {
         std::atomic<int32_t> fast_repair;
         int32_t main_cpu = 0;
         int32_t consumer_cpu = 0;
-        ghostlock::support::PthreadOwner waiter_owner;
-        ghostlock::support::PthreadOwner owner_owner;
-        ghostlock::support::PthreadOwner consumer_owner;
-        const ghostlock::memory::WriteRequest *request = nullptr;
-        ghostlock::route::RouteStatus route_status{};
+        lsprivilege::support::PthreadOwner waiter_owner;
+        lsprivilege::support::PthreadOwner owner_owner;
+        lsprivilege::support::PthreadOwner consumer_owner;
+        const lsprivilege::memory::WriteRequest *request = nullptr;
+        lsprivilege::route::RouteStatus route_status{};
 
     private:
         [[nodiscard]] int32_t abort_startup() noexcept;
     };
-} // namespace ghostlock::race
+} // namespace lsprivilege::race
 
 #endif

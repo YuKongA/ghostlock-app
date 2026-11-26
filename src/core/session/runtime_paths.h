@@ -1,5 +1,5 @@
-#ifndef GHOSTLOCK_RUNTIME_PATHS_H
-#define GHOSTLOCK_RUNTIME_PATHS_H
+#ifndef LSPRIVILEGE_RUNTIME_PATHS_H
+#define LSPRIVILEGE_RUNTIME_PATHS_H
 
 /* Host-safe runtime path normalization shared by RuntimeConfig.
  *
@@ -12,7 +12,7 @@
 #include <string>
 #include <string_view>
 
-namespace ghostlock::config {
+namespace lsprivilege::config {
     /* Capacities match the historical fixed buffers (content bytes + NUL). */
     inline constexpr size_t kHomeDirCapacity = 256;
     inline constexpr size_t kRootScriptPathCapacity = 300;
@@ -31,15 +31,15 @@ namespace ghostlock::config {
         return result;
     }
 
-    /* home_dir + "/.ghostlock_root.sh", truncated to the root-script capacity. */
+    /* home_dir + "/.lsprivilege_root.sh", truncated to the root-script capacity. */
     [[nodiscard]] inline std::string root_script_file(std::string_view home_dir) {
         std::string result(home_dir);
-        result += "/.ghostlock_root.sh";
+        result += "/.lsprivilege_root.sh";
         if (result.size() > kRootScriptPathCapacity - 1) {
             result.resize(kRootScriptPathCapacity - 1);
         }
         return result;
     }
-} // namespace ghostlock::config
+} // namespace lsprivilege::config
 
 #endif

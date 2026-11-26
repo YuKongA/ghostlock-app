@@ -1,5 +1,5 @@
-#ifndef GHOSTLOCK_SUPPORT_DECLS_HPP
-#define GHOSTLOCK_SUPPORT_DECLS_HPP
+#ifndef LSPRIVILEGE_SUPPORT_DECLS_HPP
+#define LSPRIVILEGE_SUPPORT_DECLS_HPP
 
 #include <cstddef>
 #include "support/status.hpp"
@@ -8,7 +8,7 @@
 
 #include "memory/payload_builder.h"
 
-namespace ghostlock::support {
+namespace lsprivilege::support {
     void read_first_line(const char *path, char *buf, size_t len);
 
     void log_startup_context(void);
@@ -58,11 +58,11 @@ namespace ghostlock::support {
 
     void prepare_ctxs(void);
 
-    int32_t prepare_skb_payload(uintptr_t base, const ghostlock::memory::WriteRequest *request);
+    int32_t prepare_skb_payload(uintptr_t base, const lsprivilege::memory::WriteRequest *request);
 
-    uintptr_t prepare_kernel_page(const ghostlock::memory::WriteRequest *request);
+    uintptr_t prepare_kernel_page(const lsprivilege::memory::WriteRequest *request);
 
-    uintptr_t prepare_good_kernel_page(const ghostlock::memory::WriteRequest &request);
-} // namespace ghostlock::support
+    uintptr_t prepare_good_kernel_page(const lsprivilege::memory::WriteRequest &request);
+} // namespace lsprivilege::support
 
 #endif

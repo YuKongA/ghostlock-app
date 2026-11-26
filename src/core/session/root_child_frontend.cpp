@@ -1,5 +1,5 @@
 /*
- * GhostLock — root_child frontend procedure (Batch 4, D1=B).
+ * LSPrivilege — root_child frontend procedure (Batch 4, D1=B).
  *
  * The handoff step moved out of ExploitProcedure; the body is unchanged except
  * for using the ExploitSession parameter instead of the procedure's member.
@@ -17,7 +17,7 @@
 #include <cerrno>
 #include <cstdint>
 
-namespace ghostlock::session::frontend {
+namespace lsprivilege::session::frontend {
     StageResult RootChildPolicy::run(ExploitSession &session, const VictimChain &chain) {
         return run_root_child_handoff(session, chain);
     }
@@ -99,4 +99,4 @@ namespace ghostlock::session::frontend {
                        mgr_name);
         return StageResult::Done;
     }
-} // namespace ghostlock::session::frontend
+} // namespace lsprivilege::session::frontend

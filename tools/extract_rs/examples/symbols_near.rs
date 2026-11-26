@@ -5,10 +5,10 @@
 
 use std::path::Path;
 
-use ghostlock_extract::boot::BootImage;
-use ghostlock_extract::derive::relative_symbols;
-use ghostlock_extract::kallsyms;
-use ghostlock_extract::kallsyms_finder;
+use lsprivilege_extract::boot::BootImage;
+use lsprivilege_extract::derive::relative_symbols;
+use lsprivilege_extract::kallsyms;
+use lsprivilege_extract::kallsyms_finder;
 
 fn main() {
     let mut args = std::env::args().skip(1);

@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <type_traits>
 
-namespace ghostlock::route {
+namespace lsprivilege::route {
     enum class RouteResultCode : int32_t {
         Ok = 0,
         Retryable,
@@ -52,6 +52,6 @@ namespace ghostlock::route {
             RouteResultCode::DirtyFailure;
     inline constexpr RouteResultCode ROUTE_UNSUPPORTED =
             RouteResultCode::Unsupported;
-} // namespace ghostlock::route
+} // namespace lsprivilege::route
 
 #endif

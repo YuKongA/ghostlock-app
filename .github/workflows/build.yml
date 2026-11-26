@@ -77,12 +77,12 @@ jobs:
         if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
         run: echo ${{ secrets.SIGNING_KEY }} | base64 -d > keystore.jks
 
-      - name: Build Ghostlock binary
+      - name: Build LSPrivilege binary
         run: |
           export ANDROID_NDK_HOME="${{ runner.temp }}/ondk"
           export NDK_ROOT="$ANDROID_NDK_HOME"
-          make -C src ghostlock
-          "${{ runner.temp }}/ondk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip" --strip-all build/native/ghostlock || true
+          make -C src lsprivilege
+          "${{ runner.temp }}/ondk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip" --strip-all build/native/lsprivilege || true
 
       - name: Build Release APK
         run: |
@@ -95,16 +95,16 @@ jobs:
           export KEY_PASSWORD="${{ secrets.KEY_PASSWORD }}"
           ./gradlew :app:assembleRelease --no-daemon
 
-      - name: Strip Ghostlock binary
+      - name: Strip LSPrivilege binary
         run: |
-          "${{ runner.temp }}/ondk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip" --strip-all build/native/ghostlock || true
+          "${{ runner.temp }}/ondk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip" --strip-all build/native/lsprivilege || true
 
       - name: Rename Release APK
-        run: mv build/app/outputs/apk/release/*.apk GhostLock-release.apk
+        run: mv build/app/outputs/apk/release/*.apk LSPrivilege-release.apk
 
       - name: Prepare extractor binaries
         run: |
-          cp build/extract/release/ghostlock-extract tools/extract_rs/ghostlock-extract-linux-x86_64
+          cp build/extract/release/lsprivilege-extract tools/extract_rs/lsprivilege-extract-linux-x86_64
 
           export CC_aarch64_linux_android="${{ runner.temp }}/ondk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android35-clang"
           export AR_aarch64_linux_android="${{ runner.temp }}/ondk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
@@ -113,50 +113,50 @@ jobs:
           export RUSTFLAGS="-C force-unwind-tables=no -C link-arg=-Wl,--icf=all"
           cargo +ondk build --release --target aarch64-linux-android --features http --manifest-path tools/extract_rs/Cargo.toml --target-dir build/extract \
             -Z build-std=std,panic_abort -Z build-std-features=optimize_for_size
-          cp build/extract/aarch64-linux-android/release/ghostlock-extract tools/extract_rs/ghostlock-extract-android-arm64
+          cp build/extract/aarch64-linux-android/release/lsprivilege-extract tools/extract_rs/lsprivilege-extract-android-arm64
 
-      - name: Export kernel profiles (GLK1)
+      - name: Export kernel profiles (PRIV1)
         run: ./gradlew exportKernelProfiles --no-daemon
 
       - name: Package kernel profiles
         run: |
           cd build/kernel-profiles
-          zip -r "$GITHUB_WORKSPACE/GhostLock-kernel-profiles.zip" .
-          unzip -l "$GITHUB_WORKSPACE/GhostLock-kernel-profiles.zip" | tail -5
+          zip -r "$GITHUB_WORKSPACE/LSPrivilege-kernel-profiles.zip" .
+          unzip -l "$GITHUB_WORKSPACE/LSPrivilege-kernel-profiles.zip" | tail -5
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v7
         with:
-          name: GhostLock-release
-          path: GhostLock-release.apk
+          name: LSPrivilege-release
+          path: LSPrivilege-release.apk
           archive: false
 
       - name: Upload kernel profiles
         uses: actions/upload-artifact@v7
         with:
-          name: GhostLock-kernel-profiles
-          path: GhostLock-kernel-profiles.zip
+          name: LSPrivilege-kernel-profiles
+          path: LSPrivilege-kernel-profiles.zip
           archive: false
 
-      - name: Upload Ghostlock binary
+      - name: Upload LSPrivilege binary
         uses: actions/upload-artifact@v7
         with:
-          name: ghostlock
-          path: build/native/ghostlock
+          name: lsprivilege
+          path: build/native/lsprivilege
           archive: false
 
       - name: Upload Extractor Linux
         uses: actions/upload-artifact@v7
         with:
-          name: ghostlock-extract-linux-x86_64
-          path: tools/extract_rs/ghostlock-extract-linux-x86_64
+          name: lsprivilege-extract-linux-x86_64
+          path: tools/extract_rs/lsprivilege-extract-linux-x86_64
           archive: false
 
       - name: Upload Extractor Android
         uses: actions/upload-artifact@v7
         with:
-          name: ghostlock-extract-android-arm64
-          path: tools/extract_rs/ghostlock-extract-android-arm64
+          name: lsprivilege-extract-android-arm64
+          path: tools/extract_rs/lsprivilege-extract-android-arm64
           archive: false
 
   build-extractor-macos:
@@ -186,15 +186,15 @@ jobs:
           cargo build --release --features http --target aarch64-apple-darwin
           cargo build --release --features http --target x86_64-apple-darwin
           mkdir -p bin
-          lipo -create -output bin/ghostlock-extract-macos-universal \
-            ../../build/extract/aarch64-apple-darwin/release/ghostlock-extract \
-            ../../build/extract/x86_64-apple-darwin/release/ghostlock-extract
+          lipo -create -output bin/lsprivilege-extract-macos-universal \
+            ../../build/extract/aarch64-apple-darwin/release/lsprivilege-extract \
+            ../../build/extract/x86_64-apple-darwin/release/lsprivilege-extract
 
       - name: Upload Extractor macOS
         uses: actions/upload-artifact@v7
         with:
-          name: ghostlock-extract-macos-universal
-          path: tools/extract_rs/bin/ghostlock-extract-macos-universal
+          name: lsprivilege-extract-macos-universal
+          path: tools/extract_rs/bin/lsprivilege-extract-macos-universal
           archive: false
 
   build-extractor-windows:
@@ -222,13 +222,13 @@ jobs:
         run: |
           cargo build --release --features http
           mkdir -p bin
-          cp ../../build/extract/release/ghostlock-extract.exe bin/ghostlock-extract-windows-x86_64.exe
+          cp ../../build/extract/release/lsprivilege-extract.exe bin/lsprivilege-extract-windows-x86_64.exe
 
       - name: Upload Extractor Windows
         uses: actions/upload-artifact@v7
         with:
-          name: ghostlock-extract-windows-x86_64
-          path: tools/extract_rs/bin/ghostlock-extract-windows-x86_64.exe
+          name: lsprivilege-extract-windows-x86_64
+          path: tools/extract_rs/bin/lsprivilege-extract-windows-x86_64.exe
           archive: false
 
   prerelease:
@@ -254,10 +254,10 @@ jobs:
         run: |
           mkdir -p release-files
           find artifacts -type f -exec cp {} release-files/ \;
-          chmod +x release-files/ghostlock release-files/ghostlock-extract-* || true
+          chmod +x release-files/lsprivilege release-files/lsprivilege-extract-* || true
 
           cd release-files
-          for f in GhostLock-release.apk ghostlock ghostlock-extract-* GhostLock-kernel-profiles.zip; do
+          for f in LSPrivilege-release.apk lsprivilege lsprivilege-extract-* LSPrivilege-kernel-profiles.zip; do
             if [ -f "$f" ]; then
               sha256sum "$f"
             fi
@@ -281,14 +281,14 @@ jobs:
           short_hash = os.environ.get("SHORT_HASH", "Unknown")
           commit_count = os.environ.get("COMMIT_COUNT", "0")
           commit_msg = os.environ.get("COMMIT_MSG", "No commit message").strip()
-          repo = os.environ.get("GITHUB_REPOSITORY", "YuKongA/ghostlock-app")
+          repo = os.environ.get("GITHUB_REPOSITORY", "LSPosed/LSPrivilege")
           sha = os.environ.get("GITHUB_SHA", "")
 
           with open("release-files/sha256sum.txt", "r", encoding="utf-8") as f:
               checksums = f.read().strip()
 
           lines = [
-              "### GhostLock Pre-release",
+              "### LSPrivilege Pre-release",
               "",
               f"- **Version**: `v{version}` (`{commit_count}`)",
               f"- **Commit**: [`{short_hash}`](https://github.com/{repo}/commit/{sha})",
@@ -299,13 +299,13 @@ jobs:
               "```",
               "",
               "#### Files",
-              "- `GhostLock-release.apk`: GhostLock Android Application",
-              "- `ghostlock`: Standalone GhostLock native binary (Android arm64-v8a)",
-              "- `GhostLock-kernel-profiles.zip`: Bundled kernel profiles (HOCON)",
-              "- `ghostlock-extract-android-arm64`: Kernel offset extractor CLI (Android arm64-v8a)",
-              "- `ghostlock-extract-linux-x86_64`: Kernel offset extractor CLI (Linux x86_64)",
-              "- `ghostlock-extract-macos-universal`: Kernel offset extractor CLI (macOS Universal arm64 + x86_64)",
-              "- `ghostlock-extract-windows-x86_64.exe`: Kernel offset extractor CLI (Windows x86_64)",
+              "- `LSPrivilege-release.apk`: LSPrivilege Android Application",
+              "- `lsprivilege`: Standalone LSPrivilege native binary (Android arm64-v8a)",
+              "- `LSPrivilege-kernel-profiles.zip`: Bundled kernel profiles (HOCON)",
+              "- `lsprivilege-extract-android-arm64`: Kernel offset extractor CLI (Android arm64-v8a)",
+              "- `lsprivilege-extract-linux-x86_64`: Kernel offset extractor CLI (Linux x86_64)",
+              "- `lsprivilege-extract-macos-universal`: Kernel offset extractor CLI (macOS Universal arm64 + x86_64)",
+              "- `lsprivilege-extract-windows-x86_64.exe`: Kernel offset extractor CLI (Windows x86_64)",
               "",
               "#### SHA256 Checksums",
               "```",
@@ -333,30 +333,9 @@ jobs:
         with:
           tag_name: pre-release
           target_commitish: ${{ github.sha }}
-          name: GhostLock Pre-release
+          name: LSPrivilege Pre-release
           body_path: release-notes.md
           prerelease: true
           files: release-files/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  post_telegram:
-    needs: [build-apk, build-extractor-macos, build-extractor-windows]
-    runs-on: ubuntu-latest
-    if: ${{ success() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.ref_type != 'tag' }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - uses: actions/download-artifact@v8
-        with:
-          path: artifacts
-          skip-decompress: true
-
-      - name: Post to Telegram
-        env:
-          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          BOT_API_LINK: ${{ secrets.BOT_API_LINK }}
-        run: bash .github/scripts/post_telegram.sh

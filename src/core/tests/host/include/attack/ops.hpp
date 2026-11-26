@@ -1,11 +1,11 @@
-#ifndef GHOSTLOCK_HOST_ATTACK_OPS_HPP
-#define GHOSTLOCK_HOST_ATTACK_OPS_HPP
+#ifndef LSPRIVILEGE_HOST_ATTACK_OPS_HPP
+#define LSPRIVILEGE_HOST_ATTACK_OPS_HPP
 
 /*
  * Host shadow of attack/ops.hpp (selected by the test's -I order).
  *
  * Production keeps the inline real probes; the host data-flow test needs them
- * scripted, so this header declares the same `ghostlock::attack` surface with
+ * scripted, so this header declares the same `lsprivilege::attack` surface with
  * the side-effecting probes implemented by tests/host/attack_stub.cpp. The
  * backend and frontend sources are compiled unmodified and resolve to these
  * declarations.
@@ -16,7 +16,7 @@
 
 #include <cstdint>
 
-namespace ghostlock::attack {
+namespace lsprivilege::attack {
     int32_t in_direct_map(uintptr_t target);
 
     int32_t check_selinux_off(void);
@@ -25,11 +25,11 @@ namespace ghostlock::attack {
 
     int32_t process_has_seccomp(void);
 
-    void log_execution_settings(const struct ghostlock::profile::kernel_offsets *profile);
+    void log_execution_settings(const struct lsprivilege::profile::kernel_offsets *profile);
 
     void resolve_profile_addresses(void);
 
-    void install_profile(const struct ghostlock::profile::kernel_offsets &decoded);
+    void install_profile(const struct lsprivilege::profile::kernel_offsets &decoded);
 
     void apply_iomem_cache(void);
 
@@ -42,6 +42,6 @@ namespace ghostlock::attack {
     void timer_reset(void);
 
     void timer_mark(const char *label);
-} // namespace ghostlock::attack
+} // namespace lsprivilege::attack
 
 #endif

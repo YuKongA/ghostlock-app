@@ -1,15 +1,15 @@
-#ifndef GHOSTLOCK_ROOT_CHILD_FRONTEND_HPP
-#define GHOSTLOCK_ROOT_CHILD_FRONTEND_HPP
+#ifndef LSPRIVILEGE_ROOT_CHILD_FRONTEND_HPP
+#define LSPRIVILEGE_ROOT_CHILD_FRONTEND_HPP
 
 #include "route/component_catalog.hpp"
 #include "route/frontend_contract.hpp"
 #include "session/stage_types.hpp"
 
-namespace ghostlock::session {
+namespace lsprivilege::session {
     struct ExploitSession;
 }
 
-namespace ghostlock::session::frontend {
+namespace lsprivilege::session::frontend {
     /* Batch 4 (D1=B) root_child frontend procedure: the handoff step, moved out
      * of the retired ExploitProcedure so the frontend is a pipeline component.
      * Statement order, ownership and the log text are unchanged. The child
@@ -36,6 +36,6 @@ namespace ghostlock::session::frontend {
     static_assert(runtime::FrontendExecution<RootChildPolicy>);
     static_assert(runtime::FrontendIdentity<UmhForwardPolicy>);
     static_assert(!runtime::FrontendExecution<UmhForwardPolicy>);
-} // namespace ghostlock::session::frontend
+} // namespace lsprivilege::session::frontend
 
 #endif

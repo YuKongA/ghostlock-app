@@ -1,18 +1,18 @@
-# GhostLock-App
+# LSPrivilege
 
 [中文](README_ZH.md)
 
-GhostLock uses CVE-2026-43499 to gain temporary root on supported Android kernels and load KernelSU.
+LSPrivilege is a modular Android kernel privilege-escalation app for gaining temporary root on supported kernels and loading root managers such as KernelSU or APatch. It is designed to support multiple exploit backends rather than targeting a single vulnerability (currently shipping CVE-2026-43499, with additional backends planned).
 
 ## Use the app
 
 1. Install a root manager APK from [KernelSU](https://github.com/tiann/KernelSU), [SukiSU Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra), [BakaSU/ReSukiSU](https://github.com/Baka-SU/BakaSU), [KowSU](https://github.com/KOWX712/KernelSU), or [APatch](https://github.com/bmax121/APatch).
-2. Install the GhostLock APK and open it.
+2. Install the LSPrivilege APK and open it.
 3. Check that your kernel is supported, then tap **Run**.
 
 Support requires an exact `uname -r` match. Check the [supported devices](docs/kernel_profiles/SUPPORTED_DEVICES.md) for your kernel build.
 
-If Shizuku is enabled, start it with ADB before running GhostLock. Tap GhostLock's status card to grant access.
+If Shizuku is enabled, start it with ADB before running LSPrivilege. Tap LSPrivilege's status card to grant access.
 
 Any root manager that ships `libksud.so` or `libapd.so` provides `ksud`/`apd` for module loading. The built-in list (KernelSU, SukiSU Ultra, ReSukiSU, BakaSU, KowSU, APatch) is auto-detected, and other managers can be picked in **Settings → Root manager**. Without `ksud`/`apd`, W1/W2 still grant uid 0 but no module is loaded.
 
@@ -36,12 +36,12 @@ See the [MediaTek guide](docs/kernel_profiles/MEDIATEK.md) for image-based addre
 Requires the Android NDK, `make`, Gradle, and ADB. An adb shell run skips the app's seccomp bypass stage.
 
 ```sh
-make -C src ghostlock
+make -C src lsprivilege
 ./gradlew exportKernelProfiles
-adb push build/native/ghostlock /data/local/tmp/ghostlock
+adb push build/native/lsprivilege /data/local/tmp/lsprivilege
 adb push "build/kernel-profiles/<release>.bin" /data/local/tmp/profile.bin
-adb shell chmod 755 /data/local/tmp/ghostlock
-adb shell /data/local/tmp/ghostlock --load-prebuilt-profile /data/local/tmp/profile.bin
+adb shell chmod 755 /data/local/tmp/lsprivilege
+adb shell /data/local/tmp/lsprivilege --load-prebuilt-profile /data/local/tmp/profile.bin
 ```
 
 </details>
@@ -53,8 +53,8 @@ Requires Rust. The extractor accepts a boot image, a full OTA ZIP, or an HTTP(S)
 
 ```sh
 (cd tools/extract_rs && cargo build --release)
-build/extract/release/ghostlock-extract boot.img --xbl-config xbl_config.img --format conf --out profile.conf
-build/extract/release/ghostlock-extract OTA.zip --format conf --out profile.conf
+build/extract/release/lsprivilege-extract boot.img --xbl-config xbl_config.img --format conf --out profile.conf
+build/extract/release/lsprivilege-extract OTA.zip --format conf --out profile.conf
 ```
 
 Import `profile.conf` in the app. Omit `--xbl-config` if you do not have that image. The extractor rejects a patched `remove_waiter()` with exit code `6`.

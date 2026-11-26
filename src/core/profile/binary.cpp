@@ -5,7 +5,7 @@
 #include <string_view>
 #include <type_traits>
 
-namespace ghostlock::binary_profile {
+namespace lsprivilege::binary_profile {
     namespace {
         /* Reinterpret one transport member as the wire's raw 64-bit record.
          * Signed members use two's complement; unsigned use the exact bits. */
@@ -394,4 +394,4 @@ namespace ghostlock::binary_profile {
         }
         return static_cast<int32_t>(p - bytes);
     }
-} // namespace ghostlock::binary_profile
+} // namespace lsprivilege::binary_profile

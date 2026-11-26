@@ -1,9 +1,9 @@
-#ifndef GHOSTLOCK_STAGE_TYPES_HPP
-#define GHOSTLOCK_STAGE_TYPES_HPP
+#ifndef LSPRIVILEGE_STAGE_TYPES_HPP
+#define LSPRIVILEGE_STAGE_TYPES_HPP
 
 #include <cstdint>
 
-namespace ghostlock::session {
+namespace lsprivilege::session {
     /* Outcome of one orchestration stage. Failed maps to exit code 1, Continue
      * proceeds to the next stage and Done stops with exit code 0 (diagnostics). */
     enum class StageResult {
@@ -37,6 +37,6 @@ namespace ghostlock::session {
     };
 
     using write_stage_verify_fn = int32_t (*)(void *context);
-} // namespace ghostlock::session
+} // namespace lsprivilege::session
 
 #endif

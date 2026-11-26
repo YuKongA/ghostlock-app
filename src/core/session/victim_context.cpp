@@ -5,7 +5,7 @@
 
 #include <cerrno>
 
-namespace ghostlock::session::victim {
+namespace lsprivilege::session::victim {
     void VictimContext::retire_child() noexcept {
         const pid_t child = release_child();
         if (child <= 0) return;
@@ -14,4 +14,4 @@ namespace ghostlock::session::victim {
             if (errno != EINTR) return;
         }
     }
-} // namespace ghostlock::session::victim
+} // namespace lsprivilege::session::victim

@@ -1,8 +1,8 @@
-# 让 GhostLock 在联发科机型上运行
+# 让 LSPrivilege 在联发科机型上运行
 
 > English: [MEDIATEK.md](MEDIATEK.md)
 
-本文面向自行提取偏移、但尚未成功运行 GhostLock 的联发科（MediaTek）用户。
+本文面向自行提取偏移、但尚未成功运行 LSPrivilege 的联发科（MediaTek）用户。
 若设备已在内置列表中按 `uname -r` 精确匹配且运行正常，则无需阅读本文。
 
 Profile 需要 `kernel_phys_load` 与 `kernel_phys_offset`。先在 **解析本地镜像** 中，
@@ -77,7 +77,7 @@ kernel_phys_offset = <值>
 ## 第 3 步：运行并验证
 
 执行一次攻击，随后查看调试日志的开头若干行
-（`Download/ghostlock-debug-log/<时间>/*.log.txt`）：
+（`Download/lsprivilege-debug-log/<时间>/*.log.txt`）：
 
 ```
 [*] soc: mtk; kernel_phys_load=<值>

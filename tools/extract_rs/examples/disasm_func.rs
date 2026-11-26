@@ -6,11 +6,11 @@
 
 use std::path::Path;
 
-use ghostlock_extract::boot::BootImage;
-use ghostlock_extract::derive::{relative_symbols, unique_offset_optional};
-use ghostlock_extract::disasm::disassemble_range;
-use ghostlock_extract::kallsyms;
-use ghostlock_extract::kallsyms_finder;
+use lsprivilege_extract::boot::BootImage;
+use lsprivilege_extract::derive::{relative_symbols, unique_offset_optional};
+use lsprivilege_extract::disasm::disassemble_range;
+use lsprivilege_extract::kallsyms;
+use lsprivilege_extract::kallsyms_finder;
 
 fn main() {
     let mut args = std::env::args().skip(1);

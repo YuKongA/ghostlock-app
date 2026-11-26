@@ -2,7 +2,7 @@ English | [简体中文](adding-a-component_ZH.md)
 
 # How to add a component (middleware / backend / frontend)
 
-GhostLock fixes the execution chain at compile time through `Pipeline<Frontend, Backend, Middleware>`:
+LSPrivilege fixes the execution chain at compile time through `Pipeline<Frontend, Backend, Middleware>`:
 
 - **frontend**: startup and handoff. Currently `root_child`; `umh_forward` is a declared but unavailable placeholder.
 - **backend**: exploit primitives and write steps. Currently `cve_2026_43499`; `cve_2026_64560` is an unavailable header-only placeholder.
@@ -139,10 +139,10 @@ Adding a component requires at least these tests:
 7. When adding an attack-path function, add it to `TARGETS` in `tools/cmp_disasm.py`.
 
 ```sh
-make -C src ghostlock            # Device binary
+make -C src lsprivilege            # Device binary
 make -C src native-host-tests    # Host unit tests
 make -C src lint-tidy            # clang-tidy (0 findings)
-python3 tools/cmp_disasm.py <baseline> build/native/ghostlock
+python3 tools/cmp_disasm.py <baseline> build/native/lsprivilege
 ./gradlew :app:testDebugUnitTest --offline
 ```
 

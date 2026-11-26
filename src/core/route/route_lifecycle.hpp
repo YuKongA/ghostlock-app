@@ -1,11 +1,11 @@
-#ifndef GHOSTLOCK_ROUTE_LIFECYCLE_HPP
-#define GHOSTLOCK_ROUTE_LIFECYCLE_HPP
+#ifndef LSPRIVILEGE_ROUTE_LIFECYCLE_HPP
+#define LSPRIVILEGE_ROUTE_LIFECYCLE_HPP
 
 #include <concepts>
 
 #include "route/route_status.h"
 
-namespace ghostlock::route {
+namespace lsprivilege::route {
     /* Structural contract shared by the route classes. Expressed as a concept
  * rather than a virtual base: the lifecycle runs inside the PI race window,
  * so no vtable or indirect dispatch may enter the path. */
@@ -30,6 +30,6 @@ namespace ghostlock::route {
         route.destroy();
         return route.status;
     }
-} // namespace ghostlock::route
+} // namespace lsprivilege::route
 
 #endif

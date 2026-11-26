@@ -72,7 +72,7 @@ Add language-switch links at the top of each version. Chinese prose links to the
 Commit `<hash>` (`<commit message>`)
 ## Device and entry point  # Model, kernel uname -r, entry point, uid/selinux/seccomp, home
 ## Result                  # route_done count and status/clean/step/errno, child is root, handoff, whether a panic occurred
-## Logs                    # Filenames matching the device's Download/ghostlock-debug-log/<time>/ directory
+## Logs                    # Filenames matching the device's Download/lsprivilege-debug-log/<time>/ directory
 ## Change description      # Behavioral differences covered by this verification
 ```
 

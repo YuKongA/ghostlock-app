@@ -2,8 +2,8 @@
 
 #include "route/route_policy.hpp"
 
-namespace ghostlock::route {
-    void RouteController::init(ghostlock::race::PiRace *race_ptr,
+namespace lsprivilege::route {
+    void RouteController::init(lsprivilege::race::PiRace *race_ptr,
                                const profile::TargetProfile *profile_ptr) {
         race = race_ptr;
         profile = profile_ptr;
@@ -18,4 +18,4 @@ namespace ghostlock::route {
         fallback_used = result.fallback_used ? 1 : 0;
         return result.status;
     }
-} // namespace ghostlock::route
+} // namespace lsprivilege::route

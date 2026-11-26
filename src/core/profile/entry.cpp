@@ -13,7 +13,7 @@
 #include <string>
 #include <string_view>
 
-namespace ghostlock::profile_entry {
+namespace lsprivilege::profile_entry {
     namespace {
         constexpr size_t kMaxDocument = 1U << 20; /* 1 MiB */
 
@@ -62,13 +62,13 @@ namespace ghostlock::profile_entry {
         int32_t decode(const std::string &document, profile::kernel_offsets *out,
                    char *release_buf, size_t release_buf_cap,
                    binary_profile::component_ids *ids) {
-            return ghostlock::binary_profile::parse(
+            return lsprivilege::binary_profile::parse(
                 std::string_view(document.data(), document.size()), out,
                 release_buf, release_buf_cap, ids);
         }
     } // namespace
 
-    int32_t read_glk1_stdin(profile::kernel_offsets *out, char *release_buf,
+    int32_t read_priv1_stdin(profile::kernel_offsets *out, char *release_buf,
                         size_t release_buf_cap, binary_profile::component_ids *ids) {
         if (!out || !release_buf || release_buf_cap == 0) {
             errno = EINVAL;
@@ -79,7 +79,7 @@ namespace ghostlock::profile_entry {
         return decode(document, out, release_buf, release_buf_cap, ids);
     }
 
-    int32_t read_glk1_frame_stdin(profile::kernel_offsets *out, char *release_buf,
+    int32_t read_priv1_frame_stdin(profile::kernel_offsets *out, char *release_buf,
                         size_t release_buf_cap, binary_profile::component_ids *ids) {
         if (!out || !release_buf || release_buf_cap == 0) {
             errno = EINVAL;
@@ -100,18 +100,18 @@ namespace ghostlock::profile_entry {
         return decode(document, out, release_buf, release_buf_cap, ids);
     }
 
-    int32_t read_glk1_file(const char *path, profile::kernel_offsets *out,
+    int32_t read_priv1_file(const char *path, profile::kernel_offsets *out,
                        char *release_buf, size_t release_buf_cap,
                        binary_profile::component_ids *ids) {
         if (!path || !out || !release_buf || release_buf_cap == 0) {
             errno = EINVAL;
             return -1;
         }
-        ghostlock::support::UniqueFd fd(open(path, O_RDONLY | O_CLOEXEC));
+        lsprivilege::support::UniqueFd fd(open(path, O_RDONLY | O_CLOEXEC));
         if (!fd.valid()) return -1;
         std::string document;
         const int32_t rc = read_all(fd.get(), &document);
         if (rc != 0) return -1;
         return decode(document, out, release_buf, release_buf_cap, ids);
     }
-} // namespace ghostlock::profile_entry
+} // namespace lsprivilege::profile_entry

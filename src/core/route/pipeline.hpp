@@ -1,5 +1,5 @@
-#ifndef GHOSTLOCK_PIPELINE_HPP
-#define GHOSTLOCK_PIPELINE_HPP
+#ifndef LSPRIVILEGE_PIPELINE_HPP
+#define LSPRIVILEGE_PIPELINE_HPP
 
 #include "route/backend_contract.hpp"
 #include "route/component_catalog.hpp"
@@ -8,7 +8,7 @@
 #include "session/exploit_session.hpp"
 #include "session/stage_types.hpp"
 
-namespace ghostlock::runtime {
+namespace lsprivilege::runtime {
     /* Pipeline terminal outcome (Batch 4 review P3). Completed = the selected
      * pipeline ran to the end; DiagnosticStop = a stage decided the objective
      * was already met and stopped early (e.g. KernelSU already rooted);
@@ -95,6 +95,6 @@ namespace ghostlock::runtime {
             return RunResult{.code = RunCode::Failed, .stage = RunStage::Frontend};
         }
     };
-} // namespace ghostlock::runtime
+} // namespace lsprivilege::runtime
 
 #endif

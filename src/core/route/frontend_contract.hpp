@@ -1,5 +1,5 @@
-#ifndef GHOSTLOCK_FRONTEND_CONTRACT_HPP
-#define GHOSTLOCK_FRONTEND_CONTRACT_HPP
+#ifndef LSPRIVILEGE_FRONTEND_CONTRACT_HPP
+#define LSPRIVILEGE_FRONTEND_CONTRACT_HPP
 
 #include <concepts>
 #include <cstdint>
@@ -10,11 +10,11 @@
 #include "route/component_catalog.hpp"
 #include "session/stage_types.hpp"
 
-namespace ghostlock::session {
+namespace lsprivilege::session {
     struct ExploitSession;
 }
 
-namespace ghostlock::runtime::frontend {
+namespace lsprivilege::runtime::frontend {
     /* Batch 4 DECLARATION-ONLY scaffolding. These structs name the known
      * frontend ids and their failure reason; they are NOT wired into selection
      * and expose no provider operation or execution path. Availability is owned
@@ -45,9 +45,9 @@ namespace ghostlock::runtime::frontend {
     /* Declarations must match the catalog authority. */
     static_assert(frontend_available(RootChildFrontend::kind));
     static_assert(!frontend_available(UmhForwardFrontend::kind));
-} // namespace ghostlock::runtime::frontend
+} // namespace lsprivilege::runtime::frontend
 
-namespace ghostlock::runtime {
+namespace lsprivilege::runtime {
     /* Frontend contract, symmetric with BackendIdentity / BackendExecution
      * (route/backend_contract.hpp): the declared identity, and the terminal
      * step an *available* frontend provides (startup/handoff). Availability is
@@ -82,6 +82,6 @@ namespace ghostlock::runtime {
 
     static_assert(FrontendIdentity<frontend::RootChildFrontend>);
     static_assert(FrontendIdentity<frontend::UmhForwardFrontend>);
-} // namespace ghostlock::runtime
+} // namespace lsprivilege::runtime
 
 #endif

@@ -14,9 +14,14 @@ Two levels are reported:
   layout  - symbol names/offsets are normalised too; any remaining difference
             is a real instruction-shape change.
 
-Each target lists the legacy demangled spelling and the namespace-qualified
-spelling; whichever is present in a binary is used, so the tool keeps working
-across the CPP12 namespace migration.
+Symbols are matched namespace-agnostically: the pre-rename `ghostlock::`
+prefix is rewritten to `lsprivilege::` in both binaries before matching and
+before normalisation. A baseline built before the rename therefore still
+resolves, and its annotations compare strictly equal instead of degrading to a
+layout shift.
+
+Each target also keeps the pre-namespace (CPP12-era) demangled spelling as a
+fallback for older baselines.
 """
 import glob
 import os
@@ -27,58 +32,58 @@ import sys
 
 TARGETS = [
     ("owner_thread", [
-        "ghostlock::race::owner_thread(void*)",
+        "lsprivilege::race::owner_thread(void*)",
         "owner_thread(void*)",
     ]),
     ("waiter_thread", [
-        "ghostlock::race::waiter_thread(void*)",
+        "lsprivilege::race::waiter_thread(void*)",
         "waiter_thread(void*)",
     ]),
     ("consumer_thread", [
-        "ghostlock::race::consumer_thread(void*)",
+        "lsprivilege::race::consumer_thread(void*)",
         "consumer_thread(void*)",
     ]),
     ("run_main_route_threads", [
-        "ghostlock::race::run_main_route_threads(ghostlock::memory::WriteRequest const&)",
-        "ghostlock::race::run_main_route_threads(ghostlock::memory::WriteRequest const*)",
-        "ghostlock::race::run_main_route_threads(ghostlock::WriteRequest const*)",
-        "run_main_route_threads(ghostlock::memory::WriteRequest const&)",
-        "run_main_route_threads(ghostlock::memory::WriteRequest const*)",
-        "run_main_route_threads(ghostlock::WriteRequest const*)",
+        "lsprivilege::race::run_main_route_threads(lsprivilege::memory::WriteRequest const&)",
+        "lsprivilege::race::run_main_route_threads(lsprivilege::memory::WriteRequest const*)",
+        "run_main_route_threads(lsprivilege::memory::WriteRequest const&)",
+        "run_main_route_threads(lsprivilege::memory::WriteRequest const*)",
+        "run_main_route_threads(lsprivilege::WriteRequest const*)",
     ]),
     ("do_kernel5_fake_lock_route", [
-        "ghostlock::route::do_kernel5_fake_lock_route(ghostlock::memory::WriteRequest const*)",
-        "ghostlock::route::do_kernel5_fake_lock_route(ghostlock::WriteRequest const*)",
-        "do_kernel5_fake_lock_route(ghostlock::memory::WriteRequest const*)",
-        "do_kernel5_fake_lock_route(ghostlock::WriteRequest const*)",
+        "lsprivilege::route::do_kernel5_fake_lock_route(lsprivilege::memory::WriteRequest const*)",
+        "do_kernel5_fake_lock_route(lsprivilege::memory::WriteRequest const*)",
+        "do_kernel5_fake_lock_route(lsprivilege::WriteRequest const*)",
     ]),
     ("do_one_write", [
-        "bool ghostlock::session::backend::Cve2026_43499Policy::attack_write<ghostlock::route::MulticastPolicy>(ghostlock::session::ExploitSession&, ghostlock::memory::WriteRequest const&, char const*)",
-        "bool ghostlock::session::backend::Cve2026_43499Policy::attack_write<ghostlock::route::SelectPolicy>(ghostlock::session::ExploitSession&, ghostlock::memory::WriteRequest const&, char const*)",
-        "bool ghostlock::session::backend::Cve2026_43499Policy::attack_write<ghostlock::route::TcpPolicy>(ghostlock::session::ExploitSession&, ghostlock::memory::WriteRequest const&, char const*)",
-        "ghostlock::session::backend::Cve2026_43499Policy::attack_write<ghostlock::route::MulticastPolicy>(ghostlock::session::ExploitSession&, ghostlock::memory::WriteRequest const&, char const*)",
-        "ghostlock::session::backend::Cve2026_43499Policy::attack_write(ghostlock::session::ExploitSession&, ghostlock::memory::WriteRequest const&, char const*)",
-        "ghostlock::session::backend::Cve2026_43499Policy::attack_write(ghostlock::session::ExploitSession const&, ghostlock::memory::WriteRequest const&, char const*)",
-        "ghostlock::session::ExploitProcedure::attack_write(ghostlock::memory::WriteRequest const&, char const*)",
-        "ghostlock::session::ExploitProcedure::attack_write(ghostlock::memory::WriteRequest const*, char const*)",
-        "ghostlock::attack::do_one_write(ghostlock::memory::WriteRequest const*, char const*)",
-        "ghostlock::ops::do_one_write(ghostlock::WriteRequest const*, char const*)",
-        "do_one_write(ghostlock::memory::WriteRequest const*, char const*)",
-        "do_one_write(ghostlock::WriteRequest const*, char const*)",
+        "bool lsprivilege::session::backend::Cve2026_43499Policy::attack_write<lsprivilege::route::MulticastPolicy>(lsprivilege::session::ExploitSession&, lsprivilege::memory::WriteRequest const&, char const*)",
+        "bool lsprivilege::session::backend::Cve2026_43499Policy::attack_write<lsprivilege::route::SelectPolicy>(lsprivilege::session::ExploitSession&, lsprivilege::memory::WriteRequest const&, char const*)",
+        "bool lsprivilege::session::backend::Cve2026_43499Policy::attack_write<lsprivilege::route::TcpPolicy>(lsprivilege::session::ExploitSession&, lsprivilege::memory::WriteRequest const&, char const*)",
+        "lsprivilege::session::backend::Cve2026_43499Policy::attack_write<lsprivilege::route::MulticastPolicy>(lsprivilege::session::ExploitSession&, lsprivilege::memory::WriteRequest const&, char const*)",
+        "lsprivilege::session::backend::Cve2026_43499Policy::attack_write<lsprivilege::route::SelectPolicy>(lsprivilege::session::ExploitSession&, lsprivilege::memory::WriteRequest const&, char const*)",
+        "lsprivilege::session::backend::Cve2026_43499Policy::attack_write<lsprivilege::route::TcpPolicy>(lsprivilege::session::ExploitSession&, lsprivilege::memory::WriteRequest const&, char const*)",
+        "lsprivilege::session::backend::Cve2026_43499Policy::attack_write(lsprivilege::session::ExploitSession&, lsprivilege::memory::WriteRequest const&, char const*)",
+        "lsprivilege::session::backend::Cve2026_43499Policy::attack_write(lsprivilege::session::ExploitSession const&, lsprivilege::memory::WriteRequest const&, char const*)",
+        "lsprivilege::session::ExploitProcedure::attack_write(lsprivilege::memory::WriteRequest const&, char const*)",
+        "lsprivilege::session::ExploitProcedure::attack_write(lsprivilege::memory::WriteRequest const*, char const*)",
+        "lsprivilege::attack::do_one_write(lsprivilege::memory::WriteRequest const*, char const*)",
+        "lsprivilege::ops::do_one_write(lsprivilege::WriteRequest const*, char const*)",
+        "do_one_write(lsprivilege::memory::WriteRequest const*, char const*)",
+        "do_one_write(lsprivilege::WriteRequest const*, char const*)",
     ]),
-    ("multicast_owner_worker", [
-        "ghostlock::route::multicast_waiter::(anonymous namespace)::multicast_owner_worker(void*)",
-        "ghostlock::route::multicast_owner_worker(void*)",
-        "(anonymous namespace)::multicast_owner_worker(void*)",
-        "multicast_owner_worker(void*)",
-    ]),
-    ("multicast_waiter_worker", [
-        "ghostlock::route::multicast_waiter::(anonymous namespace)::multicast_waiter_worker(void*)",
-        "ghostlock::route::multicast_waiter_worker(void*)",
-        "(anonymous namespace)::multicast_waiter_worker(void*)",
-        "multicast_waiter_worker(void*)",
-    ]),
+    # The resident multicast waiter's owner/waiter workers were removed when the
+    # 5.15 route became one-shot (1b453871); do_kernel5_fake_lock_route below is
+    # the multicast attack entry point now. Keeping the old entries made every
+    # run MISSING/FAIL.
 ]
+
+CURRENT_NS = "lsprivilege::"
+LEGACY_NS = "ghostlock::"
+
+
+def canonical_name(name):
+    """Rewrite the pre-rename namespace prefix so old baselines still resolve."""
+    return name.replace(LEGACY_NS, CURRENT_NS)
 
 
 def find_objdump():
@@ -113,7 +118,7 @@ def disassemble(path):
     for line in out.splitlines():
         m = header.match(line)
         if m:
-            current = m.group(2)
+            current = canonical_name(m.group(2))
             funcs.setdefault(current, [])
             continue
         if current is None:
@@ -134,11 +139,13 @@ def resolve(funcs, candidates):
 
 
 def strict(text):
+    text = canonical_name(text)
     text = re.sub(r"0x[0-9a-f]+ <", "<", text)
     return re.sub(r"0x[0-9a-f]+", "0xH", text)
 
 
 def layout(text):
+    text = canonical_name(text)
     text = re.sub(r"<.*>", "<SYM>", text)
     return re.sub(r"0x[0-9a-f]+", "0xH", text)
 

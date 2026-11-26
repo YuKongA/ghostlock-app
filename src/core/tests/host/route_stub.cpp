@@ -6,7 +6,7 @@
 
 /* Host stubs for the middleware route. The real PI race never runs; the
  * scripted Status stands in for "verified write". */
-namespace ghostlock::route::middleware {
+namespace lsprivilege::route::middleware {
     Status run_middleware_route(session::ExploitSession &session,
                                 const memory::WriteRequest &request) {
         (void) session;
@@ -14,23 +14,23 @@ namespace ghostlock::route::middleware {
         host::script().record("route");
         return host::script().next_route();
     }
-} // namespace ghostlock::route::middleware
+} // namespace lsprivilege::route::middleware
 
-namespace ghostlock::route {
+namespace lsprivilege::route {
     void reserve_standard_io(void) {}
 
-    RouteStatus do_pselect_fake_lock_route(const ghostlock::memory::WriteRequest *request) {
+    RouteStatus do_pselect_fake_lock_route(const lsprivilege::memory::WriteRequest *request) {
         (void) request;
         return RouteStatus{};
     }
 
-    RouteStatus do_tcp_fake_lock_route(const ghostlock::memory::WriteRequest *request) {
+    RouteStatus do_tcp_fake_lock_route(const lsprivilege::memory::WriteRequest *request) {
         (void) request;
         return RouteStatus{};
     }
 
-    RouteStatus do_kernel5_fake_lock_route(const ghostlock::memory::WriteRequest *request) {
+    RouteStatus do_kernel5_fake_lock_route(const lsprivilege::memory::WriteRequest *request) {
         (void) request;
         return RouteStatus{};
     }
-} // namespace ghostlock::route
+} // namespace lsprivilege::route

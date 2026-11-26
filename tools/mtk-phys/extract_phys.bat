@@ -18,7 +18,7 @@ if errorlevel 1 (
 %ADB% root >nul 2>&1
 %ADB% wait-for-device
 
-set "DEV=/data/local/tmp/ghostlock-mtk-phys.sh"
+set "DEV=/data/local/tmp/lsprivilege-mtk-phys.sh"
 %ADB% push "%~dp0mtk-phys.sh" "%DEV%" >nul
 
 set "UID="

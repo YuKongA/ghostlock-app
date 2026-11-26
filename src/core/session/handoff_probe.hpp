@@ -1,10 +1,10 @@
-#ifndef GHOSTLOCK_HANDOFF_PROBE_HPP
-#define GHOSTLOCK_HANDOFF_PROBE_HPP
+#ifndef LSPRIVILEGE_HANDOFF_PROBE_HPP
+#define LSPRIVILEGE_HANDOFF_PROBE_HPP
 
 #include <cstdint>
 #include <string_view>
 
-namespace ghostlock::session {
+namespace lsprivilege::session {
     /* Post-exploit KernelSU/APatch handoff probe results. The field semantics stay the
  * legacy booleans so the caller keeps the exact log lines and their order. */
     struct HandoffProbeResult {
@@ -45,6 +45,6 @@ namespace ghostlock::session {
  * and this probe must receive the same resolved path. */
     HandoffProbeResult handoff_probe_run(const HandoffPollPolicy &policy,
                                          std::string_view ksu_log_path) noexcept;
-} // namespace ghostlock::session
+} // namespace lsprivilege::session
 
 #endif

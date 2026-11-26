@@ -6,7 +6,7 @@
 
 #include <atomic>
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
 
 /* Stand-in workers for the host: the real entries own futex/attack logic that
@@ -23,7 +23,7 @@ static bool wait_started(int32_t expected) {
 }
 
 static void *fake_waiter(void *arg) {
-    auto *race = static_cast<ghostlock::race::PiRace *>(arg);
+    auto *race = static_cast<lsprivilege::race::PiRace *>(arg);
     g_started.fetch_add(1);
     while (!race->owner_stop.load() &&
            !race->owner_chain_done.load())
@@ -32,21 +32,21 @@ static void *fake_waiter(void *arg) {
 }
 
 static void *fake_owner(void *arg) {
-    auto *race = static_cast<ghostlock::race::PiRace *>(arg);
+    auto *race = static_cast<lsprivilege::race::PiRace *>(arg);
     g_started.fetch_add(1);
     while (!race->owner_stop.load()) usleep(1000);
     return nullptr;
 }
 
 static void *fake_consumer(void *arg) {
-    auto *race = static_cast<ghostlock::race::PiRace *>(arg);
+    auto *race = static_cast<lsprivilege::race::PiRace *>(arg);
     g_started.fetch_add(1);
     while (!race->consumer_stop.load()) usleep(1000);
     return nullptr;
 }
 
 int32_t main(void) {
-    ghostlock::race::PiRace race;
+    lsprivilege::race::PiRace race;
     assert(race.reset(12345, 2, 3));
     assert(race.wait_futex == 0);
     assert(race.target_futex == 0);
@@ -59,11 +59,11 @@ int32_t main(void) {
     assert(race.route_delay_usec.load() == 12345);
     assert(race.main_cpu == 2);
     assert(race.consumer_cpu == 3);
-    assert(race.waiter_owner.state() == ghostlock::support::PthreadOwner::State::Empty);
-    assert(race.owner_owner.state() == ghostlock::support::PthreadOwner::State::Empty);
-    assert(race.consumer_owner.state() == ghostlock::support::PthreadOwner::State::Empty);
+    assert(race.waiter_owner.state() == lsprivilege::support::PthreadOwner::State::Empty);
+    assert(race.owner_owner.state() == lsprivilege::support::PthreadOwner::State::Empty);
+    assert(race.consumer_owner.state() == lsprivilege::support::PthreadOwner::State::Empty);
     assert(race.request == nullptr);
-    assert(race.route_status.code == ghostlock::route::ROUTE_RETRYABLE);
+    assert(race.route_status.code == lsprivilege::route::ROUTE_RETRYABLE);
 
     /* reset is idempotent and clears previous values. */
     assert(race.reset(1, 0, 1));
@@ -76,9 +76,9 @@ int32_t main(void) {
     assert(race.start_threads(nullptr, fake_owner, fake_consumer, nullptr) ==
            EINVAL);
     assert(g_started.load() == 0);
-    assert(race.waiter_owner.state() == ghostlock::support::PthreadOwner::State::Empty);
-    assert(race.owner_owner.state() == ghostlock::support::PthreadOwner::State::Empty);
-    assert(race.consumer_owner.state() == ghostlock::support::PthreadOwner::State::Empty);
+    assert(race.waiter_owner.state() == lsprivilege::support::PthreadOwner::State::Empty);
+    assert(race.owner_owner.state() == lsprivilege::support::PthreadOwner::State::Empty);
+    assert(race.consumer_owner.state() == lsprivilege::support::PthreadOwner::State::Empty);
 
     /* Partial startup: consumer and owner start, the waiter slot is already
    * taken so its create fails and both started workers are stopped and joined
@@ -88,18 +88,18 @@ int32_t main(void) {
     assert(race.start_threads(fake_waiter, fake_owner, fake_consumer, nullptr) ==
            EINVAL);
     assert(wait_started(3));
-    assert(race.owner_owner.state() == ghostlock::support::PthreadOwner::State::Joined);
-    assert(race.consumer_owner.state() == ghostlock::support::PthreadOwner::State::Joined);
-    assert(race.waiter_owner.state() == ghostlock::support::PthreadOwner::State::Running);
+    assert(race.owner_owner.state() == lsprivilege::support::PthreadOwner::State::Joined);
+    assert(race.consumer_owner.state() == lsprivilege::support::PthreadOwner::State::Joined);
+    assert(race.waiter_owner.state() == lsprivilege::support::PthreadOwner::State::Running);
     assert(race.request == nullptr);
     race.owner_stop.store(1);
     assert(race.waiter_owner.join() == 0);
-    assert(race.waiter_owner.state() == ghostlock::support::PthreadOwner::State::Joined);
+    assert(race.waiter_owner.state() == lsprivilege::support::PthreadOwner::State::Joined);
 
     /* Normal lifecycle: three workers, idempotent stop, join, repeated join. */
     g_started = 0;
     assert(race.reset(5, 0, 1));
-    ghostlock::memory::WriteRequest request{};
+    lsprivilege::memory::WriteRequest request{};
     assert(race.start_threads(fake_waiter, fake_owner, fake_consumer, &request) ==
            0);
     assert(wait_started(3));
@@ -113,33 +113,33 @@ int32_t main(void) {
     assert(race.owner_stop.load() == 1);
     assert(race.join() == 0);
     assert(race.request == nullptr);
-    assert(race.waiter_owner.state() == ghostlock::support::PthreadOwner::State::Joined);
-    assert(race.owner_owner.state() == ghostlock::support::PthreadOwner::State::Joined);
-    assert(race.consumer_owner.state() == ghostlock::support::PthreadOwner::State::Joined);
+    assert(race.waiter_owner.state() == lsprivilege::support::PthreadOwner::State::Joined);
+    assert(race.owner_owner.state() == lsprivilege::support::PthreadOwner::State::Joined);
+    assert(race.consumer_owner.state() == lsprivilege::support::PthreadOwner::State::Joined);
     assert(race.join() == 0);
-    assert(race.waiter_owner.state() == ghostlock::support::PthreadOwner::State::Joined);
+    assert(race.waiter_owner.state() == lsprivilege::support::PthreadOwner::State::Joined);
 
     /* Outcome merge: Ok without a winning consumer call degrades to Retryable,
    * everything else is passed through untouched. */
-    ghostlock::route::RouteStatus ok{};
-    ok.code = ghostlock::route::ROUTE_OK;
+    lsprivilege::route::RouteStatus ok{};
+    ok.code = lsprivilege::route::ROUTE_OK;
     ok.userspace_clean = 1;
     ok.kernel_disarmed = 1;
-    assert(ghostlock::race::PiRace::outcome_with_counters(ok, 3, 2).code == ghostlock::route::ROUTE_OK);
-    assert(ghostlock::race::PiRace::outcome_with_counters(ok, 0, 0).code ==
-           ghostlock::route::ROUTE_RETRYABLE);
-    assert(ghostlock::race::PiRace::outcome_with_counters(ok, 3, 0).code ==
-           ghostlock::route::ROUTE_RETRYABLE);
-    assert(ghostlock::race::PiRace::outcome_with_counters(ok, 0, 2).code ==
-           ghostlock::route::ROUTE_RETRYABLE);
+    assert(lsprivilege::race::PiRace::outcome_with_counters(ok, 3, 2).code == lsprivilege::route::ROUTE_OK);
+    assert(lsprivilege::race::PiRace::outcome_with_counters(ok, 0, 0).code ==
+           lsprivilege::route::ROUTE_RETRYABLE);
+    assert(lsprivilege::race::PiRace::outcome_with_counters(ok, 3, 0).code ==
+           lsprivilege::route::ROUTE_RETRYABLE);
+    assert(lsprivilege::race::PiRace::outcome_with_counters(ok, 0, 2).code ==
+           lsprivilege::route::ROUTE_RETRYABLE);
 
-    ghostlock::route::RouteStatus dirty{};
-    dirty.code = ghostlock::route::ROUTE_DIRTY_FAILURE;
+    lsprivilege::route::RouteStatus dirty{};
+    dirty.code = lsprivilege::route::ROUTE_DIRTY_FAILURE;
     dirty.step = 59;
     dirty.userspace_clean = 1;
     dirty.kernel_disarmed = 0;
-    const ghostlock::route::RouteStatus kept = ghostlock::race::PiRace::outcome_with_counters(dirty, 10, 10);
-    assert(kept.code == ghostlock::route::ROUTE_DIRTY_FAILURE);
+    const lsprivilege::route::RouteStatus kept = lsprivilege::race::PiRace::outcome_with_counters(dirty, 10, 10);
+    assert(kept.code == lsprivilege::route::ROUTE_DIRTY_FAILURE);
     assert(kept.step == 59);
     assert(kept.userspace_clean == 1);
     assert(kept.kernel_disarmed == 0);

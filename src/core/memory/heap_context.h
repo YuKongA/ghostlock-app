@@ -12,11 +12,11 @@
 
 #include "support/native_resource.hpp"
 
-namespace ghostlock::kernelsnitch {
+namespace lsprivilege::kernelsnitch {
     struct kernelsnitch_shared_state;
 }
 
-namespace ghostlock::memory {
+namespace lsprivilege::memory {
     /* Owns the per-attempt mm-shaping child pid and memfd arrays. The vectors free
  * their storage on destruction, but they never kill a child or close a memfd:
  * a forked helper that reaches exit() must not release the parent's resources.
@@ -25,9 +25,9 @@ namespace ghostlock::memory {
         std::vector<pid_t> childs;
         std::vector<int32_t> memfds;
     };
-} // namespace ghostlock::memory
+} // namespace lsprivilege::memory
 
-namespace ghostlock::memory {
+namespace lsprivilege::memory {
     enum class PayloadPageState : int32_t {
         Empty = 0,
         Current,
@@ -83,7 +83,7 @@ namespace ghostlock::memory {
     static_assert(std::is_trivially_destructible_v<PayloadPage>);
 
     struct HeapContext {
-        ghostlock::kernelsnitch::kernelsnitch_shared_state *snitch;
+        lsprivilege::kernelsnitch::kernelsnitch_shared_state *snitch;
         size_t mm_objs_per_slab;
         std::unique_ptr<unsigned char[]> skb_buffer;
         MmContextSet prepare;
@@ -93,8 +93,8 @@ namespace ghostlock::memory {
         /* Owns the KernelSnitch collision helper until it exits; mark_reaped()
      * records the waitpid() the spray path performs, so scope exit never
      * signals a pid twice. */
-        ghostlock::support::ChildProcess leak_child;
-        ghostlock::support::UniqueFd leak_memfd;
+        lsprivilege::support::ChildProcess leak_child;
+        lsprivilege::support::UniqueFd leak_memfd;
         PayloadPage current;
         PayloadPage prebuilt;
         PayloadPage quarantine;
@@ -105,7 +105,7 @@ namespace ghostlock::memory {
     void close_ctx_memfds(MmContextSet *ctx);
 
     void free_ctx_storage(MmContextSet *ctx);
-} // namespace ghostlock::memory
+} // namespace lsprivilege::memory
 
 
 #endif

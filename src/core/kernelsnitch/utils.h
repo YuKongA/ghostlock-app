@@ -140,7 +140,7 @@
 
 /* CPP02 review: SYSCHK is log-and-continue (it reports the error and returns
  * -1); callers have no better recovery than proceeding, so the form is kept. */
-namespace ghostlock::kernel {
+namespace lsprivilege::kernel {
     static inline void pin_to_core(size_t core) {
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
@@ -176,12 +176,12 @@ namespace ghostlock::kernel {
     }
 
     static inline size_t gettime_ns(void) {
-        return static_cast<size_t>(ghostlock::runtime_time::to_duration(
-            ghostlock::runtime_time::monotonic_now()).count());
+        return static_cast<size_t>(lsprivilege::runtime_time::to_duration(
+            lsprivilege::runtime_time::monotonic_now()).count());
     }
 
     static void write_file(const char *path, const char *data) {
-        ghostlock::support::UniqueFd fd(SYSCHK(open(path, O_WRONLY)));
+        lsprivilege::support::UniqueFd fd(SYSCHK(open(path, O_WRONLY)));
         const size_t length = strlen(data);
         if (write(fd.get(), data, length) != static_cast<ssize_t>(length))
             pr_error("write(%s): %m\n", path);
@@ -230,4 +230,4 @@ namespace ghostlock::kernel {
             pr_error("invalid %s: %s\n", name, s);
         return parsed.value;
     }
-} // namespace ghostlock::kernel
+} // namespace lsprivilege::kernel

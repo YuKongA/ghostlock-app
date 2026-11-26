@@ -4,7 +4,7 @@
 /* Host stubs for the KernelSU handoff probe: no /proc scan, no su probe.
  * handoff_probe_run reports ready per the script so the data flow reaches
  * StageResult::Done. */
-namespace ghostlock::session {
+namespace lsprivilege::session {
     bool kernelsu_module_visible() noexcept { return false; }
 
     bool ksu_root_owned() noexcept { return false; }
@@ -27,4 +27,4 @@ namespace ghostlock::session {
         if (host::script().handoff_ready) result.enforce_ok = true;
         return result;
     }
-} // namespace ghostlock::session
+} // namespace lsprivilege::session

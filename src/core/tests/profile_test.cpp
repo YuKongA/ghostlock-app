@@ -2,11 +2,11 @@
 
 #include <cstdio>
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
 int32_t main(void) {
     profile::kernel_offsets decoded = {
-        .route = ghostlock::profile::kRouteMulticastWaiter,
+        .route = lsprivilege::profile::kRouteMulticastWaiter,
         .meta = {.kernel_major = 5},
         .misc = {.compact_waiter = 1, .mm_struct_sz = 0x580},
         .geometry = {
@@ -22,20 +22,20 @@ int32_t main(void) {
             .heap_prepare_max_attempts = 7,
         },
     };
-    ghostlock::profile::TargetProfile profile = ghostlock::profile::TargetProfile::from(&decoded);
+    lsprivilege::profile::TargetProfile profile = lsprivilege::profile::TargetProfile::from(&decoded);
     decoded.meta.kernel_major = 6;
     decoded.execution.heap_prepare_max_attempts = 99;
 
-    ghostlock::profile::MulticastWaiterLayout multicast =
+    lsprivilege::profile::MulticastWaiterLayout multicast =
             profile.multicast_layout();
-    ghostlock::profile::SelectStackLayout select = profile.select_stack_layout();
-    ghostlock::profile::TcpZerocopyLayout tcp = profile.tcp_zerocopy_layout();
+    lsprivilege::profile::SelectStackLayout select = profile.select_stack_layout();
+    lsprivilege::profile::TcpZerocopyLayout tcp = profile.tcp_zerocopy_layout();
     const profile::execution_settings *execution =
             profile.execution();
 
-    if (!profile.supports(ghostlock::profile::RouteKind::MulticastWaiter) ||
-        profile.supports(ghostlock::profile::RouteKind::TcpZerocopy) ||
-        profile.supports(ghostlock::profile::RouteKind::SelectStack) ||
+    if (!profile.supports(lsprivilege::profile::RouteKind::MulticastWaiter) ||
+        profile.supports(lsprivilege::profile::RouteKind::TcpZerocopy) ||
+        profile.supports(lsprivilege::profile::RouteKind::SelectStack) ||
         multicast.buffer_size.value_or(0) != 128 ||
         multicast.waiter_offset.value_or(0) != 32 ||
         select.waiter_shift.value_or(0) != 16 ||
@@ -48,27 +48,27 @@ int32_t main(void) {
     }
 
     /* The declared route decides, and kRouteAuto selects no chain at all. */
-    decoded.route = ghostlock::profile::kRouteTcpZerocopy;
-    ghostlock::profile::TargetProfile explicit_tcp = ghostlock::profile::TargetProfile::from(&decoded);
-    decoded.route = ghostlock::profile::kRouteSelectStack;
-    ghostlock::profile::TargetProfile explicit_select = ghostlock::profile::TargetProfile::from(&decoded);
-    decoded.route = ghostlock::profile::kRouteAuto;
-    ghostlock::profile::TargetProfile unresolved = ghostlock::profile::TargetProfile::from(&decoded);
-    if (!explicit_tcp.supports(ghostlock::profile::RouteKind::TcpZerocopy) ||
-        explicit_tcp.supports(ghostlock::profile::RouteKind::MulticastWaiter) ||
-        !explicit_select.supports(ghostlock::profile::RouteKind::SelectStack) ||
-        explicit_select.supports(ghostlock::profile::RouteKind::TcpZerocopy) ||
-        unresolved.supports(ghostlock::profile::RouteKind::MulticastWaiter) ||
-        unresolved.supports(ghostlock::profile::RouteKind::TcpZerocopy) ||
-        unresolved.supports(ghostlock::profile::RouteKind::SelectStack)) {
+    decoded.route = lsprivilege::profile::kRouteTcpZerocopy;
+    lsprivilege::profile::TargetProfile explicit_tcp = lsprivilege::profile::TargetProfile::from(&decoded);
+    decoded.route = lsprivilege::profile::kRouteSelectStack;
+    lsprivilege::profile::TargetProfile explicit_select = lsprivilege::profile::TargetProfile::from(&decoded);
+    decoded.route = lsprivilege::profile::kRouteAuto;
+    lsprivilege::profile::TargetProfile unresolved = lsprivilege::profile::TargetProfile::from(&decoded);
+    if (!explicit_tcp.supports(lsprivilege::profile::RouteKind::TcpZerocopy) ||
+        explicit_tcp.supports(lsprivilege::profile::RouteKind::MulticastWaiter) ||
+        !explicit_select.supports(lsprivilege::profile::RouteKind::SelectStack) ||
+        explicit_select.supports(lsprivilege::profile::RouteKind::TcpZerocopy) ||
+        unresolved.supports(lsprivilege::profile::RouteKind::MulticastWaiter) ||
+        unresolved.supports(lsprivilege::profile::RouteKind::TcpZerocopy) ||
+        unresolved.supports(lsprivilege::profile::RouteKind::SelectStack)) {
         fputs("explicit route selection test failed\n", stderr);
         return 1;
     }
 
     /* A zero profile field and an unloaded profile both use the fallback. */
     decoded.misc.mm_struct_sz = 0;
-    ghostlock::profile::TargetProfile zero_stride = ghostlock::profile::TargetProfile::from(&decoded);
-    ghostlock::profile::TargetProfile unloaded{};
+    lsprivilege::profile::TargetProfile zero_stride = lsprivilege::profile::TargetProfile::from(&decoded);
+    lsprivilege::profile::TargetProfile unloaded{};
     if (zero_stride.mm_struct_stride(0x500) != 0x500 ||
         unloaded.mm_struct_stride(0x500) != 0x500 ||
         profile::TargetProfile{}.mm_struct_stride(0x500) != 0x500) {

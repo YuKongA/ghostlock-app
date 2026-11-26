@@ -27,7 +27,7 @@ pselect/futex 栈布局不可行被当成整颗内核不可用。它只否定 `s
 
 非目标：
 
-- 不改 native 攻击代码、GLK1/profile 二进制格式、wire、app。
+- 不改 native 攻击代码、PRIV1/profile 二进制格式、wire、app。
 - 不为新的 family 增补 tcp 布局（`conf_route_geometry` 的 tcp 分支仍只认
   `STRUCT_OFFSETS_6_1`）。
 - 不为 `shift=13` 扩展 pselect 可控窗口。

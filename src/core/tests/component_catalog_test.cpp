@@ -10,7 +10,7 @@
 #include <cassert>
 #include <cstdio>
 
-using namespace ghostlock;
+using namespace lsprivilege;
 
 int32_t main(void) {
     using runtime::BackendKind;

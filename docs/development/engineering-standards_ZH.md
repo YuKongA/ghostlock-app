@@ -1,6 +1,6 @@
 [English](engineering-standards.md) | 简体中文
 
-# GhostLock 工程与设计规范
+# LSPrivilege 工程与设计规范
 
 > 做法与门槛。为什么见 [`design-philosophy_ZH.md`](design-philosophy_ZH.md)。适用对象：本仓库的人类开发者与
 > AI agent。任何改动开始前必须先读本文并完成第 1 节的设计流程。
@@ -38,7 +38,7 @@ L 级改动必须先给出设计并获得用户认可，再写代码。
 | 改动 | 主机测试 | NDK 构建 | lint-tidy | `cmp_disasm` | 真机门禁 |
 |---|---|---|---|---|---|
 | S/M 非攻击路径 | 必须 | 必须零警告 | 必须 0 findings | 可跳过 | 不需要 |
-| M 触及攻击路径 | 必须 | 必须零警告 | 必须 0 findings | **必须**（8 函数） | 必须（见 §8.3） |
+| M 触及攻击路径 | 必须 | 必须零警告 | 必须 0 findings | **必须**（6 函数） | 必须（见 §8.3） |
 | L | 必须 | 必须零警告 | 必须 0 findings | **必须** | 必须，且归档证据 |
 
 命令见 `AGENTS.md` 与 §8。
@@ -68,16 +68,16 @@ L 级改动必须先给出设计并获得用户认可，再写代码。
 
 ```
 app/ (Kotlin, UI/domain/data/shizuku)
-  │  ProcessBuilder（不是 JNI）：stdin 写 GLK1、stdout/stderr 收日志、退出码表达结果
+  │  ProcessBuilder（不是 JNI）：stdin 写 PRIV1、stdout/stderr 收日志、退出码表达结果
   ▼
 src/core/ (C++23 可执行 ELF)          tools/extract_rs/ (Rust 离线提取器)
 ```
 
-- 层间契约只能是进程、文件、stdin/stdout、退出码，以及 GLK1/HOCON profile 文本。新增跨层状态必须经
+- 层间契约只能是进程、文件、stdin/stdout、退出码，以及 PRIV1/HOCON profile 文本。新增跨层状态必须经
   profile 或文件，不得发明新环境变量（§3.1）。
 - Kotlin 分层：`ui → domain → data`；平台 I/O 只允许在 `data/`；`shizuku/` 是执行入口的变体，
   不承载业务规则。
-- Native 命名空间分层：`ghostlock::{route,session,memory,attack,race,support,profile}`。
+- Native 命名空间分层：`lsprivilege::{route,session,memory,attack,race,support,profile}`。
   include 一律相对 `src/core`（`#include "route/..."`），让所有权在调用点可见。
 
 ### 2.2 route 结构（本项目核心扩展点）
@@ -125,12 +125,12 @@ src/core/ (C++23 可执行 ELF)          tools/extract_rs/ (Rust 离线提取器
 assets HOCON（index.conf + <uname-r>.conf + execution-*.conf + 公共节）
    → Kotlin 解析/合并（include 展开、route 显式选择）
    → 用户覆盖层（按 release 稀疏保存，优先级高于内置与导入）
-   → GLK1 二进制（stdin 传给 native；exportKernelProfiles 生成 .bin）
+   → PRIV1 二进制（stdin 传给 native；exportKernelProfiles 生成 .bin）
    → native TargetProfile 只读快照（此后执行层只认它）
 ```
 
-- profile 是唯一配置权威。执行层只允许读进程/路径类环境变量（`GHOSTLOCK_HOME`、`TMPDIR`、
-  `GHOSTLOCK_KSU_LOG`）。需要新状态就扩展 profile，绝不新增配置类环境变量。
+- profile 是唯一配置权威。执行层只允许读进程/路径类环境变量（`LSPRIVILEGE_HOME`、`TMPDIR`、
+  `LSPRIVILEGE_KSU_LOG`）。需要新状态就扩展 profile，绝不新增配置类环境变量。
 - `uname -r` 精确匹配。route 由 profile 显式声明，不得从 kernel 版本或设备名推断。
 - 导入与内置的差异必须可追踪（字段级比较后再提供覆盖），profile 的 release 名与文件名逐字一致。
 
@@ -142,7 +142,7 @@ TargetProfile（不可变，拥有值）→ ResolvedAddresses::init() → Resolv
    → uintptr_t 写入内核
 ```
 
-- 可选字段与显式 0 必须区分。GLK1 以键是否出现表达 presence，native 用 `std::optional`
+- 可选字段与显式 0 必须区分。PRIV1 以键是否出现表达 presence，native 用 `std::optional`
   保存可缺省字段。"0 = 缺省"的隐式兼容只允许存在于文档化的一次性推导入口。
 - 任何 profile 驱动的缓冲区尺寸/偏移计算必须做溢出安全检查，并在使用前做范围校验
   （`MulticastGeometry`/`Fields` 的既有模式）。
@@ -204,7 +204,7 @@ setup → W1（SELinux）→ W2（凭据）→ W3（seccomp）→ handoff（root
 
 ### 5.1 内核 ABI 结构（最高风险区）
 
-- `profile/binary.cpp` 的 GLK1 wire v2 section/key 表是契约权威：字段名、类型与位型一经发布不可改。
+- `profile/binary.cpp` 的 PRIV1 wire v2 section/key 表是契约权威：字段名、类型与位型一经发布不可改。
   新增字段 = 在该 section 追加一个条目（section/entry 顺序无关），并与 Kotlin `NativeProfile.kt` 同步。
 - Kotlin↔Native 双侧注册表（`RouteKind`、字段表）由测试锁定（`route_catalog_test` /
   `RouteCatalogAgreementTest`）。wire ID、键名与类型必须一致。具名 section/entry 的顺序无关。
@@ -240,7 +240,7 @@ setup → W1（SELinux）→ W2（凭据）→ W3（seccomp）→ handoff（root
 
 - 语言：C++23、`-fno-rtti`、静态 libc++、`-O2 -flto`、`-Wall -Wextra -Wconversion -Wsign-conversion`。
   新代码不得引入任何告警。禁止 RTTI/异常/非标准扩展。
-- 头文件：`#ifndef GHOSTLOCK_<PATH>_<FILE>_HPP` guard、自包含、`#include` 相对 `src/core`
+- 头文件：`#ifndef LSPRIVILEGE_<PATH>_<FILE>_HPP` guard、自包含、`#include` 相对 `src/core`
   （项目头）、组内按字母序（沿用现有文件的实际风格，不做无关重排）。
 - 命名：函数/变量 `snake_case`；类型 `PascalCase`；编译期常量 `kCamelCase`；成员变量 `name_`；
   宏仅限已保留的移植头。
@@ -301,10 +301,10 @@ setup → W1（SELinux）→ W2（凭据）→ W3（seccomp）→ handoff（root
 ### 8.2 攻击函数形状对比
 
 ```sh
-python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
+python3 tools/cmp_disasm.py <baseline-binary> build/native/lsprivilege
 ```
 
-- 覆盖 8 个攻击函数（`TARGETS`）。判定：`IDENTICAL (strict)` 或已复核并记录的注解差异
+- 覆盖 6 个攻击函数（`TARGETS`）。判定：`IDENTICAL (strict)` 或已复核并记录的注解差异
   （如允许的 `LAYOUT-SHIFT` 单地址注解）。新攻击函数必须加入 `TARGETS`。
 - 报告与结论写入提交信息或计划文档（历史范例：批次报告中逐函数列出 IDENTICAL）。
 
@@ -314,7 +314,7 @@ python3 tools/cmp_disasm.py <baseline-binary> build/native/ghostlock
 **判定**：`route_done status=0 clean=1/1`、`child is root!`、`exploit complete`、handoff
 `KernelSU ready`、无 kernel panic。至少重复运行并记录次数。
 **归档**：按 [`documentation-standards_ZH.md`](documentation-standards_ZH.md) 的模板写记录。日志对应设备
-`Download/ghostlock-debug-log/<时间>/`。
+`Download/lsprivilege-debug-log/<时间>/`。
 
 ### 8.4 归因纪律
 

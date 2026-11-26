@@ -12,7 +12,7 @@
 - Baseline behavior:
   1. The "Parameter overrides" page, `ProfileOverrideScreen`, only renders
      `ExecutionEditor`. Its fields come from `ProfileConfig.GeneralPaths`
-     in `GhostlockModels.kt:95`: 9 `execution.*` entries plus tuning for
+     in `LSPrivilegeModels.kt:95`: 9 `execution.*` entries plus tuning for
      the current route. `kernel_phys_load`, `task_struct.*`, `cred.*`,
      and `offset.*` do not appear.
   2. The "Advanced parameter overrides" page, `AdvancedOverrideScreen`,
@@ -42,7 +42,7 @@ Non-goals:
 
 - Do not change the attack path, the waiter/race/payload/route/exec flow,
   or native parsing logic in `src/core/`.
-- Do not add routes or components, or change the GLK1 wire and HOCON
+- Do not add routes or components, or change the PRIV1 wire and HOCON
   transport format version. It remains v2.
 - Do not change `kernelsnitch/`, the v1 conversion in
   `LegacyProfileConverter.kt`, or the explicit preservation list
@@ -58,7 +58,7 @@ Non-goals:
 | `tools/extract_rs/src/main.rs` | Pass the complete field set, including null placeholders, when assembling conf |
 | `app/src/main/assets/kernel_profiles/*.conf` | Complete the common and route fields in each profile, writing `null` for unknown values |
 | `app/src/main/kotlin/.../data/AndroidProfileConfigController.kt` | `buildTree`/`generalFields`/`routeTuningPaths` render the full set of current route, fallback, and common fields, filling missing entries with `null`. `buildTree` skips `execution` |
-| `app/src/main/kotlin/.../domain/model/GhostlockModels.kt` | Expand `GeneralPaths` to include all execution fields |
+| `app/src/main/kotlin/.../domain/model/LSPrivilegeModels.kt` | Expand `GeneralPaths` to include all execution fields |
 | `profile-core/.../data/HoconSupport.kt` | Check how `render` outputs `null` and add tests |
 | `docs/kernel_profiles/PROFILE_SCHEMA*.md` | Document the field completeness rules |
 
@@ -85,7 +85,7 @@ Invariants:
 - D2: execution belongs on the general editor page. `execution.*` is fully
   loaded in `ProfileOverrideScreen`. It does not appear in the advanced
   tree and is not inlined into device profile HOCON.
-- D3=A: `null` means the key is absent from the GLK1 binary. Native reads
+- D3=A: `null` means the key is absent from the PRIV1 binary. Native reads
   it as not provided. HOCON/UI keeps `null` only as a placeholder.
   This does not change wire presence semantics or introduce a presence bitmap.
 - D4: manually add `null` to each built-in profile. There are 54 device
@@ -94,11 +94,11 @@ Invariants:
   route branch. When a fallback exists, it also outputs the fallback
   branch's geometry and writes the actual route to `fallback.to`.
 
-GLK1 v2 is the transport format between Kotlin and native. It also carries
+PRIV1 v2 is the transport format between Kotlin and native. It also carries
 built-in precompiled profiles: `exportKernelProfiles` produces `.bin` files,
 and native loads them with `--load-prebuilt-profile`. It is neither the
 storage format for user edits, which use HOCON/preferences, nor an execution
-format. D3=A therefore changes only HOCON/UI/extractor, leaving the GLK1
+format. D3=A therefore changes only HOCON/UI/extractor, leaving the PRIV1
 byte format unchanged.
 
 ## 5.15 multicast→select fallback, deferred

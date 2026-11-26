@@ -1,5 +1,5 @@
-#ifndef GHOSTLOCK_HOST_SYS_PRCTL_H
-#define GHOSTLOCK_HOST_SYS_PRCTL_H
+#ifndef LSPRIVILEGE_HOST_SYS_PRCTL_H
+#define LSPRIVILEGE_HOST_SYS_PRCTL_H
 
 /*
  * Host shim: macOS has no <sys/prctl.h>. The attack data-flow test does not

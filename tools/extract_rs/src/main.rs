@@ -5,31 +5,31 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::Parser;
 
-use ghostlock_extract::analysis;
-use ghostlock_extract::boot::{BootImage, MTK_DEFAULT_PHYS_LOAD, MTK_VADDR_BASE};
-use ghostlock_extract::btf::Btf;
-use ghostlock_extract::derive::{
+use lsprivilege_extract::analysis;
+use lsprivilege_extract::boot::{BootImage, MTK_DEFAULT_PHYS_LOAD, MTK_VADDR_BASE};
+use lsprivilege_extract::btf::Btf;
+use lsprivilege_extract::derive::{
     PSELECT_ROUTE_NFDS, derive_cred_5x, derive_nf_logger_registration, derive_pselect_layout,
     ensure_rtmutex_43499_unpatched, multicast_waiter_off, relative_symbols,
 };
-use ghostlock_extract::error::{ExtractError, Result};
-use ghostlock_extract::fdt::{recover_kernel_phys_load, recover_kernel_phys_load_from_uefi};
-use ghostlock_extract::iomem;
-use ghostlock_extract::kallsyms;
-use ghostlock_extract::kallsyms::Kallsyms;
-use ghostlock_extract::kallsyms_finder;
-use ghostlock_extract::payload;
-use ghostlock_extract::report;
-use ghostlock_extract::symbols::{
+use lsprivilege_extract::error::{ExtractError, Result};
+use lsprivilege_extract::fdt::{recover_kernel_phys_load, recover_kernel_phys_load_from_uefi};
+use lsprivilege_extract::iomem;
+use lsprivilege_extract::kallsyms;
+use lsprivilege_extract::kallsyms::Kallsyms;
+use lsprivilege_extract::kallsyms_finder;
+use lsprivilege_extract::payload;
+use lsprivilege_extract::report;
+use lsprivilege_extract::symbols::{
     kernel_layout_verified, kernel_struct_macro, resolve_structs, resolve_symbols,
 };
-use ghostlock_extract::vendor_boot::recover_kernel_phys_from_vendor_boot;
+use lsprivilege_extract::vendor_boot::recover_kernel_phys_from_vendor_boot;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "ghostlock-extract",
-    about = "Extract GhostLock kernel offsets from boot.img / arm64 Image / payload.bin / OTA URL",
-    after_help = "examples:\n  ghostlock-extract boot.img --format conf --out profile.conf\n  ghostlock-extract boot.img --format json --out offsets.json\n  ghostlock-extract https://host/payload.bin --format json --out offsets.json\nWhen --kallsyms is omitted, the embedded kallsyms table is recovered from the kernel image itself (no root needed); on a rooted phone /proc/kallsyms is used first."
+    name = "lsprivilege-extract",
+    about = "Extract LSPrivilege kernel offsets from boot.img / arm64 Image / payload.bin / OTA URL",
+    after_help = "examples:\n  lsprivilege-extract boot.img --format conf --out profile.conf\n  lsprivilege-extract boot.img --format json --out offsets.json\n  lsprivilege-extract https://host/payload.bin --format json --out offsets.json\nWhen --kallsyms is omitted, the embedded kallsyms table is recovered from the kernel image itself (no root needed); on a rooted phone /proc/kallsyms is used first."
 )]
 struct Cli {
     /// boot.img, raw arm64 Image, gzip Image, payload.bin, OTA ZIP, or http(s) OTA URL
@@ -56,7 +56,7 @@ struct Cli {
     /// kernel physical load address (hex or decimal); overrides defaults
     #[arg(long, value_parser = parse_int)]
     phys: Option<u64>,
-    /// output format: text (JSON), json, or conf (flattened GLK profile HOCON)
+    /// output format: text (JSON), json, or conf (flattened PRIV profile HOCON)
     #[arg(long, value_parser = ["text", "json", "conf"], default_value = "text")]
     format: String,
     /// route written to --format conf; defaults to the analysis suggestion
@@ -197,7 +197,7 @@ fn run(cli: &Cli) -> Result<i32> {
     let work_root = cli.work_dir.clone().unwrap_or_else(std::env::temp_dir);
 
     if payload::looks_like_payload(cli.image.to_string_lossy().as_ref()) {
-        let work_dir = work_root.join(format!("ghostlock-payload-{}", std::process::id()));
+        let work_dir = work_root.join(format!("lsprivilege-payload-{}", std::process::id()));
         let input = cli.image.to_string_lossy();
         // Header + manifest only, then selective download of the partitions
         // the analysis needs; an empty list would pull the whole payload.

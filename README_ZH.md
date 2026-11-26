@@ -1,18 +1,18 @@
-# GhostLock-App
+# LSPrivilege
 
 [English](README.md)
 
-GhostLock 利用 CVE-2026-43499 在支持的 Android 内核上获取临时 root，并加载 KernelSU。
+LSPrivilege 是一款面向 Android 的模块化内核临时提权工具，用于在支持的内核上获取临时 root 并加载 KernelSU、APatch 等 root 管理器。项目设计为支持多个漏洞利用后端而非仅针对单一漏洞（当前已内置 CVE-2026-43499，后续将接入更多后端）。
 
 ## 使用
 
 1. 从 [KernelSU](https://github.com/tiann/KernelSU)、[SukiSU Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra)、[BakaSU/ReSukiSU](https://github.com/Baka-SU/BakaSU)、[KowSU](https://github.com/KOWX712/KernelSU) 或 [APatch](https://github.com/bmax121/APatch) 下载并安装管理器 APK。
-2. 安装 GhostLock APK 并打开。
+2. 安装 LSPrivilege APK 并打开。
 3. 确认内核受支持后，点击 **执行**。
 
 内核必须精确匹配 `uname -r`。请在[支持设备列表](docs/kernel_profiles/SUPPORTED_DEVICES_ZH.md)中核对内核版本。
 
-如果启用了 Shizuku，请先通过 ADB 启动，再运行 GhostLock。点击 GhostLock 的状态卡授权。
+如果启用了 Shizuku，请先通过 ADB 启动，再运行 LSPrivilege。点击 LSPrivilege 的状态卡授权。
 
 任何自带 `libksud.so` 或 `libapd.so` 的 root 管理器都可提供 `ksud`/`apd` 用于加载模块。内置列表（KernelSU、SukiSU Ultra、ReSukiSU、BakaSU、KowSU、APatch）会自动检测；其他管理器可在 **设置 → 根管理器** 中手动选择。缺 `ksud`/`apd` 时 W1/W2 仍可拿到 uid 0，但不会加载模块。
 
@@ -36,12 +36,12 @@ GhostLock 利用 CVE-2026-43499 在支持的 Android 内核上获取临时 root�
 需要 Android NDK、`make`、Gradle 和 ADB。通过 adb shell 运行时会跳过 App 的 seccomp 绕过阶段。
 
 ```sh
-make -C src ghostlock
+make -C src lsprivilege
 ./gradlew exportKernelProfiles
-adb push build/native/ghostlock /data/local/tmp/ghostlock
+adb push build/native/lsprivilege /data/local/tmp/lsprivilege
 adb push "build/kernel-profiles/<release>.bin" /data/local/tmp/profile.bin
-adb shell chmod 755 /data/local/tmp/ghostlock
-adb shell /data/local/tmp/ghostlock --load-prebuilt-profile /data/local/tmp/profile.bin
+adb shell chmod 755 /data/local/tmp/lsprivilege
+adb shell /data/local/tmp/lsprivilege --load-prebuilt-profile /data/local/tmp/profile.bin
 ```
 
 </details>
@@ -53,8 +53,8 @@ adb shell /data/local/tmp/ghostlock --load-prebuilt-profile /data/local/tmp/prof
 
 ```sh
 (cd tools/extract_rs && cargo build --release)
-build/extract/release/ghostlock-extract boot.img --xbl-config xbl_config.img --format conf --out profile.conf
-build/extract/release/ghostlock-extract OTA.zip --format conf --out profile.conf
+build/extract/release/lsprivilege-extract boot.img --xbl-config xbl_config.img --format conf --out profile.conf
+build/extract/release/lsprivilege-extract OTA.zip --format conf --out profile.conf
 ```
 
 在 App 中导入 `profile.conf`。没有 `xbl_config.img` 时省略 `--xbl-config`。若 `remove_waiter()` 已修复，提取器会以退出码 `6` 拒绝该内核。

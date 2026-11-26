@@ -1,5 +1,5 @@
-#ifndef GHOSTLOCK_HOST_SCHED_H
-#define GHOSTLOCK_HOST_SCHED_H
+#ifndef LSPRIVILEGE_HOST_SCHED_H
+#define LSPRIVILEGE_HOST_SCHED_H
 
 /*
  * Host shim: macOS <sched.h> lacks the Linux CPU-set API that common.h pulls in

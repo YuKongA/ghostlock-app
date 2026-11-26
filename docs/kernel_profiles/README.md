@@ -2,7 +2,7 @@
 
 > 中文: [README_ZH.md](README_ZH.md)
 
-GhostLock matches kernels by exact `uname -r`. When nothing matches, the app
+LSPrivilege matches kernels by exact `uname -r`. When nothing matches, the app
 refuses to run. Supporting a new kernel usually needs no code change, only a
 profile (a HOCON config file) for that kernel.
 
@@ -61,7 +61,7 @@ Field meanings, the required-field matrix, and validation rules are in the
 
    ```sh
    (cd tools/extract_rs && cargo build --release)
-   build/extract/release/ghostlock-extract boot.img --format conf --out profile.conf
+   build/extract/release/lsprivilege-extract boot.img --format conf --out profile.conf
    ```
 
    `--format conf` writes a flattened, self-contained profile with no

@@ -1,11 +1,11 @@
-#ifndef GHOSTLOCK_KERNEL_CONSTANTS_HPP
-#define GHOSTLOCK_KERNEL_CONSTANTS_HPP
+#ifndef LSPRIVILEGE_KERNEL_CONSTANTS_HPP
+#define LSPRIVILEGE_KERNEL_CONSTANTS_HPP
 
 #include <cstdint>
 
 #include "kernel/offset.h"
 
-namespace ghostlock::kernel {
+namespace lsprivilege::kernel {
     inline constexpr unsigned PAGE_SHIFT = 12;
     inline constexpr unsigned long PAGE_SIZE = 1UL << PAGE_SHIFT;
     inline constexpr unsigned KS_PAGE_SIZE = 4096;
@@ -55,6 +55,6 @@ namespace ghostlock::kernel {
 
     /* Measured direct-map end (defaults to the built-in bound). */
     extern uint64_t g_direct_map_end;
-} // namespace ghostlock::kernel
+} // namespace lsprivilege::kernel
 
 #endif

@@ -11,7 +11,7 @@
 > **两个版本名不是同一条序列**：
 > - **Profile schema 版本**：HOCON 配置代际，由每份 profile 的 `schema_version`
 >   字段表达（见第 2 节）。
-> - **Binary wire 版本**：magic `0x0D000721` 之后的 GLK1 传输版本。writer 写
+> - **Binary wire 版本**：magic `0x0D000721` 之后的 PRIV1 传输版本。writer 写
 >   wire version `2`（对象分段，见第 9 节）。Kotlin 与 native 版本绑定。
 >
 > 第 0 到 10 节描述当前 v2 配置。旧 v1 JSON 导入路径仅在 Kotlin 侧，集中见第 11 节。
@@ -27,7 +27,7 @@
   缺失会报错并要求重新选择。
 - Kotlin 侧解析文本（`HoconSupport`），随后把类型化二进制结构体传给 native
   （见第 9 节）。应用内部存储与导出均为 HOCON。
-- `ghostlock-extract --format conf` 输出 flatten、自包含的 profile（凭据与
+- `lsprivilege-extract --format conf` 输出 flatten、自包含的 profile（凭据与
   KernelSnitch 常量内联，无 `include` 行），走常规导入路径。
 - 提取器输出是**候选来源**：写出所选路由的全部字段与公共几何，无法取得的值写
   显式 `null`，不会借用相邻内核族的猜测值。导入后由 App 的字段校验填充 `invalidPaths` 并在
@@ -61,7 +61,7 @@ filesDir/offsets.conf                     解析/导入的偏移（imported，HO
 ## 2. 顶层结构
 
 ```hocon
-# GhostLock kernel profile (HOCON; JSON stays valid)
+# LSPrivilege kernel profile (HOCON; JSON stays valid)
 release = "6.6.77-android15-8-gca30f3b4bef6-abogki440974771-4k"
 schema_version = 1
 kernel_major = 6
@@ -273,9 +273,9 @@ v2 是唯一版本：Kotlin 与 native 版本绑定，不做旧版本兼容解�
   section/键忽略；重复键 last-wins。`middleware` 承载 route。权威 section/键表在
   `profile/binary.cpp`（`kSections`），`NativeProfile.kt` 的对象 section 必须
   逐字对齐。
-- App 调用：direct 与 Shizuku 均通过 `--ghostlock-app-call` 从 **stdin** 传入
+- App 调用：direct 与 Shizuku 均通过 `--lsprivilege-app-call` 从 **stdin** 传入
   profile，不写入 `active-profile.bin`。命令行运行时，
-  `--load-prebuilt-profile <bin>` 从导出的 GLK1 文件读取。
+  `--load-prebuilt-profile <bin>` 从导出的 PRIV1 文件读取。
 - native 只有一条解码路径：`profile/entry.cpp` 把 stdin（或文件）字节交给
   `profile/binary.cpp::parse`。它不检测 magic 之外的格式，也没有 JSON 回退。
 - 内部存储与“导出配置”均为 HOCON（人类可读）。旧 v1 `offsets.json` 只在
@@ -287,7 +287,7 @@ v2 是唯一版本：Kotlin 与 native 版本绑定，不做旧版本兼容解�
 
 1. 每份 profile 都要包含当前路由的全字段与公共几何，且每项都必须出现；镜像或
    设备无法提供的值写显式 `null`（不要用 `0` 占位，除非 0 就是真实值）。非当前
-   路由（及其声明的 fallback）的字段省略。`ghostlock-extract --format conf` 会
+   路由（及其声明的 fallback）的字段省略。`lsprivilege-extract --format conf` 会
    输出这份完整骨架；`null` 使字段在 app 中可见可编辑，而不是悄无声息地缺失。
 2. `route` 只能有一个分支，且分支内必须给出该路由的必填字段；`fallback.to`
    声明了回退目标时，`fallback.route` 分支内同样要补齐。
@@ -308,7 +308,7 @@ v2（见第 9 节），v1 路径仅在 Kotlin 侧且自包含。
 
 - **v1 是旧 JSON 格式**：remote/main 时代的 `offsets.json`，即提取器报告
   （`symbols` / `struct_fields`、4 个顶层标量，以及 `kimage_text_base` /
-  `btf_size` / `kallsyms` 等元数据）。`ghostlock-extract --format json` 仍按此
+  `btf_size` / `kallsyms` 等元数据）。`lsprivilege-extract --format json` 仍按此
   形状输出给外部工具。
 - 加载时由 `LegacyProfileConverter` 把 v1 文档归一为 v2（幂等）：
 
