@@ -31,15 +31,17 @@ class ManagerScannerTest {
                 "com.resukisu.resukisu",
                 "org.bakasu.bakasu",
                 "com.kowx712.supermanager",
+                "me.bmax.apatch",
             ),
             ManagerScanner.resolvePackages("me.weishu.kernelsu"),
         )
     }
 
     @Test
-    fun `builtin list covers SukiSU Ultra and its PR build`() {
+    fun `builtin list covers SukiSU Ultra, its PR build, and APatch`() {
         assertTrue("com.sukisu.ultra" in ManagerScanner.BUILTIN)
         assertTrue("com.sukisu.ultra.pr" in ManagerScanner.BUILTIN)
+        assertTrue("me.bmax.apatch" in ManagerScanner.BUILTIN)
     }
 
     @Test

@@ -130,7 +130,7 @@
 <string name="field_task_tasks">tarefas_tarefas</string>
 <string name="field_task_tgid">tarefa_tgid</string>
 <string name="force_attack_test_label">Teste de ataque forçado</string>
-<string name="force_attack_test_summary">Ignore uma raiz KernelSU existente e execute o exploit de qualquer maneira; o filho enraizado é descartado no final</string>
+<string name="force_attack_test_summary">Ignore uma raiz KernelSU/APatch existente e execute o exploit de qualquer maneira; o filho enraizado é descartado no final</string>
 <string name="import_failed">Falha na importação</string>
 <string name="import_missing_includes">Arquivos de inclusão ausentes; selecione-os junto com o perfil e tente novamente</string>
 <string name="import_no_match">Importado, mas seu lançamento não corresponde a este kernel e não será aplicado</string>
@@ -160,7 +160,7 @@
 <string name="log_title">Registro</string>
 <string name="manager_hide_all">Mostrar apenas compatível</string>
 <string name="manager_label">Gerenciador raiz</string>
-<string name="manager_no_ksud">Nenhum libksud.so detectado, pode não funcionar</string>
+<string name="manager_no_ksud">Nenhum libksud.so ou libapd.so detectado, pode não funcionar</string>
 <string name="manager_picker_empty">Nenhum aplicativo encontrado</string>
 <string name="manager_picker_title">Escolha o gerenciador raiz</string>
 <string name="manager_show_all">Mostrar todos os aplicativos</string>

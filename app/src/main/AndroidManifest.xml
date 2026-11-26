@@ -13,6 +13,7 @@
         <package android:name="com.resukisu.resukisu" />
         <package android:name="org.bakasu.bakasu" />
         <package android:name="com.kowx712.supermanager" />
+        <package android:name="me.bmax.apatch" />
     </queries>
     <application
         android:name=".GhostlockApplication"

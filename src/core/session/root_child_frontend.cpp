@@ -84,14 +84,19 @@ namespace ghostlock::session::frontend {
 
         /* Fixup: permissive, load_policy, late-load. Module init re-enforces;
          * policy reload keeps it working after enforcing is back. */
+        const char *mgr_name =
+                (config::runtime_config_snapshot().is_apatch() || handoff_result.is_apatch)
+                    ? "APatch"
+                    : "KernelSU";
         if (kernelsu_ready)
-            pr_success("KernelSU ready\n");
+            pr_success("%s ready\n", mgr_name);
         else if (handoff_result.ksu_log_failed)
-            pr_warning("KernelSU module load failed\n");
+            pr_warning("%s module load failed\n", mgr_name);
         else if (seccomp_ok)
-            pr_warning("temporary root ready; KernelSU module load pending\n");
+            pr_warning("temporary root ready; %s module load pending\n", mgr_name);
         else
-            pr_warning("temporary root ready; KernelSU module not loaded (W3 seccomp clear failed)\n");
+            pr_warning("temporary root ready; %s module not loaded (W3 seccomp clear failed)\n",
+                       mgr_name);
         return StageResult::Done;
     }
 } // namespace ghostlock::session::frontend
