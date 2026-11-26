@@ -1,2 +1,0 @@
-BASELINE=ABSENT
-TARGET=docs/analysis/device-gates/20261029-a301so-43284-marker-preflight.md
