@@ -118,6 +118,10 @@ namespace ghostlock::profile {
         std::optional<uint8_t> compact_waiter;
         std::optional<uint32_t> kernelsnitch_collisions;
         std::optional<uint32_t> mm_struct_sz;
+        /* Compact waiter `prio` offset. Absence keeps the 6.1+ split layout.
+         * uint16_t keeps the transport size: the offset is well under 0x10000,
+         * and growing the struct would move every field after it. */
+        std::optional<uint16_t> waiter_prio_off;
     };
 
     struct RouteGeometry {
@@ -305,6 +309,13 @@ namespace ghostlock::profile {
 
         [[nodiscard]] uint32_t mm_struct_stride(uint32_t fallback) const noexcept {
             return or_default(loaded_ ? values_.misc.mm_struct_sz.value_or(0) : 0, fallback);
+        }
+
+        /* Byte offset of the compact waiter's `prio`. A 5.10 flat waiter states
+         * 0x40; the 6.1+ split layout omits the field and keeps 0x44. */
+        [[nodiscard]] uint32_t waiter_prio_offset(uint32_t fallback) const noexcept {
+            return or_default(loaded_ ? values_.misc.waiter_prio_off.value_or(0) : 0,
+                              fallback);
         }
 
         [[nodiscard]] uint64_t image(uint64_t offset, uint64_t image_base,

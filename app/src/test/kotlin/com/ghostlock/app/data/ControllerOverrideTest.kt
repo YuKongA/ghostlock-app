@@ -22,6 +22,88 @@ class ControllerOverrideTest {
     private val context: Application = RuntimeEnvironment.getApplication()
     private val release = "6.1.118-android14-11-ga3b9c44908dd-ab13320413"
 
+    private suspend fun invalidPathsFor(
+        name: String,
+        profileRelease: String,
+        report: String,
+    ): Set<String> {
+        val root = Files.createTempDirectory(name).toFile()
+        try {
+            val store = UserProfileStore(
+                directory = root.resolve("user_profiles"),
+                assetLoader = AssetConfigLoader(context),
+            )
+            store.save("$name.conf", report)
+            val controller = AndroidProfileConfigController(
+                context = context,
+                filesDir = root,
+                userProfiles = store,
+                preferences = context.getSharedPreferences(name, 0)
+                    .also { it.edit().clear().commit() },
+            )
+            val pair = CpuPair(primary = 0, consumer = 1)
+            controller.selectUserProfile("$name.conf", profileRelease, pair)
+            return controller.load(profileRelease, pair).invalidPaths
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    private fun flatWaiterProfile(compact: Int?, prioOff: Int?): String {
+        val compactLine = compact?.let { "compact_waiter = $it" }.orEmpty()
+        val prioLine = prioOff?.let { "waiter_prio_off = $it" }.orEmpty()
+        return """
+            schema_version = 1
+            release = "5.10.999-android12-9-flat-test"
+            kernel_major = 5
+            $prioLine
+            route {
+              select_stack {
+                waiter_shift = -2
+                $compactLine
+              }
+            }
+            fallback { to = "none" }
+            task_struct {
+              prio = 132
+              normal_prio = 140
+              sched_task_group = 784
+              pi_lock = 2156
+              pi_waiters = 2176
+              pi_top_task = 2192
+              pi_blocked_on = 2200
+              pid = 1480
+              tgid = 1484
+              atomic_flags = 1424
+              real_cred = 1912
+              cred = 1920
+              comm = 1936
+              tasks = 1224
+              seccomp = 2120
+            }
+            cred {
+              copy_size = 168
+              usage_value = 256
+              caps_offset = 48
+              caps_count = 3
+              caps_value = 2199023255551
+              ref_count = 3
+              ref0_offset = 128
+              ref1_offset = 136
+              ref2_offset = 144
+              ref0_image = -274702141856
+              ref1_image = -274702141704
+              ref2_image = -274702136440
+            }
+            offset {
+              init_task = 41467584
+              init_cred = 41552608
+              root_task_group = 43515968
+              selinux_enforcing = 44235672
+            }
+        """.trimIndent()
+    }
+
     @Test
     fun `edits persist in preferences and leave stored documents untouched`() = runBlocking {
         val legacy = checkNotNull(
@@ -526,5 +608,69 @@ class ControllerOverrideTest {
         } finally {
             root.deleteRecursively()
         }
+    }
+
+    @Test
+    fun `a complete 5_10 flat waiter profile validates`() = runBlocking {
+        val invalid = invalidPathsFor(
+            "flat-valid",
+            "5.10.999-android12-9-flat-test",
+            flatWaiterProfile(compact = 1, prioOff = 64),
+        )
+        assertTrue("invalid=$invalid", invalid.isEmpty())
+    }
+
+    @Test
+    fun `5_10 select profile without the compact waiter is invalid`() = runBlocking {
+        val invalid = invalidPathsFor(
+            "flat-missing-compact",
+            "5.10.999-android12-9-flat-test",
+            flatWaiterProfile(compact = null, prioOff = 64),
+        )
+        assertTrue("invalid=$invalid", "route.select_stack.compact_waiter" in invalid)
+    }
+
+    @Test
+    fun `a select profile without a prio offset uses the split layout`() = runBlocking {
+        val invalid = invalidPathsFor(
+            "split-missing-prio",
+            "5.10.999-android12-9-flat-test",
+            flatWaiterProfile(compact = 1, prioOff = null),
+        )
+        assertTrue("invalid=$invalid", invalid.isEmpty())
+    }
+
+    @Test
+    fun `an unsupported waiter prio offset is invalid`() = runBlocking {
+        val invalid = invalidPathsFor(
+            "flat-bad-prio",
+            "5.10.999-android12-9-flat-test",
+            flatWaiterProfile(compact = 1, prioOff = 72),
+        )
+        assertTrue("invalid=$invalid", "waiter_prio_off" in invalid)
+    }
+
+    @Test
+    fun `a profile that states 0x40 uses the flat layout`() = runBlocking {
+        val release = "6.1.999-android14-11-split-test"
+        val invalid = invalidPathsFor(
+            "split-flat-prio",
+            release,
+            flatWaiterProfile(compact = 1, prioOff = 64)
+                .replace("5.10.999-android12-9-flat-test", release),
+        )
+        assertTrue("invalid=$invalid", invalid.isEmpty())
+    }
+
+    @Test
+    fun `a split profile may state the split prio offset`() = runBlocking {
+        val release = "6.1.999-android14-11-split-test"
+        val invalid = invalidPathsFor(
+            "split-prio",
+            release,
+            flatWaiterProfile(compact = 1, prioOff = 68)
+                .replace("5.10.999-android12-9-flat-test", release),
+        )
+        assertTrue("invalid=$invalid", invalid.isEmpty())
     }
 }

@@ -90,9 +90,9 @@ int32_t main(void) {
 
     /* ---- Black box: round trips through the public API. ---- */
     profile::kernel_offsets values = {};
-    values.uname_r = "6.6.77-transport-test";
+    values.uname_r = "5.10.198-android12-9-00085-g226a9632f13d-ab11136126";
     values.route = ghostlock::profile::kRouteMulticastWaiter;
-    values.meta.kernel_major = 6;
+    values.meta.kernel_major = 5;
     values.meta.recommend_shizuku = 1;
     values.meta.fallback_route = ghostlock::profile::kRouteSelectStack;
     values.task.prio = 132;
@@ -103,7 +103,8 @@ int32_t main(void) {
     values.offsets.slide_boot_id = 0x2336600;
     values.misc.compact_waiter = 1;
     values.misc.kernelsnitch_collisions = 4;
-    values.misc.mm_struct_sz = 0x400;
+    values.misc.mm_struct_sz = 0x3c0;
+    values.misc.waiter_prio_off = 0x40;
     values.execution.w1_attempts = 15;
     values.execution.race_route_done_timeout_ms = 300000;
     values.execution.handoff_enforce_poll_interval_ms = 100;
@@ -113,7 +114,7 @@ int32_t main(void) {
     assert(round_trip(values, &parsed, release, sizeof(release)) == 0);
     assert(strcmp(release, values.uname_r) == 0);
     assert(strcmp(parsed.uname_r, values.uname_r) == 0);
-    assert(parsed.meta.kernel_major == 6);
+    assert(parsed.meta.kernel_major == 5);
     assert(parsed.meta.recommend_shizuku == 1);
     assert(parsed.route == ghostlock::profile::kRouteMulticastWaiter);
     assert(parsed.meta.fallback_route == ghostlock::profile::kRouteSelectStack);
@@ -125,7 +126,8 @@ int32_t main(void) {
     assert(parsed.offsets.slide_boot_id == 0x2336600);
     assert(parsed.misc.compact_waiter.value_or(0) == 1);
     assert(parsed.misc.kernelsnitch_collisions.value_or(0) == 4);
-    assert(parsed.misc.mm_struct_sz.value_or(0) == 0x400);
+    assert(parsed.misc.mm_struct_sz.value_or(0) == 0x3c0);
+    assert(parsed.misc.waiter_prio_off.value_or(0) == 0x40);
     assert(parsed.execution.w1_attempts == 15);
     assert(parsed.execution.race_route_done_timeout_ms == 300000);
     assert(parsed.execution.handoff_enforce_poll_interval_ms == 100);
@@ -173,6 +175,7 @@ int32_t main(void) {
         assert(round_trip(absent, &parsed, release, sizeof(release)) == 0);
         assert(!parsed.geometry.mcast_waiter_off.has_value());
         assert(!parsed.misc.mm_struct_sz.has_value());
+        assert(!parsed.misc.waiter_prio_off.has_value());
         assert(parsed.geometry.mcast_buffer_size.value_or(0) == 264);
     }
 
@@ -192,7 +195,7 @@ int32_t main(void) {
         assert(magic == 0x0D000721u && binary_profile::kMagic == 0x0D000721u);
         assert(version == 2u && binary_profile::kVersion == 2u);
         assert(middleware == ghostlock::profile::kRouteSelectStack);
-        assert(bytes[16] == '6'); /* release starts right after the 16-byte header */
+        assert(bytes[16] == '5'); /* release starts right after the 16-byte header */
     }
 
     /* ---- White box: section/entry decoding. ---- */

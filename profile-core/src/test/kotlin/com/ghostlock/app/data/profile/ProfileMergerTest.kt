@@ -25,6 +25,34 @@ class ProfileMergerTest {
     }
 
     @Test
+    fun `a builtin execution block does not mutate the shared tuning map`() {
+        val tuning = valueMapOf(
+            "recommended_cpus" to valueMapOf("main" to 0L, "consumer" to 1L),
+            "stages" to valueMapOf("w1_attempts" to 15L),
+        )
+        val first = valueMapOf(
+            "release" to "a",
+            "kernel_major" to 6L,
+            "execution" to valueMapOf(
+                "recommended_cpus" to valueMapOf("main" to 4L, "consumer" to 5L),
+                "stages" to valueMapOf("w1_attempts" to 25L),
+            ),
+        )
+        val second = valueMapOf("release" to "b", "kernel_major" to 6L)
+
+        ProfileMerger.resolveMerged("a", first, null, null, tuning, CpuPairView(0, 1), emptyMap())
+        val resolved = ProfileMerger.resolveMerged(
+            "b", second, null, null, tuning, CpuPairView(0, 1), emptyMap(),
+        )
+
+        val execution = resolved["execution"].asValueMap()!!
+        assertEquals(15L, execution["stages"].asValueMap()!!["w1_attempts"])
+        val cpus = execution["recommended_cpus"].asValueMap()!!
+        assertEquals(0L, cpus["main"])
+        assertEquals(1L, cpus["consumer"])
+    }
+
+    @Test
     fun `cpu pair outranks an imported selected_cpus`() {
         val imported = valueMapOf(
             "execution" to valueMapOf(

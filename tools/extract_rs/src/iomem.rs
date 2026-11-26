@@ -78,10 +78,25 @@ pub fn parse(text: &str) -> IomemInfo {
     }
 }
 
-/// Reads and parses an iomem source. With no explicit path it tries, in order:
-/// `/proc/iomem` (readable only as root), then the root child's cached dump
-/// `$GHOSTLOCK_HOME/.ghostlock_iomem`, then `/data/local/tmp/.ghostlock_iomem`.
-/// The cached file starts with a `# <release>` line, which the parser ignores.
+/// The host's `/proc/iomem` describes the build machine, so only the Android
+/// build reads it. The cached files are device dumps and are safe anywhere.
+fn implicit_candidates() -> Vec<PathBuf> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if cfg!(target_os = "android") {
+        candidates.push(PathBuf::from("/proc/iomem"));
+    }
+    if let Ok(home) = std::env::var("GHOSTLOCK_HOME") {
+        if !home.is_empty() {
+            candidates.push(Path::new(&home).join(".ghostlock_iomem"));
+        }
+    }
+    candidates.push(PathBuf::from("/data/local/tmp/.ghostlock_iomem"));
+    candidates
+}
+
+/// Reads an iomem source. With no explicit path it tries the device's
+/// `/proc/iomem` on Android, then the cached dump in `GHOSTLOCK_HOME`, then
+/// `/data/local/tmp`. The cached file's `# <release>` line is ignored.
 pub fn load(provided: Option<&Path>) -> Result<Option<IomemInfo>> {
     if let Some(path) = provided {
         let text = fs::read_to_string(path).map_err(|err| {
@@ -90,15 +105,7 @@ pub fn load(provided: Option<&Path>) -> Result<Option<IomemInfo>> {
         return Ok(Some(parse(&text)));
     }
 
-    let mut candidates: Vec<PathBuf> = vec![PathBuf::from("/proc/iomem")];
-    if let Ok(home) = std::env::var("GHOSTLOCK_HOME") {
-        if !home.is_empty() {
-            candidates.push(Path::new(&home).join(".ghostlock_iomem"));
-        }
-    }
-    candidates.push(PathBuf::from("/data/local/tmp/.ghostlock_iomem"));
-
-    for candidate in candidates {
+    for candidate in implicit_candidates() {
         if let Ok(text) = fs::read_to_string(&candidate) {
             let info = parse(&text);
             if info.dram_base.is_some() {
@@ -128,6 +135,16 @@ a2a80000-d4cfffff : System RAM
         let info = parse(text);
         assert_eq!(info.dram_base, Some(0x8000_0000));
         assert_eq!(info.kernel_code_start, Some(0xa801_0000));
+    }
+
+    #[test]
+    fn implicit_sources_skip_the_host_proc_iomem() {
+        #[cfg(not(target_os = "android"))]
+        assert!(
+            !implicit_candidates()
+                .iter()
+                .any(|path| path == Path::new("/proc/iomem"))
+        );
     }
 
     #[test]

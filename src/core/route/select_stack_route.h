@@ -18,6 +18,14 @@
 #endif
 
 namespace ghostlock::route::select_stack {
+    /* Word 10 lands on 0x40. The split waiter packs `wake_state` and `prio`
+     * into it. A flat 5.10 waiter carries `prio` alone, or the packed value
+     * leaves prio at 3 and fails the erase's prio > 120 gate. */
+    constexpr uint64_t compact_prio_word(bool split_waiter, int32_t prio) noexcept {
+        return split_waiter ? ((static_cast<uint64_t>(prio) << 32) | 3)
+                            : static_cast<uint64_t>(prio);
+    }
+
     /* Bit-access wrapper for one fd_set; syscall boundaries still receive the raw
  * fd_set so the kernel ABI layout stays untouched. */
     class FdSet final {
