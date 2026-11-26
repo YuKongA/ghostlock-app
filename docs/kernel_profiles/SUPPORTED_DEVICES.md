@@ -27,6 +27,7 @@ Sorted by kernel version (major.minor.patch), ascending. Rows with the same vers
 
 | Kernel                                                 | Devices                                                          |
 |--------------------------------------------------------|------------------------------------------------------------------|
+| `5.10.209-android12-9-00019-g4ea09a298bb4-ab12292661`  | Redmi K50 Pro · Shizuku recommended                              |
 | `5.10.236-android12-9-00014-gb97c62c4e7d1`             | Sony Xperia 5 IV (SO-54C / PDX-224)                              |
 | `5.15.41-android13-8-g8dc4c75ab7d8-ab1673212412`       | MEIZU 20 Pro · Shizuku recommended                               |
 | `5.15.119-android13-8-g6ff5097ee32a-ab1764665171`      | MEIZU 21 Note                                                    |
