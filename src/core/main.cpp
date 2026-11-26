@@ -26,6 +26,8 @@ using namespace ghostlock;
 
 
 int main(int argc, char **argv) {
+    setvbuf(stdout, NULL, _IOLBF, 0);
+
     try {
         profile::kernel_offsets decoded = {};
         std::array<char, 256> release_buf{};

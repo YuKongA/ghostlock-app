@@ -1,4 +1,5 @@
 #include "route/select_stack_route.h"
+#include "support/decls.hpp"
 
 #include <unistd.h>
 
@@ -398,6 +399,7 @@ namespace ghostlock::route::select_stack {
                 (unsigned long long) route::fdset_get_word(exception_set.raw(), 1),
                 (unsigned long long) route::fdset_get_word(exception_set.raw(), 2),
                 (unsigned long long) route::fdset_get_word(exception_set.raw(), 3));
+        support::log_sync();
 
         /* The route may replace low fds, including stdout and stderr. */
         route::open_selected_fds(input_set.raw(), output_set.raw(), exception_set.raw(),

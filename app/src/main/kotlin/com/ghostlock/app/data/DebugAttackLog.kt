@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.media.MediaScannerConnection
 import android.os.Environment
+import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import java.io.BufferedWriter
 import java.io.Closeable
@@ -22,6 +23,7 @@ internal class DebugAttackLog private constructor(
     /** Downloads-relative folder that holds the attempt log and its dumps. */
     val folderPath: String,
     private val writer: BufferedWriter,
+    private val pfd: ParcelFileDescriptor?,
 ) : Closeable {
     /**
      * Absolute folder handed to the native process through --dump-kernel-log;
@@ -36,6 +38,7 @@ internal class DebugAttackLog private constructor(
         writer.write(line)
         writer.newLine()
         writer.flush()
+        runCatching { pfd?.fileDescriptor?.sync() }
     }
 
     /**
@@ -107,13 +110,15 @@ internal class DebugAttackLog private constructor(
             val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                 ?: return null
             return try {
-                val output = resolver.openOutputStream(uri, "w")
-                    ?: error("cannot open debug log output")
+                val pfd = resolver.openFileDescriptor(uri, "w")
+                    ?: error("cannot open debug log fd")
+                val output = ParcelFileDescriptor.AutoCloseOutputStream(pfd)
                 DebugAttackLog(
                     context.applicationContext,
                     displayName,
                     folderPath,
                     BufferedWriter(OutputStreamWriter(output, StandardCharsets.UTF_8)),
+                    pfd,
                 )
             } catch (_: Exception) {
                 resolver.delete(uri, null, null)
