@@ -8,7 +8,7 @@ import java.io.File
 object ManagerScanner {
     const val PREF_KEY = "manager_package"
 
-    /** Built-in KernelSU-family managers, priority order. */
+    /** Built-in KernelSU-family and APatch managers, priority order. */
     val BUILTIN = listOf(
         "me.weishu.kernelsu.pr",
         "me.weishu.kernelsu",
@@ -17,7 +17,26 @@ object ManagerScanner {
         "com.resukisu.resukisu",
         "org.bakasu.bakasu",
         "com.kowx712.supermanager",
+        "me.bmax.apatch",
     )
+
+    private val DAEMON_LIBS = listOf("libksud.so", "libapd.so")
+
+    /** Returns the first supported manager daemon binary in [nativeLibDir], or null. */
+    fun findDaemonBinary(nativeLibDir: String?): File? =
+        nativeLibDir?.takeIf { it.isNotBlank() }?.let { dir ->
+            DAEMON_LIBS.firstNotNullOfOrNull { File(dir, it).takeIf(File::isFile) }
+        }
+
+    /** First manager daemon binary (`libksud.so` / `libapd.so`) in [resolvePackages] order. */
+    fun resolveDaemonBinary(pm: PackageManager, chosen: String?): File? =
+        resolvePackages(chosen).firstNotNullOfOrNull { pkg ->
+            runCatching { findDaemonBinary(pm.getApplicationInfo(pkg, 0).nativeLibraryDir) }.getOrNull()
+        }
+
+    /** True when [binary] is APatch's apd daemon (`libapd.so` / `apd`). */
+    fun isApatch(binary: File?): Boolean =
+        binary?.name == "libapd.so" || binary?.name == "apd"
 
     data class Candidate(
         val packageName: String,
@@ -38,11 +57,10 @@ object ManagerScanner {
             .filter { (pi, _) -> pi.packageName != selfPackage }
             .filter { (_, ai) -> (ai.flags and ApplicationInfo.FLAG_SYSTEM) == 0 }
             .map { (pi, ai) ->
-                val dir = ai.nativeLibraryDir
                 Candidate(
                     packageName = pi.packageName,
                     label = ai.loadLabel(pm).toString(),
-                    hasKsud = dir != null && File(dir, "libksud.so").isFile,
+                    hasKsud = findDaemonBinary(ai.nativeLibraryDir) != null,
                     builtin = pi.packageName in BUILTIN,
                 )
             }

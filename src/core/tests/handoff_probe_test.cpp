@@ -67,6 +67,27 @@ int32_t main(void) {
     assert(ghostlock::session::scan_ksu_log(failed_dir.log_path, loaded, failed));
     assert(!loaded && failed);
 
+    TempLogDir ap_loaded_dir = make_temp_log_dir("[+] APatch module loaded\n");
+    loaded = false;
+    failed = false;
+    bool is_apatch = false;
+    assert(ghostlock::session::scan_ksu_log(ap_loaded_dir.log_path, loaded, failed, &is_apatch));
+    assert(loaded && !failed && is_apatch);
+
+    TempLogDir ap_already_dir = make_temp_log_dir("[+] APatch already loaded\n");
+    loaded = false;
+    failed = false;
+    is_apatch = false;
+    assert(ghostlock::session::scan_ksu_log(ap_already_dir.log_path, loaded, failed, &is_apatch));
+    assert(loaded && !failed && is_apatch);
+
+    TempLogDir ap_failed_dir = make_temp_log_dir("[!] APatch module not loaded\n");
+    loaded = false;
+    failed = false;
+    is_apatch = false;
+    assert(ghostlock::session::scan_ksu_log(ap_failed_dir.log_path, loaded, failed, &is_apatch));
+    assert(!loaded && failed && is_apatch);
+
     /* Both markers accumulate independently, mirroring the legacy scan. */
     TempLogDir both_dir = make_temp_log_dir(
         "[!] KernelSU module not loaded\n[+] KernelSU already loaded\n");
@@ -112,6 +133,9 @@ int32_t main(void) {
     remove_temp_log_dir(loaded_dir);
     remove_temp_log_dir(already_dir);
     remove_temp_log_dir(failed_dir);
+    remove_temp_log_dir(ap_loaded_dir);
+    remove_temp_log_dir(ap_already_dir);
+    remove_temp_log_dir(ap_failed_dir);
     remove_temp_log_dir(both_dir);
 
     puts("handoff_probe_test: ok");

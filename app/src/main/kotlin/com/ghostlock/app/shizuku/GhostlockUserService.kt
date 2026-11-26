@@ -74,18 +74,16 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                 callback.onLog("<s> kernel: $release")
                 // Same resolution as the direct path: chosen manager first,
                 // then the built-ins. Native gets the path via GHOSTLOCK_KSUD.
-                val pm = context.packageManager
-                val ksudPath = ManagerScanner.resolvePackages(managerPackage)
-                    .asSequence()
-                    .map { pkg ->
-                        runCatching {
-                            File(pm.getApplicationInfo(pkg, 0).nativeLibraryDir, "libksud.so")
-                        }.getOrNull()?.takeIf { it.isFile }
-                    }
-                    .firstOrNull { it != null }
-                ksudPath?.let { callback.onLog("<s> ksud resolved: ${it.absolutePath}") }
-                val nativeLog = File(workDir, ".ghostlock_native.log")
-                // U01-S14: per-run KernelSU log so a previous run's markers can
+                val ksudPath = ManagerScanner.resolveDaemonBinary(context.packageManager, managerPackage)
+                val isApatch = ManagerScanner.isApatch(ksudPath)
+                val daemonTag = if (isApatch) "[apd]" else "[ksu]"
+                if (ksudPath != null) {
+                    callback.onLog("<s> ${if (isApatch) "apd" else "ksud"} resolved: ${ksudPath.absolutePath}")
+                } else {
+                    callback.onLog("<s> warning: ksud/apd not found")
+                }
+                val nativeLog = File(workDir, ".ghostlock_native.log").apply { writeText("") }
+                // U01-S14: per-run KernelSU/APatch log so a previous run's markers can
                 // never satisfy the handoff probe; the native process receives
                 // the resolved path via GHOSTLOCK_KSU_LOG.
                 val ksuLog = File(workDir, "ghostlock-ksu-${System.currentTimeMillis()}.log")
@@ -144,7 +142,7 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
                         // (every line also costs a binder round trip), which
                         // stalled the route and ended in a kernel panic.
                         val tailer = Thread({
-                            relayLog(nativeLog, callback, statusCallback, stdinOut)
+                            relayLog(nativeLog, ksuLog, daemonTag, callback, statusCallback, stdinOut)
                         }, "ghostlock-shizuku-tailer").apply {
                             isDaemon = true
                             start()
@@ -190,40 +188,57 @@ class GhostlockUserService(private val context: Context) : IGhostlockUserService
         return true
     }
 
+    private fun drainCompleteLines(
+        file: File,
+        offset: Long,
+        pending: StringBuilder,
+        onLine: (String) -> Unit,
+    ): Long {
+        if (!file.isFile) return offset
+        var cur = offset
+        RandomAccessFile(file, "r").use { handle ->
+            if (cur > handle.length()) {
+                cur = 0
+                pending.clear()
+            }
+            handle.seek(cur)
+            while (true) {
+                val byte = handle.read()
+                if (byte == -1) break
+                if (byte == '\n'.code) {
+                    val line = pending.toString()
+                    pending.clear()
+                    cur = handle.filePointer
+                    if (line.isNotEmpty()) onLine(line)
+                } else {
+                    pending.append(byte.toChar())
+                }
+            }
+        }
+        return cur
+    }
+
     private fun relayLog(
         logFile: File,
+        ksuLogFile: File,
+        daemonTag: String,
         callback: IGhostlockCallback,
         statusCallback: IGhostlockStatusCallback,
         stdinOut: java.io.OutputStream,
     ) {
         var offset = 0L
         val pending = StringBuilder()
+        var ksuOffset = 0L
+        val ksuPending = StringBuilder()
         while (!Thread.currentThread().isInterrupted) {
             try {
-                if (logFile.isFile) {
-                    RandomAccessFile(logFile, "r").use { handle ->
-                        if (offset > handle.length()) {
-                            offset = 0
-                            pending.clear()
-                        }
-                        handle.seek(offset)
-                        while (true) {
-                            val byte = handle.read()
-                            if (byte == -1) break
-                            if (byte == '\n'.code) {
-                                val line = pending.toString()
-                                pending.clear()
-                                offset = handle.filePointer
-                                if (line.isNotEmpty()) {
-                                    if (!handleStatusLine(line, statusCallback, stdinOut)) {
-                                        runCatching { callback.onLog(line) }
-                                    }
-                                }
-                            } else {
-                                pending.append(byte.toChar())
-                            }
-                        }
+                offset = drainCompleteLines(logFile, offset, pending) { line ->
+                    if (!handleStatusLine(line, statusCallback, stdinOut)) {
+                        runCatching { callback.onLog(line) }
                     }
+                }
+                ksuOffset = drainCompleteLines(ksuLogFile, ksuOffset, ksuPending) { line ->
+                    runCatching { callback.onLog("$daemonTag $line") }
                 }
                 Thread.sleep(100)
             } catch (_: InterruptedException) {

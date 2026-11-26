@@ -32,8 +32,11 @@ Sorted by kernel version (major.minor.patch), ascending. Rows with the same vers
 | `5.15.119-android13-8-g6ff5097ee32a-ab1764665171`      | MEIZU 21 Note                                                    |
 | `5.15.167-android13-8-00017-gb1f32b310a30-ab12826353`  | Red Magic 8 Pro                                                  |
 | `5.15.178-android13-8-00025-g7feb0b0b7cd8-ab14134651`  | Sharp AQUOS R8 SH-R80                                            |
+| `5.15.178-android13-8-00021-g6f2f96be86b9-ab13729987`  | Xiaomi MIX Fold 3                                                |
+| `5.15.180-android13-8-00018-g9b2308ac0ad6-ab14563692`  | Honor 400 (DNY-NX9)                                              |
 | `5.15.189-android13-8-00016-g51bba4309aac-ab14546557`  | Sony Xperia 1 V                                                  |
 | `5.15.189-android13-8-00004-g1c3825f8ac0a-ab14110541`  | Sony Xperia 1 V                                                  |
+| `5.15.194-android13-8-00019-gf4321180a397-ab15212794`  | Xiaomi MIX Fold 3                                                |
 | `5.15.206-android13-8-00056-g3f87b8704e9e-ab15683575`  | ASUS Zenfone 10                                                  |
 | `6.1.25-android14-11-maybe-dirty`                      | MEIZU 21 / MEIZU 21 Pro                                          |
 | `6.1.78-android14-11-gb6577b760481-ab12075023`         | Redmi Note 14 Pro 5G                                             |
@@ -58,6 +61,7 @@ Sorted by kernel version (major.minor.patch), ascending. Rows with the same vers
 | `6.1.157-android14-11-ga8b0b542991e-ab15601211`        | Infinix GT 30 Pro (X6873)                                        |
 | `6.1.157-android14-11-gbd23337e42e7-ab14791245`        | Google Pixel 9a (Tensor G4), Google Pixel 7 (Tensor G2)          |
 | `6.1.157-android14-11-g82d681c9b06b-ab14634535`        | Nothing Phone (3a) Pro (A059P)                                   |
+| `6.1.157-android14-11-g27b608536f86-ab14702606`        | Sharp AQUOS sense10 (SH-M33) — Shizuku recommended               |
 | `6.1.162-android14-11-gce140c0e5bf5-ab15450923`        | Zenfone 11 Ultra                                                 |
 | `6.1.162-android14-11-g65896c4edca1-ab15242664`      | CMF Phone 2 Pro                                      |
 | `6.1.162-android14-11-g752d9c17787d-ab15574904`        | Google Pixel 9 Pro / 9 Pro Fold (Tensor G4)                      |

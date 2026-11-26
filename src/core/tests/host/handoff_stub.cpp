@@ -9,10 +9,12 @@ namespace ghostlock::session {
 
     bool ksu_root_owned() noexcept { return false; }
 
-    bool scan_ksu_log(std::string_view path, bool &loaded, bool &failed) noexcept {
+    bool scan_ksu_log(std::string_view path, bool &loaded, bool &failed,
+                      bool *is_apatch) noexcept {
         (void) path;
         (void) loaded;
         (void) failed;
+        (void) is_apatch;
         return false;
     }
 

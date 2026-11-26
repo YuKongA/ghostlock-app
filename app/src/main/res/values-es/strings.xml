@@ -81,7 +81,7 @@
     <string name="safe_mode_label">Modo seguro</string>
     <string name="safe_mode_summary">Desactivar todos los módulos</string>
     <string name="force_attack_test_label">Forzar prueba de ataque</string>
-    <string name="force_attack_test_summary">Ignora un root de KernelSU existente y ejecuta el exploit igualmente; el proceso hijo con root se descarta al final</string>
+    <string name="force_attack_test_summary">Ignora un root de KernelSU/APatch existente y ejecuta el exploit igualmente; el proceso hijo con root se descarta al final</string>
     <string name="shizuku_label">Ejecutar mediante Shizuku</string>
     <string name="shizuku_summary">Omitir el bypass de seccomp</string>
     <string name="shizuku_recommended_hint">Para este kernel se recomienda ejecutar mediante Shizuku</string>
@@ -93,7 +93,7 @@
     <string name="manager_summary_auto">Automático (recomendado)</string>
     <string name="manager_picker_title">Elegir gestor de root</string>
     <string name="manager_picker_empty">No se han encontrado apps</string>
-    <string name="manager_no_ksud">No se ha detectado libksud.so; puede que no funcione</string>
+    <string name="manager_no_ksud">No se ha detectado libksud.so ni libapd.so; puede que no funcione</string>
     <string name="manager_show_all">Mostrar todas las apps</string>
     <string name="manager_hide_all">Mostrar solo las compatibles</string>
     <string name="w3_shizuku_hint_title">¿Activar Shizuku?</string>

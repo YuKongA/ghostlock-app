@@ -331,7 +331,8 @@ namespace ghostlock::session::backend {
             }
 
             if (!seccomp_ok) {
-                pr_warning("W3 seccomp clear failed; ksud late-load will likely stay blocked\n");
+                pr_warning("W3 seccomp clear failed; %s late-load will likely stay blocked\n",
+                           config::runtime_config_snapshot().is_apatch() ? "apd" : "ksud");
                 return false;
             }
             pr_success("child seccomp fully bypassed (forked workers run filter-free)\n");
@@ -446,8 +447,9 @@ namespace ghostlock::session::backend {
          * this check on purpose and relies on the root script discarding the
          * child. */
         if (!force_attack && ksu_root_owned()) {
-            pr_warning("KernelSU already has root; skipping exploit "
-                "(cold boot for a clean run, or enable the forced test)\n");
+            pr_warning("%s already has root; skipping exploit "
+                "(cold boot for a clean run, or enable the forced test)\n",
+                config::runtime_config_snapshot().is_apatch() ? "APatch" : "KernelSU");
             return StageResult::Done;
         }
         attack::write_root_script();
@@ -536,8 +538,9 @@ namespace ghostlock::session::backend {
             if (w3<M>(session, chain, w2_context, child_task)) break;
         }
         if (!chain.seccomp_ok) {
-            pr_warning("W3 seccomp bypass failed after %u chain rounds; ksud late-load will likely stay blocked\n",
-                       chain_rounds);
+            pr_warning("W3 seccomp bypass failed after %u chain rounds; %s late-load will likely stay blocked\n",
+                       chain_rounds,
+                       config::runtime_config_snapshot().is_apatch() ? "apd" : "ksud");
         }
         /* The frontend handoff step finishes the run. */
         return StageResult::Continue;

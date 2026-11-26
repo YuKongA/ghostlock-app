@@ -53,22 +53,33 @@ namespace ghostlock::session {
             const ssize_t n = read(fd.get(), buffer.data(), buffer.size());
             return n > 0 && buffer[0] == '1';
         }
+
+        bool scan_loaded_modules(bool *is_apatch) noexcept {
+            bool loaded = false;
+            for_each_line("/proc/modules", [&](std::string_view line) {
+                const size_t end = line.find_first_of(" \t");
+                const std::string_view name = line.substr(0, end);
+                if (name == "kernelsu") {
+                    loaded = true;
+                } else if (name == "kernelpatch") {
+                    loaded = true;
+                    if (is_apatch != nullptr) *is_apatch = true;
+                }
+            });
+            return loaded;
+        }
     } // namespace
 
     bool kernelsu_module_visible() noexcept {
-        bool loaded = false;
-        for_each_line("/proc/modules", [&loaded](std::string_view line) {
-            const size_t end = line.find_first_of(" \t");
-            if (line.substr(0, end) == "kernelsu") loaded = true;
-        });
-        return loaded;
+        return scan_loaded_modules(nullptr);
     }
 
     bool ksu_root_owned() noexcept {
-        /* KernelSU grants root through `su`; once the module is loaded and this
-         * process is authorized, `su -c 'id -u'` prints 0. This works from the
+        /* KernelSU grants root through `su`; APatch grants root through `/system/bin/kp`
+         * (or `su` when sucompat is enabled). Once the module is loaded and this
+         * process is authorized, either probe prints 0. This works from the
          * unprivileged app context too, where /proc/modules may be unreadable. */
-        FILE *pipe = popen("su -c 'id -u' 2>/dev/null", "r");
+        FILE *pipe = popen("(su -c 'id -u' || /system/bin/kp -c 'id -u') 2>/dev/null", "r");
         if (pipe == nullptr) return false;
         char buf[16] = {};
         const char *line = fgets(buf, sizeof(buf), pipe);
@@ -78,16 +89,24 @@ namespace ghostlock::session {
         return *line == '0';
     }
 
-    bool scan_ksu_log(std::string_view path, bool &loaded, bool &failed) noexcept {
+    bool scan_ksu_log(std::string_view path, bool &loaded, bool &failed,
+                      bool *is_apatch) noexcept {
         std::array < char, kKsuLogPathMax > resolved{};
         snprintf(resolved.data(), resolved.size(), "%.*s", static_cast<int32_t>(path.size()),
                  path.data());
         const bool opened = for_each_line(resolved.data(), [&](std::string_view line) {
+            if (is_apatch != nullptr &&
+                (line.contains("mod=kernelpatch") || line.contains("APatch"))) {
+                *is_apatch = true;
+            }
             if (line.contains("[+] KernelSU module loaded") ||
-                line.contains("[+] KernelSU already loaded")) {
+                line.contains("[+] KernelSU already loaded") ||
+                line.contains("[+] APatch module loaded") ||
+                line.contains("[+] APatch already loaded")) {
                 loaded = true;
             }
-            if (line.contains("[!] KernelSU module not loaded")) {
+            if (line.contains("[!] KernelSU module not loaded") ||
+                line.contains("[!] APatch module not loaded")) {
                 failed = true;
             }
         });
@@ -100,7 +119,7 @@ namespace ghostlock::session {
 
         for (uint32_t i = 0;
              i < policy.module_poll_attempts &&
-             !(result.module_visible = kernelsu_module_visible()); i++) {
+             !(result.module_visible = scan_loaded_modules(&result.is_apatch)); i++) {
             usleep(policy.module_poll_interval_ms * 1000U);
         }
 
@@ -111,7 +130,8 @@ namespace ghostlock::session {
         for (uint32_t i = 0;
              i < policy.log_poll_attempts &&
              !(result.ksu_log_loaded || result.ksu_log_failed); i++) {
-            scan_ksu_log(ksu_log_path, result.ksu_log_loaded, result.ksu_log_failed);
+            scan_ksu_log(ksu_log_path, result.ksu_log_loaded, result.ksu_log_failed,
+                         &result.is_apatch);
             if (!(result.ksu_log_loaded || result.ksu_log_failed)) {
                 usleep(policy.log_poll_interval_ms * 1000U);
             }
