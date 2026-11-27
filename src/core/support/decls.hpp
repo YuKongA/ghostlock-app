@@ -36,6 +36,8 @@ namespace lsprivilege::support {
 
     pid_t clone_leak_child(void);
 
+    void drop_inherited_mem_pins(void);
+
     int32_t open_memfd(pid_t child);
 
     void kill_child(pid_t child);
