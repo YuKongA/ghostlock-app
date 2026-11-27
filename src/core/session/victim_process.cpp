@@ -7,6 +7,7 @@
 #include "session/victim_process.hpp"
 
 #include "attack/ops.hpp"
+#include "support/decls.hpp"
 #include "support/native_resource.hpp"
 
 #include <array>
@@ -37,6 +38,11 @@ namespace lsprivilege::session::victim {
         p.task_read.reset();
         p.cmd_write.reset();
         p.uid_read.reset();
+        /* The victim is forked after the spray and lives across the whole
+         * attack; inherited /proc/<pid>/mem copies would pin spray mms
+         * hostage for its entire lifetime. Own pipes stay open (they are not
+         * mem pins), everything else mem-shaped goes. */
+        support::drop_inherited_mem_pins();
         setpgid(0, 0); /* own group; the parent kills the whole tree on timeout */
         fcntl(p.uid_write.get(), F_SETFD, FD_CLOEXEC); /* keep the probe pipe out of the
                                           * root shell / ksud chain */
