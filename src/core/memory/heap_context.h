@@ -35,8 +35,17 @@ namespace lsprivilege::memory {
         Quarantined,
     };
 
+    /* Socketpairs per payload page: one pair's receive buffer cannot hold the
+     * spray volume needed to cover the whole kill wave. Structural (defines
+     * ReclaimPair layout), so it lives here where host builds can reach it —
+     * kernel/constants.hpp requires TARGET_CONFIG_H and is target-only. */
+    inline constexpr unsigned RECLAIM_PAIRS = 8;
+    inline constexpr size_t RECLAIM_FD_COUNT = static_cast<size_t>(2) * RECLAIM_PAIRS;
+
     struct ReclaimPair {
-        std::array<int32_t, 2> fd;
+        /* fds stay a plain array so PayloadPage keeps standard layout and
+         * trivial destruction. */
+        std::array<int32_t, RECLAIM_FD_COUNT> fd;
     };
 
     struct PayloadPage {

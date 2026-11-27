@@ -62,13 +62,25 @@ object ProfileExporter {
             require(actualRelease == release) { "index/file release mismatch for $file" }
             val route = routeNameOf(parsed, routes)
             val fallbackTo = fallbackOf(parsed)
+            /* The exporter has no interactive CPU selection: honor a profile's
+             * authored selected_cpus, falling back to the 0/1 pair otherwise. */
+            val authoredCpus = parsed["execution"].asValueMap()
+                ?.get("selected_cpus").asValueMap()
+            val pair = if (authoredCpus != null) {
+                val main = (authoredCpus["main"] as? Number)?.toInt()
+                val consumer = (authoredCpus["consumer"] as? Number)?.toInt()
+                if (main != null && consumer != null) CpuPairView(main, consumer)
+                else CpuPairView(0, 1)
+            } else {
+                CpuPairView(0, 1)
+            }
             val merged = ProfileMerger.resolveMerged(
                 deviceRelease = actualRelease,
                 builtin = parsed,
                 imported = null,
                 overrides = null,
                 tuningExecution = tuningExecution,
-                pair = CpuPairView(0, 1),
+                pair = pair,
                 routePresets = routePresets,
             )
             val errors = ProfileResolver.validateMerged(merged, route, fallbackTo)

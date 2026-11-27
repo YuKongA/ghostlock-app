@@ -8,6 +8,7 @@ data class MulticastConfig(
         geometry.bufferSize?.let { add("buffer_size" to it.toULong()) }
         geometry.taskOffset?.let { add("task_offset" to it.toULong()) }
         geometry.lockOffset?.let { add("lock_offset" to it.toULong()) }
+        geometry.stampDelivery?.let { add("stamp_delivery" to it.toULong()) }
     }
 
     override fun apply(key: String, value: ULong): RouteConfig = when (key) {
@@ -15,12 +16,13 @@ data class MulticastConfig(
         "buffer_size" -> copy(geometry = geometry.copy(bufferSize = value.toUInt()))
         "task_offset" -> copy(geometry = geometry.copy(taskOffset = value.toUInt()))
         "lock_offset" -> copy(geometry = geometry.copy(lockOffset = value.toUInt()))
+        "stamp_delivery" -> copy(geometry = geometry.copy(stampDelivery = value.toUInt()))
         else -> this
     }
 
     companion object {
         val EMPTY = MulticastConfig(
-            geometry = MulticastGeometry(null, null, null, null),
+            geometry = MulticastGeometry(null, null, null, null, null),
         )
 
         fun from(value: (String) -> Long?): MulticastConfig = MulticastConfig(
@@ -29,6 +31,7 @@ data class MulticastConfig(
                 bufferSize = value("mcast.buffer_size")?.toUInt(),
                 taskOffset = value("mcast.task_offset")?.toUInt(),
                 lockOffset = value("mcast.lock_offset")?.toUInt(),
+                stampDelivery = value("mcast.stamp_delivery")?.toUInt(),
             ),
         )
     }
@@ -40,4 +43,5 @@ data class MulticastGeometry(
     val bufferSize: UInt?,
     val taskOffset: UInt?,
     val lockOffset: UInt?,
+    val stampDelivery: UInt?,
 )

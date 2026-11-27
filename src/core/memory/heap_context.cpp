@@ -19,8 +19,7 @@ namespace lsprivilege::memory {
             page.fake_right = 0;
             page.fake_left = 0;
             page.fake_fops = 0;
-            page.reclaim.fd[0] = -1;
-            page.reclaim.fd[1] = -1;
+            page.reclaim.fd.fill(-1);
             page.state = PayloadPageState::Empty;
         }
     } // namespace
@@ -32,7 +31,10 @@ namespace lsprivilege::memory {
     }
 
     bool PayloadPage::has_reclaim() const noexcept {
-        return reclaim.fd[0] >= 0 && reclaim.fd[1] >= 0;
+        for (const int32_t fd : reclaim.fd) {
+            if (fd < 0) return false;
+        }
+        return true;
     }
 
     void PayloadPage::destroy() noexcept {
@@ -57,8 +59,7 @@ namespace lsprivilege::memory {
         destination.fake_right = fake_right;
         destination.fake_left = fake_left;
         destination.fake_fops = fake_fops;
-        destination.reclaim.fd[0] = reclaim.fd[0];
-        destination.reclaim.fd[1] = reclaim.fd[1];
+        destination.reclaim.fd = reclaim.fd;
         destination.state = destination_state;
         clear_page(*this);
         return true;

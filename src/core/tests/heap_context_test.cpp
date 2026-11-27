@@ -11,18 +11,31 @@
 
 using namespace lsprivilege;
 
+static void fill_reclaim_pairs(memory::PayloadPage &page, int32_t owned[]) {
+    for (size_t pair = 0; pair < memory::RECLAIM_PAIRS; pair++) {
+        assert(pipe(&owned[pair * 2]) == 0);
+        page.reclaim.fd[pair * 2] = owned[pair * 2];
+        page.reclaim.fd[pair * 2 + 1] = owned[pair * 2 + 1];
+    }
+}
+
+static void assert_all_closed(const int32_t owned[]) {
+    for (size_t i = 0; i < memory::RECLAIM_FD_COUNT; i++) {
+        errno = 0;
+        assert(fcntl(owned[i], F_GETFD) == -1 && errno == EBADF);
+    }
+}
+
 static void test_move_preserves_page_as_one_owner(void) {
     memory::HeapContext context;
     context.init();
     assert(context.current.reclaim.fd[0] == -1);
     assert(context.prebuilt.state == memory::PayloadPageState::Empty);
 
-    int32_t owned[2];
-    assert(pipe(owned) == 0);
+    int32_t owned[memory::RECLAIM_FD_COUNT];
+    fill_reclaim_pairs(context.current, owned);
     context.current.base = 0x12340000;
     context.current.fake_lock = 0x12340100;
-    context.current.reclaim.fd[0] = owned[0];
-    context.current.reclaim.fd[1] = owned[1];
     context.current.state = memory::PayloadPageState::Current;
 
     assert(context.current.move_to(context.prebuilt, memory::PayloadPageState::Prebuilt));
@@ -31,10 +44,10 @@ static void test_move_preserves_page_as_one_owner(void) {
     assert(context.prebuilt.base == 0x12340000);
     assert(context.prebuilt.fake_lock == 0x12340100);
     assert(context.prebuilt.state == memory::PayloadPageState::Prebuilt);
+    assert(context.prebuilt.reclaim.fd[memory::RECLAIM_FD_COUNT - 1] == owned[memory::RECLAIM_FD_COUNT - 1]);
 
     context.prebuilt.destroy();
-    errno = 0;
-    assert(fcntl(owned[0], F_GETFD) == -1 && errno == EBADF);
+    assert_all_closed(owned);
 }
 
 static void test_move_rejects_partial_or_occupied_ownership(void) {
@@ -62,11 +75,9 @@ static void test_page_is_move_only_and_released_explicitly(void) {
     assert(source.state == memory::PayloadPageState::Empty);
     assert(!source.has_reclaim());
 
-    int32_t owned[2];
-    assert(pipe(owned) == 0);
+    int32_t owned[memory::RECLAIM_FD_COUNT];
+    fill_reclaim_pairs(source, owned);
     source.base = 0xabc00000;
-    source.reclaim.fd[0] = owned[0];
-    source.reclaim.fd[1] = owned[1];
     source.state = memory::PayloadPageState::Current;
 
     memory::PayloadPage moved(std::move(source));
@@ -77,8 +88,7 @@ static void test_page_is_move_only_and_released_explicitly(void) {
     assert(!source.has_reclaim());
 
     moved.destroy();
-    errno = 0;
-    assert(fcntl(owned[0], F_GETFD) == -1 && errno == EBADF);
+    assert_all_closed(owned);
     moved.destroy();
     assert(moved.state == memory::PayloadPageState::Empty);
 }

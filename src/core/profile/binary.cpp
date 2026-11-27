@@ -186,6 +186,7 @@ namespace lsprivilege::binary_profile {
             OPT("buffer_size", geometry.mcast_buffer_size),
             OPT("task_offset", geometry.mcast_task_offset),
             OPT("lock_offset", geometry.mcast_lock_offset),
+            OPT("stamp_delivery", geometry.mcast_stamp_delivery),
         };
 
         struct Section {

