@@ -11,6 +11,7 @@ internal data class MulticastWaiterLayout(
     val bufferSize: UInt?,
     val taskOffset: UInt?,
     val lockOffset: UInt?,
+    val stampDelivery: UInt?,
 )
 
 /** Read-only select-stack geometry, mirroring native `SelectStackLayout`. */
@@ -40,7 +41,7 @@ internal data class Profile(
     val cred: CredTemplate get() = document.cred
     val multicast: MulticastGeometry
         get() = (document.routeConfig as? MulticastConfig)?.geometry
-            ?: MulticastGeometry(null, null, null, null)
+            ?: MulticastGeometry(null, null, null, null, null)
     val execution: ExecutionTuning get() = document.execution
     val compactWaiter: Boolean get() = (document.compactWaiter?.toInt() ?: 0) != 0
     val pselectWaiterShift: Int?
@@ -59,6 +60,7 @@ internal data class Profile(
         bufferSize = multicast.bufferSize,
         taskOffset = multicast.taskOffset,
         lockOffset = multicast.lockOffset,
+        stampDelivery = multicast.stampDelivery,
     )
 
     fun selectStackLayout(): SelectStackLayout =

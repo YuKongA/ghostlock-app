@@ -126,6 +126,9 @@ namespace lsprivilege::profile {
         std::optional<uint32_t> mcast_buffer_size;
         std::optional<uint32_t> mcast_task_offset;
         std::optional<uint32_t> mcast_lock_offset;
+        /* Stamp delivery selector: absent/0 = multicast setsockopt,
+         * 1 = rt_sigreturn fpsimd restore (shallow-frame 5.10). */
+        std::optional<uint32_t> mcast_stamp_delivery;
     };
 
     /* Native transport representation of one Kotlin-resolved profile. */
@@ -149,6 +152,7 @@ namespace lsprivilege::profile {
     struct MulticastWaiterLayout {
         std::optional<int32_t> waiter_offset;
         std::optional<uint32_t> buffer_size, task_offset, lock_offset;
+        std::optional<uint32_t> stamp_delivery;
     };
 
     struct SelectStackLayout {
@@ -281,6 +285,7 @@ namespace lsprivilege::profile {
                            .buffer_size = values_.geometry.mcast_buffer_size,
                            .task_offset = values_.geometry.mcast_task_offset,
                            .lock_offset = values_.geometry.mcast_lock_offset,
+                           .stamp_delivery = values_.geometry.mcast_stamp_delivery,
                        }
                        : MulticastWaiterLayout{};
         }

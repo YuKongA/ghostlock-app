@@ -32,6 +32,7 @@ CXX_SRCS := \
   core/route/tcp_zerocopy_route.cpp \
   core/route/select_stack_route.cpp \
   core/route/multicast_waiter_route.cpp \
+  core/route/sigreturn_stamp.cpp \
   core/memory/payload_builder.cpp \
   core/session/runtime_config.cpp \
   core/profile/binary.cpp \
@@ -121,7 +122,7 @@ NATIVE_HOST_TESTS := \
   target_constants_test native_resource_test \
   profile_binary_test futex_hash_test number_parse_test \
   runtime_paths_test handoff_probe_test victim_context_test \
-  run_state_test address_space_test cpp_link_probe_test
+  run_state_test address_space_test cpp_link_probe_test sigreturn_stamp_test
 
 native-host-tests: $(addprefix $(HOST_BUILD_DIR)/,$(NATIVE_HOST_TESTS))
 	@status=0; for test in $^; do $$test || status=1; done; exit $$status
@@ -241,6 +242,10 @@ $(HOST_BUILD_DIR)/profile_binary_test: core/tests/profile_binary_test.cpp core/p
 $(HOST_BUILD_DIR)/payload_builder_test: core/tests/payload_builder_test.cpp core/memory/payload_builder.cpp core/memory/payload_builder.h
 	@mkdir -p $(HOST_BUILD_DIR)
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/payload_builder_test.cpp core/memory/payload_builder.cpp -o $@
+
+$(HOST_BUILD_DIR)/sigreturn_stamp_test: core/tests/sigreturn_stamp_test.cpp core/route/sigreturn_stamp.cpp core/route/sigreturn_stamp.h
+	@mkdir -p $(HOST_BUILD_DIR)
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Icore core/tests/sigreturn_stamp_test.cpp core/route/sigreturn_stamp.cpp -o $@
 
 $(HOST_BUILD_DIR)/heap_context_test: core/tests/heap_context_test.cpp core/memory/heap_context.cpp core/memory/heap_context.h core/support/native_resource.cpp core/support/native_resource.hpp
 	@mkdir -p $(HOST_BUILD_DIR)

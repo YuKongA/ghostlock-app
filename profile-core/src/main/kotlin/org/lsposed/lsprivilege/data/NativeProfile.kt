@@ -429,8 +429,10 @@ data class NativeProfileDocument(
                     handoffModulePollIntervalMs = vu("execution.handoff.module_poll_interval_ms"),
                     handoffEnforcePollAttempts = vu("execution.handoff.enforce_poll_attempts"),
                     handoffEnforcePollIntervalMs = vu("execution.handoff.enforce_poll_interval_ms"),
-                    consumerMaxCalls = vu("execution.routes.select_stack.consumer_max_calls"),
-                    consumerBurstCalls = vu("execution.routes.select_stack.consumer_burst_calls"),
+                    consumerMaxCalls = vu("execution.routes.multicast_waiter.consumer_max_calls")
+                        ?: vu("execution.routes.select_stack.consumer_max_calls"),
+                    consumerBurstCalls = vu("execution.routes.multicast_waiter.consumer_burst_calls")
+                        ?: vu("execution.routes.select_stack.consumer_burst_calls"),
                 ),
                 safeMode = 0u,
                 routeConfig = routeConfig,
