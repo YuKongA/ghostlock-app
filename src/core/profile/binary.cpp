@@ -94,6 +94,8 @@ namespace ghostlock::binary_profile {
             PLAIN("ref1_image", credential.ref1_image),
             PLAIN("ref2_image", credential.ref2_image),
             PLAIN("ref3_image", credential.ref3_image),
+            OPT("tail_offset", credential.tail_offset),
+            OPT("tail_value", credential.tail_value),
         };
 
         constexpr Field kOffset[] = {

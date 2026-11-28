@@ -99,6 +99,11 @@ namespace ghostlock::profile {
         uint32_t ref_count = 0;
         uint32_t ref0_offset = 0, ref1_offset = 0, ref2_offset = 0, ref3_offset = 0;
         uint64_t ref0_image = 0, ref1_image = 0, ref2_image = 0, ref3_image = 0;
+        /* Device-specific fixed word in the credential tail (for example a
+         * refcount word that is not one of the repaired pointer fields).
+         * Absence means "not provided"; both fields must appear together. */
+        std::optional<uint32_t> tail_offset;
+        std::optional<uint64_t> tail_value;
     };
 
     struct KernelOffsets {

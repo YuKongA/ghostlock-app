@@ -27,6 +27,8 @@ private fun fieldLabelRes(path: String): Int? = when (path) {
     "cred.ref3_image" -> R.string.field_cred_ref3_image
     "cred.ref3_offset" -> R.string.field_cred_ref3_offset
     "cred.ref_count" -> R.string.field_cred_ref_count
+    "cred.tail_offset" -> R.string.field_cred_tail_offset
+    "cred.tail_value" -> R.string.field_cred_tail_value
     "cred.usage_value" -> R.string.field_cred_usage_value
     "execution.handoff.enforce_poll_attempts" -> R.string.field_execution_handoff_enforce_poll_attempts
     "execution.handoff.enforce_poll_interval_ms" -> R.string.field_execution_handoff_enforce_poll_interval_ms

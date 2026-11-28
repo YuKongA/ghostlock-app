@@ -125,6 +125,8 @@ route { multicast_waiter { waiter_off = 96, buffer_size = 264 } }
 凭据模板边界（通用）：`cred.usage_offset + 4 ≤ cred.copy_size`；
 `cred.caps_offset + cred.caps_count × 8 ≤ cred.copy_size`；`cred.ref_count ≤ 4`；
 每个 `cred.refN_image` 非零、`cred.refN_offset + 8 ≤ cred.copy_size`。
+可选的设备专用尾字必须成对出现：`cred.tail_offset + 8 ≤ cred.copy_size`，
+且其范围不得与 usage、capabilities 或任一引用字段重叠。
 `multicast_waiter` 还要求 `cred.copy_size ≥ 0xa0` 且
 `route.multicast_waiter.waiter_off + route.multicast_waiter.lock_offset + 8 ≤ route.multicast_waiter.buffer_size`。
 
@@ -156,6 +158,7 @@ route { multicast_waiter { waiter_off = 96, buffer_size = 264 } }
 | `cred.usage_offset` / `cred.usage_value` | 引用计数字段偏移 / 目标值 |
 | `cred.caps_offset` / `cred.caps_count` / `cred.caps_value` | capability 集合偏移 / 数量 / 填充值 |
 | `cred.ref_count` | 需要修复的引用字段数量（≤4） |
+| `cred.tail_offset` / `cred.tail_value` | 可选的凭据拷贝尾部 8 字节设备专用字（必须成对出现） |
 | `cred.refN_offset` / `cred.refN_image`（N=0..3） | 各引用字段偏移 / 应恢复的镜像值 |
 
 ### 4.3 内核符号与滑移（`offset`）

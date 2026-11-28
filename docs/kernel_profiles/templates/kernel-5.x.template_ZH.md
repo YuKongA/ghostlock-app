@@ -38,6 +38,7 @@ multicast 路线还需要其他路线不用的字段：`offset.empty_zero_page`�
 | `cred.caps_value` | `2199023255551` |
 | `cred.ref_count` | `4` |
 | `cred.ref0_offset` 到 `cred.ref3_offset` | `128`、`136`、`144`、`152` |
+| `cred.tail_offset` / `cred.tail_value` | 可选；设备专用尾部 8 字节字，必须成对提供 |
 | `cred.ref0_image` 到 `cred.ref3_image` | 每台设备各自的镜像偏移 |
 
 `refN_image` 因设备而异，必须和其他偏移取自同一个目标镜像。校验要求每个 `refN_image` 非零，且 `refN_offset + 8` 不超过 `copy_size`。

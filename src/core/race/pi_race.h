@@ -71,7 +71,7 @@ namespace ghostlock::race {
         std::atomic<int32_t> owner_chain_done;
         std::atomic<int32_t> owner_stop;
         std::atomic<int32_t> route_done;
-        std::atomic<int32_t> trigger_unlock;
+        std::atomic<int32_t> owner_tid;
         std::atomic<int32_t> waiter_tid;
         std::atomic<int32_t> consumer_go;
         std::atomic<int32_t> consumer_stop;

