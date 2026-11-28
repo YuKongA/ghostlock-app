@@ -26,7 +26,9 @@ namespace ghostlock::session::victim {
 
     std::optional<VictimSpawn> spawn_victim(VictimContext &p);
 
-    /* Stage verification callbacks. */
+    /* Stage verification callbacks. Return 1 on success, 0 when the stage can
+     * be retried, and a negative value when the observed state is terminal
+     * (for example, W2's victim already exited and its task address is gone). */
     int32_t verify_selinux_stage(void *context);
 
     int32_t verify_w2_stage(void *context);

@@ -38,6 +38,7 @@ The multicast route needs fields that the other routes do not: `offset.empty_zer
 | `cred.caps_value` | `2199023255551` |
 | `cred.ref_count` | `4` |
 | `cred.ref0_offset` to `cred.ref3_offset` | `128`, `136`, `144`, `152` |
+| `cred.tail_offset` / `cred.tail_value` | optional; device-specific 8-byte tail word, both fields together |
 | `cred.ref0_image` to `cred.ref3_image` | per-device image offsets |
 
 The `refN_image` values differ per device. Take them from the same target image as the other offsets. Validation requires each `refN_image` to be non-zero and each `refN_offset + 8` to fit inside `copy_size`.

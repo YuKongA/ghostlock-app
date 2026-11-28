@@ -138,6 +138,19 @@ internal class AndroidProfileConfigController(
             }
         }
 
+        val tailOffset = value("cred.tail_offset")
+        val tailValue = value("cred.tail_value")
+        if ((tailOffset == null) != (tailValue == null)) {
+            invalid += if (tailOffset == null) "cred.tail_offset" else "cred.tail_value"
+        }
+        if (tailOffset != null) {
+            if (tailOffset < 0L || tailOffset > UInt.MAX_VALUE.toLong() ||
+                (copySize != null && tailOffset + SizeofU64 > copySize)
+            ) {
+                invalid += "cred.tail_offset"
+            }
+        }
+
         val routePrefix = route?.let { "route.$it" } ?: "route"
         val fallbackPrefix = fallbackTo?.takeIf { it != "none" }
             ?.let { "fallback.route.$it" }
@@ -863,6 +876,7 @@ internal class AndroidProfileConfigController(
             "copy_size", "usage_offset", "usage_value", "caps_offset", "caps_count", "caps_value",
             "ref_count", "ref0_offset", "ref1_offset", "ref2_offset", "ref3_offset",
             "ref0_image", "ref1_image", "ref2_image", "ref3_image",
+            "tail_offset", "tail_value",
         )
         private val OffsetFieldNames = listOf(
             "init_task", "init_cred", "empty_zero_page", "root_task_group", "selinux_enforcing",

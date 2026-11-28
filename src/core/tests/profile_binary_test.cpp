@@ -99,6 +99,8 @@ int32_t main(void) {
     values.task.real_cred = 0x12345678;
     values.credential.copy_size = 0x88;
     values.credential.caps_value = 0xffffffffffffffffULL;
+    values.credential.tail_offset = 0x80;
+    values.credential.tail_value = 2;
     values.offsets.init_task = 0x20dc000;
     values.offsets.slide_boot_id = 0x2336600;
     values.misc.compact_waiter = 1;
@@ -121,6 +123,8 @@ int32_t main(void) {
     assert(parsed.task.real_cred == 0x12345678);
     assert(parsed.credential.copy_size == 0x88);
     assert(parsed.credential.caps_value == 0xffffffffffffffffULL);
+    assert(parsed.credential.tail_offset.value_or(0) == 0x80);
+    assert(parsed.credential.tail_value.value_or(0) == 2);
     assert(parsed.offsets.init_task == 0x20dc000);
     assert(parsed.offsets.slide_boot_id == 0x2336600);
     assert(parsed.misc.compact_waiter.value_or(0) == 1);
@@ -173,6 +177,8 @@ int32_t main(void) {
         assert(round_trip(absent, &parsed, release, sizeof(release)) == 0);
         assert(!parsed.geometry.mcast_waiter_off.has_value());
         assert(!parsed.misc.mm_struct_sz.has_value());
+        assert(!parsed.credential.tail_offset.has_value());
+        assert(!parsed.credential.tail_value.has_value());
         assert(parsed.geometry.mcast_buffer_size.value_or(0) == 264);
     }
 

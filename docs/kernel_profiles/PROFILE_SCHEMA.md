@@ -140,7 +140,10 @@ route { multicast_waiter { waiter_off = 96, buffer_size = 264 } }
 Credential-template bounds (general): `cred.usage_offset + 4 ≤ cred.copy_size`;
 `cred.caps_offset + cred.caps_count × 8 ≤ cred.copy_size`; `cred.ref_count ≤ 4`;
 each `cred.refN_image` must be non-zero and
-`cred.refN_offset + 8 ≤ cred.copy_size`. `multicast_waiter` additionally requires
+`cred.refN_offset + 8 ≤ cred.copy_size`. The optional device-specific tail word
+is present only as a pair: `cred.tail_offset + 8 ≤ cred.copy_size`, and its
+range must not overlap the usage, capabilities, or any repaired reference
+field. `multicast_waiter` additionally requires
 `cred.copy_size ≥ 0xa0` and
 `route.multicast_waiter.waiter_off + route.multicast_waiter.lock_offset + 8 ≤ route.multicast_waiter.buffer_size`.
 
@@ -174,6 +177,7 @@ addresses into runtime addresses.
 | `cred.usage_offset` / `cred.usage_value` | Refcount field offset / target value |
 | `cred.caps_offset` / `cred.caps_count` / `cred.caps_value` | Capability set offset / count / fill value |
 | `cred.ref_count` | Number of reference fields to repair (≤4) |
+| `cred.tail_offset` / `cred.tail_value` | Optional device-specific 8-byte word in the credential copy (both fields together) |
 | `cred.refN_offset` / `cred.refN_image` (N=0..3) | Offset of each reference field / image value to restore |
 
 ### 4.3 Kernel symbols and slide anchors (`offset`)

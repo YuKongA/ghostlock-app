@@ -115,6 +115,27 @@ object ProfileResolver {
                     }
                 }
             }
+            val tailOffset = cred["tail_offset"]
+            val tailValue = cred["tail_value"]
+            if ((tailOffset == null) != (tailValue == null)) {
+                errors += ConfigError(
+                    if (tailOffset == null) "cred.tail_offset" else "cred.tail_value",
+                    "must be provided together",
+                )
+            }
+            if (tailOffset != null && tailOffset !is Number) {
+                errors += ConfigError("cred.tail_offset", "not a number")
+            }
+            if (tailValue != null && tailValue !is Number) {
+                errors += ConfigError("cred.tail_value", "not a number")
+            }
+            if (tailOffset is Number) {
+                val offset = tailOffset.toLong()
+                val copySize = (cred["copy_size"] as? Number)?.toLong()
+                if (offset < 0L || (copySize != null && offset + 8L > copySize)) {
+                    errors += ConfigError("cred.tail_offset", "outside credential copy")
+                }
+            }
         }
         val offset = profile["offset"] as? Map<*, *>
         if (offset == null) {

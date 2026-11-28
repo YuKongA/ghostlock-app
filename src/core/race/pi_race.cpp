@@ -1,4 +1,4 @@
-#include "race/pi_race.h"
+﻿#include "race/pi_race.h"
 
 using namespace ghostlock;
 
@@ -20,6 +20,7 @@ bool ghostlock::race::PiRace::reset(
     owner_chain_done.store(0, std::memory_order_relaxed);
     owner_stop.store(0, std::memory_order_relaxed);
     route_done.store(0, std::memory_order_relaxed);
+    owner_tid.store(0, std::memory_order_relaxed);
     waiter_tid.store(0, std::memory_order_relaxed);
     consumer_go.store(0, std::memory_order_relaxed);
     consumer_stop.store(0, std::memory_order_relaxed);

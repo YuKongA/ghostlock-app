@@ -187,6 +187,8 @@
     <string name="field_cred_ref3_image">cred_ref3_image</string>
     <string name="field_cred_ref3_offset">cred_ref3_offset</string>
     <string name="field_cred_ref_count">cred_ref_count</string>
+    <string name="field_cred_tail_offset">cred_tail_offset</string>
+    <string name="field_cred_tail_value">cred_tail_value</string>
     <string name="field_cred_usage_value">cred_usage_value</string>
     <string name="field_execution_handoff_enforce_poll_attempts">enforce_poll_attempts</string>
     <string name="field_execution_handoff_enforce_poll_interval_ms">enforce_poll_interval_ms</string>

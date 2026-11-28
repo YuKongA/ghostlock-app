@@ -382,7 +382,7 @@ namespace ghostlock::kernelsnitch {
                 ks->mm_slab_order,
                 ks->thread_cnt,
                 ks->collisions);
-        ghostlock::kernel::pin_to_core(__pin_cpu);
+        (void) ghostlock::kernel::pin_to_core(__pin_cpu);
 
         ks->state = KERNELSNITCH_INIT;
         return ks;

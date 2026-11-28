@@ -174,23 +174,25 @@ data class NativeProfileDocument(
         "seccomp" to taskStruct.seccomp.toULong(),
     )
 
-    private fun credEntries(): List<Pair<String, ULong>> = listOf(
-        "copy_size" to cred.copySize.toULong(),
-        "usage_offset" to cred.usageOffset.toULong(),
-        "usage_value" to cred.usageValue.toULong(),
-        "caps_offset" to cred.capsOffset.toULong(),
-        "caps_count" to cred.capsCount.toULong(),
-        "caps_value" to cred.capsValue,
-        "ref_count" to cred.refCount.toULong(),
-        "ref0_offset" to cred.ref0Offset.toULong(),
-        "ref1_offset" to cred.ref1Offset.toULong(),
-        "ref2_offset" to cred.ref2Offset.toULong(),
-        "ref3_offset" to cred.ref3Offset.toULong(),
-        "ref0_image" to cred.ref0Image,
-        "ref1_image" to cred.ref1Image,
-        "ref2_image" to cred.ref2Image,
-        "ref3_image" to cred.ref3Image,
-    )
+    private fun credEntries(): List<Pair<String, ULong>> = buildList {
+        add("copy_size" to cred.copySize.toULong())
+        add("usage_offset" to cred.usageOffset.toULong())
+        add("usage_value" to cred.usageValue.toULong())
+        add("caps_offset" to cred.capsOffset.toULong())
+        add("caps_count" to cred.capsCount.toULong())
+        add("caps_value" to cred.capsValue)
+        add("ref_count" to cred.refCount.toULong())
+        add("ref0_offset" to cred.ref0Offset.toULong())
+        add("ref1_offset" to cred.ref1Offset.toULong())
+        add("ref2_offset" to cred.ref2Offset.toULong())
+        add("ref3_offset" to cred.ref3Offset.toULong())
+        add("ref0_image" to cred.ref0Image)
+        add("ref1_image" to cred.ref1Image)
+        add("ref2_image" to cred.ref2Image)
+        add("ref3_image" to cred.ref3Image)
+        cred.tailOffset?.let { add("tail_offset" to it.toULong()) }
+        cred.tailValue?.let { add("tail_value" to it) }
+    }
 
     private fun offsetEntries(): List<Pair<String, ULong>> = listOf(
         "init_task" to kernelOffset.initTask,
@@ -388,6 +390,8 @@ data class NativeProfileDocument(
                     ref1Image = vul("cred.ref1_image"),
                     ref2Image = vul("cred.ref2_image"),
                     ref3Image = vul("cred.ref3_image"),
+                    tailOffset = vuOrNull("cred.tail_offset"),
+                    tailValue = vulOrNull("cred.tail_value"),
                 ),
                 kernelOffset = KernelOffsetTable(
                     initTask = vul("offset.init_task"),
@@ -505,6 +509,8 @@ data class NativeProfileDocument(
                         "ref1_image" -> credential.copy(ref1Image = raw)
                         "ref2_image" -> credential.copy(ref2Image = raw)
                         "ref3_image" -> credential.copy(ref3Image = raw)
+                        "tail_offset" -> credential.copy(tailOffset = raw.toUInt())
+                        "tail_value" -> credential.copy(tailValue = raw)
                         else -> credential
                     }
 
@@ -665,6 +671,8 @@ data class CredTemplate(
     val ref1Image: ULong = 0uL,
     val ref2Image: ULong = 0uL,
     val ref3Image: ULong = 0uL,
+    val tailOffset: UInt? = null,
+    val tailValue: ULong? = null,
 )
 
 data class KernelOffsetTable(

